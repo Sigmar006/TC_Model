@@ -110,6 +110,8 @@ class SignalPipeline final : public ISignalPipeline {
    */
   session::ArControlProfile GetControlProfile() const override;
 
+  void SetSensorEntityId(std::uint32_t sensor_entity_id) override;
+
   /**
    * @brief 更新流水线运行配置。
    * @param config 四域会话配置。

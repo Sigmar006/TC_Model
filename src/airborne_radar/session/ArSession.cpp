@@ -1112,6 +1112,12 @@ struct ArSession::Impl {
   signal::pipeline::SignalPipeline* concrete_signal_pipeline_{nullptr};
   ArTrackLifecycleRecorder* lifecycle_recorder{nullptr};
   ArExclusionCauseRecorder* exclusion_cause_recorder{nullptr};
+  std::uint32_t sensor_entity_id{0U};
+
+  void SetSensorEntityId(std::uint32_t id) noexcept {
+    sensor_entity_id = id;
+    Controller().SetSensorEntityId(id);
+  }
 
   MutableArContext& RadarContext() const { return *owned_ar_context; }
   signal::ISignalPipeline& SignalPipeline() const { return *owned_signal_pipeline; }
@@ -1198,6 +1204,10 @@ void ArSession::AttachTrackLifecycleRecorder(ArTrackLifecycleRecorder* recorder)
 
 void ArSession::AttachExclusionCauseRecorder(ArExclusionCauseRecorder* recorder) noexcept {
   impl_->exclusion_cause_recorder = recorder;
+}
+
+void ArSession::SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept {
+  impl_->SetSensorEntityId(sensor_entity_id);
 }
 
 const std::vector<session::ArCommand>& ArSession::GetSubmittedCommands() const {

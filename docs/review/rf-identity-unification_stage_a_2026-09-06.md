@@ -54,6 +54,7 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 5、跨模块身份接线已散装存在（示例层强制 ECM=101、runner 手拼共址路径），集中为场景级身份清单是否成立。
 6、共享 RF 层的身份数据模型（四级身份+共址判定+设备号对隔离）本身自洽、无需改动，是否成立（范围收窄裁定）。
 7、纯收/纯发模块"RF 标识=其唯一设备号"现状已满足、无需新增字段，是否成立。
+8、设备号层级整体废除（每模块唯一 platform_id；发射身份=(模块号, 发射流水号)；共址改显式隔离配对表），是否成立。
 
 ## §1 证据矩阵
 
@@ -66,20 +67,22 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 | 5、跨模块身份接线已散装存在，集中为场景级清单成立 | 示例层已经在做跨模块号码接线（强制 ECM 缺省 101、runner 用 ECM 号+AR 号手拼共址路径），只是散在两处且不在场景文件里 | examples/scenes/scene_data.cpp::LoadSessionConfigs（ECM 缺省强制 101U）；examples/app/runner.cpp（ecm_enabled 时向 AR 接收配置 push 共址路径{ECM 发射号, AR 接收号, 100dB}）；examples/scenes/README.md（ECM 基线 101 已成文档口径） | grep（2026-09-06 执行）：runner 是唯一同时看见全部模块配置的位置；共址路径端点号取自两处不同配置盒 | 跨模块接线需求真实存在 → 场景级身份清单（单源）有落点雏形 | 接线逻辑不存在或可各模块独立解决 | pass |
 | 6、共享 RF 层身份数据模型自洽，无需改动 | 四级 provenance（周期/平台/设备/发射）+共址判定（平台相等）+设备号对隔离已覆盖模块交互需要；乱在填号侧不在模型侧 | include/1q/electromagnetics/RfScene.h::RfEmissionIdentity/RfSceneReceiverState/RfCoSiteIsolationPath；src/common/electromagnetics/RfScene.cpp::TryEvaluateRfIncidentLink；docs/common/rf_architecture.md（四级 provenance 规则已成文） | 通读 RF 层结构与求解器（2026-09-06 执行）：身份字段语义闭环，四个模块均按该模型填号 | 模型无缺陷证据 → 重设计范围收窄到"谁填号、号从哪来、怎么查重"，不动 RfScene 数据模型 | 发现模型本身表达不了交互需要（如缺平台分组字段） | reject（不改共享 RF 层） |
 | 7、纯收/纯发模块"RF 标识=其唯一设备号"现状已满足 | ESR 只持 receiver_equipment_id、ECM 只持 transmitter_equipment_id，各一个号，与用户原则一致，无需新增字段 | include/1q/electronic_surveillance_radar/config/EsrHardwareConfig.h（仅 receiver_equipment_id）；include/1q/electronic_countermeasure/EcmTypes.h::EcmSessionConfig（仅 transmitter_equipment_id） | grep（2026-09-06 执行）：两模块各自只有单角色设备号字段，无死字段 | 现状满足 → 统一方案对纯功能模块保持单号 | 发现多角色字段或死字段 | pass（现状保持） |
+| 8、设备号层级整体废除（每模块唯一 platform_id）是否成立 | 本模型无任何模块建模多发射机/多接收机，设备号层无可归职责：其三项现职（自剔除区分、共址配对、实体关联键）均可由"每模块唯一号"等价或更好地承担 | include/1q/airborne_radar/config/ArHardwareConfig.h（transmitter/receiver 均为单实例结构体，无多设备容器）；include/1q/remote_identification_radar/config/RirHardwareConfig.h（同）；include/1q/electronic_countermeasure/EcmTypes.h::EcmSessionConfig（单发射机，channel_count 为单机的频通道数非设备数）；include/1q/electronic_surveillance_radar/config/EsrHardwareConfig.h（单接收机）；examples/core/rf_world_broker.h::BuildArInterferenceFromRfWorld（自剔除改为模块号精确匹配即天然区分同机 ECM，雷一根除）；src/common/electromagnetics/RfScene.cpp（非共址且 path_length_m < minimum_far_field_range_m 时拒解——同载体漏配隔离对的物理兜底存在） | grep 配置结构（2026-09-06 执行）：四模块收/发配置均为单实例结构体；矩阵项 1/2 的撞号雷全部发生在设备号层 | 无多设备消费方 + 三项职责均有等价承担 + 撞号雷随层消失 → 层级可废 | 发现任一模块真实建模多发射机/多接收机，或发射/接收同体模块必须区分自发自收链路的机制性需求 | pass |
 
 ## §2 判定汇总与待裁定问题
 
 判定汇总：
 1、项 1-5 建议 pass：撞号、无查重、平台号四源分立、散装接线均为实证事实，统一编号体系需求成立。
-2、项 6 建议 reject：共享 RF 层数据模型不动，重设计落在"号的分配、来源与查重"侧。
-3、项 7 建议 pass：纯收/纯发模块单设备号现状已符合设计原则，保持。
-4、全部判定依据的探针已于 2026-09-06 实际执行，结果写入 §1。
+2、项 6 原"不动共享 RF 层数据模型"的范围收窄结论已被修订 2 推翻（模型自洽不等于层级必要），设备号层入废除范围。
+3、项 7 建议 pass：纯收/纯发模块单设备号现状已符合设计原则——设备号层废除后此原则自然升级为"每模块单 platform_id"。
+4、项 8 建议 pass：设备号层级无可归职责，废除后撞号雷（项 1/2）根除、自剔除变精确匹配、共址配对更直观。
+5、全部判定依据的探针已于 2026-09-06 实际执行，结果写入 §1。
 
 需要用户拍板的问题（处理状态）：
-1、身份清单形态：场景级「平台/设备身份清单」单源（模块配置从清单接线）vs 模块配置保持现状、场景层仅新增跨设备查重校验——待拍板。
-2、库默认撞号值的处置：废弃库默认、强制场景显式给号 vs 重新分配库默认使其天然不撞——待拍板。
-3、RIR platform_id 是否随本轮从 session_config 迁入统一清单（上一轮 COMMON-OQ-13 遗留项）——待拍板。
-4、runner 手拼的共址路径（ECM→AR 100dB）是否随清单一并收编进场景文件——待拍板。
+1、设备号层整体废除的方向确认（项 8）：每模块唯一 platform_id；发射身份=(模块号, 发射流水号)；四模块配置删设备号字段——待拍板。
+2、共址触发方式：隔离配对表存在即共址（同载体漏配时由近场门物理兜底、链路拒解）vs 保留"同载体"分组仅作校验（漏配显式报错而非静默拒解）——待拍板。
+3、每模块 platform_id 的配置面：场景级身份清单单源（模块配置从清单接线）vs 各模块会话配置保留单字段+场景层查重——待拍板。
+4、RIR platform_id 迁移与 runner 手拼共址路径（ECM→AR 100dB）收编场景文件——并入上述拍板后随本轮统一处理——待拍板。
 
 ## §3 冻结契约（用户讨论结束后填写）
 
@@ -95,6 +98,7 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 ## 修订记录
 
 - 修订 1（2026-09-06，用户指令）：四模块经共享 RF 基础设施互相感知与博弈（ECM 纯发/ESR 纯收/AR 与 RIR 收发一体）；每个模块以平台号+设备号在 RF 空间标识；纯收与纯发模块的 RF 标识即其设备号；当前 RF 标识号使用混乱，要求重新设计模块交互逻辑的身份体系。用户同时否决「平台号/设备号粒度天然不对齐、维持现状」的辩护方向。
+- 修订 2（2026-09-06，用户质询）：用户指出本模型不可能存在每模块多发射机/多接收机，质疑设备号层级的意义，方向裁定为"全部使用 platform_id（每模块单号）"。据此新增项 8（设备号层整体废除，建议 pass）；项 6 的范围收窄结论（不动 RfScene 数据模型）被推翻——模型自洽不等于层级必要，设备号层属未使用通用性且是项 1/2 撞号雷的载体；§2 拍板问题随之重构。
 
 ## §4 运行记录（Stage C 后填写）
 

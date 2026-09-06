@@ -23,7 +23,6 @@
 #include "1q/coordinate/position_transform.h"
 #include "1q/coordinate/velocity_transform.h"
 #include "1q/environment/AtmosphericTypes.h"
-#include "1q/fusion/SensorAdapters.h"
 #include "1q/remote_identification_radar/session/RirIssueCodes.h"
 #include "remote_identification_radar/dwell/RirBeamControl.h"
 #include "remote_identification_radar/dwell/RirEffectiveRcs.h"
@@ -43,6 +42,9 @@ namespace {
 
 constexpr float kSnrFallbackGateDb = 6.0f;
 constexpr float kCovarianceFloorM2 = 1.0e-6f;
+// 未注入设备号时的缺省值，镜像融合常量 fusion::kRirSourceId（=5U）。分层契约
+// 禁止传感器层引 fusion 头，故在本文件本地对齐取值；两侧若需改号须同步。
+constexpr std::uint32_t kDefaultSensorEntityId = 5U;
 // 主瓣覆盖门系数：门限=有效波束宽度（半功率宽）×该系数。恒为 1.0 且不设配置项
 // （2026-08-29 还债原则：方向图/覆盖门语义唯一，不再新增同类开关）。
 constexpr float kMainLobeGateBeamwidthScale = 1.0f;
@@ -219,7 +221,7 @@ void RirController::SetSensorEntityId(std::uint32_t sensor_entity_id) {
 }
 
 std::uint32_t RirController::EffectiveSensorEntityId() const {
-  return sensor_entity_id_ != 0U ? sensor_entity_id_ : ::fusion::kRirSourceId;
+  return sensor_entity_id_ != 0U ? sensor_entity_id_ : kDefaultSensorEntityId;
 }
 
 dwell::RirDetectorConfig RirController::MakeDetectorConfig() const {

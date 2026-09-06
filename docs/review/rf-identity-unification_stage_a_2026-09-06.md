@@ -1,5 +1,5 @@
 ---
-Status: draft
+Status: frozen（契约已附）
 Date: 2026-09-06
 Review-Baseline: `evidence/rf-identity-unification` @ `1320364e`
 Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract.md、docs/common/session_contract.md
@@ -86,19 +86,67 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 
 ## §3 冻结契约（用户讨论结束后填写）
 
-<!-- 一行一项：
-1、允许范围：模块/目录、类/函数、测试与文档。
-2、明确禁止范围：公开头文件、跨模块类型、schema/回放、测试阈值、兼容层。
-3、行为边界：输入、输出、错误回退、生命周期。
-4、爆炸半径与回滚：下游消费方影响、回退难度（无损/破坏性/回滚注意点）。
-5、验收门：构建、聚焦测试、契约测试、特征化测试、探针转正（有回归价值的探针转正式测试）。
-6、非目标。
--->
+已证明的需求：
+- 设备号层级无可归职责（§1 项 8），且是同平台撞号雷的载体（§1 项 1/2）；废除后自剔除变模块号精确匹配、共址配对端点更直观。
+- 同平台设备号唯一性无任何校验（§1 项 3）→ 改为模块号查重（场景装载层，启用通道中 RF 参与方互异）。
+- 平台号四源分立（§1 项 4）→ 统一为各模块会话配置单字段（修订 3 拍板 3）。
+- 共址触发改为接收方隔离表命中（修订 3 拍板 2）；近场门拒解为漏配物理兜底（§1 项 8 探针已验证存在）。
+
+允许范围：
+- 共享 RF 层（include/1q/electromagnetics/RfScene.h、src/common/electromagnetics/RfScene.cpp）：
+  1、RfEmissionIdentity 删 equipment_id（发射身份 = platform_id + emission_id）。
+  2、RfSceneReceiverState 删 equipment_id。
+  3、RfCoSiteIsolationPath 收缩为 {transmitter_platform_id, isolation_db}（接收端自有号由挂载主体隐含）。
+  4、TryEvaluateRfIncidentLink 共址判定 = 接收方隔离表命中发射方 platform_id；未命中走远场求解；近场门保留；共址时延置零语义保留。
+- 四模块公共配置头：
+  1、AR：ArSessionConfig 新增 platform_id（uint64，缺省 1）；ArHardwareConfig 发射/接收 equipment_id 删；ReceiverConfig::co_site_paths 端点改发射方 platform_id。
+  2、ESR：EsrSessionConfig 新增 platform_id（缺省 2）；EsrHardwareConfig::receiver_equipment_id 删；EsrCoSiteIsolationPath 端点改 platform_id。
+  3、ECM：EcmSessionConfig 删 transmitter_equipment_id、新增 platform_id（缺省 4）。
+  4、RIR：RirSessionConfig::platform_id 保留原位（库缺省调整为 3）；RirHardwareConfig 发射/接收 equipment_id 删。
+  5、四模块库缺省互不相同：AR=1 / ESR=2 / RIR=3 / ECM=4。
+- 周期输入：ArPlatformInput、EsrCycleInput、EcmTypes.h 周期输入结构删 platform_entity_id（身份静态入配置；位置/速度每拍注入保持不变）。
+- 库内实现随迁：各模块校验器（设备号校验删、platform_id 非零校验增）、接收状态组装（ArReceiverStateBuilder/EsrRfV2FrontEnd/RIR 接收状态）、EcmWaveformFactory、MutableEsrContext、ArSession/RirController 的 RF 输入组装。
+- 回放 schema（字段增删 → 标识符升位 + 旧标识符拒绝测试）：airborne_radar_replay（ARC3）、airborne_radar_session_replay（ARSC）、ecm_replay（ECMC）、esr_replay（ESRC，实体键三元组→二元组）、esr_session_replay（ESRS）、rir_session_replay（RIRF）；rir_replay（RIR3）随周期输入结构核查。
+- issue codes：删 ar.validation.equipment_identity_invalid 与 rir.validation.equipment_identity_invalid；新增 ar/esr/ecm 的 platform_id_invalid（RIR 已有）；docs/common/issue_codes.md 同步。
+- 示例层：scene_data 模块号装载 + RF 参与方（ar/esr/ecm/rir）模块号查重（重复报错）；runner 组件接线改从各模块配置取平台号；共址路径 push 端点改模块号；删 kPlatformEntityId / kEcmTransmitterEquipmentId；rf_world_broker 自剔除改 platform 单匹配（删 equipment 参数）。
+- 测试与文档：上述变更的单元/契约/回放测试；rf_architecture.md 四级 provenance 改三级；各模块 boundaries/design 身份段重写；docs/common/contract.md RF 契约段；COMMON-OQ-13 收敛回写。
+
+明确禁止范围：
+- 不新建场景级身份清单结构（修订 3 拍板 3）。
+- 不引入"同载体/编组"概念、跨模块 ID 基类或新的公共常量头（修订 3 拍板 2）。
+- 不动标注域设备号（SetSensorEntityId/融合通道/验收行标注，上一轮已收敛）。
+- 不动 EOS/SBIRS/SAR（非 RF 参与方）及其全部 schema。
+- 不做字段过渡/deprecated 兼容层（未交付项目）。
+- 链路物理语义除身份字段与共址触发外零改动（极化/波形/损耗/近场门阈值不动）。
+
+行为边界：
+- 输入：模块号 = 非零 uint64；四模块库缺省互异；场景装载查重（启用通道中 RF 参与方模块号互异，重复整场景报错）。
+- 输出：发射身份 = (模块号, 发射流水号)；ESR 实体关联键与差分键 = (模块号, 发射流水号) 二元组；验收行除身份字段外数值不变。
+- 共址语义：隔离表命中 = 共址（查隔离值、传播时延置零）；未命中 = 远场求解；同载体漏配由近场门拒解兜底（链路不可解、量测缺失，可验收发现，不产生错误功率值）。
+- 回放：中段字段变更标识符升位，旧录制显式拒绝；无兼容负担。
+- 生命周期：设备号校验码删除即失效，无运行期迁移逻辑。
+
+爆炸半径与回滚：
+- 下游消费方：集成方配置面（删设备号字段、增 platform_id 字段）；全部旧回放录制失效。
+- 回退难度：破坏性（公共字段删除 + schema 标识符升位）；回滚 = 整分支回退。
+
+验收门：
+- 构建：llvm-ninja-release-local 全量通过。
+- 聚焦测试：unit::airborne_radar、ESR 契约与单测、unit::remote_identification_radar、unit::examples、全部 replay 套件、guard 全过。
+- 场景冒烟：ecm_esr_driven_jamming（共址链路核心验证：ECM 干扰进 AR、受扰指标不回归）、rir_ground_site_recognition（764 确认基线）、baseline_takeoff_east。
+- 探针转正：共址命中/未命中+近场门拒解语义测试；场景模块号查重测试；各升位标识符拒绝测试。
+
+非目标：
+- 多发射机/多接收机建模能力（裁定不存在该需求）。
+- RF 模块号与标注域设备号的合并（两域保持正交）。
+- SBIRS/EOS/SAR 身份体系。
+- 近场门阈值与隔离值标定。
 
 ## 修订记录
 
 - 修订 1（2026-09-06，用户指令）：四模块经共享 RF 基础设施互相感知与博弈（ECM 纯发/ESR 纯收/AR 与 RIR 收发一体）；每个模块以平台号+设备号在 RF 空间标识；纯收与纯发模块的 RF 标识即其设备号；当前 RF 标识号使用混乱，要求重新设计模块交互逻辑的身份体系。用户同时否决「平台号/设备号粒度天然不对齐、维持现状」的辩护方向。
 - 修订 2（2026-09-06，用户质询）：用户指出本模型不可能存在每模块多发射机/多接收机，质疑设备号层级的意义，方向裁定为"全部使用 platform_id（每模块单号）"。据此新增项 8（设备号层整体废除，建议 pass）；项 6 的范围收窄结论（不动 RfScene 数据模型）被推翻——模型自洽不等于层级必要，设备号层属未使用通用性且是项 1/2 撞号雷的载体；§2 拍板问题随之重构。
+- 修订 3（2026-09-06，用户拍板）：三问裁定——1、设备号层整体废除，每模块唯一 platform_id（项 8 方向确认）；2、共址触发=接收方隔离配对表命中发射方模块号，漏配走远场求解并由近场门拒解兜底，不引入"同载体"分组概念；3、配置面=各模块会话配置各留一个 platform_id 字段（不建场景级清单；场景装载层做 RF 参与方模块号查重）。随之：RIR platform_id 保持 session_config 原地即目标形态（不再迁移）；runner 共址路径 push 机制保留、端点改模块号；runner/scene_data 中的设备号补丁（强制 101 等）随设备号层一并删除。
 
 ## §4 运行记录（Stage C 后填写）
 

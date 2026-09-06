@@ -90,6 +90,14 @@ class EosPipeline {
    */
   extension::EosPipelineExecuteResult RunCycle(const EosPipelineCycleInput& input);
 
+  /**
+   * @brief 设置传感器设备实体 ID（用于周期摘要日志行标记与融合源通道对齐）。
+   * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量。
+   */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id) {
+    sensor_entity_id_ = sensor_entity_id;
+  }
+
   /** @return 当前配置的帧率（Hz）。 */
   float GetFrameRateHz() const { return config_.scan.frame_rate_hz; }
 
@@ -104,6 +112,7 @@ class EosPipeline {
 
   config::execution::EosInternalExecutionConfig config_{};
   float current_scan_azimuth_deg_{0.0f};
+  std::uint32_t sensor_entity_id_{0U};
 };
 
 }  // namespace pipeline

@@ -50,6 +50,12 @@ struct EosSession::Impl {
   config::execution::EosInternalExecutionConfig internal_config_;
   EosDetectionLifecycleRecorder* lifecycle_recorder{nullptr};
   EosExclusionCauseRecorder* exclusion_cause_recorder{nullptr};
+  std::uint32_t sensor_entity_id{0U};
+
+  void SetSensorEntityId(std::uint32_t id) noexcept {
+    sensor_entity_id = id;
+    controller().SetSensorEntityId(id);
+  }
 
   extension::EosController& controller() const { return *owned_controller; }
 };
@@ -101,6 +107,10 @@ void EosSession::AttachDetectionLifecycleRecorder(EosDetectionLifecycleRecorder*
 
 void EosSession::AttachExclusionCauseRecorder(EosExclusionCauseRecorder* recorder) noexcept {
   impl_->exclusion_cause_recorder = recorder;
+}
+
+void EosSession::SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept {
+  impl_->SetSensorEntityId(sensor_entity_id);
 }
 
 bool EosSession::TryApplyRuntimeConfig(const config::EosRuntimeConfigPatch& patch) {

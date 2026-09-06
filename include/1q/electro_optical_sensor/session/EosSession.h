@@ -89,6 +89,13 @@ class ONEQ_API EosSession {
    */
   void AttachExclusionCauseRecorder(EosExclusionCauseRecorder* recorder) noexcept;
 
+  /**
+   * @brief 设置传感器设备实体 ID（用于周期摘要日志行标记与融合源通道对齐）。
+   * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量。
+   * @note 构造后注入设备号，任意时刻可调，下一周期起生效。不影响光电物理计算。
+   */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept;
+
   /** @brief 使用四域配置创建会话（推荐入口，信任路径，不做配置校验）。 */
   static EosSession Create(const config::EosSessionConfig& config = {});
 

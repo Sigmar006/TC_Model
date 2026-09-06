@@ -226,6 +226,10 @@ void EosController::RunOnce(const ::electro_optical_sensor::session::EosCycleInp
   impl_->latest_result = impl_->AssembleResult(input, issues);
 }
 
+void EosController::SetSensorEntityId(std::uint32_t sensor_entity_id) {
+  impl_->pipeline.SetSensorEntityId(sensor_entity_id);
+}
+
 bool EosController::ExecutedLatestCycle() const { return impl_->last_cycle_executed; }
 
 ::electro_optical_sensor::session::EosCycleResult EosController::BuildCycleResult() const {

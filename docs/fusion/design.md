@@ -81,3 +81,14 @@ flowchart TB
 3. 航迹状态、滑窗与合成键管理在 `src/` 内部，PIMPL 隔离，公共头不暴露 nanoflann。
 
 跨模块公共规则见 `docs/common/contract.md`（fusion 不参与三层输出模型与传感器周期语义）。
+
+## 架构裁定与否决记录
+
+### 否决：FusionConfig.source_weights 容器化改造（2026-09-03 裁定）
+
+- **提议背景**：当传感器设备 ID 从库内连续小常量拓展为外部实体 ID 直用时，`FusionConfig::source_weights` 目前为定长数组 `std::array<double, 64>`。曾提议将其重构为 `std::unordered_map` 等稀疏容器以支持任意大号 ID 差异化配权。
+- **否决理由**：
+  1. $O(1)$ 性能与确定性：定长数组支持无哈希冲突、无动态内存分配的直接索引访问；且已有越界保护——`source_id >= source_weights.size()` 时恒定回退为默认权重 `1.0`，稀疏大号 ID 在默认权重下行为天然正确。
+  2. 投机改造成本：大号且需非默认差异化配权的真实业务场景尚未证实；若未来出现，由集成侧适配层（如 SensorAdapters / 集成映射表）做稀疏至连续 ID 的压缩映射是更低风险、零核心开销的解法。
+- **证据**：[evidence: include/1q/fusion/FusionConfig.h]::source_weights
+- **证据**：[evidence: src/fusion/FusionEngine.cpp]::Update

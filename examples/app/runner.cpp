@@ -175,8 +175,8 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
     app::LogAcceptanceMs(0, 0.0, "单个模型加载时间性能测试", "RIR",
                           rir_session.LastRecognitionDatabaseLoadMs());
     rir_site->Attach(std::make_unique<ca::RirSensorComponent>(
-        std::move(rir_session), scene_data.rir_site_origin, configs.rir.sensor_platform_id,
-        configs.rir.mission.recognition_dwell_sec));
+        std::move(rir_session), scene_data.rir_site_origin, configs.rir.platform_id,
+        configs.rir.mission.recognition_dwell_sec, scene_data.device_ids.rir));
   }
 
   ca::Entity& platform = world.CreateEntity("platform");
@@ -194,7 +194,8 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
   // 该通道不写视图/排除原因。
   if (scene_data.esr_enabled) {
     platform.Attach(std::make_unique<ca::EsrSensorComponent>(
-        electronic_surveillance_radar::session::EsrSession::Create(configs.esr)));
+        electronic_surveillance_radar::session::EsrSession::Create(configs.esr),
+        scene_data.device_ids.esr));
   }
   if (scene_data.ecm_enabled && scene_data.esr_enabled) {
     platform.Attach(std::make_unique<ca::EcmSensorComponent>(
@@ -203,11 +204,12 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
   if (scene_data.ar_enabled) {
     platform.Attach(std::make_unique<ca::ArSensorComponent>(
         airborne_radar::session::ArSession::Create(configs.ar), ca::kPlatformEntityId,
-        configs.ar.hardware.transmitter.equipment_id));
+        configs.ar.hardware.transmitter.equipment_id, scene_data.device_ids.ar));
   }
   if (scene_data.eos_enabled) {
     platform.Attach(std::make_unique<ca::EosSensorComponent>(
-        electro_optical_sensor::session::EosSession::Create(configs.eos)));
+        electro_optical_sensor::session::EosSession::Create(configs.eos),
+        scene_data.device_ids.eos));
   }
   if (scene_data.sbirs_enabled) {
     const std::chrono::steady_clock::time_point sbirs_create_begin =
@@ -216,7 +218,8 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
         sbirs_sensor::session::SbirsSession::Create(configs.sbirs);
     app::LogAcceptanceMs(0, 0.0, "初始化时间性能测试", "OPIR",
                           app::SteadyElapsedMs(sbirs_create_begin));
-    platform.Attach(std::make_unique<ca::SbirsSensorComponent>(std::move(sbirs_session)));
+    platform.Attach(std::make_unique<ca::SbirsSensorComponent>(
+        std::move(sbirs_session), scene_data.device_ids.sbirs));
   }
   if (scene_data.sar_enabled) {
     platform.Attach(std::make_unique<ca::SarSensorComponent>(

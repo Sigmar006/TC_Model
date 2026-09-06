@@ -15,6 +15,7 @@
 #include "1q/electro_optical_sensor/session/EosExclusionCauseRecorder.h"
 #include "1q/electro_optical_sensor/session/EosOutputDebugView.h"
 #include "1q/electro_optical_sensor/session/EosSession.h"
+#include "1q/fusion/SensorAdapters.h"
 #include "core/component.h"
 #include "core/detection_delivery.h"
 #include "logger/logger_modes.h"
@@ -31,6 +32,7 @@ class EosSensorComponent : public Component {
  public:
   explicit EosSensorComponent(
       electro_optical_sensor::session::EosSession session,
+      std::uint32_t device_id = fusion::kEosSourceId,
       DetectionDeliveryMode detection_delivery = DetectionDeliveryMode::kSharedBlackboard);
   ~EosSensorComponent() override = default;
 
@@ -43,6 +45,9 @@ class EosSensorComponent : public Component {
 
   /** @brief 当前电源状态（由 sensor_enabled 补丁唯一维护；未步进前默认 true，关机时组件不驱动会话）。 */
   bool powered_on() const { return powered_on_; }
+
+  /** @brief 当前传感器设备实体 ID（融合源通道 ID）。 */
+  std::uint32_t device_id() const { return device_id_; }
 
   /** @brief 最近周期波束中心方位角（单位：deg，平台系；仅开机且 kCompleted 周期有效，其余为 0）。 */
   float scan_azimuth_deg() const { return scan_azimuth_deg_; }
@@ -84,6 +89,7 @@ class EosSensorComponent : public Component {
 #endif
 
   bool powered_on_{true}; /**< 电源状态（由 sensor_enabled 补丁唯一维护；关机时不驱动会话） */
+  std::uint32_t device_id_{fusion::kEosSourceId};
   DetectionDeliveryMode detection_delivery_{DetectionDeliveryMode::kSharedBlackboard};
 
   /// 调试视图中文人读行写入（三模式分支见 .cpp；宏选择见 logger/logger_modes.h）。

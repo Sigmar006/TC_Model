@@ -53,6 +53,11 @@ class EosController {
   EosController& operator=(const EosController&) = delete;
 
   /**
+   * @brief 设置传感器设备实体 ID（透传给 EosPipeline）。
+   */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id);
+
+  /**
    * @brief 执行一次光学传感器处理周期。
    * @param[in] input 当前周期输入。
    */

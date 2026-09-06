@@ -129,7 +129,7 @@ TEST(RirReplaySessionTest, RuntimePatchAndSecondCycleReplayExactly) {
 /// @brief 会话配置 / 运行期补丁 / 周期输入编解码字节精确往返（字段丢失即失败）。
 TEST(RirReplaySessionTest, ConfigAndInputPayloadsRoundtripByteExact) {
   config::RirSessionConfig config = MakeIdentifyConfig();
-  config.sensor_platform_id = 9U;
+  config.platform_id = 9U;
   config.sensor_enabled = false;
   config.hardware.transmitter.equipment_id = 11U;
   config.hardware.transmitter.bandwidth_hz = 9.0e6f;
@@ -156,7 +156,7 @@ TEST(RirReplaySessionTest, ConfigAndInputPayloadsRoundtripByteExact) {
   std::string error;
   ASSERT_TRUE(DecodeRirSessionConfig(encoded_config, &decoded_config, &error)) << error;
   EXPECT_EQ(EncodeRirSessionConfig(decoded_config), encoded_config);
-  EXPECT_EQ(decoded_config.sensor_platform_id, 9U);
+  EXPECT_EQ(decoded_config.platform_id, 9U);
   EXPECT_FALSE(decoded_config.sensor_enabled);
   EXPECT_EQ(decoded_config.policy.recognition.database_path, "features.sqlite");
 
@@ -219,7 +219,8 @@ TEST(RirReplaySessionTest, FullPolarizationSessionConfigRoundtripsByteExact) {
             oneq::electromagnetics::RfScenePolarization::kFullPolarization);
 }
 
-/// @brief 会话配置载荷拒绝旧标识符：v3（2026-08-30）tracking 策略表删除
+/// @brief 会话配置载荷拒绝旧标识符：v4（2026-09-06）sensor_platform_id 改名
+///        platform_id，RIRE 升 RIRF；v3（2026-08-30）tracking 策略表删除
 ///        全链未消费的 kalman_measurement_noise_std 槽位，RIRD 升 RIRE；
 ///        v2（2026-08-30）receiver 表槽位前移，RIRC 升 RIRD。旧录制必须
 ///        显式拒绝而非静默误读。
@@ -227,7 +228,7 @@ TEST(RirReplaySessionTest, SessionConfigDecodeRejectsLegacyIdentifier) {
   const std::string encoded = EncodeRirSessionConfig(MakeIdentifyConfig());
   ASSERT_GE(encoded.size(), 8U);
 
-  for (const char* legacy_identifier : {"RIRC", "RIRD"}) {
+  for (const char* legacy_identifier : {"RIRC", "RIRD", "RIRE"}) {
     std::string relabeled = encoded;
     relabeled.replace(4U, 4U, legacy_identifier);
     config::RirSessionConfig decoded;

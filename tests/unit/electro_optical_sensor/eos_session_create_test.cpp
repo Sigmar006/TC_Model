@@ -53,6 +53,22 @@ TEST(EosSessionCreateTest, CreateUsesDefaultPipelineAndProducesResult) {
   EXPECT_TRUE(result.output_frame.detections.empty());
 }
 
+TEST(EosSessionCreateTest, SetSensorEntityIdCanBeSetAndRestored) {
+  EosSession session = EosSession::Create(MakeSessionConfig());
+  session.SetSensorEntityId(103U);
+
+  EosCycleInput input = MakeValidInput(1U);
+  input.scene.clear();
+  EosCycleResult result = session.StepWithResult(input);
+  EXPECT_EQ(result.status, EosCycleStatus::kCompleted);
+
+  // Restore with sentinel 0
+  session.SetSensorEntityId(0U);
+  input.cycle_index = 2U;
+  result = session.StepWithResult(input);
+  EXPECT_EQ(result.status, EosCycleStatus::kCompleted);
+}
+
 }  // namespace
 }  // namespace session
 }  // namespace electro_optical_sensor

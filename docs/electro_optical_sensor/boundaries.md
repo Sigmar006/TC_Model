@@ -169,6 +169,17 @@ recorder 只遍历当前周期 `input.scene`，目标从输入消失时其排除
 扫描扇区边界热更、通道 SNR 的昼夜物理趋势。batch 没有直接读取 lifecycle recorder，因此不得把
 场景名扩大为这些内部状态的硬契约。场景 ID 与运行方式由 `tests/consumer/batch_validation/README.md` 维护。
 
+## 传感器实例身份注入边界（SetSensorEntityId）
+
+`EosSession::SetSensorEntityId(std::uint32_t)` 是标注域设备标识的注入面，供会话构造后注入，区分同型多实例：
+
+1. **注入面特征**：构造后注入，不进入 `EosSessionConfig`，不进入 `EosRuntimeConfigPatch`，不参与电源/事务模型。
+2. **时序与缺省**：任意时刻可调，下一周期起生效；未注入或显式传入 `0` 时恢复默认哨兵，周期摘要日志回退使用融合常量 `fusion::kEosSourceId`（3U）。
+3. **消费面与物理隔离**：仅用于周期摘要日志行 `[EosPipeline]` 携带 `sensor_entity_id={}` 供排查区分；不进入辐射传输与检测物理计算，不改变 `EosOutputFrame` 或 `EosCycleResult` 结构。
+
+[evidence: include/1q/electro_optical_sensor/session/EosSession.h]::SetSensorEntityId
+[evidence: tests/unit/electro_optical_sensor/eos_session_create_test.cpp]
+
 ## 非目标
 
 1. 不暴露用户自定义 pipeline、controller、环境模型或 foundation algorithm 类型。

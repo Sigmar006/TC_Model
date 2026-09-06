@@ -100,6 +100,15 @@ class ONEQ_API RirSession {
   /** @brief 最近一次识别库加载耗时（毫秒）；未加载过为 0。 */
   double LastRecognitionDatabaseLoadMs() const;
 
+  /**
+   * @brief 注入传感器实体标识（设备 ID / 融合通道）。
+   *
+   * 用于在日志与验收记录中区分同型多实例传感器，并作为融合通道 source_id。
+   * 传 0 恢复缺省（fusion::kRirSourceId = 5U）；下一周期起生效。
+   * @param[in] sensor_entity_id 传感器实体标识（非零；0 为恢复缺省哨兵）。
+   */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id);
+
   /** @brief 使用四域配置创建会话（推荐入口，信任路径，不做配置校验）。 */
   static RirSession Create(const config::RirSessionConfig& config = {});
 

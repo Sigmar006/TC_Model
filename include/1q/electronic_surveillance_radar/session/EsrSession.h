@@ -91,6 +91,13 @@ class ONEQ_API EsrSession {
   void AttachExclusionCauseRecorder(EsrExclusionCauseRecorder* recorder) noexcept;
 
   /**
+   * @brief 设置传感器设备实体 ID（用于周期摘要日志行标记与融合源通道对齐）。
+   * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量。
+   * @note 构造后注入设备号，任意时刻可调，下一周期起生效。不影响侦察物理计算。
+   */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept;
+
+  /**
    * @brief 尝试应用运行期可变配置补丁并返回是否生效。
    * @param[in] patch 运行期补丁。
    * @return true 表示补丁被接受并已应用；false 表示未请求更新或补丁被拒绝。

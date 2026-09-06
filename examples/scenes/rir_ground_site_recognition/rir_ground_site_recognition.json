@@ -276,7 +276,7 @@
           "bistatic_psi_offset_deg": 5.0
         }
       },
-      "sensor_platform_id": 2,
+      "platform_id": 2,
       "orientation": {
         "az_min_deg": -110.0,
         "az_max_deg": 110.0,

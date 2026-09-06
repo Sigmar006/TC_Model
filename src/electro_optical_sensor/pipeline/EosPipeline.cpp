@@ -498,13 +498,16 @@ extension::EosPipelineExecuteResult EosPipeline::RunCycle(
                       result.detections.back().fused_snr_db, target.range_m);
   }
 
-  // 中译：周期执行摘要（周期号、扫描方位角、检测数/目标总数、视场外排除计数）。
+  const std::uint32_t effective_sensor_id =
+      (sensor_entity_id_ != 0U) ? sensor_entity_id_ : 3U;
+
+  // 中译：周期执行摘要（周期号、设备号、扫描方位角、检测数/目标总数、视场外排除计数）。
   // 标识：每周期探测概况——检测命中率、扫描位置与门控排除分布，供宏观核对与
   //       "零探测"排查；仅人读，不用于状态判断（规则 3）。
-  PROJECT_LOG_INFO("[EosPipeline] cycle_index={} scan_az={:.2f} detections={}/{} "
+  PROJECT_LOG_INFO("[EosPipeline] cycle_index={} sensor_entity_id={} scan_az={:.2f} detections={}/{} "
                    "excluded={{fov={}}}",
-                   input.cycle_index, current_scan_azimuth_deg_, result.detections.size(),
-                   input.scene.size(), excluded_out_of_fov);
+                   input.cycle_index, effective_sensor_id, current_scan_azimuth_deg_,
+                   result.detections.size(), input.scene.size(), excluded_out_of_fov);
 
   result.executed_this_cycle = true;
   result.abort_reason = session::EosPipelineAbortReason::kNone;

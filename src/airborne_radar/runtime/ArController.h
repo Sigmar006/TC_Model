@@ -88,6 +88,9 @@ class ArController {
   /** @brief 原子更新后续成功周期使用的控制保持/冷却配置。 */
   void UpdateDecisionControlConfig(const config::DecisionControlConfig& decision_control_config);
 
+  /** @brief 设置传感器设备实体 ID（透传给 SignalPipeline）。 */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id);
+
   /**
    * @brief 执行一次 AR 处理循环。
    * @param[in] cycle_input 本周期输入结构体（捆绑 scene_targets、RF v2 detection 上下文、

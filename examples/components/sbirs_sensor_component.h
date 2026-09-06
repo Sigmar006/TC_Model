@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "1q/fusion/SensorAdapters.h"
 #include "1q/sbirs_sensor/config/SbirsRuntimeConfigPatch.h"
 #include "1q/sbirs_sensor/session/SbirsDetectionLifecycleRecorder.h"
 #include "1q/sbirs_sensor/session/SbirsExclusionCauseRecorder.h"
@@ -39,10 +40,12 @@ class SbirsSensorComponent : public Component {
    * @brief 机载/地面单站：会话由调用方构造后移入（示例：main 用默认或场景 JSON 配置
    *            `SbirsSession::Create(...)`）。
    * @param[in] session 调用方构造的 SBIRS 会话实例。
+   * @param[in] device_id 融合源通道 / 传感器设备实体 ID（单站默认 kSbirsSourceId）。
    * @param[in] detection_delivery 探测记录投递方式（示例：消息场景取 kMessage）。
    */
   explicit SbirsSensorComponent(
       sbirs_sensor::session::SbirsSession session,
+      std::uint32_t device_id = fusion::kSbirsSourceId,
       DetectionDeliveryMode detection_delivery = DetectionDeliveryMode::kSharedBlackboard);
   /**
    * @brief 卫星实体：自持星历，探测帧投递地面站（不写探测池）。
@@ -74,6 +77,11 @@ class SbirsSensorComponent : public Component {
   /** @brief 本周期适配后的泛型探测记录（融合聚合读）。 */
   /** @brief 当前电源状态（由 sensor_enabled 补丁唯一维护；未步进前默认 true，关机时组件不驱动会话）。 */
   bool powered_on() const { return powered_on_; }
+
+  /** @brief 当前传感器设备实体 ID（融合源通道 ID；单站为 device_id_，卫星为 ground_station_source_id_）。 */
+  std::uint32_t device_id() const {
+    return ground_station_source_id_ != 0U ? ground_station_source_id_ : device_id_;
+  }
 
   /** @brief 最近周期波束中心方位角（deg，ECI 极坐标参考——库内为弧度，组件转度显示；仅开机且最近周期 kCompleted 为有效扫描方位，关机时组件清零）。 */
   float scan_azimuth_deg() const { return scan_azimuth_deg_; }
@@ -123,6 +131,7 @@ class SbirsSensorComponent : public Component {
 
   bool powered_on_{true}; /**< 电源状态（由 sensor_enabled 补丁唯一维护；关机时不驱动会话） */
   bool step_timing_logged_{false}; /**< 单步执行时间是否已写入示例日志（只写首个周期） */
+  std::uint32_t device_id_{fusion::kSbirsSourceId}; /**< 单站传感器设备实体 ID（融合源通道 ID） */
   std::uint32_t ground_station_source_id_{0U}; /**< 非 0：探测帧投递地面站，不写探测池 */
   SbirsGroundDeliveryMode ground_delivery_{SbirsGroundDeliveryMode::kSharedBlackboard};
   DetectionDeliveryMode detection_delivery_{DetectionDeliveryMode::kSharedBlackboard};

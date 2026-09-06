@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "1q/navigation/AreaCoveragePlanner.h"
@@ -753,6 +754,88 @@ bool ParseSceneBody(const examples::JsonValue& root, SceneData* scene,
         ReadInt(smoke, "min_rir_recognition_outputs", out.smoke.min_rir_recognition_outputs));
   }
 
+  // 统一传感器设备实体标识（可选顶层 device_ids 块，缺省各自 fusion::k*SourceId）。
+  const examples::JsonValue& dev_ids = root["device_ids"];
+  if (!dev_ids.IsNull()) {
+    if (dev_ids.type() != examples::JsonValue::kObject) {
+      *error = "\"device_ids\" must be an object";
+      return false;
+    }
+    static const char* kKnownDeviceKeys[] = {"ar", "esr", "eos", "sbirs", "rir"};
+    for (const std::string& key : dev_ids.Keys()) {
+      bool known = false;
+      for (const char* allowed : kKnownDeviceKeys) {
+        if (key == allowed) {
+          known = true;
+          break;
+        }
+      }
+      if (!known) {
+        *error = "unknown device_ids key \"" + key + "\"";
+        return false;
+      }
+    }
+    auto parse_positive_u32 = [&](const char* key, std::uint32_t* target) -> bool {
+      if (dev_ids.Has(key)) {
+        const examples::JsonValue& v = dev_ids[key];
+        if (!v.IsInt() || v.AsInt() <= 0 || v.AsInt() > 0xFFFFFFFFLL) {
+          *error = std::string("\"device_ids.") + key + "\" must be a positive integer";
+          return false;
+        }
+        *target = static_cast<std::uint32_t>(v.AsInt());
+      }
+      return true;
+    };
+    if (!parse_positive_u32("ar", &out.device_ids.ar) ||
+        !parse_positive_u32("esr", &out.device_ids.esr) ||
+        !parse_positive_u32("eos", &out.device_ids.eos) ||
+        !parse_positive_u32("sbirs", &out.device_ids.sbirs) ||
+        !parse_positive_u32("rir", &out.device_ids.rir)) {
+      return false;
+    }
+
+    // 内部冲突校验：device_ids 显式给出的键之间不能重复
+    std::unordered_map<std::uint32_t, std::string> seen_ids;
+    for (const char* key : kKnownDeviceKeys) {
+      if (dev_ids.Has(key)) {
+        std::uint32_t val = 0U;
+        if (std::string(key) == "ar") val = out.device_ids.ar;
+        else if (std::string(key) == "esr") val = out.device_ids.esr;
+        else if (std::string(key) == "eos") val = out.device_ids.eos;
+        else if (std::string(key) == "sbirs") val = out.device_ids.sbirs;
+        else if (std::string(key) == "rir") val = out.device_ids.rir;
+
+        const auto it = seen_ids.find(val);
+        if (it != seen_ids.end()) {
+          *error = "duplicate device_id " + std::to_string(val) + " between \"" +
+                   it->second + "\" and \"" + key + "\"";
+          return false;
+        }
+        seen_ids[val] = key;
+      }
+    }
+
+    // 与 satellites[].source_id 冲突校验。防御性守卫：现网带 satellites[] 的
+    // SBIRS 场景走各自 main 的专属装载（不经本函数），runner 全量装载的允许键
+    // 清单也不含 "satellites"——本校验兜的是未来 runner 支持卫星数组时
+    // device_ids 与卫星融合通道静默撞号的口子，当前无真实触发路径。
+    const examples::JsonValue& satellites = root["satellites"];
+    if (!satellites.IsNull() && satellites.type() == examples::JsonValue::kArray) {
+      for (std::size_t s = 0U; s < satellites.Size(); ++s) {
+        const examples::JsonValue& sat = satellites[s];
+        if (sat.Has("source_id") && sat["source_id"].IsInt()) {
+          const std::uint32_t sat_source_id = static_cast<std::uint32_t>(sat["source_id"].AsInt());
+          const auto it = seen_ids.find(sat_source_id);
+          if (it != seen_ids.end()) {
+            *error = "device_ids." + it->second + " (" + std::to_string(sat_source_id) +
+                     ") collides with satellites[" + std::to_string(s) + "].source_id";
+            return false;
+          }
+        }
+      }
+    }
+  }
+
   *scene = std::move(out);
   return true;
 }
@@ -766,7 +849,7 @@ bool ValidateFullLoadExtras(const examples::JsonValue& root, SceneData* scene,
       "name",  "cycles", "start_cycle", "dt_sec", "view_log_every_cycles", "platform",
       "platforms", "mission_area", "targets", "esr", "sbirs_satellite",
       "sensors", "rir", "ecm", "commands", "high_threat_confidence",
-      "smoke", "session_config", "log_dir"};
+      "smoke", "session_config", "log_dir", "device_ids"};
   for (const std::string& key : root.Keys()) {
     bool known = false;
     for (const char* allowed : kAllowedKeys) {

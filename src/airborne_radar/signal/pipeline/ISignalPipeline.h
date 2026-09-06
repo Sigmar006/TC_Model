@@ -97,6 +97,14 @@ class ISignalPipeline {
   virtual bool UpdateConfig(const config::ArSessionConfig& config) = 0;
 
   /**
+   * @brief 设置传感器设备实体 ID（用于周期摘要日志行标记与融合源通道对齐）。
+   * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量。
+   */
+  virtual void SetSensorEntityId(std::uint32_t sensor_entity_id) {
+    (void)sensor_entity_id;
+  }
+
+  /**
    * @brief 获取上一周期关联质量指标。
    * @return 上一周期缓存的关联质量指标。
    */

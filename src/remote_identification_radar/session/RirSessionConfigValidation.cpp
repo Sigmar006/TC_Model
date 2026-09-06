@@ -206,9 +206,9 @@ void ValidateRirHardwareConfig(const RirHardwareConfig& hardware, session::RirIs
 
 session::RirIssueList ValidateRirSessionConfig(const RirSessionConfig& config) {
   session::RirIssueList issues;
-  if (config.sensor_platform_id == 0U) {
-    PushIssue(&issues, session::codes::kSensorPlatformIdInvalid, "sensor_platform_id",
-              "Sensor platform identifier must be non-zero.");
+  if (config.platform_id == 0U) {
+    PushIssue(&issues, session::codes::kPlatformIdInvalid, "platform_id",
+              "Platform identifier must be non-zero.");
   }
   const RirMissionConfig& mission = config.mission;
   const RirRecognitionPolicy& recognition = config.policy.recognition;

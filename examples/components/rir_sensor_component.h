@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "1q/coordinate/types.h"
+#include "1q/fusion/SensorAdapters.h"
 #include "1q/remote_identification_radar/config/RirRuntimeConfigPatch.h"
 #include "1q/remote_identification_radar/session/RirCycleResult.h"
 #include "1q/remote_identification_radar/session/RirExclusionCauseRecorder.h"
@@ -37,7 +38,8 @@ class RirSensorComponent : public Component {
  public:
   RirSensorComponent(remote_identification_radar::session::RirSession session,
                      const oneq::coordinate::LlaPositionDegM& site_origin,
-                     std::uint64_t sensor_platform_id, float recognition_dwell_sec,
+                     std::uint64_t platform_id, float recognition_dwell_sec,
+                     std::uint32_t device_id = fusion::kRirSourceId,
                      DetectionDeliveryMode detection_delivery = DetectionDeliveryMode::kSharedBlackboard);
   ~RirSensorComponent() override = default;
 
@@ -62,6 +64,9 @@ class RirSensorComponent : public Component {
 
   /** @brief 当前电源状态（由 sensor_enabled 补丁唯一维护；关机时组件不驱动会话）。 */
   bool powered_on() const { return powered_on_; }
+
+  /** @brief 当前传感器设备实体 ID（融合源通道 ID）。 */
+  std::uint32_t device_id() const { return device_id_; }
 
   /** @brief 累计识别结论输出数（冒烟断言：确认态结论按周期计数）。 */
   std::uint32_t confirmed_recognition_outputs() const { return confirmed_recognition_outputs_; }
@@ -110,7 +115,7 @@ class RirSensorComponent : public Component {
 
   oneq::coordinate::LlaPositionDegM site_origin_{};  /**< 站点 LLA（ENU 原点与逆变换锚点） */
   oneq::coordinate::EcefPositionM site_ecef_{};      /**< 站点 ECEF（构造时由 origin 解析一次） */
-  std::uint64_t sensor_platform_id_{0U};             /**< 本传感器在 RF 世界的平台身份（剔除自身发射用） */
+  std::uint64_t platform_id_{0U};                    /**< 本传感器在 RF 世界的平台身份（剔除自身发射用） */
   float recognition_dwell_sec_{0.05f};               /**< 单次识别驻留时长（mission 配置，s）：每周期喂给会话的 RF 发射窗口长度 */
 
   remote_identification_radar::session::RirOutputDebugView
@@ -128,6 +133,7 @@ class RirSensorComponent : public Component {
 #endif
 
   bool powered_on_{true};  /**< 电源状态（由 sensor_enabled 补丁唯一维护） */
+  std::uint32_t device_id_{fusion::kRirSourceId};
   DetectionDeliveryMode detection_delivery_{DetectionDeliveryMode::kSharedBlackboard};
   bool step_timing_logged_{false};  /**< 单步执行时间是否已写入示例日志（只写首个周期） */
   std::uint32_t confirmed_recognition_outputs_{0U};  /**< 有确认结论的周期数（冒烟下限断言用） */

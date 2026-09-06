@@ -49,8 +49,12 @@ const char* EsrExclusionCauseName(electronic_surveillance_radar::session::EsrIss
 
 EsrSensorComponent::EsrSensorComponent(
     electronic_surveillance_radar::session::EsrSession session,
+    std::uint32_t device_id,
     DetectionDeliveryMode detection_delivery)
-    : session_(std::move(session)), detection_delivery_(detection_delivery) {
+    : session_(std::move(session)),
+      device_id_(device_id),
+      detection_delivery_(detection_delivery) {
+  session_.SetSensorEntityId(device_id_);
   // 排除原因跨周期差分事件由库内 recorder 承担（StepWithResult 内部自动喂）。
   // ESR 无既有 lifecycle recorder，exclusion_ 为首个 recorder 成员。
   session_.AttachExclusionCauseRecorder(&exclusion_);
@@ -274,13 +278,13 @@ void EsrSensorComponent::PublishScanEvent(World& world, const AppSceneState& sce
 
 void EsrSensorComponent::AdaptDetections(World& world, AppSceneState& scene) {
   const std::vector<fusion::DetectionRecord> records =
-      fusion::AdaptEsrHypothesesToDetectionRecords(fusion::kEsrSourceId, last_hypotheses_);
+      fusion::AdaptEsrHypothesesToDetectionRecords(device_id_, last_hypotheses_);
   if (detection_delivery_ == DetectionDeliveryMode::kMessage) {
     // 消息路径：展平为基础类型后发 on_detection_batch_submitted（融合组件
     // 订阅重建库类型；集成方对应把样本推给融合组件的消息）。
     DetectionBatchSubmittedEvent event;
     event.cycle = scene.cycle;
-    event.source_id = fusion::kEsrSourceId;
+    event.source_id = device_id_;
     for (const auto& record : records) {
       event.records.push_back(ToFusionDetectionSample(record));
     }

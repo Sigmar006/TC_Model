@@ -417,6 +417,20 @@ TEST(ArRfSessionTest, ExclusionCauseRecorderDrivenBySessionProducesEnteredEvent)
   EXPECT_EQ(recorder.GetLastEvents().size(), 1U);
 }
 
+TEST(ArRfSessionTest, SetSensorEntityIdCanBeSetAndRestored) {
+  ArSession radar = ArSession::Create(MakeRfConfig());
+  radar.SetSensorEntityId(101U);
+  ArCycleInput input = MakeInput(1U, 0.0);
+  ArCycleResult result = radar.StepWithResult(input);
+  EXPECT_EQ(result.status, ArCycleStatus::kCompleted);
+
+  // Restore to default (0 sentinel)
+  radar.SetSensorEntityId(0U);
+  ArCycleInput input2 = MakeInput(2U, 0.5);
+  result = radar.StepWithResult(input2);
+  EXPECT_EQ(result.status, ArCycleStatus::kCompleted);
+}
+
 }  // namespace
 }  // namespace session
 }  // namespace airborne_radar

@@ -198,13 +198,19 @@ struct RirSession::Impl {
   // 观测投影记录器（规则 10/11）：非拥有裸指针，nullptr = 未注册。
   RirTrackLifecycleRecorder* lifecycle_recorder{nullptr};
   RirExclusionCauseRecorder* exclusion_cause_recorder{nullptr};
+  std::uint32_t sensor_entity_id{0U};
 
   /** @brief 组装单周期聚合结果（早退路径保持非执行语义；不驱动 recorder）。 */
   RirCycleResult RunCycle(const RirCycleInput& input);
 
+  void SetSensorEntityId(std::uint32_t id) {
+    sensor_entity_id = id;
+    controller.SetSensorEntityId(id);
+  }
+
   explicit Impl(const config::RirSessionConfig& session_config) : config(session_config) {
     controller.SetHardware(config.hardware);
-    controller.SetSensorPlatformId(config.sensor_platform_id);
+    controller.SetPlatformId(config.platform_id);
     controller.UpdateRuntime(config.mission, config.policy);
     controller.UpdateEnvironment(config.environment);
   }
@@ -416,7 +422,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     runtime::TryExportRirAntennaPatternCsv(config.hardware.antenna, csv_path.c_str());
     const std::string scan_csv_path = runtime::ResolveRirScanPatternCsvPath();
     runtime::TryExportRirScanPatternCsv(scan_pattern, scan_csv_path.c_str());
-    runtime::WriteRirAntennaPatternSummary(config.sensor_platform_id, input.sim_time_sec,
+    runtime::WriteRirAntennaPatternSummary(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                            input.input_cycle_index,
                                            config.hardware.antenna.main_beam_gain_db,
                                            beamwidth.az_beamwidth_deg, beamwidth.el_beamwidth_deg);
@@ -424,7 +430,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     acceptance_scan_pattern_logged = true;
   }
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {
-    runtime::WriteRirDwellScan(config.sensor_platform_id, input.sim_time_sec,
+    runtime::WriteRirDwellScan(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                input.input_cycle_index, dwell_plan);
     runtime::WriteRirCycleRunCount(input.sim_time_sec, input.input_cycle_index);
   }
@@ -493,6 +499,12 @@ const RirRecognitionCycleSummary& RirSession::GetLatestRecognitionSummary() cons
 
 double RirSession::LastRecognitionDatabaseLoadMs() const {
   return impl_ != nullptr ? impl_->controller.LastDatabaseLoadMs() : 0.0;
+}
+
+void RirSession::SetSensorEntityId(std::uint32_t sensor_entity_id) {
+  if (impl_ != nullptr) {
+    impl_->SetSensorEntityId(sensor_entity_id);
+  }
 }
 
 RirSession RirSession::Create(const config::RirSessionConfig& config) {

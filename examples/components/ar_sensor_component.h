@@ -18,6 +18,7 @@
 #include "1q/airborne_radar/session/ArTrackLifecycleRecorder.h"
 #include "1q/airborne_radar/session/ArTrackOutputDebugView.h"
 #include "1q/coordinate/types.h"
+#include "1q/fusion/SensorAdapters.h"
 #include "core/component.h"
 #include "core/detection_delivery.h"
 #include "logger/logger_modes.h"
@@ -34,6 +35,7 @@ class ArSensorComponent : public Component {
  public:
   ArSensorComponent(airborne_radar::session::ArSession session, std::uint64_t platform_entity_id,
                     std::uint64_t transmitter_equipment_id,
+                    std::uint32_t device_id = fusion::kArSourceId,
                     DetectionDeliveryMode detection_delivery = DetectionDeliveryMode::kSharedBlackboard);
   ~ArSensorComponent() override = default;
 
@@ -46,6 +48,9 @@ class ArSensorComponent : public Component {
 
   /** @brief 当前电源状态（由 sensor_enabled 补丁唯一维护；未步进前默认 true，关机时组件不驱动会话）。 */
   bool powered_on() const { return powered_on_; }
+
+  /** @brief 当前传感器设备实体 ID（融合源通道 ID）。 */
+  std::uint32_t device_id() const { return device_id_; }
 
   /**
    * @brief 最近周期调试视图快照（关机周期清零，拒绝周期为 kCycleNotCompleted）。
@@ -97,6 +102,7 @@ class ArSensorComponent : public Component {
 #endif
 
   bool powered_on_{true}; /**< 电源状态（由 sensor_enabled 补丁唯一维护；关机时不驱动会话） */
+  std::uint32_t device_id_{fusion::kArSourceId}; /**< 传感器设备实体 ID（融合源通道 ID） */
   DetectionDeliveryMode detection_delivery_{DetectionDeliveryMode::kSharedBlackboard};
 
   /// 调试视图中文人读行写入（三模式分支见 .cpp；宏选择见 logger/logger_modes.h）。

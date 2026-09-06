@@ -35,6 +35,7 @@
 #include "1q/electronic_surveillance_radar/session/EsrSession.h"
 #include "1q/electromagnetics/RfScene.h"
 #include "1q/flight_dynamic/FlightManager.h"
+#include "1q/fusion/SensorAdapters.h"
 #include "1q/navigation/RoutePoint.h"
 #include "1q/sar/config/SarRuntimeConfigPatch.h"
 #include "1q/sar/session/SarSession.h"
@@ -723,4 +724,51 @@ TEST(SensorQueryGettersTest, LastDebugViewClearedOnPowerOff) {
   EXPECT_FALSE(scene.platform().Find<ca::EosSensorComponent>()->LastDebugView().executed_this_cycle);
   EXPECT_FALSE(scene.platform().Find<ca::SbirsSensorComponent>()->LastDebugView().executed_this_cycle);
   EXPECT_FALSE(scene.platform().Find<ca::SarSensorComponent>()->LastDebugView().executed_this_cycle);
+}
+
+TEST(SbirsSensorComponentRuntimeTest, SingleStationAttachFallsBackToSbirsSourceId) {
+  ca::SceneState scene_state;
+  ca::World world(scene_state);
+  ca::Entity& platform = world.CreateEntity("platform");
+  EXPECT_GT(platform.id(), 0U);
+
+  platform.Attach(std::make_unique<ca::SbirsSensorComponent>(
+      sbirs_sensor::session::SbirsSession::Create()));
+
+  auto* comp = platform.Find<ca::SbirsSensorComponent>();
+  ASSERT_NE(comp, nullptr);
+  EXPECT_EQ(comp->device_id(), fusion::kSbirsSourceId);
+}
+
+TEST(SbirsSensorComponentRuntimeTest, SingleStationAttachUsesInjectedDeviceId) {
+  ca::SceneState scene_state;
+  ca::World world(scene_state);
+  ca::Entity& platform = world.CreateEntity("platform");
+
+  platform.Attach(std::make_unique<ca::SbirsSensorComponent>(
+      sbirs_sensor::session::SbirsSession::Create(), 42U));
+
+  auto* comp = platform.Find<ca::SbirsSensorComponent>();
+  ASSERT_NE(comp, nullptr);
+  EXPECT_EQ(comp->device_id(), 42U);
+}
+
+TEST(SensorComponentDeviceIdTest, ComponentsDefaultAndInjectedDeviceIds) {
+  ca::ArSensorComponent ar(airborne_radar::session::ArSession::Create(), 1U, 1U, 101U);
+  EXPECT_EQ(ar.device_id(), 101U);
+
+  ca::ArSensorComponent ar_def(airborne_radar::session::ArSession::Create(), 1U, 1U);
+  EXPECT_EQ(ar_def.device_id(), fusion::kArSourceId);
+
+  ca::EsrSensorComponent esr(electronic_surveillance_radar::session::EsrSession::Create(), 102U);
+  EXPECT_EQ(esr.device_id(), 102U);
+
+  ca::EsrSensorComponent esr_def(electronic_surveillance_radar::session::EsrSession::Create());
+  EXPECT_EQ(esr_def.device_id(), fusion::kEsrSourceId);
+
+  ca::EosSensorComponent eos(electro_optical_sensor::session::EosSession::Create(), 103U);
+  EXPECT_EQ(eos.device_id(), 103U);
+
+  ca::EosSensorComponent eos_def(electro_optical_sensor::session::EosSession::Create());
+  EXPECT_EQ(eos_def.device_id(), fusion::kEosSourceId);
 }

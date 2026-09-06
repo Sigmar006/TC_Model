@@ -48,7 +48,7 @@ RirCycleInput MakeInput(std::uint32_t cycle) {
 
 RirSessionConfig MakeIdentifyConfig() {
   RirSessionConfig session_config;
-  session_config.sensor_platform_id = 42U;
+  session_config.platform_id = 42U;
   session_config.mission.work_mode = RirWorkMode::kIdentify;
   session_config.policy.detection.gate_mode = config::RirDetectionGateMode::kSnrFallback;
   return session_config;
@@ -99,7 +99,7 @@ TEST(RirEmissionFrameTest, CompletedIdentifyCyclePublishesEmissionFrame) {
 ///        emission_id 保持 = 周期号（单驻留行为兼容）。
 TEST(RirEmissionFrameTest, MultiDwellCycleRecordsEmissionPerDwell) {
   runtime::RirController controller;
-  controller.SetSensorPlatformId(42U);
+  controller.SetPlatformId(42U);
   config::RirMissionConfig mission;
   mission.work_mode = RirWorkMode::kIdentify;
   config::RirPolicyConfig policy;

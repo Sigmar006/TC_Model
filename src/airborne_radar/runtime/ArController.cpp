@@ -223,6 +223,10 @@ void ArController::UpdateDecisionControlConfig(
       MapDecisionControlConfig(decision_control_config));
 }
 
+void ArController::SetSensorEntityId(std::uint32_t sensor_entity_id) {
+  impl_->signal_pipeline.SetSensorEntityId(sensor_entity_id);
+}
+
 void ArController::RunOnce(const signal::pipeline::SignalCycleInput& cycle_input,
                            session::ArIssueList* validation_issues_out) {
   const bool control_was_prepared = impl_->control_prepared_for_cycle;

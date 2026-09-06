@@ -1190,3 +1190,107 @@ TEST(SceneDataTest, StartCycleDefaultsAndParses) {
   EXPECT_FALSE(app::LoadSceneData(invalid_start.path().string().c_str(), &scene, &error));
   EXPECT_NE(error.find("start_cycle"), std::string::npos);
 }
+
+TEST(SceneDataTest, CustomDeviceIdsParsedSuccessfully) {
+  ScopedSceneFile file(R"json({
+    "log_dir": "t",
+    "platform": {"origin_lat_deg": 30.0, "origin_lon_deg": 120.0},
+    "targets": [],
+    "device_ids": {
+      "ar": 11,
+      "esr": 12,
+      "eos": 13,
+      "sbirs": 14,
+      "rir": 15
+    }
+  })json");
+  app::SceneData scene;
+  std::string error;
+  ASSERT_TRUE(app::LoadSceneData(file.path().string().c_str(), &scene, &error)) << error;
+  EXPECT_EQ(scene.device_ids.ar, 11U);
+  EXPECT_EQ(scene.device_ids.esr, 12U);
+  EXPECT_EQ(scene.device_ids.eos, 13U);
+  EXPECT_EQ(scene.device_ids.sbirs, 14U);
+  EXPECT_EQ(scene.device_ids.rir, 15U);
+}
+
+TEST(SceneDataTest, DeviceIdsDefaultWhenOmitted) {
+  ScopedSceneFile file(R"json({
+    "log_dir": "t",
+    "platform": {"origin_lat_deg": 30.0, "origin_lon_deg": 120.0},
+    "targets": [],
+    "session_config": {"fusion": {}, "threat": {}}
+  })json");
+  app::SceneData scene;
+  std::string error;
+  ASSERT_TRUE(app::LoadSceneData(file.path().string().c_str(), &scene, &error)) << error;
+  EXPECT_EQ(scene.device_ids.ar, fusion::kArSourceId);
+  EXPECT_EQ(scene.device_ids.esr, fusion::kEsrSourceId);
+  EXPECT_EQ(scene.device_ids.eos, fusion::kEosSourceId);
+  EXPECT_EQ(scene.device_ids.sbirs, fusion::kSbirsSourceId);
+  EXPECT_EQ(scene.device_ids.rir, fusion::kRirSourceId);
+}
+
+TEST(SceneDataTest, DuplicateDeviceIdsRejected) {
+  ScopedSceneFile file(R"json({
+    "log_dir": "t",
+    "platform": {"origin_lat_deg": 30.0, "origin_lon_deg": 120.0},
+    "targets": [],
+    "device_ids": {
+      "ar": 10,
+      "esr": 10
+    }
+  })json");
+  app::SceneData scene;
+  std::string error;
+  EXPECT_FALSE(app::LoadSceneData(file.path().string().c_str(), &scene, &error));
+  EXPECT_NE(error.find("duplicate device_id"), std::string::npos) << error;
+}
+
+TEST(SceneDataTest, NonPositiveDeviceIdRejected) {
+  ScopedSceneFile file(R"json({
+    "log_dir": "t",
+    "platform": {"origin_lat_deg": 30.0, "origin_lon_deg": 120.0},
+    "targets": [],
+    "device_ids": {
+      "ar": 0
+    }
+  })json");
+  app::SceneData scene;
+  std::string error;
+  EXPECT_FALSE(app::LoadSceneData(file.path().string().c_str(), &scene, &error));
+  EXPECT_NE(error.find("must be a positive integer"), std::string::npos) << error;
+}
+
+TEST(SceneDataTest, UnknownKeyInDeviceIdsRejected) {
+  ScopedSceneFile file(R"json({
+    "log_dir": "t",
+    "platform": {"origin_lat_deg": 30.0, "origin_lon_deg": 120.0},
+    "targets": [],
+    "device_ids": {
+      "unknown_sensor": 10
+    }
+  })json");
+  app::SceneData scene;
+  std::string error;
+  EXPECT_FALSE(app::LoadSceneData(file.path().string().c_str(), &scene, &error));
+  EXPECT_NE(error.find("unknown device_ids key"), std::string::npos) << error;
+}
+
+TEST(SceneDataTest, DeviceIdCollidesWithSatelliteSourceId) {
+  ScopedSceneFile file(R"json({
+    "log_dir": "t",
+    "platform": {"origin_lat_deg": 30.0, "origin_lon_deg": 120.0},
+    "targets": [],
+    "device_ids": {
+      "ar": 4
+    },
+    "satellites": [
+      {"source_id": 4}
+    ]
+  })json");
+  app::SceneData scene;
+  std::string error;
+  EXPECT_FALSE(app::LoadSceneData(file.path().string().c_str(), &scene, &error));
+  EXPECT_NE(error.find("collides with satellites[0].source_id"), std::string::npos) << error;
+}

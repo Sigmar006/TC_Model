@@ -173,15 +173,19 @@ struct SignalPipeline::Impl {
     result.decision_frame = cycle_.scratch.decision_frame;
     result.association_quality_metrics = cycle_.scratch.association_quality_metrics;
 
-    // 中译：周期执行摘要（周期号、目标数、检测数、SNR 门排除计数）。
+    const std::uint32_t effective_sensor_id =
+        (sensor_entity_id != 0U) ? sensor_entity_id : 1U;
+
+    // 中译：周期执行摘要（周期号、设备号、目标数、检测数、SNR 门排除计数）。
     // 标识：规则 13a 周期级执行摘要日志——每周期探测概况与门控排除分布，
     //       供宏观核对与"零探测"排查；仅人读，不用于状态判断（规则 3）。
     const std::size_t detection_count = static_cast<std::size_t>(std::count(
         cycle_.scratch.detection_succeeded.begin(), cycle_.scratch.detection_succeeded.end(),
         static_cast<std::uint8_t>(1U)));
-    PROJECT_LOG_INFO("[SignalPipeline] cycle_index={} targets={} detections={} excluded={{snr={}}}",
-                     environment_snapshot.cycle_index, cycle_input.scene_targets.size(),
-                     detection_count, cycle_.scratch.excluded_snr_below);
+    PROJECT_LOG_INFO(
+        "[SignalPipeline] cycle_index={} sensor_entity_id={} targets={} detections={} excluded={{snr={}}}",
+        environment_snapshot.cycle_index, effective_sensor_id, cycle_input.scene_targets.size(),
+        detection_count, cycle_.scratch.excluded_snr_below);
 
     // 规则 13b：正常周期按目标排除的 kInfo 诊断转写进周期结果（abort 路径不变）。
     result.issues = std::move(cycle_.scratch.issues);
@@ -329,7 +333,12 @@ struct SignalPipeline::Impl {
 
   RuntimeState runtime_;
   CycleState cycle_;
+  std::uint32_t sensor_entity_id{0U};
 };
+
+void SignalPipeline::SetSensorEntityId(std::uint32_t sensor_entity_id) {
+  impl_->sensor_entity_id = sensor_entity_id;
+}
 
 SignalPipeline::SignalPipeline(const ExecutionConfig& config)
     : impl_(std::unique_ptr<Impl>(new Impl(config))) {}

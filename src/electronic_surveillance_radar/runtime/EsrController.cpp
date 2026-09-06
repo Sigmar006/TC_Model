@@ -168,6 +168,10 @@ const session::EsrOutputFrame& EsrController::GetLatestInterceptOutputFrame() co
   return impl_->runtime_state.latest_output;
 }
 
+void EsrController::SetSensorEntityId(std::uint32_t sensor_entity_id) {
+  impl_->pipeline.SetSensorEntityId(sensor_entity_id);
+}
+
 session::EsrCycleResult EsrController::BuildCycleResult() const {
   // COMMON-OQ-9：装配已在 RunOnce 内完成并缓存（issues 直通），此处仅返回缓存。
   return impl_->latest_result;

@@ -43,6 +43,12 @@ struct EsrSession::Impl {
   std::unique_ptr<environment::IEsrEnvironmentService> owned_environment_service;
   std::unique_ptr<extension::EsrController> owned_controller;
   EsrExclusionCauseRecorder* exclusion_cause_recorder{nullptr};
+  std::uint32_t sensor_entity_id{0U};
+
+  void SetSensorEntityId(std::uint32_t id) noexcept {
+    sensor_entity_id = id;
+    Controller().SetSensorEntityId(id);
+  }
 
   pipeline::InterceptPipeline& Pipeline() const { return *owned_pipeline; }
   environment::IEsrEnvironmentService& EnvironmentService() const {
@@ -72,6 +78,10 @@ EsrCycleResult EsrSession::StepWithResult(const session::EsrCycleInput& input) {
 
 void EsrSession::AttachExclusionCauseRecorder(EsrExclusionCauseRecorder* recorder) noexcept {
   impl_->exclusion_cause_recorder = recorder;
+}
+
+void EsrSession::SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept {
+  impl_->SetSensorEntityId(sensor_entity_id);
 }
 
 bool EsrSession::TryApplyRuntimeConfig(const config::EsrRuntimeConfigPatch& patch) {

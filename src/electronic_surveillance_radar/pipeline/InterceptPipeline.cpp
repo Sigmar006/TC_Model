@@ -110,12 +110,15 @@ extension::InterceptPipelineResult InterceptPipeline::RunCycle(
   result.scan_azimuth_deg = detection_output.scan_azimuth_deg;
   ++completed_receive_cycles_;
 
-  // 中译：周期执行摘要（周期号、原始记录数、聚类数、假设数、三类发射源排除计数）。
+  const std::uint32_t effective_sensor_id =
+      (sensor_entity_id_ != 0U) ? sensor_entity_id_ : 2U;
+
+  // 中译：周期执行摘要（周期号、设备号、原始记录数、聚类数、假设数、三类发射源排除计数）。
   // 标识：截获链路每周期概况——检测→聚类→关联各级数量与门控排除分布，供宏观核对与
   //       "零观测"排查；仅人读，不用于状态判断（规则 3）。
-  PROJECT_LOG_INFO("[InterceptPipeline] cycle_index={} raw_records={} clusters={} hypotheses={} "
+  PROJECT_LOG_INFO("[InterceptPipeline] cycle_index={} sensor_entity_id={} raw_records={} clusters={} hypotheses={} "
                    "excluded={{co_site={} zero_power={} below_threshold={}}}",
-                   input_state.cycle_index, detection_output.raw_records.size(),
+                   input_state.cycle_index, effective_sensor_id, detection_output.raw_records.size(),
                    result.observation_output.cluster_count,
                    result.emitter_output.hypotheses.size(), detection_output.excluded_co_site,
                    detection_output.excluded_zero_power, detection_output.excluded_below_threshold);

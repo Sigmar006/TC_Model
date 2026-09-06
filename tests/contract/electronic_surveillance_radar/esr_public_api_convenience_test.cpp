@@ -346,5 +346,30 @@ TEST(EsrPublicApiConvenienceTest, StepReturnsEmptyFrameOnValidationFailure) {
   EXPECT_EQ(step_frame.cycle_index, rejected_result.output_frame.cycle_index);
 }
 
+TEST(EsrPublicApiConvenienceTest, SetSensorEntityIdCanBeSetAndRestored) {
+  session::EsrSession session = session::EsrSession::Create(MakeSessionConfig());
+  session.SetSensorEntityId(102U);
+
+  session::EsrCycleInput input;
+  input.cycle_index = 1U;
+  input.cycle_start_time_s = 10.0;
+  input.dt_sec = 1.0f;
+  input.platform_entity_id = 1U;
+  input.platform_position_ecef_m.x_m = 6378137.0;
+  input.rf_emissions.world_cycle_index = input.cycle_index;
+  input.rf_emissions.window_start_time_s = input.cycle_start_time_s;
+  input.rf_emissions.window_duration_s = static_cast<double>(input.dt_sec);
+
+  EXPECT_EQ(session.StepWithResult(input).status, session::EsrCycleExecutionStatus::kCompleted);
+
+  // Restore to default sentinel (0)
+  session.SetSensorEntityId(0U);
+  input.cycle_index = 2U;
+  input.cycle_start_time_s = 11.0;
+  input.rf_emissions.world_cycle_index = input.cycle_index;
+  input.rf_emissions.window_start_time_s = input.cycle_start_time_s;
+  EXPECT_EQ(session.StepWithResult(input).status, session::EsrCycleExecutionStatus::kCompleted);
+}
+
 }  // namespace tests
 }  // namespace electronic_surveillance_radar

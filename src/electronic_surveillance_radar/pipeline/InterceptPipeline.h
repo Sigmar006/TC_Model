@@ -70,6 +70,14 @@ class InterceptPipeline final {
   bool RestoreRuntimeState(const extension::InterceptPipelineRuntimeState& state);
 
   /**
+   * @brief 设置传感器设备实体 ID（用于周期摘要日志行标记与融合源通道对齐）。
+   * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量。
+   */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id) {
+    sensor_entity_id_ = sensor_entity_id;
+  }
+
+  /**
    * @brief 执行单周期流水线。
    * @param[in] input_state 当前周期输入。
    * @param[in] environment 环境服务。
@@ -80,6 +88,7 @@ class InterceptPipeline final {
       const environment::IEsrEnvironmentService& environment);
 
  private:
+  std::uint32_t sensor_entity_id_{0U};
   EsrInternalExecutionConfig config_{};
   ObservationFeatureScales feature_scales_{};
   ObservationPreprocessor preprocessor_{};

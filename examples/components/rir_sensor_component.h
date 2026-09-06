@@ -38,7 +38,7 @@ class RirSensorComponent : public Component {
  public:
   RirSensorComponent(remote_identification_radar::session::RirSession session,
                      const oneq::coordinate::LlaPositionDegM& site_origin,
-                     std::uint64_t sensor_platform_id, float recognition_dwell_sec,
+                     std::uint64_t platform_id, float recognition_dwell_sec,
                      std::uint32_t device_id = fusion::kRirSourceId,
                      DetectionDeliveryMode detection_delivery = DetectionDeliveryMode::kSharedBlackboard);
   ~RirSensorComponent() override = default;
@@ -115,7 +115,7 @@ class RirSensorComponent : public Component {
 
   oneq::coordinate::LlaPositionDegM site_origin_{};  /**< 站点 LLA（ENU 原点与逆变换锚点） */
   oneq::coordinate::EcefPositionM site_ecef_{};      /**< 站点 ECEF（构造时由 origin 解析一次） */
-  std::uint64_t sensor_platform_id_{0U};             /**< 本传感器在 RF 世界的平台身份（剔除自身发射用） */
+  std::uint64_t platform_id_{0U};                    /**< 本传感器在 RF 世界的平台身份（剔除自身发射用） */
   float recognition_dwell_sec_{0.05f};               /**< 单次识别驻留时长（mission 配置，s）：每周期喂给会话的 RF 发射窗口长度 */
 
   remote_identification_radar::session::RirOutputDebugView

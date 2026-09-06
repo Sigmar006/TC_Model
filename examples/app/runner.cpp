@@ -175,7 +175,7 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
     app::LogAcceptanceMs(0, 0.0, "单个模型加载时间性能测试", "RIR",
                           rir_session.LastRecognitionDatabaseLoadMs());
     rir_site->Attach(std::make_unique<ca::RirSensorComponent>(
-        std::move(rir_session), scene_data.rir_site_origin, configs.rir.sensor_platform_id,
+        std::move(rir_session), scene_data.rir_site_origin, configs.rir.platform_id,
         configs.rir.mission.recognition_dwell_sec, scene_data.device_ids.rir));
   }
 

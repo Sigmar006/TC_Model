@@ -797,7 +797,10 @@ bool ParseSceneBody(const examples::JsonValue& root, SceneData* scene,
       }
     }
 
-    // 与 satellites[].source_id 冲突校验
+    // 与 satellites[].source_id 冲突校验。防御性守卫：现网带 satellites[] 的
+    // SBIRS 场景走各自 main 的专属装载（不经本函数），runner 全量装载的允许键
+    // 清单也不含 "satellites"——本校验兜的是未来 runner 支持卫星数组时
+    // device_ids 与卫星融合通道静默撞号的口子，当前无真实触发路径。
     const examples::JsonValue& satellites = root["satellites"];
     if (!satellites.IsNull() && satellites.type() == examples::JsonValue::kArray) {
       for (std::size_t s = 0U; s < satellites.Size(); ++s) {

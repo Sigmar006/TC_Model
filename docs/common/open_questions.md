@@ -126,22 +126,21 @@ Last-reviewed: 2026-08-23
 
 - **现状**：电磁仿真与 RF 耦合计算域（`RfScene`）中的平台号与设备号与标注域设备 ID（`sensor_entity_id`）存在粒度、位宽与注入面的双轨现象：
   1. **粒度与位宽**：`RfScene` 的 `platform_id` 和 `equipment_id` 均为 `uint64`；同一平台上的多个传感器/干扰设备共用同一 `platform_id`（如 AR 与 ECM 共用 platform 1）；部分雷达设备细分为两个设备号。
-  2. **注入面差异**：AR 的平台号通过 `ArPlatformInput::platform_entity_id` 随每拍注入；RIR 的 `sensor_platform_id` 挂在 `RirSessionConfig` 静态配置中（且内部有 `SetSensorPlatformId` 但未在 `RirSession` 暴露）；SBIRS（天基红外）完全不参与 RF 耦合。
-  3. **演进计划**：在 2026-09-03 裁定中，标注域设备 ID 统一收敛为 uint32 并在会话构造后注入；RF 记账号域改动（RIR `sensor_platform_id` 迁出 config、uint32/uint64 位宽裁定、AR 每拍注入 vs 会话注入权衡、equipment_id 映射）整体豁免并延迟至下一阶段。
+  2. **注入面差异**：AR 的平台号通过 `ArPlatformInput::platform_entity_id` 随每拍注入；RIR 的宿主平台号为静态配置 `RirSessionConfig::platform_id`（`uint64`，专供 RF 空间计算与自干扰剔除）；SBIRS（天基红外）完全不参与 RF 耦合。
+  3. **演进与解耦**：在 2026-09-03/06 阶段中，全量传感器（AR/ESR/EOS/SBIRS/RIR）的标注域设备 ID 统一收敛为 uint32 并在会话构造后经 `SetSensorEntityId` 注入；RIR 原 `sensor_platform_id` 字段正式正名为 `platform_id`，理顺了 RF 物理平台号（只读静态配置，uint64）与雷达设备标注身份（动态注入，uint32）的正交边界。
   [evidence: include/1q/electromagnetics/RfScene.h]
   [evidence: include/1q/airborne_radar/session/ArPlatformInput.h]::platform_entity_id
-  [evidence: include/1q/remote_identification_radar/config/RirSessionConfig.h]::sensor_platform_id
+  [evidence: include/1q/remote_identification_radar/config/RirSessionConfig.h]::platform_id
+  [evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
   [evidence: docs/review/sensor-entity-id-unification_stage_a_2026-09-03.md]
 - **后果**：
-  1. 调用方在集成 AR 与 RIR 时面临两套不同的平台识别配置方式（每拍输入 vs session config）。
-  2. RIR 会话层缺少统一的 `SetSensorPlatformId` 暴露，且无法在运行期动态切换宿主平台。
-  3. RF 记账号域的 `uint64` 与标注域的 `uint32` 存在潜在跨域认知混淆。
+  1. 调用方在集成 AR 与 RIR 时平台物理号注入方式存在差异（AR 随每拍动态输入 vs RIR 静态 session_config，反映机动多变 vs 固定挂载设定）。
+  2. RF 记账号域的 `uint64` 与标注域的 `uint32` 保持显式隔离与类型安全。
 - **待决问题**：
-  1. RIR `sensor_platform_id` 是否迁出会话配置，采用废弃过渡期后收敛为会话 setter。
-  2. AR 每拍 platform_entity_id 注入是否保持（反映真实机载平台机动/动态组网）还是与 RIR 对齐。
-  3. RF 域的 64 位宽与标注域的 32 位宽是否保持显式隔离与类型安全。
-- **当前边界**：标注域（设备 ID）统一为 uint32 且构造后注入；RF 记账号域维持现状（AR 每拍注入，RIR session_config 配置，RfScene 为 uint64）；两域概念严格解耦。
-- **再进入条件 (Stage A)**：出现跨平台多传感器动态协同编组、共平台 co-site 干扰动态重组需求，或启动 RIR session_config 字段废弃清理时。
+  1. AR 每拍 platform_entity_id 注入是否保持（反映真实机载平台机动/动态组网）还是收敛统一语义。
+  2. 跨平台多传感器协同编组时 equipment_id 与 platform_id 的编排规范。
+- **当前边界**：标注域（设备 ID）全模块统一为 uint32 且会话构造后注入；RF 平台号域 AR 保持每拍注入，RIR 保持 session_config::platform_id（RfScene 保持 uint64）；两域概念与位宽严格正交解耦。
+- **再进入条件 (Stage A)**：出现跨平台多传感器动态协同编组、共平台 co-site 干扰动态重组需求时。
 
 ## Airborne Radar 非阻塞边界
 

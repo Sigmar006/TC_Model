@@ -283,7 +283,7 @@ Last-reviewed: 2026-08-23
 | `rir.validation.recognition_weights_invalid` | 输入校验 | 识别特征权重非法（须有限、在 [0, 1] 且总和为 1）。 |
 | `rir.validation.scan_strategy_invalid` | 输入校验 | 扫描策略非法（限位须有限有序且在合法域 az∈[-180,180]、el∈[-90,90]；步长系数须为正）。 |
 | `rir.validation.scan_wave_axis_samples_truncated` | 输入校验 | 扫描波位单轴采样数超内核上限（4096），波位表会被截断；需加大步长或缩小扇区。
-| `rir.validation.sensor_platform_id_invalid` | 输入校验 | 传感器平台身份非法（须非零）。 |
+| `rir.validation.platform_id_invalid` | 输入校验 | 物理平台身份非法（须非零）。 |
 | `rir.validation.signal_processing_gains_invalid` | 输入校验 | 信号处理增益偏置非法（四偏置须有限且在 [0, 40] dB）。 |
 | `rir.validation.tracking_policy_invalid` | 输入校验 | 跟踪策略非法（KF 噪声参数非正）。 |
 | `rir.validation.transmitter_frequency_invalid` | 输入校验 | 发射机载频非法（须有限且为正）。 |

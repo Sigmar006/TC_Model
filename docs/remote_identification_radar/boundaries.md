@@ -239,6 +239,24 @@ RIR 遵守 `docs/common/contract.md` 与 `docs/common/session_contract.md`：
 5. 关机 → 不触碰识别状态，结论在恢复后按保持期过期；校验拒绝不推进积累。
 6. 数据库加载失败保持原库（路径变更时按需加载，失败仅降级并记录日志）。
 
+## 传感器实例身份与物理平台号边界
+
+RIR 将标注域设备标识与 RF 物理平台号严格正交解耦：
+
+1. **传感器实例身份（`SetSensorEntityId`，标注域）**：
+   - `RirSession::SetSensorEntityId(std::uint32_t)` 为会话构造后注入接口，不进入 `RirSessionConfig` 与 `RirRuntimeConfigPatch`，不参与配置重置。
+   - 任意时刻可调，下一周期生效；未注入或显式传入 `0` 时恢复默认哨兵，周期摘要与融合标识回退使用融合常量 `fusion::kRirSourceId`（5U）。
+   - 用于周期摘要日志 `[RirPipeline]` 携带 `sensor_entity_id={}`、验收行 `radar_id` 记录与下游融合通道标识；不进入电磁波物理计算。
+
+2. **物理平台号（`RirSessionConfig::platform_id`，RF 域）**：
+   - `platform_id` 为 `std::uint64_t` 静态配置，表示 RIR 挂载的宿主物理平台身份（如飞机/地面站平台），创建会话时确定且不可为零（非法时报 `rir.validation.platform_id_invalid`）。
+   - 专用于 RF 电磁空间几何、单向/双向传播路损、自身平台发射机回波剔除与共平台同机干扰排除。
+   - 保持只读静态配置，符合装备物理挂载事实，与可动态区分同型多雷达的 `SetSensorEntityId` 职责明确分离。
+
+[evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
+[evidence: include/1q/remote_identification_radar/config/RirSessionConfig.h]::platform_id
+[evidence: tests/unit/remote_identification_radar/rir_projection_session_test.cpp]::SetSensorEntityIdContract
+
 ## 接口不变式
 
 - 识别配置经 `RirRuntimeConfigPatch::has_policy` 整域提交（无叶子级 recognition

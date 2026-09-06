@@ -1,5 +1,5 @@
 ---
-Status: frozen（契约已附）
+Status: final
 Date: 2026-09-03
 Review-Baseline: `evidence/sensor-entity-id-unification` @ `fba3ea13`
 Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract.md、docs/common/session_contract.md
@@ -132,14 +132,62 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 
 ## §4 运行记录（Stage C 后填写）
 
-<!-- 对照强制回写清单勾项，全部完成才允许拆脚手架（见 SKILL.md 收尾规则）：
-1、实现范围：改动文件与接口。
-2、验证命令与结果：命令: pass/fail（含转正的探针测试）。
+1、实现范围：
+- 库内公共接口：
+  - `include/1q/airborne_radar/session/ArSession.h`（新增 `SetSensorEntityId(std::uint32_t)`）
+  - `include/1q/electronic_surveillance_radar/session/EsrSession.h`（新增 `SetSensorEntityId(std::uint32_t)`）
+  - `include/1q/electro_optical_sensor/session/EosSession.h`（新增 `SetSensorEntityId(std::uint32_t)`）
+- 库内实现：
+  - AR：`src/airborne_radar/session/ArSession.cpp`、`src/airborne_radar/runtime/ArController.h/.cpp`、`src/airborne_radar/signal/pipeline/ISignalPipeline.h`、`src/airborne_radar/signal/pipeline/SignalPipeline.h/.cpp`（日志携带 `sensor_entity_id={}`）
+  - ESR：`src/electronic_surveillance_radar/session/EsrSession.cpp`、`src/electronic_surveillance_radar/runtime/EsrController.h/.cpp`、`src/electronic_surveillance_radar/pipeline/InterceptPipeline.h/.cpp`（日志携带 `sensor_entity_id={}`）
+  - EOS：`src/electro_optical_sensor/session/EosSession.cpp`、`src/electro_optical_sensor/runtime/EosController.h/.cpp`、`src/electro_optical_sensor/pipeline/EosPipeline.h/.cpp`（日志携带 `sensor_entity_id={}`）
+- 示例与场景层：
+  - `examples/components/ar_sensor_component.h/.cpp`（接受 `device_id`，注入 session，打融合通道）
+  - `examples/components/esr_sensor_component.h/.cpp`（接受 `device_id`，注入 session，打融合通道）
+  - `examples/components/eos_sensor_component.h/.cpp`（接受 `device_id`，注入 session，打融合通道）
+  - `examples/components/rir_sensor_component.h/.cpp`（接受 `device_id`，打融合通道）
+  - `examples/components/sbirs_sensor_component.h/.cpp`（接受 `device_id`，打融合通道；单站回退改为 `fusion::kSbirsSourceId`）
+  - `examples/scenes/scene_data.h/.cpp`（解析顶层可选 `"device_ids"`，查重与卫星撞号校验，放行白名单）
+  - `examples/app/runner.cpp`（接线 scene_data.device_ids 至组件构造）
+- 测试用例：
+  - `tests/unit/airborne_radar/ar_rf_session_test.cpp`
+  - `tests/contract/electronic_surveillance_radar/esr_public_api_convenience_test.cpp`
+  - `tests/unit/electro_optical_sensor/eos_session_create_test.cpp`
+  - `tests/unit/examples/scene_data_test.cpp`
+  - `tests/unit/examples/ecs_component_runtime_test.cpp`
+
+2、验证命令与结果：
+- `ctest --preset llvm-ninja-release-local -R "unit::airborne_radar"`: pass (100% tests passed)
+- `ctest --preset llvm-ninja-release-local -R "unit::electro_optical_sensor"`: pass (100% tests passed)
+- `./build/llvm-ninja-release-local/bin/1q_electronic_surveillance_radar_contract_tests`: pass (19/19 passed)
+- `ctest --preset llvm-ninja-release-local -R "unit::examples"`: pass (148/148 passed)
+- `./build/llvm-ninja-release-local/bin/component_attachment_demo --scene baseline_takeoff_east.json`: pass (400/400 cycles)
+- `./build/llvm-ninja-release-local/bin/sbirs_triple_sat_fix_messages`: pass (80/80 cycles, 79 fixes)
+- `./build/llvm-ninja-release-local/bin/rir_ground_site_recognition`: pass (1560/1560 cycles)
+- `ctest --preset llvm-ninja-release-local -R "guard"`: pass
+
 3、权威回写去向：
-   1、正向边界：docs/<module>/design.md（boundaries/data-flow/algorithms 按归属选）。
-   2、否决记录：docs/<module>/design.md 的"架构裁定与否决记录"专节（体裁见 docs-governance-standard）。
-   3、开放议题：docs/common/open_questions.md 登记（编号）。
-   4、证据锁：新增/修订规则后附 - **证据**：[evidence: 路径]。
-4、残留风险。
-5、后续冻结项。
--->
+   1、正向边界：
+      - `docs/airborne_radar/boundaries.md`（传感器实例身份注入边界）
+      - `docs/electronic_surveillance_radar/boundaries.md`（传感器实例身份注入边界）
+      - `docs/electro_optical_sensor/boundaries.md`（传感器实例身份注入边界）
+   2、否决记录：
+      - `docs/fusion/design.md`（否决：FusionConfig.source_weights 容器化改造）
+   3、开放议题：
+      - `docs/common/open_questions.md`（登记 COMMON-OQ-11：RF 记账号域统一）
+   4、证据锁：
+      - [evidence: include/1q/airborne_radar/session/ArSession.h]::SetSensorEntityId
+      - [evidence: tests/unit/airborne_radar/ar_rf_session_test.cpp]
+      - [evidence: include/1q/electronic_surveillance_radar/session/EsrSession.h]::SetSensorEntityId
+      - [evidence: tests/contract/electronic_surveillance_radar/esr_public_api_convenience_test.cpp]
+      - [evidence: include/1q/electro_optical_sensor/session/EosSession.h]::SetSensorEntityId
+      - [evidence: tests/unit/electro_optical_sensor/eos_session_create_test.cpp]
+      - [evidence: tests/unit/examples/scene_data_test.cpp]
+      - [evidence: tests/unit/examples/ecs_component_runtime_test.cpp]
+
+4、残留风险：
+- 无。改动纯为标注面增强与缺省安全回退，不影响任何物理模型、信号链与探测算法。
+
+5、后续冻结项：
+- COMMON-OQ-11：RF 记账号域统一（待跨平台协同或 RIR session_config 字段清理时另行 Stage A 论证）。
+

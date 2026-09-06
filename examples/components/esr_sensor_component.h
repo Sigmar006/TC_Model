@@ -12,6 +12,7 @@
 #include "1q/electronic_surveillance_radar/session/EsrExclusionCauseRecorder.h"
 #include "1q/electronic_surveillance_radar/session/EsrSession.h"
 #include "1q/electronic_surveillance_radar/session/EmitterHypothesis.h"
+#include "1q/fusion/SensorAdapters.h"
 #include "core/component.h"
 #include "core/detection_delivery.h"
 
@@ -27,6 +28,7 @@ class EsrSensorComponent : public Component {
  public:
   explicit EsrSensorComponent(
       electronic_surveillance_radar::session::EsrSession session,
+      std::uint32_t device_id = fusion::kEsrSourceId,
       DetectionDeliveryMode detection_delivery = DetectionDeliveryMode::kSharedBlackboard);
   ~EsrSensorComponent() override = default;
 
@@ -39,6 +41,9 @@ class EsrSensorComponent : public Component {
 
   /** @brief 当前电源状态（由 sensor_enabled 补丁唯一维护；未步进前默认 true，关机时组件不驱动会话）。 */
   bool powered_on() const { return powered_on_; }
+
+  /** @brief 当前传感器设备实体 ID（融合源通道 ID）。 */
+  std::uint32_t device_id() const { return device_id_; }
 
   /** @brief 最近周期波束中心方位角（单位：deg，平台系；仅开机且 kCompleted 周期有效，其余为 0）。 */
   float scan_azimuth_deg() const { return scan_azimuth_deg_; }
@@ -82,6 +87,7 @@ class EsrSensorComponent : public Component {
   bool has_last_completed_output_{false};           /**< 是否至少完成过一个成功周期 */
 
   bool powered_on_{true}; /**< 电源状态（由 sensor_enabled 补丁唯一维护；关机时不驱动会话） */
+  std::uint32_t device_id_{fusion::kEsrSourceId};
   DetectionDeliveryMode detection_delivery_{DetectionDeliveryMode::kSharedBlackboard};
 
   /// 周期输入组装：平台运动学（Flight）+ RF-WORLD 发射包络（供 StepWithResult）。

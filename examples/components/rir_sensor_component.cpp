@@ -159,11 +159,13 @@ std::string FormatCycleSnrSuffix(const rir::RirDebugTargetState& state) {
 RirSensorComponent::RirSensorComponent(
     rir::RirSession session, const oneq::coordinate::LlaPositionDegM& site_origin,
     std::uint64_t sensor_platform_id, float recognition_dwell_sec,
+    std::uint32_t device_id,
     DetectionDeliveryMode detection_delivery)
     : session_(std::move(session)),
       site_origin_(site_origin),
       sensor_platform_id_(sensor_platform_id),
       recognition_dwell_sec_(recognition_dwell_sec),
+      device_id_(device_id),
       detection_delivery_(detection_delivery) {
   // 站点固定：ECEF 解析一次，逐周期作为特征量测 sensor_origin 提供。
   oneq::coordinate::TryLlaToEcef(site_origin_, &site_ecef_);
@@ -437,7 +439,7 @@ void RirSensorComponent::AdaptDetections(
   frame.batch_id = result.output_frame.batch_id;
   frame.records = result.output_frame.feature_measurements;
   std::vector<fusion::DetectionRecord> records =
-      fusion::AdaptRirFeatureMeasurementsToDetectionRecords(fusion::kRirSourceId, frame);
+      fusion::AdaptRirFeatureMeasurementsToDetectionRecords(device_id_, frame);
   std::unordered_map<std::uint64_t, std::uint64_t> key_to_external;
   for (const auto& attribution : result.track_attributions) {
     if (attribution.external_target_id != 0U) {
@@ -455,7 +457,7 @@ void RirSensorComponent::AdaptDetections(
     // 订阅重建库类型；集成方对应把样本推给融合组件的消息）。
     DetectionBatchSubmittedEvent event;
     event.cycle = scene.cycle;
-    event.source_id = fusion::kRirSourceId;
+    event.source_id = device_id_;
     for (const auto& record : records) {
       event.records.push_back(ToFusionDetectionSample(record));
     }

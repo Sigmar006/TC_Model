@@ -110,15 +110,18 @@ std::vector<airborne_radar::session::ArTargetInput> BuildArEnuTargets(
 ArSensorComponent::ArSensorComponent(airborne_radar::session::ArSession session,
                                      std::uint64_t platform_entity_id,
                                      std::uint64_t transmitter_equipment_id,
+                                     std::uint32_t device_id,
                                      DetectionDeliveryMode detection_delivery)
     : session_(std::move(session)),
       platform_entity_id_(platform_entity_id),
       transmitter_equipment_id_(transmitter_equipment_id),
+      device_id_(device_id),
       detection_delivery_(detection_delivery) {
   // 轨迹生命周期事件由库内 recorder 承担（StepWithResult 内部自动喂）。
   session_.AttachTrackLifecycleRecorder(&lifecycle_);
   // 排除原因跨周期差分事件由库内 recorder 承担（与 lifecycle recorder 独立并列）。
   session_.AttachExclusionCauseRecorder(&exclusion_);
+  session_.SetSensorEntityId(device_id_);
 }
 
 bool ArSensorComponent::TryApplyRuntimeConfig(
@@ -488,13 +491,13 @@ void ArSensorComponent::AdaptDetections(
     World& world, AppSceneState& scene,
     const airborne_radar::session::ArExternalTrackOutputFrame& external_frame) {
   const std::vector<fusion::DetectionRecord> records =
-      fusion::AdaptArTracksToDetectionRecords(fusion::kArSourceId, external_frame);
+      fusion::AdaptArTracksToDetectionRecords(device_id_, external_frame);
   if (detection_delivery_ == DetectionDeliveryMode::kMessage) {
     // 消息路径：展平为基础类型后发 on_detection_batch_submitted（融合组件
     // 订阅重建库类型；集成方对应把样本推给融合组件的消息）。
     DetectionBatchSubmittedEvent event;
     event.cycle = scene.cycle;
-    event.source_id = fusion::kArSourceId;
+    event.source_id = device_id_;
     for (const auto& record : records) {
       event.records.push_back(ToFusionDetectionSample(record));
     }

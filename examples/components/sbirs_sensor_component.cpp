@@ -203,8 +203,11 @@ FusionDetectionSample ToFusionDetectionSample(
 // session：调用方构造后移入；示例见 main 卫星 Attach（scene.config → SbirsSession::Create）。
 SbirsSensorComponent::SbirsSensorComponent(
     sbirs_sensor::session::SbirsSession session,
+    std::uint32_t device_id,
     DetectionDeliveryMode detection_delivery)
-    : session_(std::move(session)), detection_delivery_(detection_delivery) {
+    : session_(std::move(session)),
+      device_id_(device_id),
+      detection_delivery_(detection_delivery) {
   // 探测生命周期事件由库内 recorder 承担（StepWithResult 内部自动喂）。
   session_.AttachDetectionLifecycleRecorder(&lifecycle_);
   // 排除原因跨周期差分事件由库内 recorder 承担（与 lifecycle recorder 独立并列）。
@@ -246,10 +249,10 @@ bool SbirsSensorComponent::TryApplyRuntimeConfig(
 
 void SbirsSensorComponent::OnAttach(Entity& host) {
   host_ = &host;
-  // 单站挂载（无融合源 ID）时以宿主实体 ID 标注验收行 卫星ID=（卫星变体构造时
+  // 单站挂载（无融合源 ID）时以 device_id_（默认 fusion::kSbirsSourceId）标注验收行 卫星ID=（卫星变体构造时
   // 已按融合源 ID 标注，此处不覆盖）。
   if (ground_station_source_id_ == 0U) {
-    session_.SetSatelliteEntityId(static_cast<std::uint32_t>(host.id()));
+    session_.SetSatelliteEntityId(device_id_);
   }
 }
 
@@ -640,7 +643,7 @@ void SbirsSensorComponent::AdaptDetections(
     // 订阅重建库类型；集成方对应把样本推给融合组件的消息）。
     DetectionBatchSubmittedEvent event;
     event.cycle = scene.cycle;
-    event.source_id = fusion::kSbirsSourceId;
+    event.source_id = device_id_;
     for (const auto& record : records) {
       if (!record.detected) {
         continue;
@@ -653,7 +656,7 @@ void SbirsSensorComponent::AdaptDetections(
   // 黑板路径：库内适配器 → 共享探测池（FusionComponent 聚合读；集成方对应
   // 把记录消息推给融合组件）。
   const std::vector<fusion::DetectionRecord> adapted =
-      fusion::AdaptSbirsDetectionsToDetectionRecords(fusion::kSbirsSourceId, records);
+      fusion::AdaptSbirsDetectionsToDetectionRecords(device_id_, records);
   scene.detection_pool.insert(scene.detection_pool.end(), adapted.begin(), adapted.end());
 }
 

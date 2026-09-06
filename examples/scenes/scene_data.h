@@ -23,6 +23,7 @@
 #include "1q/electronic_countermeasure/EcmTypes.h"
 #include "1q/electronic_surveillance_radar/electronic_surveillance_radar.hpp"
 #include "1q/fusion/FusionConfig.h"
+#include "1q/fusion/SensorAdapters.h"
 #include "1q/remote_identification_radar/remote_identification_radar.hpp"
 #include "1q/sar/sar.hpp"
 #include "1q/sbirs_sensor/sbirs_sensor.hpp"
@@ -217,6 +218,16 @@ struct SceneData {
 
   double high_threat_confidence{3.0};       /**< 决策门限：融合置信度达到该值视为高置信威胁
                                                  （示例业务策略，原 demo_config kHighThreatConfidence） */
+
+  /// 统一传感器设备实体标识（可选 top-level device_ids 块，缺省各自 fusion::k*SourceId）。
+  struct SceneDeviceIds {
+    std::uint32_t ar{fusion::kArSourceId};
+    std::uint32_t esr{fusion::kEsrSourceId};
+    std::uint32_t eos{fusion::kEosSourceId};
+    std::uint32_t sbirs{fusion::kSbirsSourceId};
+    std::uint32_t rir{fusion::kRirSourceId};
+  };
+  SceneDeviceIds device_ids{};
 
   /// 冒烟断言下限（场景文件 smoke 块；"无目标"等零产出场景显式置 0）。
   struct SmokeExpectations {

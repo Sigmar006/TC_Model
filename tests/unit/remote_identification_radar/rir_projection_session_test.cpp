@@ -280,6 +280,20 @@ TEST(RirProjectionSessionTest, ExclusionRecorderDrivenBySessionProducesEnteredEv
   EXPECT_EQ(event.current_code, session::codes::kTargetDetectionGate);
 }
 
+/// @brief 会话级传感器实体 ID 注入契约（0 恢复缺省，非零生效）。
+TEST(RirProjectionSessionTest, SetSensorEntityIdContract) {
+  RirSession session = RirSession::Create(MakeIdentifyConfig());
+  session.SetSensorEntityId(101U);
+  const std::vector<RirSceneTarget> targets = {MakeDetectableTarget(2001U, "test")};
+  const RirCycleResult result = session.StepWithResult(MakeInput(1U, targets));
+  EXPECT_EQ(result.status, RirCycleStatus::kCompleted);
+
+  // 恢复 0 哨兵
+  session.SetSensorEntityId(0U);
+  const RirCycleResult result2 = session.StepWithResult(MakeInput(2U, targets));
+  EXPECT_EQ(result2.status, RirCycleStatus::kCompleted);
+}
+
 }  // namespace
 }  // namespace tests
 }  // namespace remote_identification_radar

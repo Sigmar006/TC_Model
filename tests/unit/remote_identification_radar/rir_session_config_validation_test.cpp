@@ -26,11 +26,11 @@ bool HasCode(const session::RirIssueList& issues, const char* code) {
   return false;
 }
 
-TEST(RirSessionConfigValidationTest, RejectsZeroSensorPlatformId) {
+TEST(RirSessionConfigValidationTest, RejectsZeroPlatformId) {
   RirSessionConfig session_config;
-  session_config.sensor_platform_id = 0U;
+  session_config.platform_id = 0U;
   const auto issues = ValidateRirSessionConfig(session_config);
-  EXPECT_TRUE(HasCode(issues, session::codes::kSensorPlatformIdInvalid));
+  EXPECT_TRUE(HasCode(issues, session::codes::kPlatformIdInvalid));
 }
 
 TEST(RirSessionConfigValidationTest, AcceptsPhysicalApertureWhenNominalBeamwidthIsZero) {

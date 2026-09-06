@@ -23,6 +23,7 @@
 #include "1q/coordinate/position_transform.h"
 #include "1q/coordinate/velocity_transform.h"
 #include "1q/environment/AtmosphericTypes.h"
+#include "1q/fusion/SensorAdapters.h"
 #include "1q/remote_identification_radar/session/RirIssueCodes.h"
 #include "remote_identification_radar/dwell/RirBeamControl.h"
 #include "remote_identification_radar/dwell/RirEffectiveRcs.h"
@@ -209,8 +210,16 @@ void RirController::SetHardware(const config::RirHardwareConfig& hardware) {
   measurement_rng_.seed(detection_random_seed_);
 }
 
-void RirController::SetSensorPlatformId(std::uint64_t sensor_platform_id) {
-  sensor_platform_id_ = sensor_platform_id;
+void RirController::SetPlatformId(std::uint64_t platform_id) {
+  platform_id_ = platform_id;
+}
+
+void RirController::SetSensorEntityId(std::uint32_t sensor_entity_id) {
+  sensor_entity_id_ = sensor_entity_id;
+}
+
+std::uint32_t RirController::EffectiveSensorEntityId() const {
+  return sensor_entity_id_ != 0U ? sensor_entity_id_ : ::fusion::kRirSourceId;
 }
 
 dwell::RirDetectorConfig RirController::MakeDetectorConfig() const {
@@ -449,12 +458,12 @@ tracking::RirTrackMeasurement RirController::SampleMeasurementPosition(
 RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
     const session::RirCycleInput& input, const std::vector<RirDwellPlan>& plan) const {
   RirResolvedRfCycle resolved;
-  if (plan.empty() || sensor_platform_id_ == 0U || hardware_.transmitter.prf_hz <= 0.0f) {
+  if (plan.empty() || platform_id_ == 0U || hardware_.transmitter.prf_hz <= 0.0f) {
     return resolved;
   }
 
   dwell::RirRfCycleInput rf_input;
-  rf_input.platform_id = sensor_platform_id_;
+  rf_input.platform_id = platform_id_;
   rf_input.platform_position_ecef_m = input.platform_position;
   rf_input.window_start_time_s = static_cast<double>(input.sim_time_sec);
   rf_input.window_duration_s = static_cast<double>(mission_.recognition_dwell_sec);
@@ -675,7 +684,7 @@ bool RirController::TryBuildMeasurement(
     RirDetectionAcceptInput snap;
     snap.sim_time_sec = input.sim_time_sec;
     snap.cycle = input.input_cycle_index;
-    snap.radar_id = sensor_platform_id_;
+    snap.radar_id = EffectiveSensorEntityId();
     snap.target_id = target.external_target_id;
     snap.range_m = slant_range_m;
     snap.look_az_deg = look_az_deg;
@@ -1142,7 +1151,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     // 验收事件 association（3.2.2.3.1.1）：全局最优关联结果——命中对（键/量测
     // 索引/马氏代价）与漏检航迹键（量测清单经 detection_cell 事件逐目标留痕）。
     if (RIR_ACCEPTANCE_LOG_ENABLED()) {
-      WriteRirSearchDetections(sensor_platform_id_, input.sim_time_sec, input.input_cycle_index,
+      WriteRirSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec, input.input_cycle_index,
                                dwell_center_deg.az_deg, dwell_center_deg.el_deg,
                                g_acceptance_found_targets);
       const float gate_sigma = std::max(0.0f, policy_.association.distance_gate_sigma);
@@ -1251,7 +1260,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
           ++planned_track;
         }
       }
-      WriteRirSchedule(sensor_platform_id_, input.sim_time_sec, input.input_cycle_index,
+      WriteRirSchedule(EffectiveSensorEntityId(), input.sim_time_sec, input.input_cycle_index,
                        latest_summary_.dwell_budget.dwell_budget_sec,
                        latest_summary_.dwell_budget.dwell_consumed_sec, planned_search,
                        planned_designate, planned_track, confirmed);
@@ -1377,6 +1386,13 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     RIR_ACCEPTANCE_ITEM(input.sim_time_sec, input.input_cycle_index, "多目标跟踪功能测试",
                         "本周期航迹数=" + std::to_string(track_snapshots.size()));
   }
+
+  // 中译：RIR 周期处理完成（周期号、设备 ID、平台 ID、航迹数）。
+  // 标识：三写之三（人读日志）——识别周期执行完毕摘要。
+  PROJECT_LOG_INFO(
+      "[RirPipeline] cycle_index={} sensor_entity_id={} platform_id={} tracks={}",
+      input.input_cycle_index, EffectiveSensorEntityId(), platform_id_,
+      track_snapshots.size());
 }
 
 bool RirController::IsTargetRecognized(std::uint64_t external_target_id) const {

@@ -183,7 +183,7 @@ table RirSessionConfig {
   mission:RirMissionConfig;
   policy:RirPolicyConfig;
   environment:RirEnvironmentConfig;
-  sensor_platform_id:ulong;
+  platform_id:ulong;
   sensor_enabled:bool;
 }
 
@@ -194,7 +194,9 @@ root_type RirSessionConfig;
 // v3（2026-08-30）：RirTrackingPolicyConfig 删除全链未消费的 kalman_measurement_noise_std
 // （RIR 量测噪声恒走 SNR 误差模型动态 R，缺省 R 回退永不触发），标识符升 RIRE；
 // 项目未上线，无兼容分支。
-file_identifier "RIRE";
+// v4（2026-09-06）：RirSessionConfig sensor_platform_id 改名为 platform_id；
+// 标识符升 RIRF；项目未上线，无兼容分支。
+file_identifier "RIRF";
 
 // ---- runtime_config_patch 载荷 ----
 

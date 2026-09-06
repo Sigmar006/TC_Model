@@ -93,8 +93,8 @@ constexpr char kTrackingPolicyInvalid[] = "rir.validation.tracking_policy_invali
 /** @brief 生命周期策略非法（confirm/lost 阈值）。 */
 constexpr char kLifecyclePolicyInvalid[] = "rir.validation.lifecycle_policy_invalid";
 
-/** @brief 传感器平台身份非法（须非零）。 */
-constexpr char kSensorPlatformIdInvalid[] = "rir.validation.sensor_platform_id_invalid";
+/** @brief 平台身份非法（须非零）。 */
+constexpr char kPlatformIdInvalid[] = "rir.validation.platform_id_invalid";
 
 /** @brief 发射机载频非法（须有限且为正）。 */
 constexpr char kTransmitterFrequencyInvalid[] = "rir.validation.transmitter_frequency_invalid";

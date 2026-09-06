@@ -92,4 +92,3 @@ flowchart TB
   2. 投机改造成本：大号且需非默认差异化配权的真实业务场景尚未证实；若未来出现，由集成侧适配层（如 SensorAdapters / 集成映射表）做稀疏至连续 ID 的压缩映射是更低风险、零核心开销的解法。
 - **证据**：[evidence: include/1q/fusion/FusionConfig.h]::source_weights
 - **证据**：[evidence: src/fusion/FusionEngine.cpp]::Update
-- **证据**：[evidence: docs/review/sensor-entity-id-unification_stage_a_2026-09-03.md]

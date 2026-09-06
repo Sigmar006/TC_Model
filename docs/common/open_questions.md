@@ -132,7 +132,6 @@ Last-reviewed: 2026-08-23
   [evidence: include/1q/airborne_radar/session/ArPlatformInput.h]::platform_entity_id
   [evidence: include/1q/remote_identification_radar/config/RirSessionConfig.h]::platform_id
   [evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
-  [evidence: docs/review/sensor-entity-id-unification_stage_a_2026-09-03.md]
 - **后果**：
   1. 调用方在集成 AR 与 RIR 时平台物理号注入方式存在差异（AR 随每拍动态输入 vs RIR 静态 session_config，反映机动多变 vs 固定挂载设定）。
   2. RF 记账号域的 `uint64` 与标注域的 `uint32` 保持显式隔离与类型安全。

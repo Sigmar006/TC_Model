@@ -1,5 +1,5 @@
 ---
-Status: draft
+Status: frozen
 Date: 2026-09-07
 Review-Baseline: `evidence/sbirs-measurement-timestamp-and-phase` @ `68295515`
 Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract.md、docs/common/session_contract.md
@@ -72,29 +72,77 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 
 ## §3 冻结契约（用户讨论结束后填写）
 
-<!-- 一行一项：
-1、允许范围：模块/目录、类/函数、测试与文档。
-2、明确禁止范围：公开头文件、跨模块类型、schema/回放、测试阈值、兼容层。
-3、行为边界：输入、输出、错误回退、生命周期。
-4、爆炸半径与回滚：下游消费方影响、回退难度（无损/破坏性/回滚注意点）。
-5、验收门：构建、聚焦测试、契约测试、特征化测试、探针转正（有回归价值的探针转正式测试）。
-6、非目标。
--->
+### 1. 已证明的需求
+1. **需求 1（检出时间戳）**：SBIRS 检出输出结构 `SbirsDetectionRecord` 增加绝对测量时刻 `double measurement_time_s`（单位秒，绝对仿真时刻），在 `SbirsPipeline.cpp` 中根据扫描角速度解析计算波束中心穿越目标的精确时刻（NFOV 稳定帧采用当帧权威仿真时间）。
+2. **需求 2（初始扫描相位）**：SBIRS 任务配置 `SbirsMissionConfig` 增加 `float initial_scan_phase_deg{0.0f}`（[0, scan_span) deg），在 `SbirsPipeline` 初始化与重锚时作为初始扫描相位生效，默认 0.0f 保持历史单星单测逐位回归，赋能多星错峰场景。
+3. **需求 3（融合输入与适配层透传，收窄）**：通用探测记录 `DetectionRecord` 增加可选时间戳字段（`bool has_timestamp{false}`, `double timestamp_s{0.0}`），并在 `SbirsBearingAdapter.cpp` 中完成数据透传赋值，由评估层及地面站消费；`FusionEngine` 内部非等间隔亚周期滤波推演独立作为下阶段专项演进。
+4. **需求 4（FlatBuffers 回放升位）**：`schemas/replay/sbirs_replay.fbs` 增加 `measurement_time_s: double;` 槽位，文件标识符由 `SBI4` 升级为 `SBI5`；更新 `SbirsReplayFlatbufferCodec.cpp` 并验证旧标识符拒绝机制。
+
+### 2. 允许范围
+- **模块/目录**：
+  - `include/1q/sbirs_sensor/` & `src/sbirs_sensor/`
+  - `schemas/replay/sbirs_replay.fbs`
+  - `include/1q/fusion/DetectionRecord.h`
+  - `include/1q/precision_evaluation/` & `src/precision_evaluation/`
+  - `examples/components/ground_station_fusion_component.cpp` & `examples/scenes/sbirs_triple_sat_fix_messages/`
+  - `tests/unit/sbirs_sensor/`, `tests/unit/fusion/`, `tests/unit/precision_evaluation/`
+- **类/函数**：
+  - `SbirsDetectionRecord`（增加 `measurement_time_s`）
+  - `SbirsMissionConfig`（增加 `initial_scan_phase_deg` 与配置校验）
+  - `SbirsPipeline`（初始相位装配、穿越时刻解析计算、调试视图与生命周期记录同步适配）
+  - `DetectionRecord`（增加 `has_timestamp` / `timestamp_s`）
+  - `AdaptSbirsResultToDetectionRecords`（透传时间戳与存在标志）
+  - `SbirsReplayFlatbufferCodec`（编解码 `measurement_time_s`，升级为 `SBI5`）
+- **测试/文档**：
+  - 增加时间戳解析计算单测、多星初始相位错峰测试、回放 SBI5 编解码及 SBI4 拒绝测试、适配层时间戳透传测试。
+
+### 3. 明确禁止范围
+- **公开头文件**：除 `SbirsOutputTypes.h`、`SbirsMissionConfig.h`、`DetectionRecord.h` 外，禁止修改任何其他公共头文件。
+- **跨模块类型**：除 `DetectionRecord` 增补可选字段外，禁止引入新的跨模块结构体或侵入性强耦合类型。
+- **schema/trace/replay**：禁止保留 SBI4 兼容分支（契约规定整体升位为 SBI5）；禁止触碰其他传感器的 replay schema。
+- **测试阈值/skip**：禁止放宽任何现有单元测试与验收测试的门限值，禁止新增 skip。
+- **兼容层**：禁止为旧版无时间戳写分支兼容胶水代码；未交付阶段坚持干净边界。
+
+### 4. 行为边界
+- **输入**：`initial_scan_phase_deg` 必须在合法范围 $[0, \text{scan\_span})$ 内（配置校验防御越界），默认 0.0f。
+- **输出**：`measurement_time_s` 保证在当前周期窗口 $[t_{\text{cycle\_start}}, t_{\text{cycle\_start}} + dt]$ 之间，单调可信。
+- **错误/回退**：输入非法初始相位返回校验 `kInvalidScanPhase` 或相应 IssueCode；回放解析遇到旧版 SBI4 返回解码失败。
+- **生命周期/调试/trace**：DebugView 与 LifecycleRecorder 同步增加 `measurement_time_s` 字段输出，与现有调试体系无缝兼容。
+
+### 5. 爆炸半径与回滚
+- **下游消费方影响**：所有构造或消费 `SbirsDetectionRecord`、`DetectionRecord` 的地方需要更新（主要在 SBIRS 内部、回放、适配器、示例地面站）。
+- **回退难度**：破坏性 schema 升级，若回退需切回 SBI4 并在 git 树上回滚对应提交。
+
+### 6. 验收门
+- **构建**：`cmake --build --preset llvm-ninja-release-local` 零告警编译通过。
+- **聚焦测试**：
+  - `ctest --preset llvm-ninja-release-local -R "unit::sbirs" --output-on-failure` 100% 通过。
+  - `ctest --preset llvm-ninja-release-local -R "unit::fusion" --output-on-failure` 100% 通过。
+  - `ctest --preset llvm-ninja-release-local -R "unit::precision_evaluation" --output-on-failure` 100% 通过。
+- **契约测试**：回放 SBI5 测试与旧标识符拒测 100% 通过。
+- **探针转正**：
+  - 探针 1 转正：单目标在 WFOV 往复扫中穿越时刻解析精度验证测试。
+  - 探针 2 转正：多星不同 `initial_scan_phase_deg` 错峰扫描几何验证测试。
+  - 探针 3 转正：`AdaptSbirsResultToDetectionRecords` 时间戳透传测试。
+
+### 7. 非目标
+- **非目标 1**：`FusionEngine` 内部非等间隔卡尔曼滤波推演（收窄裁定已定，留待后续专项）。
+- **非目标 2**：2-D 俯仰栅格初始行号 `initial_scan_row_index` 配置（本次仅开放水平初始相位）。
+- **非目标 3**：AR、ESR、EOS、RIR 等其他传感器的时间戳改造（本次仅针对 SBIRS 与通用探测记录）。
 
 ## 修订记录
 
-<!-- 编号条目（修订 1、修订 2……）：日期、裁定内容、来源（用户指令/新证据）；不静默改写既有条目。 -->
+- **修订 1（2026-09-07，用户裁定）**：
+  1. 裁定点 1：批准采用绝对仿真时间 `measurement_time_s`（`double`，单位秒）口径。
+  2. 裁定点 2：批准 2-D 俯仰栅格模式仅做水平方位初始相位 `initial_scan_phase_deg`，垂直行号暂默认从第 0 行起步。
+  3. 裁定点 3：批准融合层实施范围收窄为“`DetectionRecord` 增补可选时间戳 + `SbirsBearingAdapter` 透传 + 评估层消费”，融合算法内部亚周期卡尔曼滤波作为后续专项演进。
+  4. 状态由 draft 推进为 frozen，附 §3 冻结契约。
 
 ## §4 运行记录（Stage C 后填写）
 
 <!-- 对照强制回写清单勾项，全部完成才允许拆脚手架（见 SKILL.md 收尾规则）：
-1、实现范围：改动文件与接口。
-2、验证命令与结果：命令: pass/fail（含转正的探针测试）。
-3、权威回写去向：
-   1、正向边界：docs/<module>/design.md（boundaries/data-flow/algorithms 按归属选）。
-   2、否决记录：docs/<module>/design.md 的"架构裁定与否决记录"专节（体裁见 docs-governance-standard）。
-   3、开放议题：docs/common/open_questions.md 登记（编号）。
-   4、证据锁：新增/修订规则后附 - **证据**：[evidence: 路径]。
-4、残留风险。
-5、后续冻结项。
+1、正向边界：docs/<module>/ 对应文档
+2、否决记录：docs/<module>/design.md 架构裁定与否决记录专节
+3、开放议题：docs/common/open_questions.md 登记新议题
+4、证据锁：[evidence: ...] 指向代码/测试永久锚点
 -->

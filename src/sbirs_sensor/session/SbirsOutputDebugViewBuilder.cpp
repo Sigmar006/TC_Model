@@ -152,6 +152,7 @@ SbirsDebugTargetState BuildTargetState(const SbirsSceneTarget& target,
 
   state.has_raw_output_record = true;
   state.detected = record->detected;
+  state.measurement_time_s = record->measurement_time_s;
   state.azimuth_rad = record->azimuth_rad;
   state.elevation_rad = record->elevation_rad;
   state.infrared_snr_linear = record->infrared_snr_linear;

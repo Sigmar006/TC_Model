@@ -58,6 +58,9 @@ constexpr char kInvalidScanStartAzimuth[] = "sbirs.validation.invalid_scan_start
 /** @brief 扫描跨度非法（须为有限值且在 (0, 360]）。 */
 constexpr char kInvalidScanSpan[] = "sbirs.validation.invalid_scan_span";
 
+/** @brief 初始扫描相位非法（须为有限值且在 [0, scan_span)）。 */
+constexpr char kInvalidInitialScanPhase[] = "sbirs.validation.invalid_initial_scan_phase";
+
 /** @brief 扫描方向非法。 */
 constexpr char kInvalidScanDirection[] = "sbirs.validation.invalid_scan_direction";
 

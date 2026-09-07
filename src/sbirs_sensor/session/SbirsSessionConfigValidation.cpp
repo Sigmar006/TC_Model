@@ -72,6 +72,13 @@ session::SbirsIssueList ValidateSbirsSessionConfig(const SbirsSessionConfig& con
     AddError(session::codes::kInvalidScanSpan,
              "mission scan span must be finite and in (0, 360]", &issues);
   }
+  if (!std::isfinite(config.mission.initial_scan_phase_deg) ||
+      config.mission.initial_scan_phase_deg < 0.0f ||
+      (std::isfinite(config.mission.scan_span_deg) && config.mission.scan_span_deg > 0.0f &&
+       config.mission.initial_scan_phase_deg >= config.mission.scan_span_deg)) {
+    AddError(session::codes::kInvalidInitialScanPhase,
+             "mission initial scan phase must be finite and in [0, scan_span)", &issues);
+  }
   if (config.mission.scan_direction != SbirsScanDirection::kIncreasingAzimuth &&
       config.mission.scan_direction != SbirsScanDirection::kDecreasingAzimuth) {
     AddError(session::codes::kInvalidScanDirection, "mission scan direction is invalid", &issues);

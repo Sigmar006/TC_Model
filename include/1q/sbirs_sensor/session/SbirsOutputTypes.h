@@ -32,6 +32,7 @@ enum class ONEQ_API SbirsObservationStage {
  */
 struct ONEQ_API SbirsDetectionRecord {
   std::uint64_t detection_id{0U};  /**< 本输出帧内的检测记录标识 */
+  double measurement_time_s{0.0};  /**< 量测产生的绝对仿真时刻（秒） */
   float azimuth_rad{0.0f};         /**< 方位角（ECI 极坐标 az = atan2(y,x)，相对 ECI x 轴），单位 rad，范围 [0, 2π)；非卫星局部地平系 */
   float elevation_rad{0.0f};       /**< 仰角（ECI 极坐标 el = asin(z/r)，相对赤道面），单位 rad，范围 [-π/2, π/2]；非卫星局部地平系 */
   float infrared_snr_linear{0.0f}; /**< 红外通道线性 IR SNR */

@@ -41,6 +41,7 @@ struct ONEQ_API SbirsMissionConfig {
   // ECI 方位约定（2026-08 正式变更）：合法域 [0, 360)；-60° 等价折入 300°。
   float scan_start_az_deg{300.0f};                        /**< WFOV 扫描方位起点（ECI 方位，单位 deg，[0, 360)） */
   float scan_span_deg{120.0f}; /**< WFOV 有向扫描跨度，范围 (0, 360] deg */
+  float initial_scan_phase_deg{0.0f}; /**< WFOV 初始扫描相位（相对扫描起点的初始行程偏移），范围 [0, scan_span) deg，默认 0.0f */
   SbirsScanDirection scan_direction{SbirsScanDirection::kIncreasingAzimuth}; /**< WFOV 扫描方向 */
   // 方位基准（2026-08-31）：kEciAbsolute 时 scan_start_az_deg 语义同上（ECI 绝对方位，
   // 既有行为逐位不变）；kNadirRelative 时为相对星下点方位的带符号偏移（合法域

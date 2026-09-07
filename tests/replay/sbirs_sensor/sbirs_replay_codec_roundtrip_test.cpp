@@ -178,6 +178,7 @@ TEST(SbirsReplayCodecRoundtripTest, OutputFramePreservesAllFields) {
 
   SbirsDetectionRecord detection;
   detection.detection_id = 33U;
+  detection.measurement_time_s = 12.345;
   detection.azimuth_rad = 1.5f;
   detection.elevation_rad = -2.5f;
   detection.infrared_snr_linear = 9.0f;
@@ -195,6 +196,7 @@ TEST(SbirsReplayCodecRoundtripTest, OutputFramePreservesAllFields) {
   EXPECT_FLOAT_EQ(decoded.scan_elevation_rad, 0.25f);
   ASSERT_EQ(decoded.detections.size(), 1U);
   EXPECT_EQ(decoded.detections[0].detection_id, 33U);
+  EXPECT_DOUBLE_EQ(decoded.detections[0].measurement_time_s, 12.345);
   EXPECT_FLOAT_EQ(decoded.detections[0].azimuth_rad, 1.5f);
   EXPECT_FLOAT_EQ(decoded.detections[0].elevation_rad, -2.5f);
   EXPECT_FLOAT_EQ(decoded.detections[0].infrared_snr_linear, 9.0f);
@@ -346,6 +348,7 @@ TEST(SbirsReplayCodecRoundtripTest, SessionConfigPreservesAllDomains) {
   config.mission.scan_el_span_deg = 20.0f;
   config.mission.scan_el_step_deg = 5.0f;
   config.mission.scan_rate_deg_per_sec = 3.0f;
+  config.mission.initial_scan_phase_deg = 15.0f;
   config.mission.narrow_cue_latency_s = 0.05f;
   config.mission.narrow_pointing_max_slew_rate_deg_per_sec = 17.5f;
   config.mission.narrow_pointing_settle_tolerance_deg = 0.025f;
@@ -407,6 +410,7 @@ TEST(SbirsReplayCodecRoundtripTest, SessionConfigPreservesAllDomains) {
   EXPECT_FLOAT_EQ(decoded.mission.scan_el_span_deg, 20.0f);
   EXPECT_FLOAT_EQ(decoded.mission.scan_el_step_deg, 5.0f);
   EXPECT_FLOAT_EQ(decoded.mission.scan_rate_deg_per_sec, 3.0f);
+  EXPECT_FLOAT_EQ(decoded.mission.initial_scan_phase_deg, 15.0f);
   EXPECT_FLOAT_EQ(decoded.mission.narrow_pointing_max_slew_rate_deg_per_sec, 17.5f);
   EXPECT_FLOAT_EQ(decoded.mission.narrow_pointing_settle_tolerance_deg, 0.025f);
   EXPECT_FLOAT_EQ(decoded.policy.detection.narrow_min_snr_linear, 7.0f);
@@ -460,6 +464,7 @@ TEST(SbirsReplayCodecRoundtripTest, RuntimeConfigPatchPreservesAllFields) {
   mission.scan_start_az_deg = 175.0f;
   mission.scan_span_deg = 80.0f;
   mission.scan_direction = SbirsScanDirection::kDecreasingAzimuth;
+  mission.initial_scan_phase_deg = 22.5f;
   mission.narrow_pointing_max_slew_rate_deg_per_sec = 12.0f;
   mission.narrow_pointing_settle_tolerance_deg = 0.03f;
   SbirsPolicyConfig policy;
@@ -492,6 +497,7 @@ TEST(SbirsReplayCodecRoundtripTest, RuntimeConfigPatchPreservesAllFields) {
   EXPECT_FLOAT_EQ(decoded.mission.scan_start_az_deg, 175.0f);
   EXPECT_FLOAT_EQ(decoded.mission.scan_span_deg, 80.0f);
   EXPECT_EQ(decoded.mission.scan_direction, SbirsScanDirection::kDecreasingAzimuth);
+  EXPECT_FLOAT_EQ(decoded.mission.initial_scan_phase_deg, 22.5f);
   EXPECT_FLOAT_EQ(decoded.mission.narrow_pointing_max_slew_rate_deg_per_sec, 12.0f);
   EXPECT_FLOAT_EQ(decoded.mission.narrow_pointing_settle_tolerance_deg, 0.03f);
   EXPECT_TRUE(decoded.has_policy);
@@ -691,6 +697,11 @@ TEST(SbirsReplayCodecRoundtripTest, DecodeRejectsLegacyOrForeignIdentifierBuffer
   // max_concurrent_nfov_locks）起 SBI3 同属被拒的旧版本载荷。
   v3_identifier.replace(4U, 4U, "SBI3");
   EXPECT_FALSE(DecodeSbirsCycleInput(v3_identifier, &legacy_decoded));
+
+  std::string v4_identifier = encoded;
+  // v4 标识符（无量测时间戳与初始相位字段）；v5（2026-09-07 SBI5）起 SBI4 同属被拒旧版本。
+  v4_identifier.replace(4U, 4U, "SBI4");
+  EXPECT_FALSE(DecodeSbirsCycleInput(v4_identifier, &legacy_decoded));
 
   // 其余 sbirs replay 负载同样受护栏保护：篡改标识符后拒绝。
   SbirsOutputFrame frame;

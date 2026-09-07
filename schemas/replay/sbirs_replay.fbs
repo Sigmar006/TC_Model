@@ -44,7 +44,9 @@ root_type SbirsCycleInput;
 // 兼容，标识符升 SBI3 防静默误解码；项目未上线，无兼容分支。
 // v4（2026-09-02）：会话配置表删 max_concurrent_nfov_locks（单镜筒化）；标识符为
 // 全 SBIRS 载荷共享常量，随之中段变更整体升 SBI4。
-file_identifier "SBI4";
+// v5（2026-09-07）：SbirsDetectionRecord 增加 measurement_time_s 测量绝对时刻（秒）；
+// 标识符为全 SBIRS 载荷共享常量，随之中段变更整体升 SBI5。
+file_identifier "SBI5";
 
 table SbirsDetectionRecord {
   detection_id: uint64;
@@ -53,6 +55,7 @@ table SbirsDetectionRecord {
   infrared_snr_linear: float;
   observation_stage: int32;
   detected: bool;
+  measurement_time_s: double;
 }
 
 table SbirsDetectionAttributionRecord {

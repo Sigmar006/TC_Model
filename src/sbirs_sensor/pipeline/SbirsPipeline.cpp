@@ -620,7 +620,9 @@ SbirsPipeline::SbirsPipeline(const config::SbirsInternalExecutionConfig& config)
       estimated_measurement_random_source_(DeriveMeasurementSeed(
           config.session.policy.error_model.random_seed, kEstimatedMeasurementDomain)),
       sensor_like_output_random_source_(DeriveMeasurementSeed(
-          config.session.policy.error_model.random_seed, kSensorLikeOutputDomain)) {}
+          config.session.policy.error_model.random_seed, kSensorLikeOutputDomain)) {
+  scan_phase_deg_ = config.session.mission.initial_scan_phase_deg;
+}
 
 void SbirsPipeline::ApplyConfig(const config::SbirsInternalExecutionConfig& config,
                                 const runtime::SbirsRuntimeConfigImpact& impact) {
@@ -645,10 +647,10 @@ void SbirsPipeline::ApplyConfig(const config::SbirsInternalExecutionConfig& conf
     scan_phase_deg_ = config_.session.mission.scan_span_deg == 360.0f ||
                               candidate_phase < config_.session.mission.scan_span_deg
                           ? candidate_phase
-                          : 0.0f;
+                          : config_.session.mission.initial_scan_phase_deg;
     // 往复腿（2026-08-31）：重锚进新扇区保留腿方向；相位归零（旧方位不在新扇区）
     // 时腿复位为初始方向——scan_direction 语义 = 初始行进方向。
-    if (scan_phase_deg_ == 0.0f) {
+    if (scan_phase_deg_ == config_.session.mission.initial_scan_phase_deg) {
       scan_leg_forward_ = true;
     }
     // 行重锚（阶段 4）：旧行中心 el 映射到新栅格最近行；新栅格为单行模式
@@ -746,6 +748,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   const config::SbirsPolicyConfig& policy = config_.session.policy;
   const config::SbirsEnvironmentConfig& environment_config = config_.session.environment;
   const float sim_time_sec = static_cast<float>(input.cycle_index) * input.dt_sec;
+  const double cycle_start_time_s =
+      static_cast<double>(input.cycle_index) * static_cast<double>(input.dt_sec);
+  const double cycle_end_time_s =
+      cycle_start_time_s + static_cast<double>(std::max(0.0f, input.dt_sec));
 
   // ECI 输出参考系（2026-08 正式变更）：本周期时刻的 GMST 把卫星与目标位置/速度
   // 从 ECEF 旋转到 ECI（J2000 平赤道面），下游 LOS/az/el/遮挡/SNR/EKF 全部在 ECI
@@ -997,6 +1003,23 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   const float actual_scan_azimuth_sensor_deg = scan_azimuth_sensor_deg;
   const float actual_scan_elevation_sensor_deg = scan_elevation_sensor_deg;
 
+  const auto compute_crossing_time_s = [&](float candidate_sensor_az_deg) -> double {
+    if (mission.scan_rate_deg_per_sec <= 1e-6f || input.dt_sec <= 0.0f) {
+      return cycle_end_time_s;
+    }
+    const float leg_direction = scan_leg_forward_ ? 1.0f : -1.0f;
+    const float effective_direction = ConfigDirectionSign(mission) * leg_direction;
+    const float az_velocity = effective_direction * mission.scan_rate_deg_per_sec;
+    if (std::fabs(az_velocity) <= 1e-6f) {
+      return cycle_end_time_s;
+    }
+    const float az_delta = AzimuthDelta(candidate_sensor_az_deg, actual_scan_azimuth_sensor_deg);
+    const float time_offset_from_end = az_delta / az_velocity;
+    const float t_crossing_in_cycle =
+        std::max(0.0f, std::min(input.dt_sec, input.dt_sec + time_offset_from_end));
+    return cycle_start_time_s + static_cast<double>(t_crossing_in_cycle);
+  };
+
   if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
     // 覆盖四角 = 视场矩形与地球视盘交集区域的经纬度范围框角点（采样视场边界与地平圈圆弧
     // 取经纬度包络），映射为规范顺序 4 角（西北、东北、东南、西南）；视场完全脱靶记 miss。
@@ -1189,6 +1212,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       candidate.delayed_truth_elevation_deg = elevation_deg;
     }
     candidate.snr = snr;
+    candidate.measurement_time_s = cycle_start_time_s;
     candidates.push_back(candidate);
     ++wfov_consecutive_hits_[target.target_id];
     if (target_states_[target.target_id] != SbirsTargetState::kAwaitingNfovAcquisition) {
@@ -1439,6 +1463,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     candidate.measured_elevation_deg = bearing.elevation_deg;
     candidate.measured_range_m = bearing.range_m;
     candidate.relative_angular_rate_deg_per_sec = omega_deg_per_sec_cached;
+    candidate.measurement_time_s = compute_crossing_time_s(sensor_azimuth_deg);
     const SbirsCuePrediction cue_prediction =
         cue_predictor_.Update(target.target_id, bearing.azimuth_deg, bearing.elevation_deg,
                               input.dt_sec, mission.narrow_cue_latency_s);
@@ -1580,6 +1605,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     for (const SbirsCandidate& candidate : candidates) {
       SbirsPipelineDetection detection;
       detection.record.detection_id = next_detection_id_++;
+      detection.record.measurement_time_s = candidate.measurement_time_s;
       detection.record.azimuth_rad = ToEciAzimuthRad(candidate.measured_azimuth_deg);
       detection.record.elevation_rad = ToEciElevationRad(candidate.measured_elevation_deg);
       detection.record.infrared_snr_linear = static_cast<float>(candidate.snr);
@@ -1616,6 +1642,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   const auto append_wfov_detection = [&](const SbirsCandidate& candidate) {
     SbirsPipelineDetection detection;
     detection.record.detection_id = next_detection_id_++;
+    detection.record.measurement_time_s = candidate.measurement_time_s;
     detection.record.azimuth_rad = ToEciAzimuthRad(candidate.measured_azimuth_deg);
     detection.record.elevation_rad = ToEciElevationRad(candidate.measured_elevation_deg);
     detection.record.infrared_snr_linear = static_cast<float>(candidate.snr);
@@ -1635,6 +1662,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                                               attribution::SbirsCaptureFailureReason reason) {
     SbirsPipelineDetection detection;
     detection.record.detection_id = next_detection_id_++;
+    detection.record.measurement_time_s = cycle_end_time_s;
     detection.record.azimuth_rad = ToEciAzimuthRad(candidate.measured_azimuth_deg);
     detection.record.elevation_rad = ToEciElevationRad(candidate.measured_elevation_deg);
     detection.record.infrared_snr_linear = static_cast<float>(candidate.snr);
@@ -1836,6 +1864,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     }
     SbirsPipelineDetection detection;
     detection.record.detection_id = next_detection_id_++;
+    detection.record.measurement_time_s = cycle_end_time_s;
     detection.record.azimuth_rad = ToEciAzimuthRad(selected.measured_azimuth_deg);
     detection.record.elevation_rad = ToEciElevationRad(selected.measured_elevation_deg);
     detection.record.infrared_snr_linear = static_cast<float>(selected.snr);
@@ -1915,6 +1944,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
 
     SbirsPipelineDetection detection;
     detection.record.detection_id = next_detection_id_++;
+    detection.record.measurement_time_s = cycle_end_time_s;
     detection.record.azimuth_rad = ToEciAzimuthRad(command_azimuth_deg);
     detection.record.elevation_rad = ToEciElevationRad(command_elevation_deg);
     detection.record.infrared_snr_linear = static_cast<float>(context.snr);
@@ -2166,6 +2196,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     }
     SbirsPipelineDetection detection;
     detection.record.detection_id = next_detection_id_++;
+    detection.record.measurement_time_s = candidate.measurement_time_s;
     detection.record.azimuth_rad = ToEciAzimuthRad(candidate.measured_azimuth_deg);
     detection.record.elevation_rad = ToEciElevationRad(candidate.measured_elevation_deg);
     detection.record.infrared_snr_linear = static_cast<float>(candidate.snr);

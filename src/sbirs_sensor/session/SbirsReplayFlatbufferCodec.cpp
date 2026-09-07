@@ -89,7 +89,8 @@ flatbuffers::Offset<sbirs::replay::SbirsDetectionRecord> EncodeOneDetection(
     flatbuffers::FlatBufferBuilder& fbb, const output::SbirsDetectionRecord& value) {
   return sbirs::replay::CreateSbirsDetectionRecord(
       fbb, value.detection_id, value.azimuth_rad, value.elevation_rad, value.infrared_snr_linear,
-      static_cast<std::int32_t>(value.observation_stage), value.detected);
+      static_cast<std::int32_t>(value.observation_stage), value.detected,
+      value.measurement_time_s);
 }
 
 bool DecodeOneDetection(const sbirs::replay::SbirsDetectionRecord& fb,
@@ -99,6 +100,7 @@ bool DecodeOneDetection(const sbirs::replay::SbirsDetectionRecord& fb,
     return false;
   }
   out->detection_id = fb.detection_id();
+  out->measurement_time_s = fb.measurement_time_s();
   out->azimuth_rad = fb.azimuth_rad();
   out->elevation_rad = fb.elevation_rad();
   out->infrared_snr_linear = fb.infrared_snr_linear();
@@ -180,7 +182,7 @@ flatbuffers::Offset<sbirs::replay::SbirsMissionConfig> EncodeMissionConfig(
       value.scan_el_step_deg, value.scan_rate_deg_per_sec, value.min_range_m, value.max_range_m,
       value.frame_rate_hz, value.narrow_cue_latency_s, value.narrow_pointing_settle_error_deg,
       value.narrow_pointing_max_slew_rate_deg_per_sec, value.narrow_pointing_settle_tolerance_deg,
-      static_cast<std::int32_t>(value.scan_azimuth_reference));
+      static_cast<std::int32_t>(value.scan_azimuth_reference), value.initial_scan_phase_deg);
 }
 
 bool DecodeMissionConfig(const sbirs::replay::SbirsMissionConfig* fb,
@@ -204,6 +206,7 @@ bool DecodeMissionConfig(const sbirs::replay::SbirsMissionConfig* fb,
   decoded.narrow_field_fov_el_deg = fb->narrow_field_fov_el_deg();
   decoded.scan_start_az_deg = fb->scan_start_az_deg();
   decoded.scan_span_deg = fb->scan_span_deg();
+  decoded.initial_scan_phase_deg = fb->initial_scan_phase_deg();
   decoded.scan_direction = static_cast<config::SbirsScanDirection>(fb->scan_direction());
   decoded.scan_azimuth_reference =
       static_cast<config::SbirsScanAzimuthReference>(fb->scan_azimuth_reference());

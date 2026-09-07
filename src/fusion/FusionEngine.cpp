@@ -181,6 +181,10 @@ struct Track {
   std::uint64_t filter_cycle{0U};  /**< 滤波器最近推进周期 */
   bool filter_has_timestamp{false}; /**< 滤波器时间基准是否已含物理时刻（FUSION-OQ-1） */
   double filter_timestamp_s{0.0};  /**< 滤波器当前状态对应的物理时刻(s) */
+  bool velocity_initialized{false}; /**< 初速是否已完成两点差分初始化 */
+  bool has_first_position{false};  /**< 是否已记录首个位置点（差分初速输入） */
+  EcefPositionM first_position{};  /**< 首个量测位置 */
+  double first_timestamp_s{0.0};   /**< 首个量测时刻(s) */
   Eigen::Matrix<float, 6, 1> filter_mean{Eigen::Matrix<float, 6, 1>::Zero()};
   Eigen::Matrix<float, 6, 6> filter_cov{Eigen::Matrix<float, 6, 6>::Identity()};
   Track() = default;
@@ -556,6 +560,9 @@ class FusionEngine::Impl {
       SetIsotropicCovariance(track, config_.track_initial_position_std_m,
                              config_.track_initial_velocity_std_m_per_s);
       track->filter_initialized = true;
+      track->has_first_position = true;
+      track->first_position = ecef;
+      track->velocity_initialized = false;
       return true;
     }
     if (detection.has_bearing && detection.has_sensor_origin) {
@@ -617,6 +624,52 @@ class FusionEngine::Impl {
       track->filter_cycle = cycle;
       track->filter_has_timestamp = detection.has_timestamp;
       track->filter_timestamp_s = detection.has_timestamp ? detection.timestamp_s : 0.0;
+      track->first_timestamp_s = track->filter_timestamp_s;
+      return;
+    }
+
+    // 优化 2：若当前量测带位置且初速尚未完成差分初始化，执行两点差分初速初始化
+    if (detection.has_position && !track->velocity_initialized && track->has_first_position) {
+      EcefPositionM z_ecef{};
+      if (oneq::coordinate::TryLlaToEcef(detection.position, &z_ecef)) {
+        double dt_diff = 0.0;
+        if (detection.has_timestamp && track->filter_has_timestamp) {
+          dt_diff = detection.timestamp_s - track->first_timestamp_s;
+        } else {
+          dt_diff = static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
+        }
+        if (dt_diff > 0.05) {
+          const double inv_dt = 1.0 / dt_diff;
+          const double vx = (z_ecef.x_m - track->first_position.x_m) * inv_dt;
+          const double vy = (z_ecef.y_m - track->first_position.y_m) * inv_dt;
+          const double vz = (z_ecef.z_m - track->first_position.z_m) * inv_dt;
+
+          track->filter_mean(0) = static_cast<float>(z_ecef.x_m);
+          track->filter_mean(1) = static_cast<float>(vx);
+          track->filter_mean(2) = static_cast<float>(z_ecef.y_m);
+          track->filter_mean(3) = static_cast<float>(vy);
+          track->filter_mean(4) = static_cast<float>(z_ecef.z_m);
+          track->filter_mean(5) = static_cast<float>(vz);
+
+          const double pos_var = config_.default_position_noise_std_m * config_.default_position_noise_std_m;
+          const double vel_var = 2.0 * pos_var * inv_dt * inv_dt + 100.0 * 100.0;
+          track->filter_cov = Eigen::Matrix<float, 6, 6>::Zero();
+          track->filter_cov(0, 0) = static_cast<float>(pos_var);
+          track->filter_cov(1, 1) = static_cast<float>(vel_var);
+          track->filter_cov(2, 2) = static_cast<float>(pos_var);
+          track->filter_cov(3, 3) = static_cast<float>(vel_var);
+          track->filter_cov(4, 4) = static_cast<float>(pos_var);
+          track->filter_cov(5, 5) = static_cast<float>(vel_var);
+
+          track->filter_cycle = cycle;
+          track->filter_has_timestamp = detection.has_timestamp;
+          track->filter_timestamp_s = detection.has_timestamp
+                                          ? detection.timestamp_s
+                                          : (static_cast<double>(cycle) * config_.track_cycle_period_sec);
+          track->velocity_initialized = true;
+          return;
+        }
+      }
     } else {
       double dt = 0.0;
       if (detection.has_timestamp && track->filter_has_timestamp) {

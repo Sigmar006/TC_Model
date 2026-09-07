@@ -502,5 +502,52 @@ TEST(FusionTrackFilteringTest, SubCycleBearingDualSatResolvesRange) {
       << "Asynchronous bearing observations with sub-cycle propagation must resolve range";
 }
 
+TEST(FusionTrackFilteringTest, TwoPointDifferencingInitializesVelocityAccurately) {
+  FusionConfig config = MakeFilteringConfig();
+  config.track_process_noise = 0.5;
+  config.default_position_noise_std_m = 10.0;
+
+  const EcefPositionM p0(kEarthRadiusM, 0.0, 0.0);
+  const EcefPositionM v(300.0, -1800.0, 80.0);
+
+  auto make_record = [&](std::uint64_t key, double t_sec, std::uint32_t src) {
+    const EcefPositionM truth(p0.x_m + v.x_m * t_sec, p0.y_m + v.y_m * t_sec,
+                              p0.z_m + v.z_m * t_sec);
+    DetectionRecord record = MakePositionRecord(key, EcefToLla(truth));
+    record.source_id = src;
+    record.has_timestamp = true;
+    record.timestamp_s = t_sec;
+    return record;
+  };
+
+  FusionEngine engine(config);
+
+  // 周期 1：首个位置量测到达（t=1.0s），航迹建立，初速为 0
+  auto res1 = engine.Update({make_record(10U, 1.0, 1U)}, 1U);
+  ASSERT_EQ(res1.size(), 1U);
+  ASSERT_TRUE(res1.front().has_kinematic_estimate);
+  EXPECT_DOUBLE_EQ(res1.front().kinematic_estimate.velocity_ecef_m_per_s[0], 0.0);
+  EXPECT_DOUBLE_EQ(res1.front().kinematic_estimate.velocity_ecef_m_per_s[1], 0.0);
+  EXPECT_DOUBLE_EQ(res1.front().kinematic_estimate.velocity_ecef_m_per_s[2], 0.0);
+
+  // 周期 2：第二个位置量测到达（t=2.0s），触发两点差分初速初始化
+  auto res2 = engine.Update({make_record(10U, 2.0, 2U)}, 2U);
+  ASSERT_EQ(res2.size(), 1U);
+  ASSERT_TRUE(res2.front().has_kinematic_estimate);
+  const auto& vel2 = res2.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_NEAR(vel2[0], v.x_m, 1.0);
+  EXPECT_NEAR(vel2[1], v.y_m, 1.0);
+  EXPECT_NEAR(vel2[2], v.z_m, 1.0);
+
+  // 周期 3：第三个量测（t=3.0s），进入常规 UKF 滤波更新，无超调震荡
+  auto res3 = engine.Update({make_record(10U, 3.0, 1U)}, 3U);
+  ASSERT_EQ(res3.size(), 1U);
+  ASSERT_TRUE(res3.front().has_kinematic_estimate);
+  const auto& vel3 = res3.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_NEAR(vel3[0], v.x_m, 2.0);
+  EXPECT_NEAR(vel3[1], v.y_m, 2.0);
+  EXPECT_NEAR(vel3[2], v.z_m, 2.0);
+}
+
 }  // namespace
 }  // namespace fusion

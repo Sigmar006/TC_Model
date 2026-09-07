@@ -85,14 +85,15 @@ electro_optical_sensor::output::EosDetectionRecord MakeEosRecord(bool detected,
   return record;
 }
 
-sbirs_sensor::output::SbirsDetectionRecord MakeSbirsRecord(bool detected,
-                                                           float ir_snr_linear) {
+sbirs_sensor::output::SbirsDetectionRecord MakeSbirsRecord(
+    bool detected, float ir_snr_linear, double measurement_time_s = 12.345) {
   sbirs_sensor::output::SbirsDetectionRecord record;
   // SBIRS 输出为 ECI 弧度（2026-08）：120° ≈ 2.0944 rad、−30° ≈ −0.5236 rad。
   record.azimuth_rad = 2.0943951023931953f;
   record.elevation_rad = -0.5235987755982988f;
   record.infrared_snr_linear = ir_snr_linear;
   record.detected = detected;
+  record.measurement_time_s = measurement_time_s;
   return record;
 }
 
@@ -265,6 +266,8 @@ TEST(SensorAdaptersTest, SbirsDetectionsAdaptToDetectionRecords) {
   EXPECT_NEAR(record.bearing_el_deg, -30.0, 1.0e-4);
   EXPECT_DOUBLE_EQ(record.verdict, 1.0);
   EXPECT_DOUBLE_EQ(record.quality, 1.0);  // 8.0 / 4 → 2.0 夹取到 1.0
+  EXPECT_TRUE(record.has_timestamp);
+  EXPECT_DOUBLE_EQ(record.timestamp_s, 12.345);
 }
 
 TEST(SensorAdaptersTest, SbirsQualityNormalizedToWfovThreshold) {

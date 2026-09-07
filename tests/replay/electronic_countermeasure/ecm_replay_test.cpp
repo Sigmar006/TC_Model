@@ -16,6 +16,7 @@
 #include "1q/electronic_countermeasure/EcmRecordingSession.h"
 #include "1q/replay/ReplayTrace.h"
 #include "electronic_countermeasure/EcmReplayFlatbufferCodec.h"
+#include "flatbuffers/flatbuffers.h"
 #include "support/oneq_test_temp_dir.h"
 
 namespace electronic_countermeasure {
@@ -36,7 +37,6 @@ EcmCycleInput MakeInput(std::uint32_t cycle_index, bool fresh) {
   input.cycle_index = cycle_index;
   input.cycle_start_time_s = 0.5 * static_cast<double>(cycle_index - 1U);
   input.dt_sec = 0.5;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.transmit_antenna.peak_gain_dbi = 10.0;
   input.has_sensor_observation_frame = fresh;
@@ -82,6 +82,20 @@ TEST(EcmReplayCodecTest, InputAndResultPreserveProvenanceAndRfSegments) {
   EXPECT_EQ(decoded_result.emission_frame.emissions.front().waveform.kind,
             oneq::electromagnetics::RfSceneWaveformKind::kLinearSweep);
   EXPECT_DOUBLE_EQ(decoded_result.thermal_energy_j, result.thermal_energy_j);
+}
+
+TEST(EcmReplayCodecTest, CycleInputRejectsRetiredECMCFileIdentifier) {
+  const EcmCycleInput input = MakeInput(2U, true);
+  std::string encoded = EncodeEcmCycleInput(input);
+  ASSERT_GE(encoded.size(), 8U);
+  const char* identifier = flatbuffers::GetBufferIdentifier(encoded.data());
+  std::size_t offset = static_cast<std::size_t>(identifier - encoded.data());
+  encoded[offset] = 'E';
+  encoded[offset + 1U] = 'C';
+  encoded[offset + 2U] = 'M';
+  encoded[offset + 3U] = 'C';
+  EcmCycleInput decoded;
+  EXPECT_FALSE(DecodeEcmCycleInput(encoded, &decoded));
 }
 
 TEST(EcmReplaySessionTest, MultiCycleTraceReplaysDeterministically) {

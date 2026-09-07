@@ -52,7 +52,6 @@ namespace config {
 struct ONEQ_API EcmSessionConfig {
   bool power_on{true};
   std::uint32_t random_seed{20260722U};
-  std::uint64_t transmitter_equipment_id{1U};
   std::uint32_t channel_count{4U};
   double minimum_frequency_hz{0.23e9};
   double maximum_frequency_hz{40.0e9};
@@ -139,7 +138,6 @@ struct ONEQ_API EcmCycleInput {
   double cycle_start_time_s{0.0};
   double dt_sec{1.0};
   EcmInputMode input_mode{EcmInputMode::kSensorDriven};
-  std::uint64_t platform_entity_id{0U};
   oneq::coordinate::EcefPositionM platform_position_ecef_m{};
   oneq::coordinate::EcefVelocityMps platform_velocity_ecef_mps{};
   oneq::electromagnetics::RfSceneAntennaPattern transmit_antenna{};

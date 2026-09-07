@@ -30,6 +30,13 @@ class ONEQ_API EcmSession {
   /** @brief 使用会话配置创建 ECM 会话。 */
   static EcmSession Create(const config::EcmSessionConfig& config = {});
 
+  /**
+   * @brief 设置传感器/对抗设备实体 ID（用于 RF 发射身份与场景标识对齐）。
+   * @param[in] sensor_entity_id 传感器/对抗设备实体 ID；传 0 恢复缺省常量（101U）。
+   * @note 构造后注入设备号，任意时刻可调，下一周期起生效。
+   */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept;
+
   /** @brief 原子执行一个 ECM 周期并返回实际发射和结构化决策。 */
   EcmCycleResult StepWithResult(const EcmCycleInput& input);
 

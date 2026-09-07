@@ -34,8 +34,8 @@ class EcmWaveformFactory {
    */
   static bool TryBuildEmission(const EcmCycleInput& input, const config::EcmSessionConfig& config,
                                const SchedulingThreat& threat, double allocated_power_w,
-                               std::uint32_t channel_index, std::uint64_t emission_id,
-                               std::mt19937* scheduling_rng,
+                               std::uint32_t channel_index, std::uint32_t sensor_entity_id,
+                               std::uint64_t emission_id, std::mt19937* scheduling_rng,
                                oneq::electromagnetics::RfSceneEmission* output);
 
   /**
@@ -48,8 +48,8 @@ class EcmWaveformFactory {
                                         const config::EcmSessionConfig& config,
                                         const SchedulingThreat& threat,
                                         const EcmDeceptionState& deception_state,
-                                        double allocated_power_w, std::uint64_t emission_id,
-                                        std::mt19937* pulse_rng,
+                                        double allocated_power_w, std::uint32_t sensor_entity_id,
+                                        std::uint64_t emission_id, std::mt19937* pulse_rng,
                                         oneq::electromagnetics::RfSceneEmission* output);
 
   /**
@@ -61,8 +61,9 @@ class EcmWaveformFactory {
   static bool TryBuildFalseTargetEmission(const EcmCycleInput& input,
                                           const config::EcmSessionConfig& config,
                                           const SchedulingThreat& threat,
-                                          double allocated_power_w, std::uint64_t emission_id,
-                                          std::mt19937* pulse_rng, std::uint32_t ft_index,
+                                          double allocated_power_w, std::uint32_t sensor_entity_id,
+                                          std::uint64_t emission_id, std::mt19937* pulse_rng,
+                                          std::uint32_t ft_index,
                                           oneq::electromagnetics::RfSceneEmission* output);
 };
 

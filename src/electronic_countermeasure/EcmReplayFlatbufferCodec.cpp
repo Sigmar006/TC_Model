@@ -107,7 +107,7 @@ flatbuffers::Offset<ecm::replay::RfEmission> BuildEmission(
   ecm::replay::Vec3 position = ToVec(emission.position_ecef_m);
   ecm::replay::Vec3 velocity = ToVec(emission.velocity_ecef_mps);
   auto identity = ecm::replay::CreateRfEmissionIdentity(
-      builder, emission.identity.platform_id, emission.identity.equipment_id,
+      builder, emission.identity.sensor_entity_id,
       emission.identity.emission_id);
   const oneq::electromagnetics::RfWaveformSchedule& waveform = emission.waveform;
   auto encoded_waveform = ecm::replay::CreateRfWaveformSchedule(
@@ -130,8 +130,7 @@ oneq::electromagnetics::RfSceneEmission DecodeEmission(const ecm::replay::RfEmis
     return emission;
   }
   if (encoded->identity()) {
-    emission.identity.platform_id = encoded->identity()->platform_id();
-    emission.identity.equipment_id = encoded->identity()->equipment_id();
+    emission.identity.sensor_entity_id = encoded->identity()->sensor_entity_id();
     emission.identity.emission_id = encoded->identity()->emission_id();
   }
   if (encoded->position_ecef_m()) {
@@ -175,7 +174,7 @@ oneq::electromagnetics::RfSceneEmission DecodeEmission(const ecm::replay::RfEmis
 std::string EncodeEcmSessionConfig(const config::EcmSessionConfig& value) {
   flatbuffers::FlatBufferBuilder builder;
   builder.Finish(ecm::replay::CreateEcmSessionConfig(
-      builder, value.power_on, value.random_seed, value.transmitter_equipment_id,
+      builder, value.power_on, value.random_seed,
       value.channel_count,
       value.minimum_frequency_hz, value.maximum_frequency_hz,
       value.maximum_total_transmit_power_w, value.maximum_channel_transmit_power_w,
@@ -205,7 +204,6 @@ bool DecodeEcmSessionConfig(const std::string& bytes, config::EcmSessionConfig* 
   config::EcmSessionConfig decoded;
   decoded.power_on = value->power_on();
   decoded.random_seed = value->random_seed();
-  decoded.transmitter_equipment_id = value->transmitter_equipment_id();
   decoded.channel_count = value->channel_count();
   decoded.minimum_frequency_hz = value->minimum_frequency_hz();
   decoded.maximum_frequency_hz = value->maximum_frequency_hz();
@@ -303,13 +301,15 @@ std::string EncodeEcmCycleInput(const EcmCycleInput& value) {
   }
   ecm::replay::Vec3 position = ToVec(value.platform_position_ecef_m);
   ecm::replay::Vec3 velocity = ToVec(value.platform_velocity_ecef_mps);
-  builder.Finish(ecm::replay::CreateEcmCycleInput(
-      builder, value.cycle_index, value.cycle_start_time_s, value.dt_sec,
-      static_cast<int32_t>(value.input_mode),
-      value.platform_entity_id, &position, &velocity,
-      BuildAntenna(builder, value.transmit_antenna),
-      static_cast<int32_t>(value.transmit_polarization), value.has_sensor_observation_frame,
-      BuildSensorFrame(builder, value.sensor_observation_frame), builder.CreateVector(truths)));
+  builder.Finish(
+      ecm::replay::CreateEcmCycleInput(
+          builder, value.cycle_index, value.cycle_start_time_s, value.dt_sec,
+          static_cast<int32_t>(value.input_mode),
+          &position, &velocity,
+          BuildAntenna(builder, value.transmit_antenna),
+          static_cast<int32_t>(value.transmit_polarization), value.has_sensor_observation_frame,
+          BuildSensorFrame(builder, value.sensor_observation_frame), builder.CreateVector(truths)),
+      ecm::replay::EcmCycleInputIdentifier());
   return oneq::common::replay::CopyFinishedFlatbuffer(builder);
 }
 
@@ -318,7 +318,7 @@ bool DecodeEcmCycleInput(const std::string& bytes, EcmCycleInput* output) {
     return false;
   }
   flatbuffers::Verifier verifier(reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size());
-  if (!verifier.VerifyBuffer<ecm::replay::EcmCycleInput>()) {
+  if (!verifier.VerifyBuffer<ecm::replay::EcmCycleInput>(ecm::replay::EcmCycleInputIdentifier())) {
     return false;
   }
   const ecm::replay::EcmCycleInput* value =
@@ -334,7 +334,6 @@ bool DecodeEcmCycleInput(const std::string& bytes, EcmCycleInput* output) {
     }
     decoded.input_mode = static_cast<EcmInputMode>(raw_input_mode);
   }
-  decoded.platform_entity_id = value->platform_entity_id();
   if (value->platform_position_ecef_m()) {
     decoded.platform_position_ecef_m.x_m = value->platform_position_ecef_m()->x();
     decoded.platform_position_ecef_m.y_m = value->platform_position_ecef_m()->y();
@@ -393,13 +392,15 @@ std::string EncodeEcmCycleResult(const EcmCycleResult& value) {
         decision.channel_index, decision.allocated_power_w,
         builder.CreateString(decision.reason)));
   }
-  builder.Finish(ecm::replay::CreateEcmCycleResult(
-      builder, value.input_cycle_index, static_cast<int32_t>(value.status),
-      static_cast<int32_t>(value.input_mode), value.truth_assisted,
-      value.executed_this_cycle, value.used_glided_observation,
-      value.observation_age_successful_ecm_cycles,
-      value.source_esr_batch_id, value.thermal_energy_j, emission_frame,
-      builder.CreateVector(decisions)));
+  builder.Finish(
+      ecm::replay::CreateEcmCycleResult(
+          builder, value.input_cycle_index, static_cast<int32_t>(value.status),
+          static_cast<int32_t>(value.input_mode), value.truth_assisted,
+          value.executed_this_cycle, value.used_glided_observation,
+          value.observation_age_successful_ecm_cycles,
+          value.source_esr_batch_id, value.thermal_energy_j, emission_frame,
+          builder.CreateVector(decisions)),
+      ecm::replay::EcmCycleInputIdentifier());
   return oneq::common::replay::CopyFinishedFlatbuffer(builder);
 }
 
@@ -408,7 +409,7 @@ bool DecodeEcmCycleResult(const std::string& bytes, EcmCycleResult* output) {
     return false;
   }
   flatbuffers::Verifier verifier(reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size());
-  if (!verifier.VerifyBuffer<ecm::replay::EcmCycleResult>()) {
+  if (!verifier.VerifyBuffer<ecm::replay::EcmCycleResult>(ecm::replay::EcmCycleInputIdentifier())) {
     return false;
   }
   const ecm::replay::EcmCycleResult* value =

@@ -38,7 +38,6 @@ EcmCycleInput MakeSensorInput(std::uint32_t cycle_index, bool has_frame) {
   input.cycle_start_time_s = static_cast<double>(cycle_index - 1U);
   input.dt_sec = 1.0;
   input.input_mode = EcmInputMode::kSensorDriven;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.has_sensor_observation_frame = has_frame;
   if (has_frame) {
@@ -55,7 +54,6 @@ EcmCycleInput MakeTruthInput(std::uint32_t cycle_index) {
   input.cycle_start_time_s = static_cast<double>(cycle_index - 1U);
   input.dt_sec = 1.0;
   input.input_mode = EcmInputMode::kTruthAssisted;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   EcmTruthThreat threat;
   threat.truth_entity_id = 100U;
@@ -107,10 +105,10 @@ TEST(EcmSessionTest, RejectedMixedModeDoesNotAdvanceSuccessfulState) {
   EXPECT_EQ(retry.observation_age_successful_ecm_cycles, 1U);
 }
 
-TEST(EcmSessionTest, PublishedFrameUsesAbsoluteTimeAndEquipmentIdentity) {
+TEST(EcmSessionTest, PublishedFrameUsesAbsoluteTimeAndSensorEntityIdentity) {
   config::EcmSessionConfig config;
-  config.transmitter_equipment_id = 17U;
   EcmSession session = EcmSession::Create(config);
+  session.SetSensorEntityId(17U);
 
   const EcmCycleResult result = session.StepWithResult(MakeSensorInput(2U, true));
   ASSERT_EQ(result.status, EcmCycleStatus::kExecuted);
@@ -118,9 +116,15 @@ TEST(EcmSessionTest, PublishedFrameUsesAbsoluteTimeAndEquipmentIdentity) {
   EXPECT_DOUBLE_EQ(result.emission_frame.window_start_time_s, 1.0);
   EXPECT_DOUBLE_EQ(result.emission_frame.window_duration_s, 1.0);
   ASSERT_EQ(result.emission_frame.emissions.size(), 1U);
-  EXPECT_EQ(result.emission_frame.emissions.front().identity.platform_id, 900U);
-  EXPECT_EQ(result.emission_frame.emissions.front().identity.equipment_id, 17U);
+  EXPECT_EQ(result.emission_frame.emissions.front().identity.sensor_entity_id, 17U);
   EXPECT_DOUBLE_EQ(result.emission_frame.emissions.front().waveform.activity_start_time_s, 1.0);
+
+  // 传 0 恢复缺省 101U
+  session.SetSensorEntityId(0U);
+  const EcmCycleResult reset_result = session.StepWithResult(MakeSensorInput(3U, true));
+  ASSERT_EQ(reset_result.status, EcmCycleStatus::kExecuted);
+  ASSERT_EQ(reset_result.emission_frame.emissions.size(), 1U);
+  EXPECT_EQ(reset_result.emission_frame.emissions.front().identity.sensor_entity_id, 101U);
 }
 
 TEST(EcmSessionTest, PoweredOffAdvancesChronologyWithoutConsumingEmissionId) {
@@ -172,11 +176,11 @@ TEST(EcmSessionTest, ChannelAndPowerBudgetsAreConservedForAllTechniques) {
 
 TEST(EcmSessionTest, TruthAssistedOwnershipIsExplicitAndSeparate) {
   EcmSession session = EcmSession::Create();
+  session.SetSensorEntityId(900U);
   EcmCycleInput input;
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.input_mode = EcmInputMode::kTruthAssisted;
-  input.platform_entity_id = 900U;
   EcmTruthThreat truth;
   truth.truth_entity_id = 77U;
   truth.center_frequency_hz = 9.0e9;
@@ -189,7 +193,7 @@ TEST(EcmSessionTest, TruthAssistedOwnershipIsExplicitAndSeparate) {
   EXPECT_TRUE(result.truth_assisted);
   ASSERT_EQ(result.decisions.size(), 1U);
   EXPECT_EQ(result.decisions.front().truth_entity_id, 77U);
-  EXPECT_EQ(result.emission_frame.emissions.front().identity.platform_id, 900U);
+  EXPECT_EQ(result.emission_frame.emissions.front().identity.sensor_entity_id, 900U);
 }
 
 TEST(EcmSessionTest, SweepSnapshotContinuationIsDeterministic) {
@@ -351,8 +355,7 @@ TEST(EcmSessionTest, TruthAssistedSnapshotValidatesDeceptionStates) {
     input.cycle_start_time_s = static_cast<double>(cycle - 1U);
     input.dt_sec = 1.0;
     input.input_mode = EcmInputMode::kTruthAssisted;
-    input.platform_entity_id = 900U;
-    input.platform_position_ecef_m.x_m = 6378137.0;
+      input.platform_position_ecef_m.x_m = 6378137.0;
     EcmTruthThreat threat;
     threat.truth_entity_id = 100U;
     threat.center_frequency_hz = 10.0e9;
@@ -463,7 +466,6 @@ TEST(EcmSessionTest, SnapshotRejectsEngagedExceedingMaxActive) {
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
   input.input_mode = EcmInputMode::kTruthAssisted;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   EcmTruthThreat threat;
   threat.truth_entity_id = 100U;
@@ -530,7 +532,6 @@ TEST(EcmSessionTest, SnapshotRejectsDelayBeyondMaximum) {
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
   input.input_mode = EcmInputMode::kTruthAssisted;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   EcmTruthThreat threat;
   threat.truth_entity_id = 100U;
@@ -558,7 +559,6 @@ TEST(EcmSessionTest, SnapshotRejectsDuplicateThreatIdAmongEngaged) {
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
   input.input_mode = EcmInputMode::kTruthAssisted;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   EcmTruthThreat threat;
   threat.truth_entity_id = 100U;
@@ -602,7 +602,6 @@ TEST(EcmSessionTest, WaveformFailureLeavesSessionStateUnchanged) {
   input.cycle_start_time_s = 1.0;
   input.dt_sec = 2.0;
   input.input_mode = EcmInputMode::kTruthAssisted;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   EcmTruthThreat threat;
   threat.truth_entity_id = 100U;

@@ -42,6 +42,7 @@ struct EcmSession::Impl {
   // 子组件（各自拥有独立的状态域）
   DeceptionEngagementManager deception_mgr;
   EcmResourceLedger resource_ledger;
+  std::uint32_t sensor_entity_id{101U};
 };
 
 EcmSession::EcmSession() : impl_(new Impl(config::EcmSessionConfig())) {}
@@ -49,6 +50,10 @@ EcmSession::~EcmSession() = default;
 EcmSession::EcmSession(EcmSession&&) noexcept = default;
 EcmSession& EcmSession::operator=(EcmSession&&) noexcept = default;
 EcmSession::EcmSession(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+
+void EcmSession::SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept {
+  impl_->sensor_entity_id = (sensor_entity_id != 0U) ? sensor_entity_id : 101U;
+}
 
 EcmSession EcmSession::Create(const config::EcmSessionConfig& config) {
   return EcmSession(std::unique_ptr<Impl>(new Impl(config)));
@@ -228,8 +233,8 @@ EcmCycleResult EcmSession::StepWithResult(const EcmCycleInput& input) {
           oneq::electromagnetics::RfSceneEmission emission;
           if (!EcmWaveformFactory::TryBuildFalseTargetEmission(
                   input, impl_->active_config, threats[index], ft_power_w,
-                  candidate_ledger.ReserveEmissionId(), &candidate_deception.deception_rng(),
-                  ft_idx, &emission)) {
+                  impl_->sensor_entity_id, candidate_ledger.ReserveEmissionId(),
+                  &candidate_deception.deception_rng(), ft_idx, &emission)) {
             // 波形构造失败 → 丢弃候选，返回错误（会话状态不变）
             return RejectInvalidConfig();
           }
@@ -241,8 +246,8 @@ EcmCycleResult EcmSession::StepWithResult(const EcmCycleInput& input) {
         oneq::electromagnetics::RfSceneEmission emission;
         if (!EcmWaveformFactory::TryBuildDeceptionEmission(
                 input, impl_->active_config, threats[index], *state, deception_power_w,
-                candidate_ledger.ReserveEmissionId(), &candidate_deception.deception_rng(),
-                &emission)) {
+                impl_->sensor_entity_id, candidate_ledger.ReserveEmissionId(),
+                &candidate_deception.deception_rng(), &emission)) {
           result.status = EcmCycleStatus::kRejectedInvalidConfig;
           result.decisions.clear();
           result.emission_frame.emissions.clear();
@@ -256,8 +261,8 @@ EcmCycleResult EcmSession::StepWithResult(const EcmCycleInput& input) {
       oneq::electromagnetics::RfSceneEmission emission;
       if (!EcmWaveformFactory::TryBuildEmission(
               input, impl_->active_config, threats[index], allocated_power_w,
-              static_cast<std::uint32_t>(index), candidate_ledger.ReserveEmissionId(),
-              &candidate_ledger.scheduling_rng(), &emission)) {
+              static_cast<std::uint32_t>(index), impl_->sensor_entity_id,
+              candidate_ledger.ReserveEmissionId(), &candidate_ledger.scheduling_rng(), &emission)) {
         result.status = EcmCycleStatus::kRejectedInvalidConfig;
         result.decisions.clear();
         result.emission_frame.emissions.clear();

@@ -227,7 +227,6 @@
     "rir": {
       "hardware": {
         "transmitter": {
-          "equipment_id": 1,
           "peak_power_w": 582000.0,
           "frequency_hz": 3000000000.0,
           "bandwidth_hz": 4500000.0,
@@ -252,7 +251,6 @@
           }
         },
         "receiver": {
-          "equipment_id": 2,
           "noise_figure_db": 4.0,
           "receive_loss_db": 2.0,
           "cross_polarization_isolation_db": 30.0,
@@ -276,7 +274,6 @@
           "bistatic_psi_offset_deg": 5.0
         }
       },
-      "platform_id": 2,
       "orientation": {
         "az_min_deg": -110.0,
         "az_max_deg": 110.0,

@@ -33,8 +33,7 @@ struct AppSceneState;  // core/scene_types.h（同上）
  */
 class ArSensorComponent : public Component {
  public:
-  ArSensorComponent(airborne_radar::session::ArSession session, std::uint64_t platform_entity_id,
-                    std::uint64_t transmitter_equipment_id,
+  ArSensorComponent(airborne_radar::session::ArSession session,
                     std::uint32_t device_id = fusion::kArSourceId,
                     DetectionDeliveryMode detection_delivery = DetectionDeliveryMode::kSharedBlackboard);
   ~ArSensorComponent() override = default;
@@ -88,8 +87,6 @@ class ArSensorComponent : public Component {
   airborne_radar::session::ArSession session_;
   Entity* host_{nullptr};
 
-  std::uint64_t platform_entity_id_{1U};         /**< RF platform_id（rf_world 派生干扰时排除本机发射链） */
-  std::uint64_t transmitter_equipment_id_{1U};   /**< 本机发射 equipment_id（与 hardware.transmitter 一致） */
 
   airborne_radar::session::ArTrackOutputDebugView last_debug_view_{};  /**< 本周期调试视图快照（视图行数据源） */
   std::vector<airborne_radar::session::ArTrackAttributionRecord> last_track_attributions_{}; /**< 最近成功周期航迹归属表（指令路由器键翻译） */

@@ -222,6 +222,7 @@ struct SceneData {
     std::uint32_t eos{fusion::kEosSourceId};
     std::uint32_t sbirs{fusion::kSbirsSourceId};
     std::uint32_t rir{fusion::kRirSourceId};
+    std::uint32_t ecm{101U};
   };
   SceneDeviceIds device_ids{};
 

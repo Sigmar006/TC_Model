@@ -151,10 +151,9 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
 
   if (scene_data.ecm_enabled) {
     // 同平台 ECM 发射链与 AR 接收链 co-site 隔离（演示层与跨域集成测试同量级）；
-    // 发射机设备号取自场景 session_config.ecm（单源：JSON）。
+    // 发射机设备号取自 scene_data.device_ids.ecm。
     configs.ar.hardware.receiver.co_site_paths.push_back(
-        {configs.ecm.transmitter_equipment_id, configs.ar.hardware.receiver.equipment_id,
-         100.0});
+        {scene_data.device_ids.ecm, 100.0});
   }
 
   // RIR 地基识别雷达站点（可选，场景 rir.enabled）：独立实体（固定站点，
@@ -175,7 +174,7 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
     app::LogAcceptanceMs(0, 0.0, "单个模型加载时间性能测试", "RIR",
                           rir_session.LastRecognitionDatabaseLoadMs());
     rir_site->Attach(std::make_unique<ca::RirSensorComponent>(
-        std::move(rir_session), scene_data.rir_site_origin, configs.rir.platform_id,
+        std::move(rir_session), scene_data.rir_site_origin,
         configs.rir.mission.recognition_dwell_sec, scene_data.device_ids.rir));
   }
 
@@ -199,12 +198,13 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
   }
   if (scene_data.ecm_enabled && scene_data.esr_enabled) {
     platform.Attach(std::make_unique<ca::EcmSensorComponent>(
-        electronic_countermeasure::session::EcmSession::Create(configs.ecm)));
+        electronic_countermeasure::session::EcmSession::Create(configs.ecm),
+        scene_data.device_ids.ecm));
   }
   if (scene_data.ar_enabled) {
     platform.Attach(std::make_unique<ca::ArSensorComponent>(
-        airborne_radar::session::ArSession::Create(configs.ar), ca::kPlatformEntityId,
-        configs.ar.hardware.transmitter.equipment_id, scene_data.device_ids.ar));
+        airborne_radar::session::ArSession::Create(configs.ar),
+        scene_data.device_ids.ar));
   }
   if (scene_data.eos_enabled) {
     platform.Attach(std::make_unique<ca::EosSensorComponent>(

@@ -470,12 +470,12 @@ TEST(SceneDataTest, UnknownTopLevelKeyRejected) {
 
 TEST(SceneDataTest, SessionConfigEcmParsed) {
   // ecm.enabled 场景携带 session_config.ecm（原 MakeDefaultEcmConfig 代码默认
-  // 数据化）：发射机设备号/通道数/功率上限/默认技术解析入库配置。
+  // 数据化）：通道数/功率上限/默认技术解析入库配置。
   ScopedSceneFile file(R"json({"platform": {"origin_lat_deg": 30.0, "origin_lon_deg": 120.0},
     "targets": [], "log_dir": "test", "sensors": {"ar": false, "esr": false, "eos": false, "sbirs": false, "sar": false},
     "ecm": {"enabled": true},
     "session_config": {"fusion": {}, "threat": {},
-      "ecm": {"transmitter_equipment_id": 101, "channel_count": 1,
+      "ecm": {"channel_count": 1,
               "maximum_total_transmit_power_w": 1000.0,
               "maximum_channel_transmit_power_w": 1000.0,
               "default_technique": "kSpot"}}})json");
@@ -484,7 +484,6 @@ TEST(SceneDataTest, SessionConfigEcmParsed) {
   std::string error;
   EXPECT_TRUE(app::LoadSceneData(file.path().string().c_str(), &scene, &configs, &error))
       << error;
-  EXPECT_EQ(configs.ecm.transmitter_equipment_id, 101U);
   EXPECT_EQ(configs.ecm.channel_count, 1U);
   EXPECT_DOUBLE_EQ(configs.ecm.maximum_total_transmit_power_w, 1000.0);
   EXPECT_EQ(configs.ecm.default_technique,
@@ -1201,7 +1200,8 @@ TEST(SceneDataTest, CustomDeviceIdsParsedSuccessfully) {
       "esr": 12,
       "eos": 13,
       "sbirs": 14,
-      "rir": 15
+      "rir": 15,
+      "ecm": 16
     }
   })json");
   app::SceneData scene;
@@ -1212,6 +1212,7 @@ TEST(SceneDataTest, CustomDeviceIdsParsedSuccessfully) {
   EXPECT_EQ(scene.device_ids.eos, 13U);
   EXPECT_EQ(scene.device_ids.sbirs, 14U);
   EXPECT_EQ(scene.device_ids.rir, 15U);
+  EXPECT_EQ(scene.device_ids.ecm, 16U);
 }
 
 TEST(SceneDataTest, DeviceIdsDefaultWhenOmitted) {
@@ -1229,6 +1230,7 @@ TEST(SceneDataTest, DeviceIdsDefaultWhenOmitted) {
   EXPECT_EQ(scene.device_ids.eos, fusion::kEosSourceId);
   EXPECT_EQ(scene.device_ids.sbirs, fusion::kSbirsSourceId);
   EXPECT_EQ(scene.device_ids.rir, fusion::kRirSourceId);
+  EXPECT_EQ(scene.device_ids.ecm, 101U);
 }
 
 TEST(SceneDataTest, DuplicateDeviceIdsRejected) {

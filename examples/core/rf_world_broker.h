@@ -53,16 +53,16 @@ inline void PublishEquipmentEmissions(AppSceneState* scene,
   scene->pending_equipment_emissions.window_duration_s = frame.window_duration_s;
 }
 
-/** @brief 构建外部 rf_scene（排除本装备 platform_id；窗口由调用方对齐会话校验）。 */
+/** @brief 构建外部 rf_scene（排除本装备 sensor_entity_id；窗口由调用方对齐会话校验）。 */
 inline oneq::electromagnetics::RfSceneFrame BuildExternalRfScene(
-    const oneq::electromagnetics::RfSceneFrame& rf_world, std::uint64_t exclude_platform_id,
+    const oneq::electromagnetics::RfSceneFrame& rf_world, std::uint32_t exclude_sensor_entity_id,
     double window_start_time_s, double window_duration_sec, std::uint64_t world_cycle_index) {
   oneq::electromagnetics::RfSceneFrame external;
   external.world_cycle_index = world_cycle_index;
   external.window_start_time_s = window_start_time_s;
   external.window_duration_s = window_duration_sec;
   for (const auto& emission : rf_world.emissions) {
-    if (emission.identity.platform_id != exclude_platform_id) {
+    if (emission.identity.sensor_entity_id != exclude_sensor_entity_id) {
       external.emissions.push_back(emission);
     }
   }
@@ -71,17 +71,14 @@ inline oneq::electromagnetics::RfSceneFrame BuildExternalRfScene(
 
 /** @brief 从 RF-WORLD 派生 AR 干扰帧（排除本机发射链，保留 ECM/脚本/它平台发射）。 */
 inline oneq::electromagnetics::RfEmissionFrame BuildArInterferenceFromRfWorld(
-    const oneq::electromagnetics::RfSceneFrame& rf_world, std::uint64_t own_platform_id,
-    std::uint64_t own_transmitter_equipment_id, double window_start_time_s,
-    double window_duration_sec, std::uint64_t world_cycle_index) {
+    const oneq::electromagnetics::RfSceneFrame& rf_world, std::uint32_t own_sensor_entity_id,
+    double window_start_time_s, double window_duration_sec, std::uint64_t world_cycle_index) {
   oneq::electromagnetics::RfEmissionFrame interference;
   interference.world_cycle_index = world_cycle_index;
   interference.window_start_time_s = window_start_time_s;
   interference.window_duration_s = window_duration_sec;
   for (const auto& emission : rf_world.emissions) {
-    const bool own_transmitter = emission.identity.platform_id == own_platform_id &&
-                                 emission.identity.equipment_id == own_transmitter_equipment_id;
-    if (!own_transmitter) {
+    if (emission.identity.sensor_entity_id != own_sensor_entity_id) {
       interference.emissions.push_back(emission);
     }
   }

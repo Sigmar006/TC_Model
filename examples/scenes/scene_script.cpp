@@ -83,8 +83,7 @@ std::vector<oneq::electromagnetics::RfSceneEmission> MakeEmitterTruths(
       continue;  // 该目标不配辐射源（场景级开关）
     }
     oneq::electromagnetics::RfSceneEmission emitter;
-    emitter.identity.platform_id = state.id;
-    emitter.identity.equipment_id = 1U;
+    emitter.identity.sensor_entity_id = state.id;
     emitter.identity.emission_id = 1U;
     emitter.position_ecef_m = state.position;
     emitter.velocity_ecef_mps = state.velocity;

@@ -58,8 +58,11 @@ const char* EcmTechniqueName(ecm::EcmTechnique technique) {
 
 }  // namespace
 
-EcmSensorComponent::EcmSensorComponent(ecm::session::EcmSession session)
-    : session_(std::move(session)) {}
+EcmSensorComponent::EcmSensorComponent(ecm::session::EcmSession session,
+                                       std::uint32_t device_id)
+    : session_(std::move(session)), device_id_(device_id) {
+  session_.SetSensorEntityId(device_id_);
+}
 
 void EcmSensorComponent::OnEsrScanUpdated(const EsrScanUpdatedEvent& event) {
   esr_scan_ = event;
@@ -93,7 +96,6 @@ void EcmSensorComponent::Step(World& world, double dt_sec) {
   input.cycle_start_time_s = scene.t_sec;
   input.dt_sec = dt_sec;
   input.input_mode = ecm::EcmInputMode::kSensorDriven;
-  input.platform_entity_id = kPlatformEntityId;
   ResolvePlatformEcef(flight->position(), flight->heading_deg(), flight->speed_mps(),
                       &input.platform_position_ecef_m, &input.platform_velocity_ecef_mps);
 

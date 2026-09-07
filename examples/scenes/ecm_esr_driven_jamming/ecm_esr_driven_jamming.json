@@ -459,7 +459,6 @@
       "sensor_enabled": true
     },
     "ecm": {
-      "transmitter_equipment_id": 101,
       "channel_count": 1,
       "maximum_total_transmit_power_w": 1000.0,
       "maximum_channel_transmit_power_w": 1000.0,

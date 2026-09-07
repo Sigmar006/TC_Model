@@ -158,12 +158,11 @@ std::string FormatCycleSnrSuffix(const rir::RirDebugTargetState& state) {
 
 RirSensorComponent::RirSensorComponent(
     rir::RirSession session, const oneq::coordinate::LlaPositionDegM& site_origin,
-    std::uint64_t platform_id, float recognition_dwell_sec,
+    float recognition_dwell_sec,
     std::uint32_t device_id,
     DetectionDeliveryMode detection_delivery)
     : session_(std::move(session)),
       site_origin_(site_origin),
-      platform_id_(platform_id),
       recognition_dwell_sec_(recognition_dwell_sec),
       device_id_(device_id),
       detection_delivery_(detection_delivery) {
@@ -195,8 +194,8 @@ rir::RirCycleInput RirSensorComponent::BuildCycleInput(const AppSceneState& scen
   // scenes/scene_script.cpp 的 MakeRirSceneTargets（app/runner.cpp 每周期注入）。
   input.scene_targets = scene.rir_targets;
   // RF 世界是全装备共享的（含本传感器自己的发射）：会话要的是"外部电磁环境"，
-  // 故先剔除自身 platform_id 的发射再喂入（自己不观测自己的发射）。
-  input.rf_scene = BuildExternalRfScene(scene.rf_world, platform_id_, scene.t_sec,
+  // 故先剔除自身 device_id 的发射再喂入（自己不观测自己的发射）。
+  input.rf_scene = BuildExternalRfScene(scene.rf_world, device_id_, scene.t_sec,
                                         static_cast<double>(recognition_dwell_sec_),
                                         static_cast<std::uint64_t>(scene.cycle));
   return input;

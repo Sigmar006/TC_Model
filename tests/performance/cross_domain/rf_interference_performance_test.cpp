@@ -127,8 +127,7 @@ rf::RfEmissionFrame MakeRfEmissions(std::uint32_t cycle_index,
   emissions.reserve(emission_count);
   for (std::size_t i = 0U; i < emission_count; ++i) {
     rf::RfSceneEmission emission;
-    emission.identity.platform_id = identity_base + i;
-    emission.identity.equipment_id = 1U;
+    emission.identity.sensor_entity_id = static_cast<std::uint32_t>(identity_base + i);
     emission.identity.emission_id = identity_base + 100000U + i;
     emission.position_ecef_m.x_m = 6378137.0;
     emission.position_ecef_m.y_m = 20000.0 + 100.0 * static_cast<double>(i);
@@ -155,8 +154,7 @@ rf::RfEmissionFrame MakeDetectableEsrEmissions(std::uint32_t cycle_index,
   frame.emissions.reserve(kEsrEmitterCount);
   for (std::size_t i = 0U; i < kEsrEmitterCount; ++i) {
     rf::RfSceneEmission emission;
-    emission.identity.platform_id = 50000U + i;
-    emission.identity.equipment_id = 1U;
+    emission.identity.sensor_entity_id = static_cast<std::uint32_t>(50000U + i);
     emission.identity.emission_id = 150000U + i;
     emission.position_ecef_m.x_m = 6378137.0;
     emission.position_ecef_m.y_m = 20000.0 + 10.0 * static_cast<double>(i);
@@ -183,7 +181,6 @@ double ComputeP95Milliseconds(std::vector<double>* elapsed_ms) {
 ar_session::ArCycleInput MakeArInput() {
   ar_session::ArCycleInput input;
   input.dt_sec = 1.0;
-  input.platform.platform_entity_id = 1U;
   input.platform.platform_position_ecef_m.x_m = 6378137.0;
   input.targets.reserve(kArTargetCount);
   oneq::coordinate::LlaPositionDegM anchor_lla;
@@ -218,7 +215,6 @@ ar_session::ArCycleInput MakeArInput() {
 esr_session::EsrCycleInput MakeEsrInput() {
   esr_session::EsrCycleInput input;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   return input;
 }

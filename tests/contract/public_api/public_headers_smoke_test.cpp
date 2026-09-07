@@ -177,7 +177,6 @@ TEST(PublicHeadersSmokeTest, StablePublicSurfaceSupportsMinimalUsage) {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
-  input.platform.platform_entity_id = 1U;
   input.platform.platform_position_ecef_m = origin_ecef;
   const std::vector<session::ArIssue> issues = session::ValidateArCycleInput(input);
 
@@ -331,7 +330,6 @@ TEST(PublicHeadersSmokeTest, EsrPublicSurfaceSupportsMinimalUsage) {
   session::EsrCycleInput input;
   input.cycle_index = 4U;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 100U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = input.cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;

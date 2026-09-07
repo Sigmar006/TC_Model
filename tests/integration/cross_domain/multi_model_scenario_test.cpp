@@ -144,7 +144,6 @@ struct ArRfTestCycleResult {
 
 ArRfTestCycleInput BuildArInput(const WorldState& ws, float dt, std::uint32_t cycle_index) {
   ar_session::ArPlatformInput platform = ToArPlatform(ws.platform_pos, ws.platform_vel);
-  platform.platform_entity_id = 10U;
   oneq::coordinate::LlaPositionDegM anchor_lla;
   oneq::coordinate::TryEcefToLla(platform.platform_position_ecef_m, &anchor_lla);
   std::vector<ar_session::ArTargetInput> targets;
@@ -169,8 +168,7 @@ oneq::electromagnetics::RfEmissionFrame MakeNoiseInterferenceFrame(
   frame.window_start_time_s = cycle.cycle_start_time_s;
   frame.window_duration_s = cycle.dt_sec;
   oneq::electromagnetics::RfSceneEmission jammer;
-  jammer.identity.platform_id = 20U;
-  jammer.identity.equipment_id = 21U;
+  jammer.identity.sensor_entity_id = 20U;
   jammer.identity.emission_id = 100000U + cycle.cycle_index;
   jammer.position_ecef_m = cycle.platform.platform_position_ecef_m;
   jammer.position_ecef_m.x_m += 1000.0;
@@ -248,7 +246,6 @@ esr_session::EsrCycleInput BuildEsrInput(const WorldState& ws, float dt, std::ui
   input.cycle_index = cycle_index;
   input.cycle_start_time_s = static_cast<double>(cycle_index - 1U) * dt;
   input.dt_sec = dt;
-  input.platform_entity_id = 7001U;
   input.platform_position_ecef_m = ws.platform_pos;
   input.platform_velocity_ecef_mps = ws.platform_vel;
   input.rf_emissions.world_cycle_index = cycle_index;
@@ -260,8 +257,7 @@ esr_session::EsrCycleInput BuildEsrInput(const WorldState& ws, float dt, std::ui
       continue;
     }
     oneq::electromagnetics::RfSceneEmission emission;
-    emission.identity.platform_id = target.id;
-    emission.identity.equipment_id = 1U;
+    emission.identity.sensor_entity_id = target.id;
     emission.identity.emission_id = target.id;
     emission.position_ecef_m = target.pos;
     const double dx = ws.platform_pos.x_m - target.pos.x_m;
@@ -1225,7 +1221,6 @@ TEST(MultiModelScenarioTest, SensorDrivenEcmUsesPreviousSuccessfulEsrFrame) {
   std::uint64_t source_esr_batch = 0U;
   for (std::uint32_t cycle = 1U; cycle <= 8U && hypotheses.empty(); ++cycle) {
     esr_session::EsrCycleInput input = BuildEsrInput(world, 1.0f, cycle);
-    input.platform_entity_id = 7001U;
     const esr_session::EsrCycleResult result = esr.StepWithResult(input);
     ASSERT_FALSE(esr_session::HasValidationError(result.issues));
     if (!result.output_frame.emitter_output.hypotheses.empty()) {
@@ -1243,18 +1238,17 @@ TEST(MultiModelScenarioTest, SensorDrivenEcmUsesPreviousSuccessfulEsrFrame) {
   EXPECT_EQ(sensor_frame.source_esr_batch_id, source_esr_batch);
 
   ecm_config::EcmSessionConfig ecm_config;
-  ecm_config.transmitter_equipment_id = 101U;
   ecm_config.channel_count = 1U;
   ecm_config.maximum_total_transmit_power_w = 1000.0;
   ecm_config.maximum_channel_transmit_power_w = 1000.0;
   ecm_config.default_technique = electronic_countermeasure::EcmTechnique::kSpot;
   ecm_session::EcmSession ecm = ecm_session::EcmSession::Create(ecm_config);
+  ecm.SetSensorEntityId(101U);
   ecm_session::EcmCycleInput ecm_input;
   ecm_input.cycle_index = source_esr_cycle + 1U;
   ecm_input.cycle_start_time_s = static_cast<double>(source_esr_cycle);
   ecm_input.dt_sec = 1.0;
   ecm_input.input_mode = electronic_countermeasure::EcmInputMode::kSensorDriven;
-  ecm_input.platform_entity_id = 7001U;
   ecm_input.platform_position_ecef_m = world.platform_pos;
   ecm_input.platform_velocity_ecef_mps = world.platform_vel;
   ecm_input.has_sensor_observation_frame = true;
@@ -1265,13 +1259,11 @@ TEST(MultiModelScenarioTest, SensorDrivenEcmUsesPreviousSuccessfulEsrFrame) {
   EXPECT_EQ(ecm_result.source_esr_batch_id, source_esr_batch);
 
   ar_config::ArSessionConfig ar_config = MakeArConfigAirToAir();
-  ar_config.hardware.receiver.co_site_paths.push_back(
-      {ecm_config.transmitter_equipment_id, ar_config.hardware.receiver.equipment_id, 100.0});
+  ar_config.hardware.receiver.co_site_paths.push_back({101U, 100.0});
   ar_session::ArRecordingSession ar(ar_config, ar_session::ArRecordingSessionOptions{});
 
   ArRfTestCycleInput ar_input =
       BuildArInput(world, 1.0f, source_esr_cycle + 1U);
-  ar_input.cycle.platform.platform_entity_id = 7001U;
   ar_input.cycle.interference = ecm_result.emission_frame;
   ASSERT_FALSE(ar_input.cycle.interference.emissions.empty());
   const ArRfTestCycleResult ar_result = RunArCycle(&ar, ar_input);
@@ -1279,7 +1271,6 @@ TEST(MultiModelScenarioTest, SensorDrivenEcmUsesPreviousSuccessfulEsrFrame) {
 
   esr_session::EsrCycleInput esr_input =
       BuildEsrInput(world, 1.0f, source_esr_cycle + 1U);
-  esr_input.platform_entity_id = 7001U;
   esr_input.rf_emissions = ecm_result.emission_frame;
   const esr_session::EsrCycleResult esr_result = esr.StepWithResult(esr_input);
   EXPECT_FALSE(esr_session::HasValidationError(esr_result.issues));
@@ -1321,7 +1312,6 @@ TEST(MultiModelScenarioTest, EcmDeceptionFalseTargetReachesArAndTriggersEccm) {
   std::uint64_t source_esr_batch = 0U;
   for (std::uint32_t cycle = 1U; cycle <= 8U && hypotheses.empty(); ++cycle) {
     esr_session::EsrCycleInput input = BuildEsrInput(world, 1.0f, cycle);
-    input.platform_entity_id = 7001U;
     const esr_session::EsrCycleResult result = esr.StepWithResult(input);
     ASSERT_FALSE(esr_session::HasValidationError(result.issues));
     if (!result.output_frame.emitter_output.hypotheses.empty()) {
@@ -1339,7 +1329,6 @@ TEST(MultiModelScenarioTest, EcmDeceptionFalseTargetReachesArAndTriggersEccm) {
 
   // ECM: 欺骗 kFalseTarget（每周期向威胁发射 N 个假目标）。
   ecm_config::EcmSessionConfig ecm_config;
-  ecm_config.transmitter_equipment_id = 101U;
   ecm_config.channel_count = 1U;
   ecm_config.maximum_total_transmit_power_w = 1.0e6;
   ecm_config.maximum_channel_transmit_power_w = 1.0e6;
@@ -1350,12 +1339,12 @@ TEST(MultiModelScenarioTest, EcmDeceptionFalseTargetReachesArAndTriggersEccm) {
   ecm_config.deception_false_target_doppler_hz = 5000.0;
   ecm_config.deception_false_target_delay_s = 1.0e-6;
   ecm_session::EcmSession ecm = ecm_session::EcmSession::Create(ecm_config);
+  ecm.SetSensorEntityId(101U);
   ecm_session::EcmCycleInput ecm_input;
   ecm_input.cycle_index = source_esr_cycle + 1U;
   ecm_input.cycle_start_time_s = static_cast<double>(source_esr_cycle);
   ecm_input.dt_sec = 1.0;
   ecm_input.input_mode = electronic_countermeasure::EcmInputMode::kSensorDriven;
-  ecm_input.platform_entity_id = 7001U;
   ecm_input.platform_position_ecef_m = world.platform_pos;
   ecm_input.platform_velocity_ecef_mps = world.platform_vel;
   ecm_input.has_sensor_observation_frame = true;
@@ -1366,15 +1355,13 @@ TEST(MultiModelScenarioTest, EcmDeceptionFalseTargetReachesArAndTriggersEccm) {
 
   // AR 接收 ECM 欺骗发射帧。
   ar_config::ArSessionConfig ar_config = MakeArConfigAirToAir();
-  ar_config.hardware.receiver.co_site_paths.push_back(
-      {ecm_config.transmitter_equipment_id, ar_config.hardware.receiver.equipment_id, 100.0});
+  ar_config.hardware.receiver.preselector_bandwidth_hz = 50.0e6f;
+  ar_config.hardware.receiver.co_site_paths.push_back({101U, 100.0});
   ar_session::ArRecordingSession ar(ar_config, ar_session::ArRecordingSessionOptions{});
-
 
   // 第 1 周期：验证 AR 产生 kLikelyFalseTarget 干扰观测。
   ArRfTestCycleInput ar_input1 =
       BuildArInput(world, 1.0f, source_esr_cycle + 1U);
-  ar_input1.cycle.platform.platform_entity_id = 7001U;
   ar_input1.cycle.interference = ecm_result.emission_frame;
   const ArRfTestCycleResult ar_result1 = RunArCycle(&ar, ar_input1);
   EXPECT_TRUE(ar_result1.accepted);
@@ -1414,7 +1401,6 @@ TEST(MultiModelScenarioTest, EcmDeceptionFalseTargetReachesArAndTriggersEccm) {
 
   ArRfTestCycleInput ar_input2 =
       BuildArInput(world, 1.0f, source_esr_cycle + 2U);
-  ar_input2.cycle.platform.platform_entity_id = 7001U;
   ar_input2.cycle.interference = ecm_result2.emission_frame;
   const ArRfTestCycleResult ar_result2 = RunArCycle(&ar, ar_input2);
   ASSERT_TRUE(ar_result2.accepted);
@@ -1424,7 +1410,6 @@ TEST(MultiModelScenarioTest, EcmDeceptionFalseTargetReachesArAndTriggersEccm) {
   // 验证 ESR 接收 ECM 欺骗发射帧时不报错（ESR 欺骗分类逻辑由 ESR 单测覆盖）。
   esr_session::EsrCycleInput esr_input2 =
       BuildEsrInput(world, 1.0f, source_esr_cycle + 1U);
-  esr_input2.platform_entity_id = 7001U;
   esr_input2.rf_emissions = ecm_result.emission_frame;
   const esr_session::EsrCycleResult esr_result2 = esr.StepWithResult(esr_input2);
   EXPECT_FALSE(esr_session::HasValidationError(esr_result2.issues));
@@ -1496,7 +1481,6 @@ TEST(MultiModelScenarioTest, FlightDynamicDrivesSensorEcmClosedLoop) {
   std::uint64_t source_esr_batch = 0U;
   for (std::uint32_t cycle = 1U; cycle <= 8U && hypotheses.empty(); ++cycle) {
     esr_session::EsrCycleInput input = BuildEsrInput(world, 1.0f, cycle);
-    input.platform_entity_id = 7002U;
     const esr_session::EsrCycleResult result = esr.StepWithResult(input);
     ASSERT_FALSE(esr_session::HasValidationError(result.issues));
     if (!result.output_frame.emitter_output.hypotheses.empty()) {
@@ -1513,18 +1497,17 @@ TEST(MultiModelScenarioTest, FlightDynamicDrivesSensorEcmClosedLoop) {
   ASSERT_FALSE(sensor_frame.observations.empty());
 
   ecm_config::EcmSessionConfig ecm_config;
-  ecm_config.transmitter_equipment_id = 101U;
   ecm_config.channel_count = 1U;
   ecm_config.maximum_total_transmit_power_w = 1000.0;
   ecm_config.maximum_channel_transmit_power_w = 1000.0;
   ecm_config.default_technique = electronic_countermeasure::EcmTechnique::kSpot;
   ecm_session::EcmSession ecm = ecm_session::EcmSession::Create(ecm_config);
+  ecm.SetSensorEntityId(101U);
   ecm_session::EcmCycleInput ecm_input;
   ecm_input.cycle_index = source_esr_cycle + 1U;
   ecm_input.cycle_start_time_s = static_cast<double>(source_esr_cycle);
   ecm_input.dt_sec = 1.0;
   ecm_input.input_mode = electronic_countermeasure::EcmInputMode::kSensorDriven;
-  ecm_input.platform_entity_id = 7002U;
   ecm_input.platform_position_ecef_m = world.platform_pos;
   ecm_input.platform_velocity_ecef_mps = world.platform_vel;
   ecm_input.has_sensor_observation_frame = true;
@@ -1535,13 +1518,11 @@ TEST(MultiModelScenarioTest, FlightDynamicDrivesSensorEcmClosedLoop) {
   EXPECT_EQ(ecm_result.source_esr_batch_id, source_esr_batch);
 
   ar_config::ArSessionConfig ar_config = MakeArConfigAirToAir();
-  ar_config.hardware.receiver.co_site_paths.push_back(
-      {ecm_config.transmitter_equipment_id, ar_config.hardware.receiver.equipment_id, 100.0});
+  ar_config.hardware.receiver.co_site_paths.push_back({101U, 100.0});
   ar_session::ArSession ar = ar_session::ArSession::Create(ar_config);
 
   ar_session::ArCycleInput ar_input =
       BuildArInput(world, 1.0f, source_esr_cycle + 1U).cycle;
-  ar_input.platform.platform_entity_id = 7002U;
   ar_input.interference = ecm_result.emission_frame;
   const ar_session::ArCycleResult ar_result = ar.StepWithResult(ar_input);
   EXPECT_FALSE(ar_session::HasValidationError(ar_result.issues));
@@ -1550,7 +1531,6 @@ TEST(MultiModelScenarioTest, FlightDynamicDrivesSensorEcmClosedLoop) {
 
   esr_session::EsrCycleInput esr_input =
       BuildEsrInput(world, 1.0f, source_esr_cycle + 1U);
-  esr_input.platform_entity_id = 7002U;
   esr_input.rf_emissions = ecm_result.emission_frame;
   const esr_session::EsrCycleResult esr_result = esr.StepWithResult(esr_input);
   EXPECT_FALSE(esr_session::HasValidationError(esr_result.issues));

@@ -625,10 +625,16 @@ class FusionEngine::Impl {
       track->filter_has_timestamp = detection.has_timestamp;
       track->filter_timestamp_s = detection.has_timestamp ? detection.timestamp_s : 0.0;
       track->first_timestamp_s = track->filter_timestamp_s;
-      return;
+      if (track->has_first_position) {
+        // 位置起始：滤波均值即本量测位置，跳过同帧重复量测更新；
+        // 初速由下一个位置量测两点差分建立（见下）。
+        return;
+      }
+      // 方位起始：首拍量测照常执行量测更新（角度-only 航迹的距离收敛依赖此更新）。
     }
 
-    // 优化 2：若当前量测带位置且初速尚未完成差分初始化，执行两点差分初速初始化
+    // 两点差分初速：位置起始航迹的第二个位置量测以 (p2 − p1)/Δt 直接建立初速，
+    // 替代零速先验起步，消除建轨期的速度新息超调。
     if (detection.has_position && !track->velocity_initialized && track->has_first_position) {
       EcefPositionM z_ecef{};
       if (oneq::coordinate::TryLlaToEcef(detection.position, &z_ecef)) {
@@ -638,6 +644,7 @@ class FusionEngine::Impl {
         } else {
           dt_diff = static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
         }
+        // 物理间隔过近的两点差分会把位置噪声放大 1/Δt 倍，至少间隔 50 ms 才差分。
         if (dt_diff > 0.05) {
           const double inv_dt = 1.0 / dt_diff;
           const double vx = (z_ecef.x_m - track->first_position.x_m) * inv_dt;
@@ -651,7 +658,10 @@ class FusionEngine::Impl {
           track->filter_mean(4) = static_cast<float>(z_ecef.z_m);
           track->filter_mean(5) = static_cast<float>(vz);
 
-          const double pos_var = config_.default_position_noise_std_m * config_.default_position_noise_std_m;
+          const double pos_var =
+              config_.default_position_noise_std_m * config_.default_position_noise_std_m;
+          // 速度方差 = 2·位置方差/Δt²（两点差分标准传递）+ (100 m/s)² 地板，
+          // 地板挡住长间隔差分方差过小、滤波过信差分速度的情形。
           const double vel_var = 2.0 * pos_var * inv_dt * inv_dt + 100.0 * 100.0;
           track->filter_cov = Eigen::Matrix<float, 6, 6>::Zero();
           track->filter_cov(0, 0) = static_cast<float>(pos_var);
@@ -662,10 +672,14 @@ class FusionEngine::Impl {
           track->filter_cov(5, 5) = static_cast<float>(vel_var);
 
           track->filter_cycle = cycle;
-          track->filter_has_timestamp = detection.has_timestamp;
-          track->filter_timestamp_s = detection.has_timestamp
-                                          ? detection.timestamp_s
-                                          : (static_cast<double>(cycle) * config_.track_cycle_period_sec);
+          // 时间基准与常规更新同约定：无时间戳量测不把航迹降级回纯周期模式，
+          // 物理时钟按差分间隔从首拍时刻前推。
+          if (detection.has_timestamp) {
+            track->filter_has_timestamp = true;
+            track->filter_timestamp_s = detection.timestamp_s;
+          } else if (track->filter_has_timestamp) {
+            track->filter_timestamp_s = track->first_timestamp_s + dt_diff;
+          }
           track->velocity_initialized = true;
           return;
         }

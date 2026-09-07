@@ -84,6 +84,19 @@ flowchart TB
 
 ## 架构裁定与否决记录
 
+### 追认：滤波引擎内部亚周期对齐与两点差分初速（2026-09-07 用户裁定）
+
+- **背景**：feat/sbirs-measurement-timestamp-and-phase 分支的 Stage A 冻结契约
+  （修订 1 裁定点 3）曾把融合层实施范围收窄为「DetectionRecord 增补可选时间戳 +
+  适配器透传 + 评估层消费」，滤波引擎内部按量测时刻推进与初速初始化列为后续专项。
+- **裁定**：两项随后仍随本分支实施（亚周期时间戳对齐、两点差分初速），
+  用户于 2026-09-07 审批时追认该范围扩展并指示补记本条。
+- **附带修复记录**：两点差分初速首版曾令初始化分支提前返回，跳过方位起始航迹的
+  首拍量测更新，评估会话 60 周期落点收敛回退（448 km，超 300 km 门限）；修复为
+  位置起始跳过同帧重复更新、方位起始保留首拍更新（同批落库）。
+- **证据**：[evidence: src/fusion/FusionEngine.cpp]::ApplyFilterSample
+- **证据**：[evidence: tests/unit/precision_evaluation/precision_evaluation_session_test.cpp]::VelocityAndImpactSamplesAreProducedAndFinite
+
 ### 否决：FusionConfig.source_weights 容器化改造（2026-09-03 裁定）
 
 - **提议背景**：当传感器设备 ID 从库内连续小常量拓展为外部实体 ID 直用时，`FusionConfig::source_weights` 目前为定长数组 `std::array<double, 64>`。曾提议将其重构为 `std::unordered_map` 等稀疏容器以支持任意大号 ID 差异化配权。

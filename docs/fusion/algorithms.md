@@ -123,6 +123,14 @@ has_sensor_origin + origin（失败退化为无原点记录）→ 记录可参�
 - **起始**：位置记录 → ECEF 位置 + 零速 + 配置先验；方位+原点记录 → 沿 LOS 配置
   距离先验（`track_bearing_init_range_m`）+ 各向同性
   `track_bearing_init_range_std_m`。
+- **两点差分初速（位置起始航迹，2026-09-07）**：首个位置量测只建航迹、不做同帧
+  重复量测更新；第二个位置量测（物理间隔 > 50 ms，过近差分放大位置噪声）以
+  (p₂ − p₁)/Δt 直接建立初速并重置均值与协方差——速度方差 = 2·位置方差/Δt²
+  加 (100 m/s)² 地板（挡长间隔差分方差过小导致滤波过信）。方位起始航迹不差分，
+  且首拍量测照常执行量测更新（角度-only 距离收敛依赖此更新，曾因跳过导致
+  评估会话落点收敛回退，已修复）。
+  [evidence: tests/unit/fusion/track_filtering_test.cpp::TwoPointDifferencingInitializesVelocityAccurately]
+  [evidence: tests/unit/precision_evaluation/precision_evaluation_session_test.cpp::VelocityAndImpactSamplesAreProducedAndFinite]
 - **失跟外推（coasting）**：已起始航迹无本周期量测时按周期外推一次，生命周期置
   kCoasting；`missed_cycles > max_missed_cycles` 删除（既有语义不变）。
 - **确认门**：累计命中数 ≥ `confirm_hits`（默认 3）转 kConfirmed。

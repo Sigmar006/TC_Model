@@ -150,24 +150,16 @@ Last-reviewed: 2026-09-03
 - **当前边界**：维持 3.0103 dB 单一口径；不得在一处改口径而不动另一条枚举链。
 - **再进入条件 (Stage A)**：出现以非极化干扰/杂波为对象的定量验收或标定需求。
 
-### COMMON-OQ-13：RF 记账号域统一（RIR/AR/ECM/RfScene 记账号与注入面）
+### COMMON-OQ-13：RF 记账号域统一（已收敛闭合，2026-09-07）
 
-- **现状**：电磁仿真与 RF 耦合计算域（`RfScene`）中的平台号与设备号与标注域设备 ID（`sensor_entity_id`）存在粒度、位宽与注入面的双轨现象：
-  1. **粒度与位宽**：`RfScene` 的 `platform_id` 和 `equipment_id` 均为 `uint64`；同一平台上的多个传感器/干扰设备共用同一 `platform_id`（如 AR 与 ECM 共用 platform 1）；部分雷达设备细分为两个设备号。
-  2. **注入面差异**：AR 的平台号通过 `ArPlatformInput::platform_entity_id` 随每拍注入；RIR 的宿主平台号为静态配置 `RirSessionConfig::platform_id`（`uint64`，专供 RF 空间计算与自干扰剔除）；SBIRS（天基红外）完全不参与 RF 耦合。
-  3. **演进与解耦**：在 2026-09-03/06 阶段中，全量传感器（AR/ESR/EOS/SBIRS/RIR）的标注域设备 ID 统一收敛为 uint32 并在会话构造后经 `SetSensorEntityId` 注入；RIR 原 `sensor_platform_id` 字段正式正名为 `platform_id`，理顺了 RF 物理平台号（只读静态配置，uint64）与雷达设备标注身份（动态注入，uint32）的正交边界。
-  [evidence: include/1q/electromagnetics/RfScene.h]
-  [evidence: include/1q/airborne_radar/session/ArPlatformInput.h]::platform_entity_id
-  [evidence: include/1q/remote_identification_radar/config/RirSessionConfig.h]::platform_id
-  [evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
-- **后果**：
-  1. 调用方在集成 AR 与 RIR 时平台物理号注入方式存在差异（AR 随每拍动态输入 vs RIR 静态 session_config，反映机动多变 vs 固定挂载设定）。
-  2. RF 记账号域的 `uint64` 与标注域的 `uint32` 保持显式隔离与类型安全。
-- **待决问题**：
-  1. AR 每拍 platform_entity_id 注入是否保持（反映真实机载平台机动/动态组网）还是收敛统一语义。
-  2. 跨平台多传感器协同编组时 equipment_id 与 platform_id 的编排规范。
-- **当前边界**：标注域（设备 ID）全模块统一为 uint32 且会话构造后注入；RF 平台号域 AR 保持每拍注入，RIR 保持 session_config::platform_id（RfScene 保持 uint64）；两域概念与位宽严格正交解耦。
-- **再进入条件 (Stage A)**：出现跨平台多传感器动态协同编组、共平台 co-site 干扰动态重组需求时。
+- **结论**：已通过 `rf-identity-unification` 冻结契约裁定闭合。全面废止 `equipment_id`、RIR 静态 `platform_id` 以及每周期 `platform_entity_id` 输入，统一以 `sensor_entity_id`（`uint32_t`）单源贯通标注域与 RF 物理计算域（发射身份、接收状态、自剔除、共址隔离表归属）。各传感器（AR=1, ESR=2, EOS=3, SBIRS=4, RIR=5, ECM=101）通过唯一的 `SetSensorEntityId` 接口注入/恢复（0 哨兵复位缺省），下一周期两域同义生效。
+- **证据**：
+  - `docs/review/rf-identity-unification_stage_a_2026-09-06.md`
+  - [evidence: include/1q/electromagnetics/RfScene.h]::RfEmissionIdentity
+  - [evidence: include/1q/airborne_radar/session/ArSession.h]::SetSensorEntityId
+  - [evidence: include/1q/electronic_countermeasure/EcmSession.h]::SetSensorEntityId
+  - [evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
+- **状态**：已闭合（Closed）。
 
 ## Airborne Radar 非阻塞边界
 

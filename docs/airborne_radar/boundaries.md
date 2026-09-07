@@ -239,11 +239,11 @@ AR 使用标准 Joseph 形式 Kalman 滤波器（KF）作为生产后端。IMM �
 
 ## 传感器实例身份注入边界（SetSensorEntityId）
 
-`ArSession::SetSensorEntityId(std::uint32_t)` 是标注域设备标识的注入面，供会话构造后注入，区分同型多实例：
+`ArSession::SetSensorEntityId(std::uint32_t)` 作为实体身份注入面，同号贯通标注与 RF 身份：
 
 1. **注入面特征**：构造后注入，不进入 `ArSessionConfig`，不进入 `ArRuntimeConfigPatch`，不参与电源/事务模型与运行期重置。
 2. **时序与缺省**：任意时刻可调，下一周期起生效；未注入或显式传入 `0` 时恢复默认哨兵，周期摘要日志回退使用融合常量 `fusion::kArSourceId`（1U）。
-3. **消费面与物理隔离**：仅用于周期摘要日志行 `[SignalPipeline]` 携带 `sensor_entity_id={}` 供排查区分；不进入信号与物理计算，不改变 `TrackOutputFrame` 或 `ArCycleResult` 输出通道，与每拍经 `ArPlatformInput::platform_entity_id` 注入的 RF 平台记账号完全解耦。
+3. **消费面（同号贯通标注与 RF 身份）**：有效值（非 0）同时供 RF 组装（发射身份 `prepared.emission.identity.sensor_entity_id`、接收状态 `receiver_state.sensor_entity_id`、自剔除、共址表归属）与标注面（周期摘要日志行 `[SignalPipeline]` 携带 `sensor_entity_id={}` 供排查区分、下游航迹融合标识）。废止每拍 `platform_entity_id` 输入。
 
 [evidence: include/1q/airborne_radar/session/ArSession.h]::SetSensorEntityId
 [evidence: tests/unit/airborne_radar/ar_rf_session_test.cpp]

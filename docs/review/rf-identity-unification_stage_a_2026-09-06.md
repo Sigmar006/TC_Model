@@ -1,6 +1,7 @@
 ---
-Status: frozen（契约已附）
+Status: final
 Date: 2026-09-06
+Completed: 2026-09-07
 Review-Baseline: `evidence/rf-identity-unification` @ `1320364e`
 Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract.md、docs/common/session_contract.md
   及各模块 docs/<module>/design.md 为准；与库实现冲突时以库为准；
@@ -160,16 +161,62 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 - 修订 3（2026-09-06，用户拍板）：三问裁定——1、设备号层整体废除，每模块唯一 platform_id（项 8 方向确认）；2、共址触发=接收方隔离配对表命中发射方模块号，漏配走远场求解并由近场门拒解兜底，不引入"同载体"分组概念；3、配置面=各模块会话配置各留一个 platform_id 字段（不建场景级清单；场景装载层做 RF 参与方模块号查重）。随之：RIR platform_id 保持 session_config 原地即目标形态（不再迁移）；runner 共址路径 push 机制保留、端点改模块号；runner/scene_data 中的设备号补丁（强制 101 等）随设备号层一并删除。
 - 修订 4（2026-09-06，用户拍板，推翻修订 3 拍板 3 与上一轮"两域正交"裁定）：**RF 身份直接复用 SetSensorEntityId 的传感器实体 ID（uint32）**——同一个号用于发射身份、自剔除、共址配对与全部标注面（日志/验收/融合通道）。不新增任何 platform_id 配置字段；RIR 的 RirSessionConfig.platform_id 字段删除（身份=SetSensorEntityId 有效值）；每拍输入 platform_entity_id 删除；ECM 补设 setter 并纳入场景 device_ids 块（新增 "ecm" 键，缺省 101）。缺省=融合常量（AR1/ESR2/EOS3/SBIRS4/RIR5）+ ECM=101；场景 device_ids 查重覆盖全部键。修订 3 拍板 1/2（设备号层废除、隔离表命中制）不变。
 
-## §4 运行记录（Stage C 后填写）
+## §4 运行记录
 
-<!-- 对照强制回写清单勾项，全部完成才允许拆脚手架（见 SKILL.md 收尾规则）：
-1、实现范围：改动文件与接口。
-2、验证命令与结果：命令: pass/fail（含转正的探针测试）。
-3、权威回写去向：
-   1、正向边界：docs/<module>/design.md（boundaries/data-flow/algorithms 按归属选）。
-   2、否决记录：docs/<module>/design.md 的"架构裁定与否决记录"专节（体裁见 docs-governance-standard）。
-   3、开放议题：docs/common/open_questions.md 登记（编号）。
-   4、证据锁：新增/修订的规则后附 - **证据**：[evidence: 路径]。
-4、残留风险。
-5、后续冻结项。
--->
+1. **实现范围**：
+   - 共享 RF 层：`include/1q/electromagnetics/RfScene.h`、`src/common/electromagnetics/RfScene.cpp`（`RfEmissionIdentity` 收缩为 `{sensor_entity_id, emission_id}`；`RfCoSiteIsolationPath` 收缩为 `{transmitter_sensor_entity_id, isolation_db}`；`RfSceneReceiverState` 使用 `sensor_entity_id`；`TryEvaluateRfIncidentLink` 共址判定改为隔离表精确命中发射方实体 ID，未命中走空间远场，近场门保留）。
+   - 四模块配置与输入面：
+     - AR：`ArHardwareConfig.h`（删除发射/接收 `equipment_id`，`co_site_paths` 端点改对方实体 ID 并以 1U 为自隔离缺省）；`ArPlatformInput.h`（删除 `platform_entity_id`）；`ArSession.h` / `ArSession.cpp`（`SetSensorEntityId` 升格为 RF 发射、接收与自剔除单一权威源）；`ArReceiverStateBuilder.cpp`（自隔离路径随 `sensor_entity_id` 自动归属）。
+     - ESR：`EsrHardwareConfig.h`（删除 `receiver_equipment_id`，`EsrCoSiteIsolationPath` 端点改对方实体 ID）；`EsrCycleInput.h`（删除 `platform_entity_id`）；`EsrSession.h` / `EsrSession.cpp`（`SetSensorEntityId` 贯通接收状态与同平台自剔除）；`EsrExclusionCauseRecorder.h`（实体键收缩为 `{sensor_entity_id, emission_id}`）。
+     - ECM：`EcmTypes.h` / `EcmSession.h`（删除 `EcmSessionConfig::transmitter_equipment_id` 与 `EcmCycleInput::platform_entity_id`，新增 `EcmSession::SetSensorEntityId`；库内 `EcmWaveformFactory` 与校验随迁）。
+     - RIR：`RirSessionConfig.h`（删除 `platform_id` 字段）；`RirHardwareConfig.h`（删除发射/接收 `equipment_id`）；`RirSession.h` / `RirSession.cpp`（`SetSensorEntityId` 贯通 RF 发射、接收状态与同平台排除）；`RirReceiverStateBuilder.cpp`（自隔离路径自动绑定 `sensor_entity_id`）。
+   - 校验代码（Issue Codes）：
+     - 删除 `ar.validation.equipment_identity_invalid`、`rir.validation.equipment_identity_invalid`、`rir.validation.platform_id_invalid`。
+   - 回放 Schema 升位与旧标识符拒绝测试：
+     - `airborne_radar_replay.fbs`（ARC4）
+     - `airborne_radar_session_replay.fbs`（ARSD）
+     - `ecm_replay.fbs`（ECMD）
+     - `esr_replay.fbs`（ESRD）
+     - `esr_session_replay.fbs`（ESRT）
+     - `rir_replay.fbs`（RIR4）
+     - `rir_session_replay.fbs`（RIRG）
+     - 各套件旧 identifier 显式拒绝测试全部转正。
+   - 示例与场景装配层：
+     - 场景 JSON 顶层 `device_ids` 块统一支持 `ecm` 键（缺省 101），`scene_data.cpp` 覆盖全量键查重（含与 satellites 撞号）；
+     - `runner.cpp` / 组件装配层移除所有平台号/设备号常量（`kPlatformEntityId` 等），统一通过 `SetSensorEntityId` 注入；
+     - `rf_world_broker.h` 简化为实体 ID 单匹配自剔除。
+2. **验证命令与结果**：
+   - 全量编译构建：`cmake --build --preset examples-release-local`（pass，55/55 目标成功）
+   - 全量自动化测试：`ctest --preset examples-release-local --output-on-failure -j 4`（pass，65/65 测试通过，100%）
+   - 场景冒烟验证：
+     - `build/examples-release-local/bin/ecm_esr_driven_jamming`（pass，120 周期完整执行，ECM 干扰正常驱动 AR）
+     - `build/examples-release-local/bin/rir_ground_site_recognition`（pass，1560 周期完整执行，`rir_confirmed_cycles=764` 与基线严格吻合）
+     - `build/examples-release-local/bin/baseline_takeoff_east`（pass，400 周期完整执行）
+   - 编码规范与 BOM 检查：
+     - `python3 scripts/utf8_bom.py check`（pass，全部 C/C++ 源文件均带 UTF-8 BOM 且为合法 UTF-8）
+3. **权威回写去向**：
+   - 1、正向边界：
+     - `docs/airborne_radar/boundaries.md`（SetSensorEntityId 边界更新为同号贯通标注与 RF 身份，废除每拍 `platform_entity_id`）
+     - `docs/electronic_surveillance_radar/boundaries.md`（SetSensorEntityId 边界更新为同号贯通标注与 RF 身份）
+     - `docs/remote_identification_radar/boundaries.md`（SetSensorEntityId 边界更新为同号贯通标注与 RF 身份，废除静态 `platform_id` 配置）
+     - `docs/common/rf_architecture.md`（四级 provenance 改为三级：world cycle, sensor entity, emission；隔离表命中与近场门规则更新）
+   - 2、否决记录：
+     - `docs/common/open_questions.md`::COMMON-OQ-13（登记闭合，明确设备号层废除与单一实体 ID 贯通全域）
+     - `docs/common/issue_codes.md`（删除已废止的三项 equipment/platform identity issue codes）
+   - 3、开放议题：
+     - `COMMON-OQ-13` 登记已闭合（Closed）。
+   - 4、证据锁：
+     - [evidence: include/1q/electromagnetics/RfScene.h]::RfEmissionIdentity
+     - [evidence: include/1q/electromagnetics/RfScene.h]::RfCoSiteIsolationPath
+     - [evidence: include/1q/airborne_radar/session/ArSession.h]::SetSensorEntityId
+     - [evidence: include/1q/electronic_surveillance_radar/session/EsrSession.h]::SetSensorEntityId
+     - [evidence: include/1q/electronic_countermeasure/EcmSession.h]::SetSensorEntityId
+     - [evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
+     - [evidence: tests/unit/common/common_rf_scene_test.cpp]::CoSiteExactHitBypassesNearFieldAndAppliesIsolation
+     - [evidence: tests/unit/common/common_rf_scene_test.cpp]::CoSiteMissFallsBackToFarFieldAndTriggersNearFieldRejection
+     - [evidence: tests/unit/examples/scene_data_test.cpp]::DuplicateDeviceIdsAreRejected
+     - [evidence: tests/replay/airborne_radar/ar_replay_codec_roundtrip_test.cpp]::CycleRecordRejectsRetiredARC3FileIdentifier
+4. **残留风险**：
+   - 历史 FlatBuffers 回放录制文件因 schema 升位不可向前兼容（按契约显式拒绝旧标识符，属预期内非兼容升级）。
+5. **后续冻结项**：
+   - 无。本主题契约已全闭合。

@@ -21,17 +21,15 @@ fail-closed 策略、saturated 语义等）见 `docs/common/contract.md` §跨�
 3. 公共 DTO：`RfEmissionFrame` / `RfSceneFrame`、`RfSceneEmission` 和参数化 `RfWaveformSchedule`；
    旧 `RfEmissionSegment` 仅为尚未迁移模块保留的 v1 兼容类型，AR 不得使用。
 
-## 发射事实四级 provenance
+## 发射事实三级 provenance
 
-发射事实必须区分 world cycle、platform、equipment 和 emission 四级 provenance：
+发射事实必须区分 world cycle、sensor entity 和 emission 三级 provenance：
 
 1. **world cycle**：绑定世界周期号。
-2. **platform**：用于同平台判断。
-3. **equipment**：标识具体发射/接收设备。
-4. **emission**：标识一次实际发射。
+2. **sensor entity**：标识传感器/干扰设备实体（`sensor_entity_id`）。
+3. **emission**：标识一次实际发射（`emission_id`）。
 
-co-site isolation 是"发射 equipment → 接收 equipment"的有向硬件路径。连续、参数化脉冲列和扫频必须能在
-不逐 IQ 采样、不逐脉冲无界展开的前提下确定性计算时间/频率占用。
+co-site isolation 是"发射实体 → 接收实体"的有向硬件隔离路径（`RfCoSiteIsolationPath`）。接收方隔离表命中发射方实体 ID 时按共址处理（查隔离值、时延置零）；未显式配置隔离路径的链路按远场空间传播求解，同载体近距离链路漏配由近场门（`path_length_m < minimum_far_field_range_m`）物理拒解兜底。连续、参数化脉冲列和扫频必须能在不逐 IQ 采样、不逐脉冲无界展开的前提下确定性计算时间/频率占用。
 
 ## 单程链路边界
 

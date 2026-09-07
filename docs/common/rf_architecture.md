@@ -29,6 +29,12 @@ fail-closed 策略、saturated 语义等）见 `docs/common/contract.md` §跨�
 2. **sensor entity**：标识传感器/干扰设备实体（`sensor_entity_id`）。
 3. **emission**：标识一次实际发射（`emission_id`）。
 
+身份不设设备子层（platform/equipment 两级已废除，2026-09-07 rf-identity-unification 裁定）：本模型每模块仅单发射机+单接收机，无多设备建模需求；传感器实体 ID 由各模块会话经 `SetSensorEntityId` 注入（uint32，0=恢复缺省），同号贯通 RF 物理计算与标注面。
+
+- **证据**：[evidence: include/1q/electromagnetics/RfScene.h]::RfEmissionIdentity
+- **证据**：[evidence: include/1q/airborne_radar/session/ArSession.h]::SetSensorEntityId
+- **证据**：[evidence: tests/unit/common/common_rf_scene_test.cpp]::CoSiteRequiresIsolationPathAndNearFieldGateRejectsUnmatched
+
 co-site isolation 是"发射实体 → 接收实体"的有向硬件隔离路径（`RfCoSiteIsolationPath`）。接收方隔离表命中发射方实体 ID 时按共址处理（查隔离值、时延置零）；未显式配置隔离路径的链路按远场空间传播求解，同载体近距离链路漏配由近场门（`path_length_m < minimum_far_field_range_m`）物理拒解兜底。连续、参数化脉冲列和扫频必须能在不逐 IQ 采样、不逐脉冲无界展开的前提下确定性计算时间/频率占用。
 
 ## 单程链路边界

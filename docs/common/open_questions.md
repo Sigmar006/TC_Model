@@ -1,8 +1,8 @@
----
+﻿---
 Status: active
 Authority: 非规定性记录（不构成契约约束）
 Lifecycle: 条目有结论后回写 contract.md 或 design.md 并从本文删除；不保留已收敛条目
-Last-reviewed: 2026-09-03
+Last-reviewed: 2026-09-07
 ---
 
 # 跨模块开放议题
@@ -26,7 +26,6 @@ Last-reviewed: 2026-09-03
 | COMMON-OQ-10 | common | examples 会话配置三处同构维护 | 模板 + 16 场景 JSON + loader 键映射靠人工同步，字段变更漏一处即静默失配 | open |
 | COMMON-OQ-11 | common | AR/ESR/ECM 全极化放行冻结 | kFullPolarization 仅 RIR 放行；共享计算层已支持值 5 | open |
 | COMMON-OQ-12 | common | 全极化对非极化功率守恒口径 | 冻结保守 3.0103 dB；守恒 0 dB 口径待干扰/杂波定量验收触发 | open |
-| COMMON-OQ-13 | common | RF 记账号域统一 | RIR/AR/ECM/RfScene 记账号与注入面跨模块对齐 | open |
 | SAR-OQ-1 | sar | RDA 性能数字是否重测 | /O2 实测数字来自旧档位，需确认是否随真发布档更新 | open |
 | SAR-OQ-2 | sar | 脉冲环缓冲 O(1) 去重契约 | 依赖严格递增不变量，文档无 push 复杂度断言 | open |
 | AR-OQ-2 | airborne_radar | 集成层 rf-world 干扰接线 | examples 从共享 rf-world 派生 interference，模块文档未述 | open |
@@ -149,17 +148,6 @@ Last-reviewed: 2026-09-03
 - **待决问题**：是否改按功率守恒 0 dB 口径，或按"信号/干扰分路"区分口径。
 - **当前边界**：维持 3.0103 dB 单一口径；不得在一处改口径而不动另一条枚举链。
 - **再进入条件 (Stage A)**：出现以非极化干扰/杂波为对象的定量验收或标定需求。
-
-### COMMON-OQ-13：RF 记账号域统一（已收敛闭合，2026-09-07）
-
-- **结论**：已通过 `rf-identity-unification` 冻结契约裁定闭合。全面废止 `equipment_id`、RIR 静态 `platform_id` 以及每周期 `platform_entity_id` 输入，统一以 `sensor_entity_id`（`uint32_t`）单源贯通标注域与 RF 物理计算域（发射身份、接收状态、自剔除、共址隔离表归属）。各传感器（AR=1, ESR=2, EOS=3, SBIRS=4, RIR=5, ECM=101）通过唯一的 `SetSensorEntityId` 接口注入/恢复（0 哨兵复位缺省），下一周期两域同义生效。
-- **证据**：
-  - `docs/review/rf-identity-unification_stage_a_2026-09-06.md`
-  - [evidence: include/1q/electromagnetics/RfScene.h]::RfEmissionIdentity
-  - [evidence: include/1q/airborne_radar/session/ArSession.h]::SetSensorEntityId
-  - [evidence: include/1q/electronic_countermeasure/EcmSession.h]::SetSensorEntityId
-  - [evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
-- **状态**：已闭合（Closed）。
 
 ## Airborne Radar 非阻塞边界
 

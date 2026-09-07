@@ -1,4 +1,4 @@
----
+﻿---
 Status: final
 Date: 2026-09-06
 Completed: 2026-09-07
@@ -166,7 +166,7 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 1. **实现范围**：
    - 共享 RF 层：`include/1q/electromagnetics/RfScene.h`、`src/common/electromagnetics/RfScene.cpp`（`RfEmissionIdentity` 收缩为 `{sensor_entity_id, emission_id}`；`RfCoSiteIsolationPath` 收缩为 `{transmitter_sensor_entity_id, isolation_db}`；`RfSceneReceiverState` 使用 `sensor_entity_id`；`TryEvaluateRfIncidentLink` 共址判定改为隔离表精确命中发射方实体 ID，未命中走空间远场，近场门保留）。
    - 四模块配置与输入面：
-     - AR：`ArHardwareConfig.h`（删除发射/接收 `equipment_id`，`co_site_paths` 端点改对方实体 ID 并以 1U 为自隔离缺省）；`ArPlatformInput.h`（删除 `platform_entity_id`）；`ArSession.h` / `ArSession.cpp`（`SetSensorEntityId` 升格为 RF 发射、接收与自剔除单一权威源）；`ArReceiverStateBuilder.cpp`（自隔离路径随 `sensor_entity_id` 自动归属）。
+     - AR：`ArHardwareConfig.h`（删除发射/接收 `equipment_id`；`co_site_paths` 默认清空、只承载伙伴路径）；`ArPlatformInput.h`（删除 `platform_entity_id`）；`ArSession.h` / `ArSession.cpp`（`SetSensorEntityId` 升格为 RF 发射、接收与自剔除单一权威源，缺省回退收口为命名常量）；`ArReceiverStateBuilder.cpp`（自身发射泄漏隔离按当前实体身份自动构造并附加，显式同自身 ID 路径可覆盖缺省隔离值；审查修复：废除“端点=1 改写”的配置篡改写法，改为与 RIR 同形的代码构造）。
      - ESR：`EsrHardwareConfig.h`（删除 `receiver_equipment_id`，`EsrCoSiteIsolationPath` 端点改对方实体 ID）；`EsrCycleInput.h`（删除 `platform_entity_id`）；`EsrSession.h` / `EsrSession.cpp`（`SetSensorEntityId` 贯通接收状态与同平台自剔除）；`EsrExclusionCauseRecorder.h`（实体键收缩为 `{sensor_entity_id, emission_id}`）。
      - ECM：`EcmTypes.h` / `EcmSession.h`（删除 `EcmSessionConfig::transmitter_equipment_id` 与 `EcmCycleInput::platform_entity_id`，新增 `EcmSession::SetSensorEntityId`；库内 `EcmWaveformFactory` 与校验随迁）。
      - RIR：`RirSessionConfig.h`（删除 `platform_id` 字段）；`RirHardwareConfig.h`（删除发射/接收 `equipment_id`）；`RirSession.h` / `RirSession.cpp`（`SetSensorEntityId` 贯通 RF 发射、接收状态与同平台排除）；`RirReceiverStateBuilder.cpp`（自隔离路径自动绑定 `sensor_entity_id`）。
@@ -185,26 +185,28 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
      - 场景 JSON 顶层 `device_ids` 块统一支持 `ecm` 键（缺省 101），`scene_data.cpp` 覆盖全量键查重（含与 satellites 撞号）；
      - `runner.cpp` / 组件装配层移除所有平台号/设备号常量（`kPlatformEntityId` 等），统一通过 `SetSensorEntityId` 注入；
      - `rf_world_broker.h` 简化为实体 ID 单匹配自剔除。
-2. **验证命令与结果**：
-   - 全量编译构建：`cmake --build --preset examples-release-local`（pass，55/55 目标成功）
-   - 全量自动化测试：`ctest --preset examples-release-local --output-on-failure -j 4`（pass，65/65 测试通过，100%）
-   - 场景冒烟验证：
-     - `build/examples-release-local/bin/ecm_esr_driven_jamming`（pass，120 周期完整执行，ECM 干扰正常驱动 AR）
-     - `build/examples-release-local/bin/rir_ground_site_recognition`（pass，1560 周期完整执行，`rir_confirmed_cycles=764` 与基线严格吻合）
-     - `build/examples-release-local/bin/baseline_takeoff_east`（pass，400 周期完整执行）
-   - 编码规范与 BOM 检查：
-     - `python3 scripts/utf8_bom.py check`（pass，全部 C/C++ 源文件均带 UTF-8 BOM 且为合法 UTF-8）
+2. **验证命令与结果**（审查轮后按契约验收门实测，2026-09-07）：
+   - `cmake --build --preset llvm-ninja-release-local`: pass（157/157）
+   - `ctest --preset llvm-ninja-release-local -R "guard|unit::airborne_radar|unit::electronic_surveillance_radar|unit::remote_identification_radar|unit::electro_optical_sensor|unit::examples|unit::common|replay"`: pass（35/35；含 target_layer_purity_guard 等全部守卫）
+   - `1q_airborne_radar_unit_tests`: pass（614/614，含新增 SelfCoSitePathFollowsEntityIdentity 特征化测试）
+   - `1q_electronic_surveillance_radar_contract_tests`: pass（19/19）
+   - replay 套件直跑：AR 28 / ESR 25 / RIR 14 / ECM 3 全过（含各升位标识符拒绝测试）
+   - `ecm_esr_driven_jamming`: pass（120 周期，116 条干扰事件，ESR 同时见 AR+ECM 双源，AR 跟踪正常）
+   - `rir_ground_site_recognition`: pass（1560 周期，rir_confirmed_cycles=764 与基线严格一致）
+   - `baseline_takeoff_east`: pass（400 周期，退出码 0）
+   - `python3 scripts/utf8_bom.py check`: pass（全部 C/C++ 源文件 UTF-8 BOM 合规）
 3. **权威回写去向**：
    - 1、正向边界：
      - `docs/airborne_radar/boundaries.md`（SetSensorEntityId 边界更新为同号贯通标注与 RF 身份，废除每拍 `platform_entity_id`）
      - `docs/electronic_surveillance_radar/boundaries.md`（SetSensorEntityId 边界更新为同号贯通标注与 RF 身份）
      - `docs/remote_identification_radar/boundaries.md`（SetSensorEntityId 边界更新为同号贯通标注与 RF 身份，废除静态 `platform_id` 配置）
-     - `docs/common/rf_architecture.md`（四级 provenance 改为三级：world cycle, sensor entity, emission；隔离表命中与近场门规则更新）
+     - `docs/common/rf_architecture.md`（四级 provenance 改三级；隔离表命中与近场门规则更新；设备子层废除裁定迁入并附证据锁）
+     - `docs/common/contract.md`（RF 契约段条款 1/4 按统一身份口径重写：单一实体 ID 承担设备身份/自剔除/共址判定，失闭合清单随隔离表制更新；审查轮补齐实现轮漏写的契约段）
    - 2、否决记录：
-     - `docs/common/open_questions.md`::COMMON-OQ-13（登记闭合，明确设备号层废除与单一实体 ID 贯通全域）
+     - `docs/common/rf_architecture.md`（设备子层废除裁定迁入三级 provenance 规则并附证据锁；COMMON-OQ-13 按登记规范迁出删除）
      - `docs/common/issue_codes.md`（删除已废止的三项 equipment/platform identity issue codes）
    - 3、开放议题：
-     - `COMMON-OQ-13` 登记已闭合（Closed）。
+     - `COMMON-OQ-13` 已收敛并按登记规范从 `open_questions.md` 删除（结论进 `rf_architecture.md` 与各模块 boundaries；编号不复用）。
    - 4、证据锁：
      - [evidence: include/1q/electromagnetics/RfScene.h]::RfEmissionIdentity
      - [evidence: include/1q/electromagnetics/RfScene.h]::RfCoSiteIsolationPath

@@ -39,6 +39,10 @@ namespace airborne_radar {
 namespace session {
 namespace {
 
+// 未注入设备号时的缺省值，镜像融合常量 fusion::kArSourceId（=1U）。分层契约
+// 禁止传感器层引 fusion 头，故在本文件本地对齐取值；两侧若需改号须同步。
+constexpr std::uint32_t kDefaultSensorEntityId = 1U;
+
 bool IsFinitePosition(const oneq::coordinate::EcefPositionM& value) {
   return std::isfinite(value.x_m) && std::isfinite(value.y_m) && std::isfinite(value.z_m);
 }
@@ -670,7 +674,7 @@ struct ArSession::Impl {
     prepare_input.window_start_time_s = input.cycle_start_time_s;
     prepare_input.window_duration_s = input.dt_sec;
     prepare_input.sensor_entity_id =
-        (sensor_entity_id != 0U) ? sensor_entity_id : 1U;
+        (sensor_entity_id != 0U) ? sensor_entity_id : kDefaultSensorEntityId;
     prepare_input.platform_position_ecef_m = input.platform.platform_position_ecef_m;
     prepare_input.platform_velocity_ecef_mps = input.platform.platform_velocity_mps;
     prepare_input.radar_frame_attitude_deg = ComposeRadarAttitudeDeg(

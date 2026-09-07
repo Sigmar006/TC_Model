@@ -21,7 +21,7 @@ oneq::coordinate::LocalFrameReference DefaultFrame() {
 oneq::electromagnetics::RfSceneEmission MakeJammer(std::uint64_t emission_id, double y_m,
                                                    double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 20U, emission_id};
+  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, emission_id};
   emission.position_ecef_m.x_m = 1000.0;
   emission.position_ecef_m.y_m = y_m;
   EXPECT_TRUE(oneq::electromagnetics::TryCreateRfNoiseWaveform(10.0, 1.0, 10.0e9, 20.0e6, power_w,
@@ -33,7 +33,7 @@ oneq::electromagnetics::RfSceneEmission MakeJammer(std::uint64_t emission_id, do
 oneq::electromagnetics::RfSceneEmission MakePulseTrainJammer(std::uint64_t emission_id, double y_m,
                                                              double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 20U, emission_id};
+  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, emission_id};
   emission.position_ecef_m.x_m = 1000.0;
   emission.position_ecef_m.y_m = y_m;
   EXPECT_TRUE(oneq::electromagnetics::TryCreateRfPulseTrainWaveform(
@@ -73,15 +73,14 @@ TEST(ArInterferenceObservationResolverTest, GatesByJOverNAndIsOrderIndependent) 
   scene.window_duration_s = 1.0;
   scene.emissions = {MakeJammer(2U, 100.0, 10.0), MakeJammer(1U, -100.0, 10.0)};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
   const std::vector<oneq::electromagnetics::RfIncidentLinkResult> links = {
       MakeLink(scene.emissions[0], 100.0), MakeLink(scene.emissions[1], 0.01)};
 
   std::vector<session::ArInterferenceObservation> forward;
   ASSERT_TRUE(ResolveWithoutClusters(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U}, links, 1.0, 0.0,
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U}, links, 1.0, 0.0,
       DefaultFrame(), /*perturbation_seed=*/42U, &forward));
   ASSERT_EQ(forward.size(), 1U);
   EXPECT_EQ(forward.front().observation_id, 1U);
@@ -92,7 +91,7 @@ TEST(ArInterferenceObservationResolverTest, GatesByJOverNAndIsOrderIndependent) 
   std::reverse(reversed_links.begin(), reversed_links.end());
   std::vector<session::ArInterferenceObservation> reverse;
   ASSERT_TRUE(ResolveWithoutClusters(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U}, reversed_links, 1.0,
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U}, reversed_links, 1.0,
       0.0, DefaultFrame(), /*perturbation_seed=*/42U, &reverse));
   ASSERT_EQ(reverse.size(), forward.size());
   EXPECT_DOUBLE_EQ(reverse.front().estimated_bearing_azimuth_deg,
@@ -109,8 +108,7 @@ TEST(ArInterferenceObservationResolverTest, CoherentPulseTrainEmissionsTaggedAsF
   // y 偏移 100.0 与 105.0：在 1000m 距离上方位差极小，远小于 4 度波束宽度。
   scene.emissions = {MakePulseTrainJammer(1U, 100.0, 10.0), MakePulseTrainJammer(2U, 105.0, 10.0)};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
   const std::vector<oneq::electromagnetics::RfIncidentLinkResult> links = {
       MakeLink(scene.emissions[0], 100.0), MakeLink(scene.emissions[1], 100.0)};
@@ -118,7 +116,7 @@ TEST(ArInterferenceObservationResolverTest, CoherentPulseTrainEmissionsTaggedAsF
   std::vector<session::ArInterferenceObservation> observations;
   ArDeceptionMeasurementCandidateList candidates;
   ASSERT_TRUE(TryResolveArInterferenceObservations(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U}, links, 1.0, 0.0,
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U}, links, 1.0, 0.0,
       DefaultFrame(), /*perturbation_seed=*/42U, &observations, &candidates));
   ASSERT_EQ(observations.size(), 2U);
   // 两条观测应均被标记为疑似假目标，且同方向计数 ≥ 2（含自身）。
@@ -146,13 +144,12 @@ TEST(ArInterferenceObservationResolverTest, IsolatedPulseTrainNotTaggedAsFalseTa
   scene.window_duration_s = 1.0;
   scene.emissions = {MakePulseTrainJammer(1U, 100.0, 10.0)};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
 
   std::vector<session::ArInterferenceObservation> observations;
   ASSERT_TRUE(ResolveWithoutClusters(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
       {MakeLink(scene.emissions.front(), 100.0)}, 1.0, 0.0, DefaultFrame(),
       /*perturbation_seed=*/42U, &observations));
   ASSERT_EQ(observations.size(), 1U);
@@ -173,21 +170,20 @@ TEST(ArInterferenceObservationResolverTest, PulseTrainPopulatesCarrierOffsetAndF
   // 距离 1000m（发射在 x=1000）。载频 10.5 GHz（相对 10 GHz 本振偏移 +0.5 GHz）。
   // 首脉冲窗口相对时间设为 5e-6 s（相对窗口边界人为延迟）。
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 20U, 1U};
+  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 1U};
   emission.position_ecef_m.x_m = 1000.0;
   ASSERT_TRUE(oneq::electromagnetics::TryCreateRfPulseTrainWaveform(
       /*first_pulse_time_s=*/10.0 + 5.0e-6, 10.5e9, 20.0e6, 10.0, 1.0e-6, 1.0e-3, 5U, 0.0, 0U, 0U,
       &emission.waveform));
   scene.emissions = {emission};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
   receiver.center_frequency_hz = 10.0e9;  // 本振调谐载频
 
   std::vector<session::ArInterferenceObservation> observations;
   ASSERT_TRUE(ResolveWithoutClusters(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
       {MakeLink(scene.emissions.front(), 100.0, 1000.0 / kLightSpeed, 2000.0)}, 1.0, 0.0,
       DefaultFrame(),
       /*perturbation_seed=*/42U, &observations));
@@ -207,18 +203,17 @@ TEST(ArInterferenceObservationResolverTest, UncertaintyDecreasesWithJOverN) {
   scene.window_duration_s = 1.0;
   scene.emissions.push_back(MakeJammer(1U, 0.0, 10.0));
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
 
   std::vector<session::ArInterferenceObservation> low;
   std::vector<session::ArInterferenceObservation> high;
   ASSERT_TRUE(ResolveWithoutClusters(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
       {MakeLink(scene.emissions.front(), 10.0)}, 1.0, 0.0, DefaultFrame(),
       /*perturbation_seed=*/42U, &low));
   ASSERT_TRUE(ResolveWithoutClusters(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
       {MakeLink(scene.emissions.front(), 100.0)}, 1.0, 0.0, DefaultFrame(),
       /*perturbation_seed=*/42U, &high));
   ASSERT_EQ(low.size(), 1U);
@@ -244,7 +239,7 @@ TEST(ArInterferenceObservationResolverTest, LocalFrameBearingDiffersFromEcefWhen
   scene.window_duration_s = 1.0;
   // 发射体位于接收机正东 1000m：ECEF ≈ (R, 1000, 0)。
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 20U, 1U};
+  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 1U};
   emission.position_ecef_m.x_m = kEarthRadiusM;
   emission.position_ecef_m.y_m = 1000.0;
   emission.position_ecef_m.z_m = 0.0;
@@ -253,8 +248,7 @@ TEST(ArInterferenceObservationResolverTest, LocalFrameBearingDiffersFromEcefWhen
   scene.emissions = {emission};
   // 接收机位于地表 LLA(0,0,0) => ECEF(R,0,0)，与 frame origin 一致。
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
   receiver.position_ecef_m.x_m = kEarthRadiusM;
 
@@ -265,7 +259,7 @@ TEST(ArInterferenceObservationResolverTest, LocalFrameBearingDiffersFromEcefWhen
 
   std::vector<session::ArInterferenceObservation> observations;
   ASSERT_TRUE(ResolveWithoutClusters(scene, receiver,
-                                     oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+                                     oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
                                      {MakeLink(scene.emissions.front(), 100.0)}, 1.0, 0.0, frame,
                                      /*perturbation_seed=*/42U, &observations));
   ASSERT_EQ(observations.size(), 1U);
@@ -291,7 +285,7 @@ TEST(ArInterferenceObservationResolverTest, RangeAndRangeRateArePerturbedFromTru
   scene.window_duration_s = 1.0;
   // 发射体在接收机正东 1000m，沿视线以 100 m/s 远离（径向速度 +100 m/s）。
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 20U, 1U};
+  emission.identity = oneq::electromagnetics::RfEmissionIdentity{10U, 1U};
   emission.position_ecef_m.x_m = 1000.0;
   emission.position_ecef_m.y_m = 0.0;
   emission.velocity_ecef_mps.x_mps = 100.0;
@@ -299,14 +293,13 @@ TEST(ArInterferenceObservationResolverTest, RangeAndRangeRateArePerturbedFromTru
                                                                &emission.waveform));
   scene.emissions = {emission};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
 
   const auto resolve = [&](std::uint32_t seed) {
     std::vector<session::ArInterferenceObservation> out;
     EXPECT_TRUE(ResolveWithoutClusters(
-        scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+        scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
         {MakeLink(scene.emissions.front(), 100.0)}, 1.0, 0.0, DefaultFrame(), seed, &out));
     return out;
   };
@@ -347,15 +340,14 @@ TEST(ArInterferenceObservationResolverTest, ApparentRangeShiftsByHalfLightSpeedD
       &delayed.waveform));
   scene.emissions = {delayed, MakePulseTrainJammer(2U, 105.0, 10.0)};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
   receiver.center_frequency_hz = 10.0e9;
 
   std::vector<session::ArInterferenceObservation> observations;
   ArDeceptionMeasurementCandidateList candidates;
   ASSERT_TRUE(TryResolveArInterferenceObservations(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
       {MakeLink(scene.emissions[0], 100.0), MakeLink(scene.emissions[1], 100.0)}, 1.0, 0.0,
       DefaultFrame(), /*perturbation_seed=*/42U, &observations, &candidates));
   ASSERT_EQ(observations.size(), 2U);
@@ -400,15 +392,14 @@ TEST(ArInterferenceObservationResolverTest, ApparentRangeRateShiftsByCarrierOffs
       &offset.waveform));
   scene.emissions = {offset, MakePulseTrainJammer(2U, 105.0, 10.0)};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
   receiver.center_frequency_hz = kReferenceCarrierHz;
 
   std::vector<session::ArInterferenceObservation> observations;
   ArDeceptionMeasurementCandidateList candidates;
   ASSERT_TRUE(TryResolveArInterferenceObservations(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
       {MakeLink(scene.emissions[0], 100.0), MakeLink(scene.emissions[1], 100.0)}, 1.0, 0.0,
       DefaultFrame(), /*perturbation_seed=*/42U, &observations, &candidates));
   ASSERT_EQ(observations.size(), 2U);
@@ -449,15 +440,14 @@ TEST(ArInterferenceObservationResolverTest, SubThresholdResidualsKeepGeometricAp
   // 第二个成员同载频同束，载频偏移 ≈ 0（< 1 kHz 门限），无时延。
   scene.emissions = {first, MakePulseTrainJammer(2U, 105.0, 10.0)};
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.antenna.half_power_beamwidth_deg = 4.0;
   receiver.center_frequency_hz = 10.0e9;
 
   std::vector<session::ArInterferenceObservation> observations;
   ArDeceptionMeasurementCandidateList candidates;
   ASSERT_TRUE(TryResolveArInterferenceObservations(
-      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 3U, 4U},
+      scene, receiver, oneq::electromagnetics::RfEmissionIdentity{1U, 4U},
       {MakeLink(scene.emissions[0], 100.0), MakeLink(scene.emissions[1], 100.0)}, 1.0, 0.0,
       DefaultFrame(), /*perturbation_seed=*/42U, &observations, &candidates));
   ASSERT_EQ(observations.size(), 2U);

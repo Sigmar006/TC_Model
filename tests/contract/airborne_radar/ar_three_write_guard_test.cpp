@@ -44,7 +44,6 @@ session::ArCycleInput MakeInput(std::uint32_t cycle_index = 1U, double cycle_sta
   input.cycle_index = cycle_index;
   input.cycle_start_time_s = cycle_start_time_s;
   input.dt_sec = 0.5;
-  input.platform.platform_entity_id = 42U;
 
   oneq::coordinate::LlaPositionDegM platform_lla;
   platform_lla.latitude_deg = 31.0;

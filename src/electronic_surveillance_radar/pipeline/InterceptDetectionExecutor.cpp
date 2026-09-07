@@ -61,8 +61,7 @@ session::EsrIssue MakeExclusionIssue(const char* code, const std::string& messag
 
 /// 格式化发射源标识为结构化 key=value 前缀（规则 13b message 约定，不承诺解析稳定性）。
 std::string FormatEmissionIdentity(const oneq::electromagnetics::RfEmissionIdentity& id) {
-  return "platform_id=" + std::to_string(id.platform_id) +
-         "; equipment_id=" + std::to_string(id.equipment_id) +
+  return "sensor_entity_id=" + std::to_string(id.sensor_entity_id) +
          "; emission_id=" + std::to_string(id.emission_id);
 }
 
@@ -85,8 +84,7 @@ std::mt19937 MakeEmissionRandomStream(unsigned int session_seed, std::uint32_t c
                                       std::uint64_t domain) {
   std::uint64_t seed = Mix64(static_cast<std::uint64_t>(session_seed));
   seed ^= Mix64(static_cast<std::uint64_t>(cycle_index));
-  seed ^= Mix64(identity.platform_id);
-  seed ^= Mix64(identity.equipment_id);
+  seed ^= Mix64(identity.sensor_entity_id);
   seed ^= Mix64(identity.emission_id);
   seed ^= Mix64(domain);
   return std::mt19937(static_cast<std::mt19937::result_type>(seed ^ (seed >> 32U)));
@@ -301,7 +299,8 @@ bool InterceptDetectionExecutor::ProcessRfV2Frame(
           ctx.GetRuntimeConfig().orientation, active_beam.az_deg, active_beam.el_deg,
           0.5 * (receiver_window.first + receiver_window.second),
           receiver_window.second - receiver_window.first,
-          std::max(0.0f, ctx.GetEnvironmentSnapshot().propagation_loss_db), &front_end)) {
+          std::max(0.0f, ctx.GetEnvironmentSnapshot().propagation_loss_db),
+          ctx.GetSensorEntityId(), &front_end)) {
     return false;
   }
   output->receiver_center_frequency_hz = front_end.channel_receiver.center_frequency_hz;
@@ -317,10 +316,8 @@ bool InterceptDetectionExecutor::ProcessRfV2Frame(
   std::sort(emissions.begin(), emissions.end(),
             [](const oneq::electromagnetics::RfSceneEmission* a,
                const oneq::electromagnetics::RfSceneEmission* b) {
-              return a->identity.platform_id != b->identity.platform_id
-                         ? a->identity.platform_id < b->identity.platform_id
-                     : a->identity.equipment_id != b->identity.equipment_id
-                         ? a->identity.equipment_id < b->identity.equipment_id
+              return a->identity.sensor_entity_id != b->identity.sensor_entity_id
+                         ? a->identity.sensor_entity_id < b->identity.sensor_entity_id
                          : a->identity.emission_id < b->identity.emission_id;
             });
   if (emissions.size() != front_end.channel_incident_links.size()) {

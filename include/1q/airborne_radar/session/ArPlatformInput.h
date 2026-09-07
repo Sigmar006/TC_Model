@@ -23,7 +23,6 @@ namespace session {
  * @note 雷达安装角在 ArOrientationConfig::mount_angles_deg，不在本结构中。
  */
 struct ONEQ_API ArPlatformInput {
-  std::uint64_t platform_entity_id{0}; /**< 平台实体标识；用于同平台 RF 耦合路径判定 */
   oneq::coordinate::EcefPositionM platform_position_ecef_m{}; /**< 平台位置（ECEF，m） */
   oneq::coordinate::EcefVelocityMps platform_velocity_mps{};  /**< 平台速度（ECEF，m/s） */
   oneq::coordinate::EulerAnglesDeg platform_attitude_deg{};   /**< 平台姿态角（Body→ENU，deg） */

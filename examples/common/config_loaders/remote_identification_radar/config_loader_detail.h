@@ -12,9 +12,6 @@ namespace rir_cfg = remote_identification_radar::config;
 inline void LoadRirTransmitter(const examples::JsonValue& j,
                                rir_cfg::hardware::RirTransmitterConfig* v) {
   if (j.IsNull()) return;
-  if (j.Has("equipment_id")) {
-    v->equipment_id = static_cast<std::uint64_t>(j["equipment_id"].AsInt());
-  }
   if (j.Has("peak_power_w")) {
     v->peak_power_w = static_cast<float>(j["peak_power_w"].AsDouble());
   }
@@ -74,9 +71,6 @@ inline void LoadRirAntenna(const examples::JsonValue& j, rir_cfg::hardware::RirA
 inline void LoadRirReceiver(const examples::JsonValue& j,
                             rir_cfg::hardware::RirReceiverConfig* v) {
   if (j.IsNull()) return;
-  if (j.Has("equipment_id")) {
-    v->equipment_id = static_cast<std::uint64_t>(j["equipment_id"].AsInt());
-  }
   if (j.Has("noise_figure_db")) {
     v->noise_figure_db = static_cast<float>(j["noise_figure_db"].AsDouble());
   }

@@ -93,7 +93,6 @@ struct ONEQ_API AntennaConfig {
  * @brief 接收机工程参数。
  */
 struct ONEQ_API ReceiverConfig {
-  std::uint64_t equipment_id{2U}; /**< RF scene 中的接收设备身份；同平台内必须唯一。 */
   float noise_figure_db{4.0f};    /**< 接收机噪声系数。 */
   float receive_loss_db{2.0f};    /**< 接收链路损耗。 */
   float cross_polarization_isolation_db{30.0f};             /**< 正交极化隔离（dB）。 */
@@ -105,15 +104,16 @@ struct ONEQ_API ReceiverConfig {
   float interference_observation_jn_gate_db{6.0f};          /**< 干扰观测发布 J/N 门限（dB）。 */
   oneq::electromagnetics::RfScenePolarization scene_polarization{
       oneq::electromagnetics::RfScenePolarization::kHorizontal}; /**< RF v2 接收极化。 */
-  std::vector<oneq::electromagnetics::RfCoSiteIsolationPath> co_site_paths{
-      {1U, 2U, 120.0}}; /**< 发射设备到接收设备的显式有向隔离路径。 */
+  std::vector<oneq::electromagnetics::RfCoSiteIsolationPath> co_site_paths{};
+  /**< 伙伴发射源的显式有向隔离路径（端点 = 对方传感器实体 ID）。自身发射泄漏
+       隔离不在此配置：会话组装接收状态时按当前实体身份自动附加（显式配置
+       同自身实体 ID 的路径可覆盖缺省隔离值）。 */
 };
 
 /**
  * @brief 发射机工程参数。
  */
 struct ONEQ_API TransmitterConfig {
-  std::uint64_t equipment_id{1U};      /**< RF scene 中的发射设备身份；同平台内必须唯一。 */
   float peak_power_w{1e6f};            /**< 峰值发射功率。 */
   float frequency_hz{3e9f};            /**< 工作频率。 */
   float bandwidth_hz{4.5e6f};          /**< 发射带宽。 */

@@ -73,9 +73,6 @@ class RirController {
   /** @brief 设置静态硬件上下文并重建检测器。 */
   void SetHardware(const config::RirHardwareConfig& hardware);
 
-  /** @brief 设置 RF scene 平台身份（来自 `RirSessionConfig::platform_id`）。 */
-  void SetPlatformId(std::uint64_t platform_id);
-
   /** @brief 设置传感器实体标识（设备 ID / 融合通道；0 为恢复缺省哨兵）。 */
   void SetSensorEntityId(std::uint32_t sensor_entity_id);
 
@@ -278,7 +275,6 @@ class RirController {
   config::RirEnvironmentConfig environment_{};
   // 大气 k 因子（UpdateEnvironment 时按气象观测派生，缺省 4/3，与 AR 冻结口径一致）。
   float effective_k_factor_{4.0f / 3.0f};
-  std::uint64_t platform_id_{1U};
   std::uint32_t sensor_entity_id_{0U};
   config::RirWorkMode work_mode_{config::RirWorkMode::kStby};
   bool recognition_mode_active_{false};

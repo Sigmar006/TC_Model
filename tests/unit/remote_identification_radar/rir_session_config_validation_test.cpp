@@ -26,12 +26,6 @@ bool HasCode(const session::RirIssueList& issues, const char* code) {
   return false;
 }
 
-TEST(RirSessionConfigValidationTest, RejectsZeroPlatformId) {
-  RirSessionConfig session_config;
-  session_config.platform_id = 0U;
-  const auto issues = ValidateRirSessionConfig(session_config);
-  EXPECT_TRUE(HasCode(issues, session::codes::kPlatformIdInvalid));
-}
 
 TEST(RirSessionConfigValidationTest, AcceptsPhysicalApertureWhenNominalBeamwidthIsZero) {
   RirSessionConfig session_config;
@@ -155,12 +149,6 @@ TEST(RirSessionConfigValidationTest, ValidatesTransmitterEnvelopeAndIdentity) {
   EXPECT_TRUE(HasCode(ValidateRirSessionConfig(session_config),
                        session::codes::kTransmitterOperatingEnvelopeInvalid));
 
-  session_config.hardware.transmitter.pulse_width_s = 13e-6f;
-  session_config.hardware.transmitter.prf_hz = 300.0f;
-  session_config.hardware.receiver.equipment_id =
-      session_config.hardware.transmitter.equipment_id;
-  EXPECT_TRUE(HasCode(ValidateRirSessionConfig(session_config),
-                       session::codes::kEquipmentIdentityInvalid));
 }
 
 TEST(RirSessionConfigValidationTest, ValidatesReceiverRfHardwareBoundary) {

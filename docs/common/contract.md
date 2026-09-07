@@ -1,4 +1,4 @@
-# 跨模块契约
+﻿# 跨模块契约
 
 Status: active
 Last-reviewed: 2026-09-03
@@ -123,13 +123,17 @@ EOS 的 `detector_area_cm2` 与 `detector_detectivity_cm_sqrt_hz_per_w` 共同�
 ### 工程 RF 契约
 
 以下为 AR/ESR/ECM/RIR 公共 RF 事实域（`oneq::electromagnetics`）的跨模块契约条款。设计描述（provenance
-四级、单周期交换时序、接收机影响分层）见 [rf_architecture.md](rf_architecture.md)。
+三级、单周期交换时序、接收机影响分层）见 [rf_architecture.md](rf_architecture.md)。
 
-1. 发射事实不得再用单一 `entity_id` 同时承担设备身份、同平台判断和待处理信号排除。
+1. 发射事实身份 = 传感器实体 ID（`sensor_entity_id`，各模块会话经 `SetSensorEntityId` 注入，uint32）+
+   发射流水号（`emission_id`）；无设备子层。同一实体 ID 统一承担设备身份、待处理信号自剔除（按实体 ID
+   精确匹配）与共址判定（接收方隔离表命中，不再由任何号码相等关系推导）。
 2. 发射事实禁止携带 `received_power`、J/S、J/N、receiver impairment、`jamming_detected` 或成功概率。
 3. AR/RIR 目标回波不得伪装成外部 `RfEmission` 后复用单程公式；外部雷达、ECM 和其他 RF 源才走公共单程链路。
-4. 有效带外发射或零时频重叠产生零贡献，不是错误。非有限值、非法活动区间/波形、负功率、重复 emission
-   ID、缺失设备级 co-site isolation 和不支持的近场路径必须 fail closed，且不得部分写回。
+4. 有效带外发射或零时频重叠产生零贡献，不是错误。非有限值、非法活动区间/波形、负功率、重复
+   (sensor_entity_id, emission_id) 身份和不支持的近场路径必须 fail closed，且不得部分写回；未命中接收方
+   隔离表的链路按远场空间传播求解，同载体近距离漏配由近场门（`path_length_m <
+   minimum_far_field_range_m`）拒解兜底。
 5. 超过已标定最大线性输入功率是合法物理结果：周期仍视为已执行并输出结构化 saturated impairment，
    但不得伪造观测；它与输入/配置非法导致的整周期拒绝严格分离。
 6. 业务模块之间不直接调用；调用方只转交公共值类型，不需要创建 RF scene、回填 AR 自身发射、管理 token

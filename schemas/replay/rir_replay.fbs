@@ -31,8 +31,7 @@ table RfSceneAntennaPatternV2 {
   cross_polarization_isolation_db:double;
 }
 table RfEmissionIdentityV2 {
-  platform_id:ulong;
-  equipment_id:ulong;
+  sensor_entity_id:uint;
   emission_id:ulong;
 }
 table RfWaveformScheduleV2 {
@@ -285,7 +284,7 @@ table RirCycleReplayRecordV3 {
 }
 
 root_type RirCycleReplayRecordV3;
-file_identifier "RIR3";
+file_identifier "RIR4";
 
 // ===== 周期输入载荷（cycle_input 事件；2026-08-23）=====
 // 与 include/1q/remote_identification_radar/session/RirSceneTypes.h 及

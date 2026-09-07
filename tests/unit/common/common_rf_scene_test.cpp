@@ -13,8 +13,7 @@ namespace {
 
 RfSceneEmission MakeNoiseEmission(std::uint64_t emission_id, double x_m, double power_w) {
   RfSceneEmission emission;
-  emission.identity.platform_id = emission_id + 100U;
-  emission.identity.equipment_id = emission_id + 200U;
+  emission.identity.sensor_entity_id = static_cast<std::uint32_t>(emission_id + 100U);
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = x_m;
   emission.antenna.boresight_ecef.x = -1.0;
@@ -24,8 +23,7 @@ RfSceneEmission MakeNoiseEmission(std::uint64_t emission_id, double x_m, double 
 
 RfSceneReceiverState MakeReceiver() {
   RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 1U;
   receiver.window_start_time_s = 10.0;
   receiver.window_duration_s = 1.0;
   receiver.center_frequency_hz = 10.0e9;
@@ -171,23 +169,24 @@ TEST(RfSceneTest, PulseJitterKeepsFirstPulseAtDeclaredWorldTime) {
   }
 }
 
-TEST(RfSceneTest, CoSiteRequiresDirectedEquipmentPath) {
+TEST(RfSceneTest, CoSiteRequiresIsolationPathAndNearFieldGateRejectsUnmatched) {
   RfSceneReceiverState receiver = MakeReceiver();
-  receiver.platform_id = 10U;
-  receiver.equipment_id = 30U;
+  receiver.sensor_entity_id = 30U;
   RfSceneEmission emission = MakeNoiseEmission(1U, 0.0, 100.0);
-  emission.identity.platform_id = 10U;
-  emission.identity.equipment_id = 20U;
+  emission.identity.sensor_entity_id = 20U;
   emission.position_ecef_m = receiver.position_ecef_m;
   RfIncidentLinkResult untouched;
   untouched.received_power_w = 99.0;
+  // 未配对隔离表且在近场门内（0m < 1m），拒解返回 false
   EXPECT_FALSE(TryEvaluateRfIncidentLink(emission, receiver, RfIncidentLinkConfig{}, &untouched));
   EXPECT_DOUBLE_EQ(untouched.received_power_w, 99.0);
 
-  receiver.co_site_paths.push_back(RfCoSiteIsolationPath{20U, 30U, 80.0});
+  // 命中隔离表，判定为共址，时延置零，计算隔离
+  receiver.co_site_paths.push_back(RfCoSiteIsolationPath{20U, 80.0});
   RfIncidentLinkResult isolated;
   ASSERT_TRUE(TryEvaluateRfIncidentLink(emission, receiver, RfIncidentLinkConfig{}, &isolated));
   EXPECT_TRUE(isolated.is_co_site);
+  EXPECT_DOUBLE_EQ(isolated.propagation_delay_s, 0.0);
   EXPECT_NEAR(isolated.received_power_before_overlap_w, 1.0e-6, 1.0e-15);
 }
 
@@ -203,21 +202,17 @@ TEST(RfSceneTest, ValidationAndAggregationFailClosedAndIgnoreInputOrder) {
   EXPECT_TRUE(TryValidateRfSceneFrame(scene));
   scene.emissions[1].identity.emission_id = 1U;
   EXPECT_TRUE(TryValidateRfSceneFrame(scene));
-  scene.emissions[1].identity.platform_id =
-      scene.emissions[0].identity.platform_id;
-  scene.emissions[1].identity.equipment_id =
-      scene.emissions[0].identity.equipment_id;
+  scene.emissions[1].identity.sensor_entity_id =
+      scene.emissions[0].identity.sensor_entity_id;
   EXPECT_FALSE(TryValidateRfSceneFrame(scene));
-  scene.emissions[1].identity.platform_id = 102U;
-  scene.emissions[1].identity.equipment_id = 202U;
+  scene.emissions[1].identity.sensor_entity_id = 102U;
   scene.emissions[1].identity.emission_id = 2U;
   scene.emissions[1].waveform.transmit_power_w = std::numeric_limits<double>::quiet_NaN();
   EXPECT_FALSE(TryValidateRfSceneFrame(scene));
 
   RfIncidentLinkResult first;
-  first.identity = RfEmissionIdentity{10U, 20U, 1U};
-  first.receiver_platform_id = 1U;
-  first.receiver_equipment_id = 2U;
+  first.identity = RfEmissionIdentity{10U, 1U};
+  first.receiver_sensor_entity_id = 1U;
   first.received_power_w = 1.0;
   RfIncidentLinkResult second = first;
   second.identity.emission_id = 2U;

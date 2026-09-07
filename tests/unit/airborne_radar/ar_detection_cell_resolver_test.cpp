@@ -28,10 +28,9 @@ oneq::electromagnetics::RfIncidentLinkResult MakeIncidentLink(
     const oneq::electromagnetics::RfWaveformSchedule& waveform, double received_power_w,
     std::uint64_t emission_id = 6U) {
   oneq::electromagnetics::RfIncidentLinkResult link;
-  link.identity = oneq::electromagnetics::RfEmissionIdentity{4U, 5U, emission_id};
+  link.identity = oneq::electromagnetics::RfEmissionIdentity{4U, emission_id};
   link.emission_waveform = waveform;
-  link.receiver_platform_id = 1U;
-  link.receiver_equipment_id = 2U;
+  link.receiver_sensor_entity_id = 1U;
   link.received_power_before_overlap_w = received_power_w;
   link.received_power_w = received_power_w;
   return link;
@@ -47,7 +46,7 @@ ArDetectionCellTarget MakeTarget(double range_m) {
 }
 
 TEST(ArDetectionCellResolverTest, EchoRangeDelayDopplerAndCompressionArePhysical) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   ArDetectionCellResult near_cell;
   ArDetectionCellResult far_cell;
   ASSERT_TRUE(
@@ -61,7 +60,7 @@ TEST(ArDetectionCellResolverTest, EchoRangeDelayDopplerAndCompressionArePhysical
 }
 
 TEST(ArDetectionCellResolverTest, SuppressionOnlyChangesSinrAndPulseCountDoesNotDoubleIntegrate) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   ArDetectionCellTarget target = MakeTarget(10000.0);
   ArDetectionCellResult baseline;
   ASSERT_TRUE(TryResolveArDetectionCell(MakeConfig(), target, own, {}, 0.0, &baseline));
@@ -84,7 +83,7 @@ TEST(ArDetectionCellResolverTest, SuppressionOnlyChangesSinrAndPulseCountDoesNot
 }
 
 TEST(ArDetectionCellResolverTest, DefaultGainsMatchConservativeLedger) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellConfig config = MakeConfig();
   const ArDetectionCellTarget target = MakeTarget(10000.0);
   ArDetectionCellResult result;
@@ -97,7 +96,7 @@ TEST(ArDetectionCellResolverTest, DefaultGainsMatchConservativeLedger) {
 }
 
 TEST(ArDetectionCellResolverTest, TargetGainOffsetRaisesSinrByOffset) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellTarget target = MakeTarget(10000.0);
   ArDetectionCellConfig config = MakeConfig();
   ArDetectionCellResult baseline;
@@ -110,7 +109,7 @@ TEST(ArDetectionCellResolverTest, TargetGainOffsetRaisesSinrByOffset) {
 }
 
 TEST(ArDetectionCellResolverTest, GainOffsetIsClampedToValidRangeInSolver) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellTarget target = MakeTarget(10000.0);
   ArDetectionCellConfig config = MakeConfig();
   ArDetectionCellResult baseline;
@@ -128,7 +127,7 @@ TEST(ArDetectionCellResolverTest, GainOffsetIsClampedToValidRangeInSolver) {
 }
 
 TEST(ArDetectionCellResolverTest, NoiseGainOffsetLowersSinrWhenNoiseDominant) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellTarget target = MakeTarget(10000.0);
   ArDetectionCellConfig config = MakeConfig();
   ArDetectionCellResult baseline;
@@ -141,7 +140,7 @@ TEST(ArDetectionCellResolverTest, NoiseGainOffsetLowersSinrWhenNoiseDominant) {
 }
 
 TEST(ArDetectionCellResolverTest, ClutterSuppressionOffsetRaisesSinrWhenClutterDominant) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellTarget target = MakeTarget(10000.0);
   ArDetectionCellConfig config = MakeConfig();
   const double dominant_clutter_w = 1.0e-8;
@@ -158,7 +157,7 @@ TEST(ArDetectionCellResolverTest, ClutterSuppressionOffsetRaisesSinrWhenClutterD
 }
 
 TEST(ArDetectionCellResolverTest, JammingSuppressionOffsetRaisesSinrWhenJammingDominant) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellTarget target = MakeTarget(10000.0);
   ArDetectionCellConfig config = MakeConfig();
   ArDetectionCellResult probe;
@@ -179,7 +178,7 @@ TEST(ArDetectionCellResolverTest, JammingSuppressionOffsetRaisesSinrWhenJammingD
 }
 
 TEST(ArDetectionCellResolverTest, NonFiniteGainOffsetIsRejectedAtomically) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   ArDetectionCellConfig config = MakeConfig();
   config.signal_processing.noise_processing_gain_db = std::numeric_limits<float>::quiet_NaN();
   ArDetectionCellResult untouched;
@@ -189,7 +188,7 @@ TEST(ArDetectionCellResolverTest, NonFiniteGainOffsetIsRejectedAtomically) {
 }
 
 TEST(ArDetectionCellResolverTest, FrequencyAndPulseCellsRejectNonOverlappingEnergy) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellConfig config = MakeConfig();
   const ArDetectionCellTarget target = MakeTarget(10000.0);
 
@@ -221,7 +220,7 @@ TEST(ArDetectionCellResolverTest, FrequencyAndPulseCellsRejectNonOverlappingEner
 }
 
 TEST(ArDetectionCellResolverTest, SweepDwellAndInputOrderAreResolvedDeterministically) {
-  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U, 3U};
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 2U};
   const ArDetectionCellConfig config = MakeConfig();
   const ArDetectionCellTarget target = MakeTarget(10000.0);
   oneq::electromagnetics::RfWaveformSchedule sweep;
@@ -246,7 +245,7 @@ TEST(ArDetectionCellResolverTest, InvalidInputIsRejectedAtomically) {
   untouched.echo_power_w = 77.0;
   ArDetectionCellTarget target = MakeTarget(0.0);
   EXPECT_FALSE(TryResolveArDetectionCell(MakeConfig(), target,
-                                         oneq::electromagnetics::RfEmissionIdentity{1U, 2U, 3U}, {},
+                                         oneq::electromagnetics::RfEmissionIdentity{1U, 2U}, {},
                                          0.0, &untouched));
   EXPECT_DOUBLE_EQ(untouched.echo_power_w, 77.0);
 }

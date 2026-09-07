@@ -82,9 +82,7 @@ oneq::coordinate::LlaPositionDegM MakeAirfield() {
 // =============================================================================
 
 TEST(ArSensorComponentRuntimeTest, ValidWorkModePatchAccepted) {
-  ca::ArSensorComponent component(airborne_radar::session::ArSession::Create(MakeArConfig()),
-                                                /*platform_entity_id=*/1U,
-                                                /*transmitter_equipment_id=*/1U);
+  ca::ArSensorComponent component(airborne_radar::session::ArSession::Create(MakeArConfig()));
 
   airborne_radar::config::ArRuntimeConfigPatch patch;
   patch.has_work_mode = true;
@@ -94,9 +92,7 @@ TEST(ArSensorComponentRuntimeTest, ValidWorkModePatchAccepted) {
 }
 
 TEST(ArSensorComponentRuntimeTest, NonPositiveBeamwidthRejected) {
-  ca::ArSensorComponent component(airborne_radar::session::ArSession::Create(MakeArConfig()),
-                                                /*platform_entity_id=*/1U,
-                                                /*transmitter_equipment_id=*/1U);
+  ca::ArSensorComponent component(airborne_radar::session::ArSession::Create(MakeArConfig()));
 
   // 非正指令波束宽度（沿用 ar_runtime_patch_mapper_test 已知非法用例）。
   airborne_radar::config::ArRuntimeConfigPatch patch;
@@ -395,8 +391,7 @@ class SensorQueryScene {
     // 固定 t=0 起点的波形在 cycle>=2 会被 RF v2 接收机拒绝（零重叠整周期拒绝）。
     // 波形参数在 DriveCycle 按当前窗口起点重建（见 RebuildEmitterWaveforms）。
     emitter_template_ = oneq::electromagnetics::RfSceneEmission{};
-    emitter_template_.identity.platform_id = 1001U;
-    emitter_template_.identity.equipment_id = 1U;
+    emitter_template_.identity.sensor_entity_id = 1001U;
     emitter_template_.identity.emission_id = 1U;
     emitter_template_.position_ecef_m = target_ecef;
     emitter_template_.antenna.peak_gain_dbi = 30.0;
@@ -433,7 +428,7 @@ TEST(SensorQueryGettersTest, CompletedCyclesReportPoweredOnAndScanAzimuth) {
   scene.platform().Attach(std::make_unique<ca::EsrSensorComponent>(
       electronic_surveillance_radar::session::EsrSession::Create()));
   scene.platform().Attach(std::make_unique<ca::ArSensorComponent>(
-      airborne_radar::session::ArSession::Create(MakeArConfig()), 1U, 1U));
+      airborne_radar::session::ArSession::Create(MakeArConfig())));
   scene.platform().Attach(std::make_unique<ca::EosSensorComponent>(
       electro_optical_sensor::session::EosSession::Create(MakeEosConfig())));
   scene.platform().Attach(std::make_unique<ca::SbirsSensorComponent>(
@@ -466,7 +461,7 @@ TEST(SensorQueryGettersTest, PowerOffPatchFlipsPoweredStateAndClearsAzimuth) {
   scene.platform().Attach(std::make_unique<ca::EsrSensorComponent>(
       electronic_surveillance_radar::session::EsrSession::Create()));
   scene.platform().Attach(std::make_unique<ca::ArSensorComponent>(
-      airborne_radar::session::ArSession::Create(MakeArConfig()), 1U, 1U));
+      airborne_radar::session::ArSession::Create(MakeArConfig())));
   scene.platform().Attach(std::make_unique<ca::EosSensorComponent>(
       electro_optical_sensor::session::EosSession::Create(MakeEosConfig())));
   scene.platform().Attach(std::make_unique<ca::SbirsSensorComponent>(
@@ -608,7 +603,7 @@ TEST(SensorQueryGettersTest, ArLastDebugViewCarriesPerTargetState) {
   // 与输入存在标志），供调用方结构化持久化。
   SensorQueryScene scene;
   scene.platform().Attach(std::make_unique<ca::ArSensorComponent>(
-      airborne_radar::session::ArSession::Create(MakeArConfig()), 1U, 1U));
+      airborne_radar::session::ArSession::Create(MakeArConfig())));
   scene.DriveCycle(1U);
 
   const auto& view = scene.platform().Find<ca::ArSensorComponent>()->LastDebugView();
@@ -675,7 +670,7 @@ TEST(SensorQueryGettersTest, LastDebugViewClearedOnPowerOff) {
   // 与 SBIRS 组件行为一致，AR/EOS/SAR 对齐后同样不残留上周期快照）。
   SensorQueryScene scene;
   scene.platform().Attach(std::make_unique<ca::ArSensorComponent>(
-      airborne_radar::session::ArSession::Create(MakeArConfig()), 1U, 1U));
+      airborne_radar::session::ArSession::Create(MakeArConfig())));
   scene.platform().Attach(std::make_unique<ca::EosSensorComponent>(
       electro_optical_sensor::session::EosSession::Create(MakeEosConfig())));
   scene.platform().Attach(std::make_unique<ca::SbirsSensorComponent>(
@@ -754,10 +749,10 @@ TEST(SbirsSensorComponentRuntimeTest, SingleStationAttachUsesInjectedDeviceId) {
 }
 
 TEST(SensorComponentDeviceIdTest, ComponentsDefaultAndInjectedDeviceIds) {
-  ca::ArSensorComponent ar(airborne_radar::session::ArSession::Create(), 1U, 1U, 101U);
+  ca::ArSensorComponent ar(airborne_radar::session::ArSession::Create(), 101U);
   EXPECT_EQ(ar.device_id(), 101U);
 
-  ca::ArSensorComponent ar_def(airborne_radar::session::ArSession::Create(), 1U, 1U);
+  ca::ArSensorComponent ar_def(airborne_radar::session::ArSession::Create());
   EXPECT_EQ(ar_def.device_id(), fusion::kArSourceId);
 
   ca::EsrSensorComponent esr(electronic_surveillance_radar::session::EsrSession::Create(), 102U);

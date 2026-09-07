@@ -170,7 +170,6 @@ inline const char* IssueCodeChineseName(const std::string& code) {
       {airborne_radar::session::codes::kDuplicateExternalTargetId, "场景中外部目标 ID 重复。"},
       {airborne_radar::session::codes::kElectronicScanLimitsSwappedAz, "电扫描方位界限颠倒（min > max）。"},
       {airborne_radar::session::codes::kElectronicScanLimitsSwappedEl, "电扫描俯仰界限颠倒（min > max）。"},
-      {airborne_radar::session::codes::kEquipmentIdentityInvalid, "设备标识非法（发射/接收 equipment_id 须非零且互不相同）。"},
       {airborne_radar::session::codes::kFrequencyPlanInvalid, "频率计划非法（须含有限正值且包含初始载频）。"},
       {airborne_radar::session::codes::kInterferenceFrameMismatch, "非空干扰帧与 AR 周期窗口不匹配。"},
       {airborne_radar::session::codes::kInvalidCycleDeltaTime, "周期步长非法（<= 0）。"},

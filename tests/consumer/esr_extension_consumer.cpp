@@ -28,11 +28,10 @@ int main() {
   electronic_surveillance_radar::session::EsrSession session =
       electronic_surveillance_radar::session::EsrSession::Create(config);
 
-  // 2. StepWithResult（周期输入要求非零 platform_entity_id + 有限 ECEF 运动学，见 EsrInputValidation）
+  // 2. StepWithResult（周期输入要求有限 ECEF 运动学，见 EsrInputValidation）
   electronic_surveillance_radar::session::EsrCycleInput input;
   input.cycle_index = 1U;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 100U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   // 空 RF 帧也必须与周期窗口匹配（world_cycle_index/时间戳三字段，见 EsrInputValidation）。
   input.rf_emissions.world_cycle_index = input.cycle_index;
@@ -51,7 +50,6 @@ int main() {
   electronic_surveillance_radar::session::EsrCycleInput input_2;
   input_2.cycle_index = 2U;
   input_2.dt_sec = 1.0f;
-  input_2.platform_entity_id = 100U;
   input_2.platform_position_ecef_m.x_m = 6378137.0;
   input_2.rf_emissions.world_cycle_index = input_2.cycle_index;
   input_2.rf_emissions.window_start_time_s = input_2.cycle_start_time_s;

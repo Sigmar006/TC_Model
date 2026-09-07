@@ -216,8 +216,6 @@ TEST(EsrPublicApiConvenienceTest, InputValidationReportsErrorsForBoundaryCases) 
   input.dt_sec = 0.0f;
   input.platform_attitude_deg.yaw_deg = std::numeric_limits<double>::infinity();
 
-  input.platform_entity_id = 0U;
-
   const session::EsrIssueList issues = session::ValidateEsrCycleInput(input);
 
   EXPECT_TRUE(ContainsEsrIssueCode(issues, "esr.validation.invalid_cycle_delta_time"));
@@ -233,7 +231,6 @@ TEST(EsrPublicApiConvenienceTest, SessionStepAndRuntimePatchWorkTogether) {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 10.0;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = input.cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;
@@ -320,7 +317,6 @@ TEST(EsrPublicApiConvenienceTest, StepReturnsEmptyFrameOnValidationFailure) {
   valid_input.cycle_index = 1U;
   valid_input.cycle_start_time_s = 10.0;
   valid_input.dt_sec = 1.0f;
-  valid_input.platform_entity_id = 1U;
   valid_input.platform_position_ecef_m.x_m = 6378137.0;
   valid_input.rf_emissions.world_cycle_index = valid_input.cycle_index;
   valid_input.rf_emissions.window_start_time_s = valid_input.cycle_start_time_s;
@@ -354,7 +350,6 @@ TEST(EsrPublicApiConvenienceTest, SetSensorEntityIdCanBeSetAndRestored) {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 10.0;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = input.cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;

@@ -69,7 +69,6 @@ ar::config::engineering::DetectionConfig ToArDetectionConfig(
       hardware.transmitter.peak_power_w * hardware.transmitter.pulse_width_s;
   detection.transmitter.frequency_plan_hz = {
       static_cast<double>(hardware.transmitter.frequency_hz)};
-  detection.transmitter.equipment_id = hardware.transmitter.equipment_id;
 
   detection.antenna.main_beam_gain_db = hardware.antenna.main_beam_gain_db;
   detection.antenna.nominal_az_beamwidth_deg = hardware.antenna.nominal_az_beamwidth_deg;
@@ -82,7 +81,6 @@ ar::config::engineering::DetectionConfig ToArDetectionConfig(
   // RIR 侧方向图恒开（开关已删），AR 对比口径显式置 true。
   detection.antenna.enable_directional_pattern = true;
 
-  detection.receiver.equipment_id = hardware.receiver.equipment_id;
   detection.receiver.noise_figure_db = hardware.receiver.noise_figure_db;
   detection.receiver.receive_loss_db = hardware.receiver.receive_loss_db;
   detection.receiver.cross_polarization_isolation_db =
@@ -90,8 +88,7 @@ ar::config::engineering::DetectionConfig ToArDetectionConfig(
   detection.receiver.maximum_linear_input_power_w = hardware.receiver.maximum_linear_input_power_w;
   detection.receiver.preselector_bandwidth_hz = 20.0e6f;
   detection.receiver.scene_polarization = hardware.receiver.scene_polarization;
-  detection.receiver.co_site_paths = {{hardware.transmitter.equipment_id,
-                                       hardware.receiver.equipment_id, 120.0}};
+  detection.receiver.co_site_paths = {{42U, 120.0}};
 
   detection.signal_processing.target_processing_gain_db =
       hardware.signal_processing.target_processing_gain_db;
@@ -118,14 +115,14 @@ void FillSharedCycleInputs(RirRfCycleInput* rir_input, ar_sess::ArPrepareCycleIn
   lla.longitude_deg = 120.0;
   lla.altitude_m = 1000.0;
   oneq::coordinate::TryLlaToEcef(lla, &rir_input->platform_position_ecef_m);
-  rir_input->platform_id = 42U;
+  rir_input->sensor_entity_id = 42U;
   rir_input->window_start_time_s = 0.0;
   rir_input->window_duration_s = kDwellSec;
   rir_input->beam_pointing_deg.az_deg = 0.0f;
   rir_input->beam_pointing_deg.el_deg = 0.0f;
 
   ar_input->world_cycle_index = kCycleIndex;
-  ar_input->platform_id = rir_input->platform_id;
+  ar_input->sensor_entity_id = rir_input->sensor_entity_id;
   ar_input->platform_position_ecef_m = rir_input->platform_position_ecef_m;
   ar_input->window_start_time_s = rir_input->window_start_time_s;
   ar_input->window_duration_s = rir_input->window_duration_s;
@@ -136,8 +133,7 @@ void FillSharedCycleInputs(RirRfCycleInput* rir_input, ar_sess::ArPrepareCycleIn
 oneq::electromagnetics::RfSceneEmission MakeExternalJammer(std::uint64_t emission_id,
                                                              double jammer_power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 100U + emission_id;
-  emission.identity.equipment_id = 200U + emission_id;
+  emission.identity.sensor_entity_id = 100U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = 1000.0;
   emission.antenna.boresight_ecef.x = -1.0;

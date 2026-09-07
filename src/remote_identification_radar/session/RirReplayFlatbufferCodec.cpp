@@ -54,7 +54,7 @@ flatbuffers::Offset<fb::RfSceneAntennaPatternV2> EncodeRfV2Antenna(
 flatbuffers::Offset<fb::RfEmissionIdentityV2> EncodeRfV2Identity(
     flatbuffers::FlatBufferBuilder* builder,
     const oneq::electromagnetics::RfEmissionIdentity& value) {
-  return fb::CreateRfEmissionIdentityV2(*builder, value.platform_id, value.equipment_id,
+  return fb::CreateRfEmissionIdentityV2(*builder, value.sensor_entity_id,
                                         value.emission_id);
 }
 
@@ -163,8 +163,7 @@ oneq::electromagnetics::RfSceneEmission DecodeRfV2Emission(const fb::RfSceneEmis
   oneq::electromagnetics::RfSceneEmission result;
   if (value != nullptr) {
     if (value->identity() != nullptr) {
-      result.identity.platform_id = value->identity()->platform_id();
-      result.identity.equipment_id = value->identity()->equipment_id();
+      result.identity.sensor_entity_id = value->identity()->sensor_entity_id();
       result.identity.emission_id = value->identity()->emission_id();
     }
     result.position_ecef_m = DecodeRfV2Position(value->position_ecef_m());
@@ -590,7 +589,7 @@ flatbuffers::Offset<cfb::RirHardwareConfig> EncodeHardwareConfig(
     flatbuffers::FlatBufferBuilder* builder, const config::RirHardwareConfig& value) {
   const flatbuffers::Offset<cfb::RirTransmitterConfig> transmitter =
       cfb::CreateRirTransmitterConfig(
-          *builder, value.transmitter.equipment_id, value.transmitter.peak_power_w,
+          *builder, value.transmitter.peak_power_w,
           value.transmitter.frequency_hz, value.transmitter.bandwidth_hz,
           value.transmitter.pulse_width_s, value.transmitter.prf_hz,
           value.transmitter.transmit_loss_db);
@@ -604,7 +603,7 @@ flatbuffers::Offset<cfb::RirHardwareConfig> EncodeHardwareConfig(
       EncodeAzEl(builder, value.antenna.boresight_offset_deg));
 
   const flatbuffers::Offset<cfb::RirReceiverConfig> receiver = cfb::CreateRirReceiverConfig(
-      *builder, value.receiver.equipment_id, value.receiver.noise_figure_db,
+      *builder, value.receiver.noise_figure_db,
       value.receiver.receive_loss_db, value.receiver.cross_polarization_isolation_db,
       value.receiver.maximum_linear_input_power_w,
       static_cast<int>(value.receiver.scene_polarization));
@@ -632,7 +631,6 @@ void DecodeHardwareConfig(const cfb::RirHardwareConfig* value, config::RirHardwa
   }
   if (value->transmitter() != nullptr) {
     const cfb::RirTransmitterConfig* transmitter = value->transmitter();
-    out->transmitter.equipment_id = transmitter->equipment_id();
     out->transmitter.peak_power_w = transmitter->peak_power_w();
     out->transmitter.frequency_hz = transmitter->frequency_hz();
     out->transmitter.bandwidth_hz = transmitter->bandwidth_hz();
@@ -657,7 +655,6 @@ void DecodeHardwareConfig(const cfb::RirHardwareConfig* value, config::RirHardwa
   }
   if (value->receiver() != nullptr) {
     const cfb::RirReceiverConfig* receiver = value->receiver();
-    out->receiver.equipment_id = receiver->equipment_id();
     out->receiver.noise_figure_db = receiver->noise_figure_db();
     out->receiver.receive_loss_db = receiver->receive_loss_db();
     out->receiver.cross_polarization_isolation_db =
@@ -904,8 +901,8 @@ bool DecodeCycleReplayRecordFlatbuffer(const std::string& payload_bytes,
   if (!flatbuffers::BufferHasIdentifier(payload, fb::RirCycleReplayRecordV3Identifier())) {
     if (error != nullptr) {
       *error =
-          "rir_replay v1/v2 record is not supported: polarization discrimination uses the "
-          "destructive v3 schema (RIR3)";
+          "rir_replay record is not supported: unified rf identity uses the "
+          "destructive v4 schema (RIR4)";
     }
     return false;
   }
@@ -1108,7 +1105,7 @@ std::string EncodeRirSessionConfig(const config::RirSessionConfig& config) {
   const flatbuffers::Offset<cfb::RirEnvironmentConfig> environment =
       EncodeEnvironmentConfig(&builder, config.environment);
   const flatbuffers::Offset<cfb::RirSessionConfig> root = cfb::CreateRirSessionConfig(
-      builder, hardware, orientation, mission, policy, environment, config.platform_id,
+      builder, hardware, orientation, mission, policy, environment,
       config.sensor_enabled);
   builder.Finish(root, cfb::RirSessionConfigIdentifier());
   return oneq::common::replay::CopyFinishedFlatbuffer(builder);
@@ -1151,7 +1148,6 @@ bool DecodeRirSessionConfig(const std::string& payload_bytes, config::RirSession
   DecodeMissionConfig(root->mission(), &candidate.mission);
   DecodePolicyConfig(root->policy(), &candidate.policy);
   DecodeEnvironmentConfig(root->environment(), &candidate.environment);
-  candidate.platform_id = root->platform_id();
   candidate.sensor_enabled = root->sensor_enabled();
   *config = candidate;
   return true;

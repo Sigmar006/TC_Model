@@ -11,8 +11,7 @@ namespace {
 oneq::electromagnetics::RfSceneEmission MakeEmission(std::uint64_t emission_id, double position_x_m,
                                                      double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 100U + emission_id;
-  emission.identity.equipment_id = 200U + emission_id;
+  emission.identity.sensor_entity_id = 100U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = position_x_m;
   emission.antenna.boresight_ecef.x = -1.0;
@@ -23,8 +22,7 @@ oneq::electromagnetics::RfSceneEmission MakeEmission(std::uint64_t emission_id, 
 
 oneq::electromagnetics::RfSceneReceiverState MakeReceiver() {
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 5U;
   receiver.window_start_time_s = 10.0;
   receiver.window_duration_s = 1.0;
   receiver.center_frequency_hz = 10.0e9;
@@ -62,8 +60,7 @@ TEST(RirRfFrontEndResolverTest, AggregatesInStableIdentityOrderAndDetectsSaturat
 TEST(RirRfFrontEndResolverTest, MissingDirectedCoSitePathRejectsAtomically) {
   const auto receiver = MakeReceiver();
   oneq::electromagnetics::RfSceneEmission emission = MakeEmission(1U, 0.0, 10.0);
-  emission.identity.platform_id = receiver.platform_id;
-  emission.identity.equipment_id = 1U;
+  emission.identity.sensor_entity_id = 99U;
   emission.position_ecef_m = receiver.position_ecef_m;
   oneq::electromagnetics::RfSceneFrame scene;
   scene.world_cycle_index = 1U;

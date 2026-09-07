@@ -114,11 +114,6 @@ void ValidateRirHardwareConfig(const RirHardwareConfig& hardware, session::RirIs
     PushIssue(issues, session::codes::kTransmitterOperatingEnvelopeInvalid, "hardware.transmitter",
               "Transmitter peak power, pulse width, PRF and duty cycle must be valid.");
   }
-  if (transmitter.equipment_id == 0U || receiver.equipment_id == 0U ||
-      transmitter.equipment_id == receiver.equipment_id) {
-    PushIssue(issues, session::codes::kEquipmentIdentityInvalid, "hardware.*.equipment_id",
-              "Transmitter and receiver equipment identifiers must be non-zero and distinct.");
-  }
   if (!oneq::common::validation::IsFinite(receiver.cross_polarization_isolation_db) ||
       receiver.cross_polarization_isolation_db < 0.0f ||
       !oneq::common::validation::IsFinite(receiver.maximum_linear_input_power_w) ||
@@ -206,10 +201,6 @@ void ValidateRirHardwareConfig(const RirHardwareConfig& hardware, session::RirIs
 
 session::RirIssueList ValidateRirSessionConfig(const RirSessionConfig& config) {
   session::RirIssueList issues;
-  if (config.platform_id == 0U) {
-    PushIssue(&issues, session::codes::kPlatformIdInvalid, "platform_id",
-              "Platform identifier must be non-zero.");
-  }
   const RirMissionConfig& mission = config.mission;
   const RirRecognitionPolicy& recognition = config.policy.recognition;
   const RirRecognitionFeatureWeights& weights = recognition.feature_weights;

@@ -15,14 +15,12 @@ EsrCycleInput MakeInput() {
   input.cycle_index = 7U;
   input.cycle_start_time_s = 20.0;
   input.dt_sec = 0.5f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = input.cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;
   input.rf_emissions.window_duration_s = input.dt_sec;
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 2U;
-  emission.identity.equipment_id = 3U;
+  emission.identity.sensor_entity_id = 2U;
   emission.identity.emission_id = 4U;
   emission.position_ecef_m.x_m = 6378137.0;
   emission.position_ecef_m.y_m = 1000.0;
@@ -41,13 +39,14 @@ TEST(EsrReplayCodecRoundtripTest, CycleInputPreservesRfV2Frame) {
   EXPECT_EQ(decoded.cycle_index, input.cycle_index);
   EXPECT_DOUBLE_EQ(decoded.cycle_start_time_s, input.cycle_start_time_s);
   ASSERT_EQ(decoded.rf_emissions.emissions.size(), 1U);
+  EXPECT_EQ(decoded.rf_emissions.emissions.front().identity.sensor_entity_id, 2U);
   EXPECT_EQ(decoded.rf_emissions.emissions.front().identity.emission_id, 4U);
   EXPECT_EQ(decoded.rf_emissions.emissions.front().waveform.kind,
             oneq::electromagnetics::RfSceneWaveformKind::kPulseTrain);
 }
 
-// 标识符护栏（2026-08-24 起）：encode 写入 "ESRC"，无标识符（历史负载形态）与
-// 异源标识符的缓冲必须显式拒绝，不得静默误解码。标识符位于字节 [4,8)。
+// 标识符护栏（2026-08-24 起引入，2026-09-06 升位为 ESRD）：encode 写入 "ESRD"，无标识符、
+// 异源标识符以及已废弃的 "ESRC" 缓冲必须显式拒绝，不得静默误解码。
 TEST(EsrReplayCodecRoundtripTest, DecodeRejectsMissingOrForeignIdentifierBuffers) {
   const std::string encoded = EncodeEsrCycleInput(MakeInput());
   ASSERT_GE(encoded.size(), 8U);
@@ -61,6 +60,10 @@ TEST(EsrReplayCodecRoundtripTest, DecodeRejectsMissingOrForeignIdentifierBuffers
   std::string foreign = encoded;
   foreign.replace(4U, 4U, "XXXX");
   EXPECT_FALSE(DecodeEsrCycleInput(foreign, &decoded));
+
+  std::string retired_esrc = encoded;
+  retired_esrc.replace(4U, 4U, "ESRC");
+  EXPECT_FALSE(DecodeEsrCycleInput(retired_esrc, &decoded));
 }
 
 TEST(EsrReplayCodecRoundtripTest, CycleResultPreservesExplicitStatus) {
@@ -209,6 +212,18 @@ TEST(EsrReplayCodecRoundtripTest, SessionConfigPreservesSensorEnabled) {
   EXPECT_FALSE(decoded.sensor_enabled);
   EXPECT_EQ(decoded.mission.work_mode, config::EsrWorkMode::kRwr);
   EXPECT_FLOAT_EQ(decoded.mission.scan.scan_rate_hz, 1.0f);
+}
+
+TEST(EsrReplayCodecRoundtripTest, DecodeRejectsRetiredESRSFileIdentifier) {
+  config::EsrSessionConfig config;
+  const std::string bytes = EncodeEsrSessionConfig(config);
+  ASSERT_GE(bytes.size(), 8U);
+  config::EsrSessionConfig decoded;
+  EXPECT_TRUE(DecodeEsrSessionConfig(bytes, &decoded));
+
+  std::string retired_esrs = bytes;
+  retired_esrs.replace(4U, 4U, "ESRS");
+  EXPECT_FALSE(DecodeEsrSessionConfig(retired_esrs, &decoded));
 }
 
 TEST(EsrReplayCodecRoundtripTest,

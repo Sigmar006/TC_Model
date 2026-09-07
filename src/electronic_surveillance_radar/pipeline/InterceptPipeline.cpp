@@ -86,6 +86,7 @@ extension::InterceptPipelineResult InterceptPipeline::RunCycle(
   const extension::InterceptPipelineConfig pipeline_config = BuildPipelineConfig(config_);
   const extension::InterceptRuntimeConfig runtime_config = BuildRuntimeConfig(config_);
   ctx.BeginCycle(input_state, environment_snapshot, pipeline_config, runtime_config);
+  ctx.SetSensorEntityId((sensor_entity_id_ != 0U) ? sensor_entity_id_ : 2U);
 
   const double scan_phase_before_detection = scan_phase_cycles_;
   const std::uint64_t next_observation_id_before_detection = next_observation_id_;

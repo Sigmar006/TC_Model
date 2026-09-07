@@ -136,8 +136,7 @@ table RfSceneAntennaPatternV2 {
   cross_polarization_isolation_db:double;
 }
 table RfEmissionIdentityV2 {
-  platform_id:ulong;
-  equipment_id:ulong;
+  sensor_entity_id:uint;
   emission_id:ulong;
 }
 table RfWaveformScheduleV2 {
@@ -183,7 +182,6 @@ table ArRuntimeConfigAttemptV2 {
 // current replay accepts only V3 cycle records.
 table EcefVelocityV3 { x_mps:double; y_mps:double; z_mps:double; }
 table ArPlatformInputV3 {
-  platform_entity_id:ulong;
   platform_position_ecef_m:Vector3d;
   platform_velocity_mps:EcefVelocityV3;
   platform_attitude_deg:EulerAnglesDeg64;
@@ -289,4 +287,4 @@ table ArCycleReplayRecordV3 {
 // 非表尾加性变更）。codec 自此写入并校验 file_identifier：无标识符的旧轨迹被显式拒绝，
 // 不会被同名标识按新布局静默误读。
 root_type ArCycleInputV3;
-file_identifier "ARC3";
+file_identifier "ARC4";

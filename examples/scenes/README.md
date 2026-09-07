@@ -1,4 +1,4 @@
-﻿# 场景系统（scenes/）
+# 场景系统（scenes/）
 
 每个场景一个子目录 `<name>/<name>.json`（场景描述）+ `<name>.md`（预期事件表归档）。
 场景文件即配置记录（git 跟踪），新场景只加子目录 + JSON + 预期表，不改代码。
@@ -181,7 +181,7 @@ config_loader，遵循惯例：块内缺省字段静默默认、语法错误与�
 | `commands[]` | 否 | 运行期指令脚本（外部指挥系统代理）：`cycle`（**必填** ≥ 1，下发周期）、`kind`（`designate` 指定识别+锁定 / `engage` 交战 / `clear_designation` 清除指定，缺省 designate）、`target_id`（**designate/engage 必填**，须命中 `targets[].id`）、`duration_cycles`（0 = 无限期窗口）。主循环每周期 world.Step 前派发 → 指令事件 → CommandRouter 键解析 → 传感器运行期补丁（AR 切 STT 指定 + RIR 指定识别）；与威胁自动闭环（DecisionListener 的 `ENGAGE_HIGH_THREAT`）共用同一指令入口 |
 | `high_threat_confidence` | 否 | 决策门限（3.0） |
 | `smoke` | 否 | 冒烟下限：`min_key_events`/`min_sbirs_events`/`min_sar_products`/`min_fused_targets`（全 1；零产出场景显式置 0）、`min_rir_recognition_outputs`（0；RIR 确认态周期数下限） |
-| `session_config` | **是** | **场景自持会话配置（挂载即全量）**：挂载的通道必带对应子块，未挂载通道**禁止携带**（loader 校验，"有配置 = 有挂载"一一对应）。子块：`ar`/`esr`/`eos`/`sbirs`/`sar`/`rir`（= `examples/basic_config/<域>.json` 模板整份拷贝后按场景改；`esr` 源文件为 `electronic_warfare.json`；结构见各模板与 `examples/common/config_loaders/`，缺省字段 = 库结构体默认）；`ecm`（仅 `ecm.enabled` 场景：`transmitter_equipment_id`/`channel_count`/`maximum_total_transmit_power_w`/`maximum_channel_transmit_power_w`/`default_technique`（kSpot/kBarrage/kSweep/kDeception），基线 101/1/1000/1000/kSpot）；`fusion`（**恒必带**，可为空对象：`position_radius_m`（1000）/`bearing_beamwidth_deg`（5）/`feature_threshold`（0）/`window_size`（10）/`max_missed_cycles`（5）/`source_weights[]`（空 = 全 1.0））；`threat`（**恒必带**，可为空对象：权重/断点/阈值字段集见 loader 映射，缺省 = 库默认）。RIR 识别库路径按编译宏 `CA_RIR_DATABASE_PATH` 钉定。**新建场景的推荐做法：从 `examples/basic_config/` 拷模板 → 只留挂载通道 → 按场景改参** |
+| `session_config` | **是** | **场景自持会话配置（挂载即全量）**：挂载的通道必带对应子块，未挂载通道**禁止携带**（loader 校验，"有配置 = 有挂载"一一对应）。子块：`ar`/`esr`/`eos`/`sbirs`/`sar`/`rir`（= `examples/basic_config/<域>.json` 模板整份拷贝后按场景改；`esr` 源文件为 `electronic_warfare.json`；结构见各模板与 `examples/common/config_loaders/`，缺省字段 = 库结构体默认）；`ecm`（仅 `ecm.enabled` 场景：`channel_count`/`maximum_total_transmit_power_w`/`maximum_channel_transmit_power_w`/`default_technique`（kSpot/kBarrage/kSweep/kDeception），基线 1/1000/1000/kSpot；设备 ID 统一由顶层 `device_ids.ecm` 配置，默认 101）；`fusion`（**恒必带**，可为空对象：`position_radius_m`（1000）/`bearing_beamwidth_deg`（5）/`feature_threshold`（0）/`window_size`（10）/`max_missed_cycles`（5）/`source_weights[]`（空 = 全 1.0））；`threat`（**恒必带**，可为空对象：权重/断点/阈值字段集见 loader 映射，缺省 = 库默认）。RIR 识别库路径按编译宏 `CA_RIR_DATABASE_PATH` 钉定。**新建场景的推荐做法：从 `examples/basic_config/` 拷模板 → 只留挂载通道 → 按场景改参** |
 
 历史注：v1 场景的顶层 `eos_scan`/`sar`/`fusion`/`threat` 覆写块与
 `sbirs_satellite` 的焦平面/命中门键已并入 `session_config` 对应子块（生效值 =

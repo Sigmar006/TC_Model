@@ -71,7 +71,6 @@ ArPlatformInput MakePlatformInput() {
   EXPECT_TRUE(oneq::coordinate::TryLlaToEcef(platform_lla, &platform_ecef));
 
   ArPlatformInput platform;
-  platform.platform_entity_id = 42U;
   platform.platform_position_ecef_m = platform_ecef;
   platform.platform_velocity_mps.x_mps = 0.0;
   platform.platform_velocity_mps.y_mps = 0.0;
@@ -155,19 +154,17 @@ double Dot(const oneq::electromagnetics::RfSceneDirection& lhs,
   return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z;
 }
 
-// 未配置的同址干扰：发射身份平台 == 本机 → 接收侧校验拒绝（kRejectedExecution）。
+// 未配置同址路径的近场干扰：距离小于远场准则且未命中 co_site_paths → 接收侧校验拒绝（kRejectedExecution）。
 void AddUnconfiguredCoSiteInterference(ArCycleInput* input) {
   ASSERT_NE(input, nullptr);
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = {99U, 3U, 1U};
+  emission.identity = {999U, 1U};
   emission.position_ecef_m = input->platform.platform_position_ecef_m;
-  emission.position_ecef_m.x_m += 10000.0;
   const double radar_frequency_hz =
       static_cast<double>(MakeDetectionFocusedConfig().hardware.transmitter.frequency_hz);
   ASSERT_TRUE(oneq::electromagnetics::TryCreateRfNoiseWaveform(
       input->cycle_start_time_s, input->dt_sec, radar_frequency_hz, 20.0e6, 1.0,
       &emission.waveform));
-  emission.identity.platform_id = input->platform.platform_entity_id;
   input->interference.world_cycle_index = input->cycle_index;
   input->interference.window_start_time_s = input->cycle_start_time_s;
   input->interference.window_duration_s = input->dt_sec;

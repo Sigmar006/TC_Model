@@ -129,9 +129,7 @@ TEST(RirReplaySessionTest, RuntimePatchAndSecondCycleReplayExactly) {
 /// @brief 会话配置 / 运行期补丁 / 周期输入编解码字节精确往返（字段丢失即失败）。
 TEST(RirReplaySessionTest, ConfigAndInputPayloadsRoundtripByteExact) {
   config::RirSessionConfig config = MakeIdentifyConfig();
-  config.platform_id = 9U;
   config.sensor_enabled = false;
-  config.hardware.transmitter.equipment_id = 11U;
   config.hardware.transmitter.bandwidth_hz = 9.0e6f;
   config.hardware.antenna.model_type =
       config::hardware::RirAntennaPatternModelType::kSincPattern;
@@ -156,7 +154,6 @@ TEST(RirReplaySessionTest, ConfigAndInputPayloadsRoundtripByteExact) {
   std::string error;
   ASSERT_TRUE(DecodeRirSessionConfig(encoded_config, &decoded_config, &error)) << error;
   EXPECT_EQ(EncodeRirSessionConfig(decoded_config), encoded_config);
-  EXPECT_EQ(decoded_config.platform_id, 9U);
   EXPECT_FALSE(decoded_config.sensor_enabled);
   EXPECT_EQ(decoded_config.policy.recognition.database_path, "features.sqlite");
 
@@ -228,7 +225,7 @@ TEST(RirReplaySessionTest, SessionConfigDecodeRejectsLegacyIdentifier) {
   const std::string encoded = EncodeRirSessionConfig(MakeIdentifyConfig());
   ASSERT_GE(encoded.size(), 8U);
 
-  for (const char* legacy_identifier : {"RIRC", "RIRD", "RIRE"}) {
+  for (const char* legacy_identifier : {"RIRC", "RIRD", "RIRE", "RIRF"}) {
     std::string relabeled = encoded;
     relabeled.replace(4U, 4U, legacy_identifier);
     config::RirSessionConfig decoded;

@@ -24,7 +24,7 @@ bool EcmConfigValidator::IsKnownDeceptionMode(EcmDeceptionMode mode) {
 }
 
 bool EcmConfigValidator::IsValidConfig(const config::EcmSessionConfig& config) {
-  return config.transmitter_equipment_id != 0U && config.channel_count > 0U &&
+  return config.channel_count > 0U &&
          std::isfinite(config.minimum_frequency_hz) &&
          std::isfinite(config.maximum_frequency_hz) && config.minimum_frequency_hz > 0.0 &&
          config.maximum_frequency_hz > config.minimum_frequency_hz &&
@@ -76,7 +76,7 @@ bool EcmConfigValidator::IsValidSensorObservation(const EcmSensorObservation& ob
 }
 
 bool EcmConfigValidator::IsValidInput(const EcmCycleInput& input) {
-  if (input.cycle_index == 0U || input.platform_entity_id == 0U ||
+  if (input.cycle_index == 0U ||
       !std::isfinite(input.cycle_start_time_s) || input.cycle_start_time_s < 0.0 ||
       !std::isfinite(input.dt_sec) || input.dt_sec <= 0.0 ||
       !std::isfinite(input.platform_position_ecef_m.x_m) ||

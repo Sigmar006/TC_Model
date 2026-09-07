@@ -108,13 +108,9 @@ std::vector<airborne_radar::session::ArTargetInput> BuildArEnuTargets(
 }  // namespace
 
 ArSensorComponent::ArSensorComponent(airborne_radar::session::ArSession session,
-                                     std::uint64_t platform_entity_id,
-                                     std::uint64_t transmitter_equipment_id,
                                      std::uint32_t device_id,
                                      DetectionDeliveryMode detection_delivery)
     : session_(std::move(session)),
-      platform_entity_id_(platform_entity_id),
-      transmitter_equipment_id_(transmitter_equipment_id),
       device_id_(device_id),
       detection_delivery_(detection_delivery) {
   // 轨迹生命周期事件由库内 recorder 承担（StepWithResult 内部自动喂）。
@@ -258,13 +254,12 @@ airborne_radar::session::ArCycleInput ArSensorComponent::BuildCycleInput(
   input.cycle_start_time_s = scene.t_sec;
   input.dt_sec = dt_sec;
   airborne_radar::session::ArPlatformInput pose;
-  pose.platform_entity_id = platform_entity_id_;
   ResolvePlatformEcef(flight.position(), flight.heading_deg(), flight.speed_mps(),
                       &pose.platform_position_ecef_m, &pose.platform_velocity_mps);
   input.platform = pose;
   input.targets = BuildArEnuTargets(scene.world_targets, pose.platform_position_ecef_m);
   input.interference =
-      BuildArInterferenceFromRfWorld(scene.rf_world, platform_entity_id_, transmitter_equipment_id_,
+      BuildArInterferenceFromRfWorld(scene.rf_world, device_id_,
                                      scene.t_sec, dt_sec, static_cast<std::uint64_t>(scene.cycle));
   return input;
 }

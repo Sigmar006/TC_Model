@@ -206,11 +206,11 @@ tuning window，因此 sweep 与 sequence 都必须产生真实观测——零�
 
 ## 传感器实例身份注入边界（SetSensorEntityId）
 
-`EsrSession::SetSensorEntityId(std::uint32_t)` 是标注域设备标识的注入面，供会话构造后注入，区分同型多实例：
+`EsrSession::SetSensorEntityId(std::uint32_t)` 作为实体身份注入面，同号贯通标注与 RF 身份：
 
 1. **注入面特征**：构造后注入，不进入 `EsrSessionConfig`，不进入 `EsrRuntimeConfigPatch`，不参与电源/事务模型。
 2. **时序与缺省**：任意时刻可调，下一周期起生效；未注入或显式传入 `0` 时恢复默认哨兵，周期摘要日志回退使用融合常量 `fusion::kEsrSourceId`（2U）。
-3. **消费面与物理隔离**：仅用于周期摘要日志行 `[InterceptPipeline]` 携带 `sensor_entity_id={}` 供排查区分；不进入物理计算与截获检测逻辑，不改变 `EsrOutputFrame` 或 `EsrCycleResult` 结构。
+3. **消费面（同号贯通标注与 RF 身份）**：有效值（非 0）同时供 RF 组装（接收状态 `receiver_state.sensor_entity_id`、共址隔离表配对、排除归因记录器键、同平台自剔除）与标注面（周期摘要日志行 `[InterceptPipeline]` 携带 `sensor_entity_id={}` 供排查区分、下游辐射源假设融合标识）。
 
 [evidence: include/1q/electronic_surveillance_radar/session/EsrSession.h]::SetSensorEntityId
 [evidence: tests/contract/electronic_surveillance_radar/esr_public_api_convenience_test.cpp]

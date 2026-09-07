@@ -39,7 +39,6 @@ int main() {
   input.cycle_index = 5U;
   input.cycle_start_time_s = 4.0;
   input.input_mode = ecm::EcmInputMode::kSensorDriven;
-  input.platform_entity_id = 99U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.has_sensor_observation_frame = true;
   input.sensor_observation_frame = frame;

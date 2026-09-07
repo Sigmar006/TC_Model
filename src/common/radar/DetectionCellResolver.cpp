@@ -28,13 +28,12 @@ double GainFactorFromDb(double gain_db) {
 
 bool SameIdentity(const oneq::electromagnetics::RfEmissionIdentity& left,
                   const oneq::electromagnetics::RfEmissionIdentity& right) {
-  return left.platform_id == right.platform_id && left.equipment_id == right.equipment_id &&
+  return left.sensor_entity_id == right.sensor_entity_id &&
          left.emission_id == right.emission_id;
 }
 
 bool IsValidIdentity(const oneq::electromagnetics::RfEmissionIdentity& identity) {
-  return identity.platform_id != 0U && identity.equipment_id != 0U &&
-         identity.emission_id != 0U;
+  return identity.sensor_entity_id != 0U && identity.emission_id != 0U;
 }
 
 double IntervalOverlap(double left_center_hz, double left_bandwidth_hz, double right_center_hz,
@@ -79,7 +78,7 @@ bool TryResolveCellInterference(
   if (interference_power_w == nullptr) {
     return false;
   }
-  typedef std::tuple<std::uint64_t, std::uint64_t, std::uint64_t> IdentityKey;
+  typedef std::pair<std::uint32_t, std::uint64_t> IdentityKey;
   std::vector<std::pair<IdentityKey, const oneq::electromagnetics::RfIncidentLinkResult*> > ordered;
   ordered.reserve(incident_links.size());
   for (const auto& link : incident_links) {
@@ -90,8 +89,7 @@ bool TryResolveCellInterference(
       return false;
     }
     ordered.push_back(std::make_pair(
-        std::make_tuple(link.identity.platform_id, link.identity.equipment_id,
-                        link.identity.emission_id),
+        std::make_pair(link.identity.sensor_entity_id, link.identity.emission_id),
         &link));
   }
   std::sort(ordered.begin(), ordered.end(),

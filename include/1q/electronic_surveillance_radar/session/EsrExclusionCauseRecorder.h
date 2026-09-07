@@ -4,10 +4,10 @@
  *
  * 对持续被排除的发射源，当其排除原因（code + cause 组合对）跨周期变化时产生结构化事件。
  *
- * ESR 无 target_id 概念，以发射源标识（platform_id/equipment_id/emission_id 三字段）为
+ * ESR 无 target_id 概念，以发射源标识（sensor_entity_id/emission_id 二字段）为
  * 实体关联键。排除诊断的 `location.entity_index` = 发射源在 identity 排序后数组中的下标
  * （与 InterceptDetectionExecutor 排序序一致）；记录器 Update 时按同一序重排输入 emissions，
- * 把 entity_index 解析回 identity 三元组，**内部状态以 identity 三元组为键**（免疫跨周期
+ * 把 entity_index 解析回 identity 二元组，**内部状态以 identity 二元组为键**（免疫跨周期
  * 发射源集合变化时的下标移位）。
  */
 
@@ -44,7 +44,7 @@ enum class ONEQ_API EsrExclusionCauseEventKind {
  *
  * `previous_*` 为空（code）/ kNone（cause）表示上一周期未被排除（A2）；
  * `current_*` 为空（code）/ kNone（cause）表示本周期不再被排除（A4）。
- * 发射源标识三字段（platform/equipment/emission id）结构化携带，供集成方按实体关联。
+ * 发射源标识二字段（sensor_entity_id/emission_id）结构化携带，供集成方按实体关联。
  */
 struct ONEQ_API EsrExclusionCauseEvent {
   std::uint32_t cycle_index{0U};                                    /**< 触发该事件的周期序号 */
@@ -66,8 +66,8 @@ struct ONEQ_API EsrExclusionCauseEvent {
  * 差分键为 (code,cause) 组合对（与 AR/SBIRS/EOS 一致）。
  *
  * **实体关联**：ESR 排除诊断的 `location.entity_index` = 发射源在 identity 排序后数组中
- * 的下标（InterceptDetectionExecutor 按 platform/equipment/emission 排序）。记录器 Update
- * 时按同一序重排 `input.rf_emissions.emissions`，把 entity_index 解析回 identity 三元组，
+ * 的下标（InterceptDetectionExecutor 按 sensor_entity_id/emission_id 排序）。记录器 Update
+ * 时按同一序重排 `input.rf_emissions.emissions`，把 entity_index 解析回 identity 二元组，
  * 以 identity 为内部状态键——免疫跨周期发射源集合变化时的下标移位（源 A 消失后源 B 的
  * 下标变化不会误判为 B 的原因变化）。
  *

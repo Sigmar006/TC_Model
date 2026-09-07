@@ -54,7 +54,6 @@ EcmCycleInput MakeSensorInput(std::uint32_t cycle_index,
   input.cycle_start_time_s = static_cast<double>(cycle_index - 1U);
   input.dt_sec = 1.0;
   input.input_mode = EcmInputMode::kSensorDriven;
-  input.platform_entity_id = 900U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.has_sensor_observation_frame = true;
   input.sensor_observation_frame.source_esr_batch_id = static_cast<std::uint64_t>(cycle_index - 1U);

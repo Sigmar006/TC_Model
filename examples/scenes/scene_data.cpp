@@ -761,7 +761,7 @@ bool ParseSceneBody(const examples::JsonValue& root, SceneData* scene,
       *error = "\"device_ids\" must be an object";
       return false;
     }
-    static const char* kKnownDeviceKeys[] = {"ar", "esr", "eos", "sbirs", "rir"};
+    static const char* kKnownDeviceKeys[] = {"ar", "esr", "eos", "sbirs", "rir", "ecm"};
     for (const std::string& key : dev_ids.Keys()) {
       bool known = false;
       for (const char* allowed : kKnownDeviceKeys) {
@@ -790,7 +790,8 @@ bool ParseSceneBody(const examples::JsonValue& root, SceneData* scene,
         !parse_positive_u32("esr", &out.device_ids.esr) ||
         !parse_positive_u32("eos", &out.device_ids.eos) ||
         !parse_positive_u32("sbirs", &out.device_ids.sbirs) ||
-        !parse_positive_u32("rir", &out.device_ids.rir)) {
+        !parse_positive_u32("rir", &out.device_ids.rir) ||
+        !parse_positive_u32("ecm", &out.device_ids.ecm)) {
       return false;
     }
 
@@ -804,6 +805,7 @@ bool ParseSceneBody(const examples::JsonValue& root, SceneData* scene,
         else if (std::string(key) == "eos") val = out.device_ids.eos;
         else if (std::string(key) == "sbirs") val = out.device_ids.sbirs;
         else if (std::string(key) == "rir") val = out.device_ids.rir;
+        else if (std::string(key) == "ecm") val = out.device_ids.ecm;
 
         const auto it = seen_ids.find(val);
         if (it != seen_ids.end()) {
@@ -912,10 +914,8 @@ void ResolveRirDatabasePath(remote_identification_radar::config::RirSessionConfi
 /// MakeDefaultEcmConfig 数据化）。
 bool LoadSessionConfigs(const examples::JsonValue& root, const SceneData& scene,
                         SceneSessionConfigs* configs, std::string* error) {
-  // ECM 字段级缺省基线（scenes/README 口径 101/1/1000/1000/kSpot）：仅作下方
-  // session_config.ecm 部分字段的回落值。ECM 配置的唯一消费者是挂载门控的
-  // AR co-site 隔离 push（runner），未挂载场景无人读取（摘除本块不影响其输出）。
-  configs->ecm.transmitter_equipment_id = 101U;
+  // ECM 字段级缺省基线（scenes/README 口径 1/1000/1000/kSpot）：仅作下方
+  // session_config.ecm 部分字段的回落值。
   configs->ecm.channel_count = 1U;
   configs->ecm.maximum_total_transmit_power_w = 1000.0;
   configs->ecm.maximum_channel_transmit_power_w = 1000.0;
@@ -970,9 +970,6 @@ bool LoadSessionConfigs(const examples::JsonValue& root, const SceneData& scene,
       examples::LoadRirSessionConfig(value, &configs->rir);
       ResolveRirDatabasePath(&configs->rir);
     } else if (std::string(block.key) == "ecm") {
-      configs->ecm.transmitter_equipment_id = static_cast<std::uint32_t>(ReadInt(
-          value, "transmitter_equipment_id",
-          static_cast<std::int64_t>(configs->ecm.transmitter_equipment_id)));
       configs->ecm.channel_count = static_cast<std::uint32_t>(
           ReadInt(value, "channel_count", static_cast<std::int64_t>(configs->ecm.channel_count)));
       configs->ecm.maximum_total_transmit_power_w =

@@ -10,11 +10,8 @@ namespace {
 
 bool IdentityLess(const oneq::electromagnetics::RfIncidentLinkResult& left,
                   const oneq::electromagnetics::RfIncidentLinkResult& right) {
-  if (left.identity.platform_id != right.identity.platform_id) {
-    return left.identity.platform_id < right.identity.platform_id;
-  }
-  if (left.identity.equipment_id != right.identity.equipment_id) {
-    return left.identity.equipment_id < right.identity.equipment_id;
+  if (left.identity.sensor_entity_id != right.identity.sensor_entity_id) {
+    return left.identity.sensor_entity_id < right.identity.sensor_entity_id;
   }
   return left.identity.emission_id < right.identity.emission_id;
 }

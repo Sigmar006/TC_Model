@@ -289,7 +289,7 @@ TEST(ArDeceptionEccmTest, AntiRgpoDetectionCellWorksWithAntiRgpoEnabled) {
 
   // 构造 kPulseTrain 干扰入射链路。
   RfIncidentLinkResult link;
-  link.identity = RfEmissionIdentity{1U, 100U, 1000U};
+  link.identity = RfEmissionIdentity{100U, 1000U};
   link.received_power_before_overlap_w = 10.0;
   link.received_power_w = 10.0;
   link.propagation_delay_s = 0.0;  // 零传播延迟确保 emission_time 落入活动窗口
@@ -336,7 +336,7 @@ TEST(ArDeceptionEccmTest, AntiRgpoDetectionCellWorksWithAntiRgpoEnabled) {
   cell_target.two_way_additional_propagation_loss_db = 0.0;
   cell_target.effective_pulse_count = 10U;
 
-  const RfEmissionIdentity own_id{999U, 999U, 999U};
+  const RfEmissionIdentity own_id{999U, 999U};
   const std::vector<RfIncidentLinkResult> incident_links = {link};
 
   // 不启用 anti-RGPO：正常求解。

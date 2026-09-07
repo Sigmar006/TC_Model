@@ -47,8 +47,7 @@ bool HasCode(const session::RirIssueList& issues, const char* code) {
 
 oneq::electromagnetics::RfSceneEmission MakeNoiseEmission(std::uint64_t emission_id) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 100U + emission_id;
-  emission.identity.equipment_id = 200U + emission_id;
+  emission.identity.sensor_entity_id = 100U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = 1000.0;
   emission.antenna.boresight_ecef.x = -1.0;

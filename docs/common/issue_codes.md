@@ -37,7 +37,6 @@ Last-reviewed: 2026-08-23
 | `ar.validation.duplicate_external_target_id` | 输入校验 | 场景中外部目标 ID 重复。 |
 | `ar.validation.electronic_scan_limits_swapped_az` | 输入校验 | 电扫描方位界限颠倒（min > max）。 |
 | `ar.validation.electronic_scan_limits_swapped_el` | 输入校验 | 电扫描俯仰界限颠倒（min > max）。 |
-| `ar.validation.equipment_identity_invalid` | 输入校验 | 设备标识非法（发射/接收 equipment_id 须非零且互不相同）。 |
 | `ar.validation.frequency_plan_invalid` | 输入校验 | 频率计划非法（须含有限正值且包含初始载频）。 |
 | `ar.validation.interference_frame_mismatch` | 输入校验 | 非空干扰帧与 AR 周期窗口不匹配。 |
 | `ar.validation.invalid_cycle_delta_time` | 输入校验 | 周期步长非法（<= 0）。 |
@@ -261,7 +260,6 @@ Last-reviewed: 2026-08-23
 | `rir.validation.association_policy_invalid` | 输入校验 | 关联策略非法（波门 sigma 非正）。 |
 | `rir.validation.detection_policy_invalid` | 输入校验 | 检测策略非法（Pfa/门限/脉冲数/种子）。 |
 | `rir.validation.duplicate_external_target_id` | 输入校验 | 场景中外部目标 ID 重复。 |
-| `rir.validation.equipment_identity_invalid` | 输入校验 | 发射/接收 equipment_id 非法（须非零且互异）。 |
 | `rir.validation.frequency_plan_invalid` | 输入校验 | 频率计划非法（须含有限正值且包含初始载频）。 |
 | `rir.validation.inconsistent_platform_position` | 输入校验 | 平台位置存在性标志与数据不一致（has=false 但分量非默认值）。 |
 | `rir.validation.invalid_cycle_delta_time` | 输入校验 | 周期步长非法（<= 0）。 |
@@ -283,7 +281,6 @@ Last-reviewed: 2026-08-23
 | `rir.validation.recognition_weights_invalid` | 输入校验 | 识别特征权重非法（须有限、在 [0, 1] 且总和为 1）。 |
 | `rir.validation.scan_strategy_invalid` | 输入校验 | 扫描策略非法（限位须有限有序且在合法域 az∈[-180,180]、el∈[-90,90]；步长系数须为正）。 |
 | `rir.validation.scan_wave_axis_samples_truncated` | 输入校验 | 扫描波位单轴采样数超内核上限（4096），波位表会被截断；需加大步长或缩小扇区。
-| `rir.validation.platform_id_invalid` | 输入校验 | 物理平台身份非法（须非零）。 |
 | `rir.validation.signal_processing_gains_invalid` | 输入校验 | 信号处理增益偏置非法（四偏置须有限且在 [0, 40] dB）。 |
 | `rir.validation.tracking_policy_invalid` | 输入校验 | 跟踪策略非法（KF 噪声参数非正）。 |
 | `rir.validation.transmitter_frequency_invalid` | 输入校验 | 发射机载频非法（须有限且为正）。 |

@@ -275,7 +275,7 @@ TEST(RirDesignationTaskTest, DwellCenterDrivesOffAxisGainWhenDirectionalPatternE
   // 对准目标：常开 RF cell 路径下仍应准入。
   runtime::RirController on_controller;
   on_controller.SetHardware(hardware);
-  on_controller.SetPlatformId(1U);
+  on_controller.SetSensorEntityId(1U);
   on_controller.UpdateRuntime(mission, policy);
   session::RirOutputFrame on_frame;
   on_controller.RunCycle(MakeInput(1U, {target}), &on_frame, 1U, on_axis);

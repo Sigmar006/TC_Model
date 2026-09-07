@@ -231,10 +231,6 @@ void RirController::SetHardware(const config::RirHardwareConfig& hardware) {
   measurement_rng_.seed(detection_random_seed_);
 }
 
-void RirController::SetPlatformId(std::uint64_t platform_id) {
-  platform_id_ = platform_id;
-}
-
 void RirController::SetSensorEntityId(std::uint32_t sensor_entity_id) {
   sensor_entity_id_ = sensor_entity_id;
 }
@@ -479,12 +475,12 @@ tracking::RirTrackMeasurement RirController::SampleMeasurementPosition(
 RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
     const session::RirCycleInput& input, const std::vector<RirDwellPlan>& plan) const {
   RirResolvedRfCycle resolved;
-  if (plan.empty() || platform_id_ == 0U || hardware_.transmitter.prf_hz <= 0.0f) {
+  if (plan.empty() || hardware_.transmitter.prf_hz <= 0.0f) {
     return resolved;
   }
 
   dwell::RirRfCycleInput rf_input;
-  rf_input.platform_id = platform_id_;
+  rf_input.sensor_entity_id = EffectiveSensorEntityId();
   rf_input.platform_position_ecef_m = input.platform_position;
   rf_input.window_start_time_s = static_cast<double>(input.sim_time_sec);
   rf_input.window_duration_s = static_cast<double>(mission_.recognition_dwell_sec);
@@ -729,8 +725,7 @@ bool RirController::TryBuildMeasurement(
             : static_cast<double>(hardware_.transmitter.frequency_hz);
     snap.incident_links.reserve(rf_cycle.incident_links.size());
     for (const auto& link : rf_cycle.incident_links) {
-      if (link.identity.platform_id == rf_cycle.own_emission_identity.platform_id &&
-          link.identity.equipment_id == rf_cycle.own_emission_identity.equipment_id &&
+      if (link.identity.sensor_entity_id == rf_cycle.own_emission_identity.sensor_entity_id &&
           link.identity.emission_id == rf_cycle.own_emission_identity.emission_id) {
         continue;
       }
@@ -1401,11 +1396,11 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                         "本周期航迹数=" + std::to_string(track_snapshots.size()));
   }
 
-  // 中译：RIR 周期处理完成（周期号、设备 ID、平台 ID、航迹数）。
+  // 中译：RIR 周期处理完成（周期号、设备 ID、航迹数）。
   // 标识：三写之三（人读日志）——识别周期执行完毕摘要。
   PROJECT_LOG_INFO(
-      "[RirPipeline] cycle_index={} sensor_entity_id={} platform_id={} tracks={}",
-      input.input_cycle_index, EffectiveSensorEntityId(), platform_id_,
+      "[RirPipeline] cycle_index={} sensor_entity_id={} tracks={}",
+      input.input_cycle_index, EffectiveSensorEntityId(),
       track_snapshots.size());
 }
 

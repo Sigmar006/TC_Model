@@ -63,8 +63,6 @@ constexpr char kFrequencyPlanInvalid[] = "ar.validation.frequency_plan_invalid";
 constexpr char kTransmitterOperatingEnvelopeInvalid[] =
     "ar.validation.transmitter_operating_envelope_invalid";
 
-/** @brief 设备标识非法（发射/接收 equipment_id 须非零且互不相同）。 */
-constexpr char kEquipmentIdentityInvalid[] = "ar.validation.equipment_identity_invalid";
 
 /** @brief 接收机 RF 硬件非法（隔离度/远场距离/线性输入限/共址路径无效）。 */
 constexpr char kReceiverRfHardwareInvalid[] = "ar.validation.receiver_rf_hardware_invalid";

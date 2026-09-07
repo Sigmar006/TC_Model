@@ -236,14 +236,14 @@ double NominalCarrierHz(const RfWaveformSchedule& waveform) {
 }
 
 bool IsValidEmission(const RfSceneEmission& emission) {
-  return emission.identity.platform_id != 0U && emission.identity.equipment_id != 0U &&
+  return emission.identity.sensor_entity_id != 0U &&
          emission.identity.emission_id != 0U && IsFinitePosition(emission.position_ecef_m) &&
          IsFiniteVelocity(emission.velocity_ecef_mps) && IsValidPattern(emission.antenna) &&
          IsKnownPolarization(emission.polarization) && IsValidWaveform(emission.waveform);
 }
 
 bool IsValidReceiver(const RfSceneReceiverState& receiver) {
-  if (receiver.platform_id == 0U || receiver.equipment_id == 0U ||
+  if (receiver.sensor_entity_id == 0U ||
       !IsFinitePosition(receiver.position_ecef_m) ||
       !IsFiniteVelocity(receiver.velocity_ecef_mps) || !IsValidPattern(receiver.antenna) ||
       !IsKnownPolarization(receiver.polarization) || !IsFinite(receiver.window_start_time_s) ||
@@ -254,12 +254,11 @@ bool IsValidReceiver(const RfSceneReceiverState& receiver) {
       !IsFinite(receiver.minimum_far_field_range_m) || receiver.minimum_far_field_range_m <= 0.0) {
     return false;
   }
-  std::set<std::pair<std::uint64_t, std::uint64_t>> paths;
+  std::set<std::uint32_t> paths;
   for (const RfCoSiteIsolationPath& path : receiver.co_site_paths) {
-    if (path.transmitter_equipment_id == 0U || path.receiver_equipment_id == 0U ||
+    if (path.transmitter_sensor_entity_id == 0U ||
         !IsFinite(path.isolation_db) || path.isolation_db < 0.0 ||
-        !paths.insert(std::make_pair(path.transmitter_equipment_id, path.receiver_equipment_id))
-             .second) {
+        !paths.insert(path.transmitter_sensor_entity_id).second) {
       return false;
     }
   }
@@ -272,8 +271,7 @@ bool TryFindCoSiteIsolation(const RfSceneEmission& emission, const RfSceneReceiv
     return false;
   }
   for (const RfCoSiteIsolationPath& path : receiver.co_site_paths) {
-    if (path.transmitter_equipment_id == emission.identity.equipment_id &&
-        path.receiver_equipment_id == receiver.equipment_id) {
+    if (path.transmitter_sensor_entity_id == emission.identity.sensor_entity_id) {
       *isolation_db = path.isolation_db;
       return true;
     }
@@ -535,13 +533,12 @@ bool TryValidateRfSceneFrame(const RfSceneFrame& scene) {
       !IsFinite(scene.window_duration_s) || scene.window_duration_s <= 0.0) {
     return false;
   }
-  typedef std::tuple<std::uint64_t, std::uint64_t, std::uint64_t> IdentityKey;
+  typedef std::pair<std::uint32_t, std::uint64_t> IdentityKey;
   std::set<IdentityKey> emission_identities;
   for (const RfSceneEmission& emission : scene.emissions) {
     const IdentityKey identity =
-        std::make_tuple(emission.identity.platform_id,
-                        emission.identity.equipment_id,
-                        emission.identity.emission_id);
+        std::make_pair(emission.identity.sensor_entity_id,
+                       emission.identity.emission_id);
     if (!IsValidEmission(emission) ||
         !emission_identities.insert(identity).second) {
       return false;
@@ -566,7 +563,8 @@ bool TryEvaluateRfIncidentLink(const RfSceneEmission& emission,
     return false;
   }
 
-  const bool is_co_site = emission.identity.platform_id == receiver.platform_id;
+  double co_site_isolation_db = 0.0;
+  const bool is_co_site = TryFindCoSiteIsolation(emission, receiver, &co_site_isolation_db);
   RfSceneDirection emitter_to_receiver;
   emitter_to_receiver.x = receiver.position_ecef_m.x_m - emission.position_ecef_m.x_m;
   emitter_to_receiver.y = receiver.position_ecef_m.y_m - emission.position_ecef_m.y_m;
@@ -585,8 +583,7 @@ bool TryEvaluateRfIncidentLink(const RfSceneEmission& emission,
   RfIncidentLinkResult candidate;
   candidate.identity = emission.identity;
   candidate.emission_waveform = emission.waveform;
-  candidate.receiver_platform_id = receiver.platform_id;
-  candidate.receiver_equipment_id = receiver.equipment_id;
+  candidate.receiver_sensor_entity_id = receiver.sensor_entity_id;
   candidate.is_co_site = is_co_site;
   candidate.path_length_m = path_length_m;
   candidate.propagation_delay_s = is_co_site ? 0.0 : path_length_m / kLightSpeed;
@@ -596,9 +593,7 @@ bool TryEvaluateRfIncidentLink(const RfSceneEmission& emission,
   double total_loss_db = receiver.receiver_system_loss_db;
   const double nominal_carrier_hz = NominalCarrierHz(emission.waveform);
   if (is_co_site) {
-    if (!TryFindCoSiteIsolation(emission, receiver, &candidate.co_site_isolation_db)) {
-      return false;
-    }
+    candidate.co_site_isolation_db = co_site_isolation_db;
     total_loss_db += candidate.co_site_isolation_db;
   } else {
     RfSceneDirection direction;
@@ -665,24 +660,21 @@ bool TryAggregateRfIncidentPower(const std::vector<RfIncidentLinkResult>& links,
   if (total_received_power_w == nullptr) {
     return false;
   }
-  typedef std::tuple<std::uint64_t, std::uint64_t, std::uint64_t> IdentityKey;
+  typedef std::pair<std::uint32_t, std::uint64_t> IdentityKey;
   std::vector<std::pair<IdentityKey, double>> ordered;
   ordered.reserve(links.size());
-  std::uint64_t receiver_platform_id = 0U;
-  std::uint64_t receiver_equipment_id = 0U;
+  std::uint32_t receiver_sensor_entity_id = 0U;
   bool has_receiver = false;
   for (const RfIncidentLinkResult& link : links) {
     if (!IsFinite(link.received_power_w) || link.received_power_w < 0.0 ||
-        (has_receiver && (receiver_platform_id != link.receiver_platform_id ||
-                          receiver_equipment_id != link.receiver_equipment_id))) {
+        (has_receiver && (receiver_sensor_entity_id != link.receiver_sensor_entity_id))) {
       return false;
     }
-    receiver_platform_id = link.receiver_platform_id;
-    receiver_equipment_id = link.receiver_equipment_id;
+    receiver_sensor_entity_id = link.receiver_sensor_entity_id;
     has_receiver = true;
     ordered.push_back(
-        std::make_pair(std::make_tuple(link.identity.platform_id, link.identity.equipment_id,
-                                       link.identity.emission_id),
+        std::make_pair(std::make_pair(link.identity.sensor_entity_id,
+                                      link.identity.emission_id),
                        link.received_power_w));
   }
   std::sort(ordered.begin(), ordered.end(),

@@ -39,6 +39,10 @@ namespace airborne_radar {
 namespace session {
 namespace {
 
+// 未注入设备号时的缺省值，镜像融合常量 fusion::kArSourceId（=1U）。分层契约
+// 禁止传感器层引 fusion 头，故在本文件本地对齐取值；两侧若需改号须同步。
+constexpr std::uint32_t kDefaultSensorEntityId = 1U;
+
 bool IsFinitePosition(const oneq::coordinate::EcefPositionM& value) {
   return std::isfinite(value.x_m) && std::isfinite(value.y_m) && std::isfinite(value.z_m);
 }
@@ -49,7 +53,7 @@ bool IsFiniteVelocity(const oneq::coordinate::EcefVelocityMps& value) {
 
 bool SameEmissionIdentity(const oneq::electromagnetics::RfEmissionIdentity& left,
                           const oneq::electromagnetics::RfEmissionIdentity& right) {
-  return left.platform_id == right.platform_id && left.equipment_id == right.equipment_id &&
+  return left.sensor_entity_id == right.sensor_entity_id &&
          left.emission_id == right.emission_id;
 }
 
@@ -669,7 +673,8 @@ struct ArSession::Impl {
     prepare_input.world_cycle_index = input.cycle_index;
     prepare_input.window_start_time_s = input.cycle_start_time_s;
     prepare_input.window_duration_s = input.dt_sec;
-    prepare_input.platform_id = input.platform.platform_entity_id;
+    prepare_input.sensor_entity_id =
+        (sensor_entity_id != 0U) ? sensor_entity_id : kDefaultSensorEntityId;
     prepare_input.platform_position_ecef_m = input.platform.platform_position_ecef_m;
     prepare_input.platform_velocity_ecef_mps = input.platform.platform_velocity_mps;
     prepare_input.radar_frame_attitude_deg = ComposeRadarAttitudeDeg(
@@ -829,7 +834,7 @@ struct ArSession::Impl {
       result.status = ArPrepareCycleStatus::kBusy;
       return result;
     }
-    if (input.platform_id == 0U || input.world_cycle_index == 0U ||
+    if (input.sensor_entity_id == 0U || input.world_cycle_index == 0U ||
         !std::isfinite(input.window_start_time_s) || !std::isfinite(input.window_duration_s) ||
         input.window_duration_s <= 0.0 ||
         input.world_cycle_index > std::numeric_limits<std::uint32_t>::max() ||
@@ -941,12 +946,11 @@ struct ArSession::Impl {
           "[ArSession] CompleteRfCycle could not build platform frame; interference "
           "bearings fall back to ECEF tangent-plane (cross-frame discrimination degraded).");
     }
-    // 去真值化扰动种子：cycle index + receiver equipment id 派生，保证 replay（同 cycle
+    // 去真值化扰动种子：cycle index + receiver sensor entity id 派生，保证 replay（同 cycle
     // 重放）下扰动可复现，同时跨周期/跨设备互不相关（contract.md:348）。
     const std::uint32_t perturbation_seed =
         (prepared_token.world_cycle_index & 0xFFFF'FFFFU) ^
-        (static_cast<std::uint32_t>(prepared_operating_state.rf_receiver.equipment_id) *
-         2654435761U);
+        (prepared_operating_state.rf_receiver.sensor_entity_id * 2654435761U);
     if (!signal::detection::TryResolveArInterferenceObservations(
             rf_scene, prepared_operating_state.rf_receiver, prepared_emission.identity,
             front_end.incident_links, thermal_noise_power_w,

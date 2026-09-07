@@ -1,8 +1,8 @@
----
+﻿---
 Status: active
 Authority: 非规定性记录（不构成契约约束）
 Lifecycle: 条目有结论后回写 contract.md 或 design.md 并从本文删除；不保留已收敛条目
-Last-reviewed: 2026-09-03
+Last-reviewed: 2026-09-07
 ---
 
 # 跨模块开放议题
@@ -26,7 +26,6 @@ Last-reviewed: 2026-09-03
 | COMMON-OQ-10 | common | examples 会话配置三处同构维护 | 模板 + 16 场景 JSON + loader 键映射靠人工同步，字段变更漏一处即静默失配 | open |
 | COMMON-OQ-11 | common | AR/ESR/ECM 全极化放行冻结 | kFullPolarization 仅 RIR 放行；共享计算层已支持值 5 | open |
 | COMMON-OQ-12 | common | 全极化对非极化功率守恒口径 | 冻结保守 3.0103 dB；守恒 0 dB 口径待干扰/杂波定量验收触发 | open |
-| COMMON-OQ-13 | common | RF 记账号域统一 | RIR/AR/ECM/RfScene 记账号与注入面跨模块对齐 | open |
 | SAR-OQ-1 | sar | RDA 性能数字是否重测 | /O2 实测数字来自旧档位，需确认是否随真发布档更新 | open |
 | SAR-OQ-2 | sar | 脉冲环缓冲 O(1) 去重契约 | 依赖严格递增不变量，文档无 push 复杂度断言 | open |
 | AR-OQ-2 | airborne_radar | 集成层 rf-world 干扰接线 | examples 从共享 rf-world 派生 interference，模块文档未述 | open |
@@ -149,25 +148,6 @@ Last-reviewed: 2026-09-03
 - **待决问题**：是否改按功率守恒 0 dB 口径，或按"信号/干扰分路"区分口径。
 - **当前边界**：维持 3.0103 dB 单一口径；不得在一处改口径而不动另一条枚举链。
 - **再进入条件 (Stage A)**：出现以非极化干扰/杂波为对象的定量验收或标定需求。
-
-### COMMON-OQ-13：RF 记账号域统一（RIR/AR/ECM/RfScene 记账号与注入面）
-
-- **现状**：电磁仿真与 RF 耦合计算域（`RfScene`）中的平台号与设备号与标注域设备 ID（`sensor_entity_id`）存在粒度、位宽与注入面的双轨现象：
-  1. **粒度与位宽**：`RfScene` 的 `platform_id` 和 `equipment_id` 均为 `uint64`；同一平台上的多个传感器/干扰设备共用同一 `platform_id`（如 AR 与 ECM 共用 platform 1）；部分雷达设备细分为两个设备号。
-  2. **注入面差异**：AR 的平台号通过 `ArPlatformInput::platform_entity_id` 随每拍注入；RIR 的宿主平台号为静态配置 `RirSessionConfig::platform_id`（`uint64`，专供 RF 空间计算与自干扰剔除）；SBIRS（天基红外）完全不参与 RF 耦合。
-  3. **演进与解耦**：在 2026-09-03/06 阶段中，全量传感器（AR/ESR/EOS/SBIRS/RIR）的标注域设备 ID 统一收敛为 uint32 并在会话构造后经 `SetSensorEntityId` 注入；RIR 原 `sensor_platform_id` 字段正式正名为 `platform_id`，理顺了 RF 物理平台号（只读静态配置，uint64）与雷达设备标注身份（动态注入，uint32）的正交边界。
-  [evidence: include/1q/electromagnetics/RfScene.h]
-  [evidence: include/1q/airborne_radar/session/ArPlatformInput.h]::platform_entity_id
-  [evidence: include/1q/remote_identification_radar/config/RirSessionConfig.h]::platform_id
-  [evidence: include/1q/remote_identification_radar/session/RirSession.h]::SetSensorEntityId
-- **后果**：
-  1. 调用方在集成 AR 与 RIR 时平台物理号注入方式存在差异（AR 随每拍动态输入 vs RIR 静态 session_config，反映机动多变 vs 固定挂载设定）。
-  2. RF 记账号域的 `uint64` 与标注域的 `uint32` 保持显式隔离与类型安全。
-- **待决问题**：
-  1. AR 每拍 platform_entity_id 注入是否保持（反映真实机载平台机动/动态组网）还是收敛统一语义。
-  2. 跨平台多传感器协同编组时 equipment_id 与 platform_id 的编排规范。
-- **当前边界**：标注域（设备 ID）全模块统一为 uint32 且会话构造后注入；RF 平台号域 AR 保持每拍注入，RIR 保持 session_config::platform_id（RfScene 保持 uint64）；两域概念与位宽严格正交解耦。
-- **再进入条件 (Stage A)**：出现跨平台多传感器动态协同编组、共平台 co-site 干扰动态重组需求时。
 
 ## Airborne Radar 非阻塞边界
 

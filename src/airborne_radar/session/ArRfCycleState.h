@@ -33,7 +33,7 @@ struct ArPrepareCycleInput {
   std::uint64_t world_cycle_index{0U};                        /**< 世界周期号。 */
   double window_start_time_s{0.0};                            /**< 接收窗口绝对起始时间（s）。 */
   double window_duration_s{0.0};                              /**< 接收窗口持续时间（s）。 */
-  std::uint64_t platform_id{0U};                              /**< RF platform 身份；必须非零。 */
+  std::uint32_t sensor_entity_id{0U};                         /**< RF sensor_entity_id 身份；必须非零。 */
   oneq::coordinate::EcefPositionM platform_position_ecef_m{}; /**< 平台 ECEF 位置。 */
   oneq::coordinate::EcefVelocityMps platform_velocity_ecef_mps{};    /**< 平台 ECEF 速度。 */
   oneq::coordinate::EulerAnglesDeg

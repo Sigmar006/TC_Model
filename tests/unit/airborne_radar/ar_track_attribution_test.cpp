@@ -50,7 +50,6 @@ ArPlatformInput MakePlatformInput() {
   EXPECT_TRUE(oneq::coordinate::TryLlaToEcef(platform_lla, &platform_ecef));
 
   ArPlatformInput platform;
-  platform.platform_entity_id = 42U;
   platform.platform_position_ecef_m = platform_ecef;
   platform.platform_velocity_mps.x_mps = 0.0;
   platform.platform_velocity_mps.y_mps = 0.0;

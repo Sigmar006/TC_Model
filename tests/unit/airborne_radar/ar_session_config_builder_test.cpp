@@ -12,6 +12,8 @@
 #include "1q/airborne_radar/config/ArSessionConfig.h"
 #include "1q/airborne_radar/config/ArSessionConfigValidation.h"
 #include "1q/airborne_radar/session/ArSession.h"
+#include "1q/airborne_radar/session/ArControlProfile.h"
+#include "airborne_radar/session/ArReceiverStateBuilder.h"
 
 namespace airborne_radar {
 namespace tests {
@@ -176,7 +178,6 @@ TEST(RadarSessionConfigBuilderTest, RuntimePatchCanBeAppliedWithoutReconstructin
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
-  input.platform.platform_entity_id = 42U;
   input.platform.platform_position_ecef_m.x_m = 6378137.0;
   const session::ArCycleResult result = session.StepWithResult(input);
   EXPECT_FALSE(session::HasValidationError(result.issues));
@@ -328,20 +329,12 @@ TEST(RadarSessionConfigValidationTest, ValidatesEngineeringTransmitterEnvelopeAn
   EXPECT_EQ(issues.front().code,
             "ar.validation.transmitter_operating_envelope_invalid");
 
-  session_config.hardware.transmitter.maximum_peak_power_w = 1.2e6f;
-  session_config.hardware.receiver.equipment_id = session_config.hardware.transmitter.equipment_id;
-  issues = config::ValidateArSessionConfig(session_config);
-  ASSERT_FALSE(issues.empty());
-  EXPECT_EQ(issues.front().code, "ar.validation.equipment_identity_invalid");
 }
 
 TEST(RadarSessionConfigValidationTest, ValidatesReceiverRfHardwareBoundary) {
   config::ArSessionConfig session_config;
-  ASSERT_EQ(session_config.hardware.receiver.co_site_paths.size(), 1U);
-  EXPECT_EQ(session_config.hardware.receiver.co_site_paths.front().transmitter_equipment_id,
-            session_config.hardware.transmitter.equipment_id);
-  EXPECT_EQ(session_config.hardware.receiver.co_site_paths.front().receiver_equipment_id,
-            session_config.hardware.receiver.equipment_id);
+  // 配置默认不带隔离路径：自身发射泄漏隔离由会话按实体身份自动附加，配置只承载伙伴路径。
+  ASSERT_EQ(session_config.hardware.receiver.co_site_paths.size(), 0U);
   session_config.hardware.receiver.maximum_linear_input_power_w = 0.0f;
   auto issues = config::ValidateArSessionConfig(session_config);
   ASSERT_FALSE(issues.empty());
@@ -360,9 +353,9 @@ TEST(RadarSessionConfigValidationTest, ValidatesReceiverRfHardwareBoundary) {
   EXPECT_TRUE(config::ValidateArSessionConfig(session_config).empty());
 
   session_config.hardware.receiver.co_site_paths.push_back(
-      oneq::electromagnetics::RfCoSiteIsolationPath{1U, 2U, 80.0});
+      oneq::electromagnetics::RfCoSiteIsolationPath{101U, 80.0});
   EXPECT_TRUE(config::ValidateArSessionConfig(session_config).empty());
-  session_config.hardware.receiver.co_site_paths.back().receiver_equipment_id = 3U;
+  session_config.hardware.receiver.co_site_paths.back().transmitter_sensor_entity_id = 0U;
   issues = config::ValidateArSessionConfig(session_config);
   ASSERT_FALSE(issues.empty());
   EXPECT_EQ(issues.back().code, "ar.validation.receiver_rf_hardware_invalid");
@@ -429,6 +422,35 @@ TEST(RadarSessionCreateWithDiagnosticsTest, AcceptsNullIssuesWithoutCrash) {
 
   const session::ArSession session = session::ArSession::CreateWithDiagnostics(invalid, nullptr);
   (void)session;  // nullptr 时仅构造，不写回 issues
+}
+
+/// @brief 自隔离路径按实体身份自动附加：配置只承载伙伴路径，自身发射泄漏
+///        隔离端点跟随当前 sensor_entity_id（自定义 ID 不错位）；显式配置同
+///        自身 ID 的路径可覆盖缺省隔离值（不追加第二条）。
+TEST(ArReceiverStateBuilderTest, SelfCoSitePathFollowsEntityIdentity) {
+  session::ArPrepareCycleInput input;
+  input.world_cycle_index = 1U;
+  input.window_start_time_s = 10.0;
+  input.window_duration_s = 1.0;
+  input.sensor_entity_id = 7U;
+  const oneq::electromagnetics::RfSceneEmission emission;
+  const config::engineering::DetectionConfig detection;
+  const session::ArControlProfile profile;
+
+  const session::ArReceiverOperatingState state =
+      session::ArReceiverStateBuilder::Build(input, emission, detection, profile, 3.0e9);
+  ASSERT_EQ(state.rf_receiver.co_site_paths.size(), 1U);
+  EXPECT_EQ(state.rf_receiver.co_site_paths.front().transmitter_sensor_entity_id, 7U);
+  EXPECT_DOUBLE_EQ(state.rf_receiver.co_site_paths.front().isolation_db, 120.0);
+
+  config::engineering::DetectionConfig overridden = detection;
+  overridden.receiver.co_site_paths.push_back(
+      oneq::electromagnetics::RfCoSiteIsolationPath{7U, 90.0});
+  const session::ArReceiverOperatingState overridden_state =
+      session::ArReceiverStateBuilder::Build(input, emission, overridden, profile, 3.0e9);
+  ASSERT_EQ(overridden_state.rf_receiver.co_site_paths.size(), 1U);
+  EXPECT_EQ(overridden_state.rf_receiver.co_site_paths.front().transmitter_sensor_entity_id, 7U);
+  EXPECT_DOUBLE_EQ(overridden_state.rf_receiver.co_site_paths.front().isolation_db, 90.0);
 }
 
 }  // namespace tests

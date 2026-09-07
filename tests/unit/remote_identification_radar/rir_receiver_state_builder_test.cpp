@@ -23,11 +23,9 @@ TEST(RirReceiverStateBuilderTest, MapsDefaultsAndMatchedFilterBandwidth) {
   hardware.receiver.maximum_linear_input_power_w = 2.0e-3f;
   hardware.receiver.noise_figure_db = 3.5f;
   hardware.transmitter.bandwidth_hz = 4.5e6f;
-  hardware.transmitter.equipment_id = 11U;
-  hardware.receiver.equipment_id = 22U;
 
   RirRfCycleInput input;
-  input.platform_id = 9U;
+  input.sensor_entity_id = 9U;
   input.window_start_time_s = 2.0;
   input.window_duration_s = 0.1;
   oneq::coordinate::LlaPositionDegM lla{};
@@ -42,16 +40,14 @@ TEST(RirReceiverStateBuilderTest, MapsDefaultsAndMatchedFilterBandwidth) {
 
   const auto operating_state =
       RirReceiverStateBuilder::Build(input, emission, hardware, 3.0e9);
-  EXPECT_EQ(operating_state.rf_receiver.platform_id, 9U);
-  EXPECT_EQ(operating_state.rf_receiver.equipment_id, hardware.receiver.equipment_id);
+  EXPECT_EQ(operating_state.rf_receiver.sensor_entity_id, 9U);
   EXPECT_DOUBLE_EQ(operating_state.rf_receiver.bandwidth_hz, 20.0e6);
   EXPECT_DOUBLE_EQ(operating_state.rf_receiver.minimum_far_field_range_m, 1.0);
   EXPECT_DOUBLE_EQ(operating_state.matched_filter_bandwidth_hz, 4.5e6);
   EXPECT_DOUBLE_EQ(operating_state.receiver_noise_figure_db, 3.5);
   EXPECT_NEAR(operating_state.maximum_linear_input_power_w, 2.0e-3, 1.0e-9);
   ASSERT_EQ(operating_state.rf_receiver.co_site_paths.size(), 1U);
-  EXPECT_EQ(operating_state.rf_receiver.co_site_paths.front().transmitter_equipment_id, 11U);
-  EXPECT_EQ(operating_state.rf_receiver.co_site_paths.front().receiver_equipment_id, 22U);
+  EXPECT_EQ(operating_state.rf_receiver.co_site_paths.front().transmitter_sensor_entity_id, 9U);
   EXPECT_DOUBLE_EQ(operating_state.rf_receiver.co_site_paths.front().isolation_db, 120.0);
 }
 

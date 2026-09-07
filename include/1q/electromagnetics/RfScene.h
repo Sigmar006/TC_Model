@@ -62,11 +62,10 @@ struct ONEQ_API RfSceneAntennaPattern {
   double cross_polarization_isolation_db{30.0};
 };
 
-/** @brief 发射事实的 platform、equipment 与 emission 唯一身份。 */
+/** @brief 发射事实的 sensor_entity_id 与 emission 唯一身份。 */
 struct ONEQ_API RfEmissionIdentity {
-  std::uint64_t platform_id{0};
-  std::uint64_t equipment_id{0};
-  std::uint64_t emission_id{0};
+  std::uint32_t sensor_entity_id{0U};
+  std::uint64_t emission_id{0U};
 };
 
 /**
@@ -116,22 +115,19 @@ struct ONEQ_API RfSceneFrame {
  */
 using RfEmissionFrame = RfSceneFrame;
 
-/** @brief 同平台发射设备到接收设备的有向硬件隔离路径。 */
+/** @brief 接收设备针对指定发射源的硬件隔离路径。 */
 struct ONEQ_API RfCoSiteIsolationPath {
-  std::uint64_t transmitter_equipment_id{0};
-  std::uint64_t receiver_equipment_id{0};
+  std::uint32_t transmitter_sensor_entity_id{0U};
   double isolation_db{0.0};
   RfCoSiteIsolationPath() = default;
-  RfCoSiteIsolationPath(std::uint64_t transmitter, std::uint64_t receiver, double isolation)
-      : transmitter_equipment_id(transmitter),
-        receiver_equipment_id(receiver),
+  RfCoSiteIsolationPath(std::uint32_t transmitter_id, double isolation)
+      : transmitter_sensor_entity_id(transmitter_id),
         isolation_db(isolation) {}
 };
 
 /** @brief 接收设备在一个世界窗口内冻结的硬件与调谐状态。 */
 struct ONEQ_API RfSceneReceiverState {
-  std::uint64_t platform_id{0};
-  std::uint64_t equipment_id{0};
+  std::uint32_t sensor_entity_id{0U};
   coordinate::EcefPositionM position_ecef_m{};
   coordinate::EcefVelocityMps velocity_ecef_mps{};
   RfSceneAntennaPattern antenna{};
@@ -154,8 +150,7 @@ struct ONEQ_API RfIncidentLinkConfig {
 struct ONEQ_API RfIncidentLinkResult {
   RfEmissionIdentity identity{};
   RfWaveformSchedule emission_waveform{}; /**< 发射端参数化波形。 */
-  std::uint64_t receiver_platform_id{0};
-  std::uint64_t receiver_equipment_id{0};
+  std::uint32_t receiver_sensor_entity_id{0U};
   bool is_co_site{false};
   double path_length_m{0.0};
   double propagation_delay_s{0.0};

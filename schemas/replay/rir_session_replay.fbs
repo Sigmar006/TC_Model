@@ -32,7 +32,6 @@ table RirAzimuthElevationLimitsDeg {
 // ---- hardware 域 ----
 
 table RirTransmitterConfig {
-  equipment_id:ulong;
   peak_power_w:float;
   frequency_hz:float;
   bandwidth_hz:float;
@@ -56,7 +55,6 @@ table RirAntennaConfig {
 }
 
 table RirReceiverConfig {
-  equipment_id:ulong;
   noise_figure_db:float;
   receive_loss_db:float;
   cross_polarization_isolation_db:float;
@@ -183,7 +181,6 @@ table RirSessionConfig {
   mission:RirMissionConfig;
   policy:RirPolicyConfig;
   environment:RirEnvironmentConfig;
-  platform_id:ulong;
   sensor_enabled:bool;
 }
 
@@ -196,7 +193,9 @@ root_type RirSessionConfig;
 // 项目未上线，无兼容分支。
 // v4（2026-09-06）：RirSessionConfig sensor_platform_id 改名为 platform_id；
 // 标识符升 RIRF；项目未上线，无兼容分支。
-file_identifier "RIRF";
+// v5（2026-09-06 RF 标识统一）：彻底删除 platform_id 及 transmitter/receiver equipment_id；
+// 标识符升 RIRG；项目未上线，无兼容分支。
+file_identifier "RIRG";
 
 // ---- runtime_config_patch 载荷 ----
 

@@ -93,9 +93,6 @@ constexpr char kTrackingPolicyInvalid[] = "rir.validation.tracking_policy_invali
 /** @brief 生命周期策略非法（confirm/lost 阈值）。 */
 constexpr char kLifecyclePolicyInvalid[] = "rir.validation.lifecycle_policy_invalid";
 
-/** @brief 平台身份非法（须非零）。 */
-constexpr char kPlatformIdInvalid[] = "rir.validation.platform_id_invalid";
-
 /** @brief 发射机载频非法（须有限且为正）。 */
 constexpr char kTransmitterFrequencyInvalid[] = "rir.validation.transmitter_frequency_invalid";
 
@@ -105,9 +102,6 @@ constexpr char kFrequencyPlanInvalid[] = "rir.validation.frequency_plan_invalid"
 /** @brief 发射机工作包络非法（功率/占空比/脉冲能量越界）。 */
 constexpr char kTransmitterOperatingEnvelopeInvalid[] =
     "rir.validation.transmitter_operating_envelope_invalid";
-
-/** @brief 发射/接收 equipment_id 非法（须非零且互异）。 */
-constexpr char kEquipmentIdentityInvalid[] = "rir.validation.equipment_identity_invalid";
 
 /** @brief 接收机 RF 硬件边界非法。 */
 constexpr char kReceiverRfHardwareInvalid[] = "rir.validation.receiver_rf_hardware_invalid";

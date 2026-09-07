@@ -86,14 +86,14 @@ class ONEQ_API EsrSession {
    * @note Session 不拥有 recorder，调用方须保证 recorder 生命周期长于 Session 的注册期。
    * @note 排除原因变化观测（进入/原因变化/退出排除）建议通过本机制获取：recorder 内建
    *       跨周期 (code,cause) 对差分，规则 13b 排除诊断的差分观测；以发射源标识
-   *       （platform/equipment/emission id）为实体关联键。
+   *       （sensor_entity_id/emission_id）为实体关联键。
    */
   void AttachExclusionCauseRecorder(EsrExclusionCauseRecorder* recorder) noexcept;
 
   /**
-   * @brief 设置传感器设备实体 ID（用于周期摘要日志行标记与融合源通道对齐）。
-   * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量。
-   * @note 构造后注入设备号，任意时刻可调，下一周期起生效。不影响侦察物理计算。
+   * @brief 设置传感器设备实体 ID（用于统一 RF 实体身份、同址隔离判定、周期摘要日志与融合源通道对齐）。
+   * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量（2U）。
+   * @note 构造后注入设备号，任意时刻可调，下一周期起生效。
    */
   void SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept;
 

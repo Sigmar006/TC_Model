@@ -29,12 +29,10 @@ namespace tests {
 
 TEST(ArReplayCodecRoundtripTest, SessionConfigPreservesAllDomains) {
   config::ArSessionConfig config;
-  config.hardware.transmitter.equipment_id = 41U;
   config.hardware.transmitter.maximum_peak_power_w = 2.5e6f;
   config.hardware.transmitter.maximum_duty_cycle = 0.08f;
   config.hardware.transmitter.maximum_pulse_energy_j = 18.0f;
   config.hardware.transmitter.frequency_plan_hz = {8.0e9, 8.2e9, 8.4e9};
-  config.hardware.receiver.equipment_id = 42U;
   config.hardware.receiver.cross_polarization_isolation_db = 27.0f;
   config.hardware.receiver.minimum_far_field_range_m = 3.0f;
   config.hardware.receiver.has_co_site_isolation = true;
@@ -44,7 +42,7 @@ TEST(ArReplayCodecRoundtripTest, SessionConfigPreservesAllDomains) {
   config.hardware.receiver.interference_observation_jn_gate_db = 8.5f;
   config.hardware.receiver.scene_polarization =
       oneq::electromagnetics::RfScenePolarization::kVertical;
-  config.hardware.receiver.co_site_paths = {{41U, 42U, 117.0}, {43U, 42U, 104.0}};
+  config.hardware.receiver.co_site_paths = {{41U, 117.0}, {43U, 104.0}};
   // hardware
   config.hardware.transmitter.peak_power_w = 50000.0f;
   config.hardware.transmitter.frequency_hz = 9.5e9f;
@@ -87,20 +85,17 @@ TEST(ArReplayCodecRoundtripTest, SessionConfigPreservesAllDomains) {
   std::string error;
   ASSERT_TRUE(DecodeSessionConfigFlatbuffer(bytes, &decoded, &error)) << error;
 
-  EXPECT_EQ(decoded.hardware.transmitter.equipment_id, 41U);
   EXPECT_FLOAT_EQ(decoded.hardware.transmitter.maximum_peak_power_w, 2.5e6f);
   EXPECT_FLOAT_EQ(decoded.hardware.transmitter.maximum_duty_cycle, 0.08f);
   EXPECT_FLOAT_EQ(decoded.hardware.transmitter.maximum_pulse_energy_j, 18.0f);
   EXPECT_EQ(decoded.hardware.transmitter.frequency_plan_hz,
             config.hardware.transmitter.frequency_plan_hz);
-  EXPECT_EQ(decoded.hardware.receiver.equipment_id, 42U);
   EXPECT_FLOAT_EQ(decoded.hardware.receiver.maximum_linear_input_power_w, 2.0e-4f);
   EXPECT_FLOAT_EQ(decoded.hardware.receiver.preselector_bandwidth_hz, 32.0e6f);
   EXPECT_EQ(decoded.hardware.receiver.scene_polarization,
             oneq::electromagnetics::RfScenePolarization::kVertical);
   ASSERT_EQ(decoded.hardware.receiver.co_site_paths.size(), 2U);
-  EXPECT_EQ(decoded.hardware.receiver.co_site_paths[0].transmitter_equipment_id, 41U);
-  EXPECT_EQ(decoded.hardware.receiver.co_site_paths[0].receiver_equipment_id, 42U);
+  EXPECT_EQ(decoded.hardware.receiver.co_site_paths[0].transmitter_sensor_entity_id, 41U);
   EXPECT_DOUBLE_EQ(decoded.hardware.receiver.co_site_paths[0].isolation_db, 117.0);
 
   // hardware
@@ -238,7 +233,6 @@ TEST(ArReplayCodecRoundtripTest, SingleCycleInputPreservesWorldAndRfFacts) {
   input.cycle_index = 71U;
   input.cycle_start_time_s = 12.5;
   input.dt_sec = 0.25;
-  input.platform.platform_entity_id = 901U;
   input.platform.platform_position_ecef_m.x_m = 6378137.0;
   input.platform.platform_velocity_mps.y_mps = 210.0;
   input.platform.platform_attitude_deg.yaw_deg = 17.25;
@@ -258,7 +252,7 @@ TEST(ArReplayCodecRoundtripTest, SingleCycleInputPreservesWorldAndRfFacts) {
   input.interference.window_start_time_s = 12.5;
   input.interference.window_duration_s = 0.25;
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = {700U, 1U, 33U};
+  emission.identity = {700U, 33U};
   emission.position_ecef_m.x_m = 6388137.0;
   ASSERT_TRUE(oneq::electromagnetics::TryCreateRfLinearSweepWaveform(
       12.5, 0.25, 8.0e9, 10.0e9, 1.0e6, 1000.0, 0.1, &emission.waveform));
@@ -277,6 +271,8 @@ TEST(ArReplayCodecRoundtripTest, SingleCycleInputPreservesWorldAndRfFacts) {
   EXPECT_FLOAT_EQ(decoded.targets.front().position_y, -3400.0f);
   EXPECT_FLOAT_EQ(decoded.targets.front().velocity_z, 8.0f);
   ASSERT_EQ(decoded.interference.emissions.size(), 1U);
+  EXPECT_EQ(decoded.interference.emissions.front().identity.sensor_entity_id, 700U);
+  EXPECT_EQ(decoded.interference.emissions.front().identity.emission_id, 33U);
   EXPECT_EQ(decoded.interference.emissions.front().waveform.kind,
             oneq::electromagnetics::RfSceneWaveformKind::kLinearSweep);
 }
@@ -551,6 +547,39 @@ TEST(ArReplayCodecRoundtripTest, CycleRecordRejectsPayloadWithoutFileIdentifier)
   ArCycleReplayRecord decoded;
   std::string error;
   EXPECT_FALSE(DecodeCycleReplayRecordFlatbuffer(encoded, &decoded, &error));
+  EXPECT_FALSE(error.empty());
+}
+
+TEST(ArReplayCodecRoundtripTest, CycleRecordRejectsRetiredARC3FileIdentifier) {
+  ArCycleReplayRecord record;
+  record.session_state.next_emission_id = 34U;
+  std::string encoded = EncodeCycleReplayRecordFlatbuffer(record);
+  ASSERT_GE(encoded.size(), 8U);
+  const char* identifier = flatbuffers::GetBufferIdentifier(encoded.data());
+  const std::size_t offset = static_cast<std::size_t>(identifier - encoded.data());
+  encoded[offset] = 'A';
+  encoded[offset + 1U] = 'R';
+  encoded[offset + 2U] = 'C';
+  encoded[offset + 3U] = '3';
+  ArCycleReplayRecord decoded;
+  std::string error;
+  EXPECT_FALSE(DecodeCycleReplayRecordFlatbuffer(encoded, &decoded, &error));
+  EXPECT_NE(error.find("ARC4"), std::string::npos);
+}
+
+TEST(ArReplayCodecRoundtripTest, SessionConfigRejectsRetiredARSCFileIdentifier) {
+  config::ArSessionConfig config;
+  std::string encoded = EncodeSessionConfigFlatbuffer(config);
+  ASSERT_GE(encoded.size(), 8U);
+  const char* identifier = flatbuffers::GetBufferIdentifier(encoded.data());
+  const std::size_t offset = static_cast<std::size_t>(identifier - encoded.data());
+  encoded[offset] = 'A';
+  encoded[offset + 1U] = 'R';
+  encoded[offset + 2U] = 'S';
+  encoded[offset + 3U] = 'C';
+  config::ArSessionConfig decoded;
+  std::string error;
+  EXPECT_FALSE(DecodeSessionConfigFlatbuffer(encoded, &decoded, &error));
   EXPECT_FALSE(error.empty());
 }
 

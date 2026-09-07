@@ -18,7 +18,6 @@ ArCycleInput ValidInput() {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 0.5;
-  input.platform.platform_entity_id = 42U;
   oneq::coordinate::LlaPositionDegM platform_lla;
   platform_lla.latitude_deg = 31.0;
   platform_lla.longitude_deg = 121.0;
@@ -53,7 +52,6 @@ TEST(ArCycleInputTest, WorldInputsConvertWithoutCallerOwnedLocalState) {
   const ArCycleInput input = ValidInput();
   const ArIssueList issues = ValidateArCycleInput(input);
   EXPECT_FALSE(HasValidationError(issues));
-  EXPECT_EQ(input.platform.platform_entity_id, 42U);
   ASSERT_EQ(input.targets.size(), 1U);
   EXPECT_EQ(input.targets.front().target_id, 7U);
   EXPECT_TRUE(input.interference.emissions.empty());
@@ -62,8 +60,7 @@ TEST(ArCycleInputTest, WorldInputsConvertWithoutCallerOwnedLocalState) {
 TEST(ArCycleInputTest, NonEmptyInterferenceFrameMustMatchCycleWindow) {
   ArCycleInput input = ValidInput();
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 99U;
-  emission.identity.equipment_id = 5U;
+  emission.identity.sensor_entity_id = 99U;
   emission.identity.emission_id = 1U;
   emission.position_ecef_m = input.platform.platform_position_ecef_m;
   emission.position_ecef_m.x_m += 10000.0;

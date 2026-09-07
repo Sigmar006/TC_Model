@@ -11,7 +11,6 @@ void MutableEsrContext::BeginCycle(const session::EsrCycleInput& input,
   cycle_index_ = input.cycle_index;
   cycle_start_time_s_ = input.cycle_start_time_s;
   dt_sec_ = input.dt_sec;
-  platform_entity_id_ = input.platform_entity_id;
   platform_position_ecef_m_ = input.platform_position_ecef_m;
   platform_velocity_ecef_mps_ = input.platform_velocity_ecef_mps;
   platform_attitude_deg_ = input.platform_attitude_deg;
@@ -32,8 +31,6 @@ float MutableEsrContext::GetCycleDeltaTimeSec() const { return dt_sec_; }
 const oneq::coordinate::EulerAnglesDeg& MutableEsrContext::GetPlatformAttitude() const {
   return platform_attitude_deg_;
 }
-
-std::uint64_t MutableEsrContext::GetPlatformEntityId() const { return platform_entity_id_; }
 
 const oneq::coordinate::EcefPositionM& MutableEsrContext::GetPlatformPositionEcefM() const {
   return platform_position_ecef_m_;

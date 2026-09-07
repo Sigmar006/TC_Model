@@ -304,8 +304,7 @@ BatchCycleResult RunBatchCycle(ar_session::ArRecordingSession* session,
   ar_session::ArCycleInput cycle = input;
   if (include_pulsed_jammer) {
     oneq::electromagnetics::RfSceneEmission jammer;
-    jammer.identity.platform_id = 20U;
-    jammer.identity.equipment_id = 21U;
+    jammer.identity.sensor_entity_id = 20U;
     jammer.identity.emission_id = 100000U + cycle.cycle_index;
     constexpr double kJammerRangeM = 20000.0;
     jammer.position_ecef_m = cycle.platform.platform_position_ecef_m;
@@ -472,9 +471,6 @@ ScenarioSummary RunArScenario(const ArCase& c, const ar_config::ArSessionConfig&
       input.cycle_index = cycle_index;
       input.cycle_start_time_s = static_cast<double>(cycle_index - 1U);
       input.dt_sec = 1.0;
-      if (platform.platform_entity_id == 0U) {
-        platform.platform_entity_id = 10U;
-      }
       input.platform = platform;
       input.targets = targets;
       if (c.scenario_id == "ar_seq_invalid_input_recovery" && cycle_index == 9U) {

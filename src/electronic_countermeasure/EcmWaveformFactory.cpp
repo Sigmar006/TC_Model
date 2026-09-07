@@ -17,14 +17,14 @@ bool EcmWaveformFactory::TryBuildEmission(const EcmCycleInput& input,
                                           const config::EcmSessionConfig& config,
                                           const SchedulingThreat& threat,
                                           double allocated_power_w, std::uint32_t channel_index,
+                                          std::uint32_t sensor_entity_id,
                                           std::uint64_t emission_id, std::mt19937* scheduling_rng,
                                           oneq::electromagnetics::RfSceneEmission* output) {
   if (output == nullptr) {
     return false;
   }
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = input.platform_entity_id;
-  emission.identity.equipment_id = config.transmitter_equipment_id;
+  emission.identity.sensor_entity_id = sensor_entity_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m = input.platform_position_ecef_m;
   emission.velocity_ecef_mps = input.platform_velocity_ecef_mps;
@@ -67,14 +67,14 @@ bool EcmWaveformFactory::TryBuildEmission(const EcmCycleInput& input,
 bool EcmWaveformFactory::TryBuildDeceptionEmission(
     const EcmCycleInput& input, const config::EcmSessionConfig& config,
     const SchedulingThreat& threat, const EcmDeceptionState& deception_state,
-    double allocated_power_w, std::uint64_t emission_id, std::mt19937* pulse_rng,
+    double allocated_power_w, std::uint32_t sensor_entity_id,
+    std::uint64_t emission_id, std::mt19937* pulse_rng,
     oneq::electromagnetics::RfSceneEmission* output) {
   if (output == nullptr) {
     return false;
   }
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = input.platform_entity_id;
-  emission.identity.equipment_id = config.transmitter_equipment_id;
+  emission.identity.sensor_entity_id = sensor_entity_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m = input.platform_position_ecef_m;
   emission.velocity_ecef_mps = input.platform_velocity_ecef_mps;
@@ -113,15 +113,15 @@ bool EcmWaveformFactory::TryBuildDeceptionEmission(
 
 bool EcmWaveformFactory::TryBuildFalseTargetEmission(
     const EcmCycleInput& input, const config::EcmSessionConfig& config,
-    const SchedulingThreat& threat, double allocated_power_w, std::uint64_t emission_id,
+    const SchedulingThreat& threat, double allocated_power_w,
+    std::uint32_t sensor_entity_id, std::uint64_t emission_id,
     std::mt19937* pulse_rng, std::uint32_t ft_index,
     oneq::electromagnetics::RfSceneEmission* output) {
   if (output == nullptr) {
     return false;
   }
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = input.platform_entity_id;
-  emission.identity.equipment_id = config.transmitter_equipment_id;
+  emission.identity.sensor_entity_id = sensor_entity_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m = input.platform_position_ecef_m;
   emission.velocity_ecef_mps = input.platform_velocity_ecef_mps;

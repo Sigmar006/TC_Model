@@ -11,8 +11,7 @@ namespace {
 
 oneq::electromagnetics::RfSceneReceiverState MakeReceiver() {
   oneq::electromagnetics::RfSceneReceiverState receiver;
-  receiver.platform_id = 1U;
-  receiver.equipment_id = 2U;
+  receiver.sensor_entity_id = 2U;
   receiver.window_start_time_s = 0.0;
   receiver.window_duration_s = 1.0;
   receiver.center_frequency_hz = 10.0e9;
@@ -26,11 +25,9 @@ oneq::electromagnetics::RfIncidentLinkResult MakePulseLink(std::uint64_t emissio
                                                            double pulse_width_s = 1.0e-3,
                                                            std::uint32_t pulse_count = 1U) {
   oneq::electromagnetics::RfIncidentLinkResult link;
-  link.identity.platform_id = 10U + emission_id;
-  link.identity.equipment_id = 20U + emission_id;
+  link.identity.sensor_entity_id = 20U + emission_id;
   link.identity.emission_id = emission_id;
-  link.receiver_platform_id = 1U;
-  link.receiver_equipment_id = 2U;
+  link.receiver_sensor_entity_id = 2U;
   link.received_power_before_overlap_w = power_w;
   EXPECT_TRUE(oneq::electromagnetics::TryCreateRfPulseTrainWaveform(
       first_pulse_time_s, 10.0e9, 1.0e6, 1.0, pulse_width_s, 0.1, pulse_count, 0.0, emission_id, 0U,
@@ -103,11 +100,9 @@ TEST(EsrResolutionCellLedgerTest,
 
 TEST(EsrResolutionCellLedgerTest, LinearSweepUsesPartialInstantaneousChannelDwell) {
   oneq::electromagnetics::RfIncidentLinkResult link;
-  link.identity.platform_id = 10U;
-  link.identity.equipment_id = 20U;
+  link.identity.sensor_entity_id = 20U;
   link.identity.emission_id = 1U;
-  link.receiver_platform_id = 1U;
-  link.receiver_equipment_id = 2U;
+  link.receiver_sensor_entity_id = 2U;
   link.received_power_before_overlap_w = 1.0;
   ASSERT_TRUE(oneq::electromagnetics::TryCreateRfLinearSweepWaveform(
       0.0, 1.0, 9.0e9, 11.0e9, 1.0e6, 1.0, 1.0,

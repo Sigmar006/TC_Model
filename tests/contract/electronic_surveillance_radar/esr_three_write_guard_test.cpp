@@ -35,7 +35,6 @@ session::EsrCycleInput MakeValidInput() {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 10.0;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = input.cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;

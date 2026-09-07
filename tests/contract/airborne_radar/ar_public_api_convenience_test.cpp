@@ -34,7 +34,6 @@ session::ArCycleInput MakeInput(std::uint32_t cycle_index = 1U,
   input.cycle_index = cycle_index;
   input.cycle_start_time_s = cycle_start_time_s;
   input.dt_sec = 0.5;
-  input.platform.platform_entity_id = 42U;
 
   oneq::coordinate::LlaPositionDegM platform_lla;
   platform_lla.latitude_deg = 31.0;
@@ -71,8 +70,7 @@ oneq::electromagnetics::RfSceneEmission MakeNoiseEmission(
     const session::ArCycleInput& input, std::uint64_t emission_id, double frequency_hz,
     double bandwidth_hz, double transmit_power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 99U;
-  emission.identity.equipment_id = 5U;
+  emission.identity.sensor_entity_id = 99U;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m = input.platform.platform_position_ecef_m;
   emission.position_ecef_m.x_m += 10000.0;
@@ -97,7 +95,6 @@ void SetInterferenceFrame(
 
 TEST(ArPublicApiContractTest, UserInputContainsWorldFactsAndIndependentInterference) {
   const session::ArCycleInput input = MakeInput();
-  EXPECT_EQ(input.platform.platform_entity_id, 42U);
   ASSERT_EQ(input.targets.size(), 1U);
   EXPECT_EQ(input.targets.front().target_id, 7U);
   EXPECT_TRUE(input.interference.emissions.empty());
@@ -112,7 +109,7 @@ TEST(ArPublicApiContractTest, StepWithResultCompletesAndPublishesActualEmission)
   EXPECT_EQ(result.input_cycle_index, 1U);
   EXPECT_EQ(result.emission_frame.world_cycle_index, 1U);
   ASSERT_EQ(result.emission_frame.emissions.size(), 1U);
-  EXPECT_EQ(result.emission_frame.emissions.front().identity.platform_id, 42U);
+  EXPECT_EQ(result.emission_frame.emissions.front().identity.sensor_entity_id, 1U);
   EXPECT_EQ(result.emission_frame.emissions.front().identity.emission_id, 1U);
 }
 
@@ -159,7 +156,7 @@ TEST(ArPublicApiContractTest, StepReturnsEmptyCurrentFrameOnRejectedInput) {
 TEST(ArPublicApiContractTest, RejectedInputDoesNotConsumeEmissionIdentity) {
   session::ArSession radar = session::ArSession::Create(MakeSessionConfig());
   session::ArCycleInput invalid = MakeInput();
-  invalid.platform.platform_entity_id = 0U;
+  invalid.cycle_index = 0U;
   ASSERT_EQ(radar.StepWithResult(invalid).status,
             session::ArCycleStatus::kRejectedInvalidInput);
 
@@ -203,7 +200,7 @@ TEST(ArPublicApiContractTest, MultipleEngineeringSourcesUseOnePublicFrame) {
       {MakeNoiseEmission(input, 10U, radar_frequency_hz, 5.0e6, 100.0),
        MakeNoiseEmission(input, 11U, radar_frequency_hz, 10.0e6, 200.0)},
       &input.interference);
-  input.interference.emissions.back().identity.platform_id = 100U;
+  input.interference.emissions.back().identity.sensor_entity_id = 100U;
 
   session::ArSession radar = session::ArSession::Create(MakeSessionConfig());
   const session::ArCycleResult result = radar.StepWithResult(input);

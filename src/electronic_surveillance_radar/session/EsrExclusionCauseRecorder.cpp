@@ -14,21 +14,19 @@ namespace session {
 
 namespace {
 
-// 发射源标识三元组（用作 unordered_map 键）。identity 唯一性由帧校验保证。
+// 发射源标识二元组（用作 unordered_map 键）。identity 唯一性由帧校验保证。
 // VS2015/MSVC19.0 未实现 DR-1467（NSDMI 聚合初始化，C2440），按项目既有
 // 惯例为含 NSDMI 的值类型补充用户声明构造函数，调用点零改动。
 struct EmissionKey {
-  std::uint64_t platform_id{0U};
-  std::uint64_t equipment_id{0U};
+  std::uint32_t sensor_entity_id{0U};
   std::uint64_t emission_id{0U};
 
   EmissionKey() = default;
-  EmissionKey(std::uint64_t platform_id_, std::uint64_t equipment_id_,
-              std::uint64_t emission_id_)
-      : platform_id(platform_id_), equipment_id(equipment_id_), emission_id(emission_id_) {}
+  EmissionKey(std::uint32_t sensor_entity_id_, std::uint64_t emission_id_)
+      : sensor_entity_id(sensor_entity_id_), emission_id(emission_id_) {}
 
   bool operator==(const EmissionKey& other) const {
-    return platform_id == other.platform_id && equipment_id == other.equipment_id &&
+    return sensor_entity_id == other.sensor_entity_id &&
            emission_id == other.emission_id;
   }
 };
@@ -36,16 +34,16 @@ struct EmissionKey {
 struct EmissionKeyHash {
   std::size_t operator()(const EmissionKey& key) const noexcept {
     // 简单折叠加扰动；identity 唯一性由帧校验保证，哈希碰撞不影响正确性。
-    std::uint64_t h = key.platform_id ^ (key.equipment_id << 1U) ^ (key.emission_id << 2U);
+    std::uint64_t h = static_cast<std::uint64_t>(key.sensor_entity_id) ^ (key.emission_id << 2U);
     return static_cast<std::size_t>(h ^ (h >> 32U));
   }
 };
 
 EmissionKey KeyFromIdentity(const oneq::electromagnetics::RfEmissionIdentity& identity) {
-  return EmissionKey{identity.platform_id, identity.equipment_id, identity.emission_id};
+  return EmissionKey{identity.sensor_entity_id, identity.emission_id};
 }
 
-// 与 InterceptDetectionExecutor 相同的 identity 排序序（platform → equipment → emission）。
+// 与 InterceptDetectionExecutor 相同的 identity 排序序（sensor_entity_id → emission）。
 // 返回按此序排列的 emissions 指针数组，使 entity_index 与 executor 的排序下标一致。
 std::vector<const oneq::electromagnetics::RfSceneEmission*> SortEmissionsByIdentity(
     const std::vector<oneq::electromagnetics::RfSceneEmission>& emissions) {
@@ -57,10 +55,8 @@ std::vector<const oneq::electromagnetics::RfSceneEmission*> SortEmissionsByIdent
   std::sort(sorted.begin(), sorted.end(),
             [](const oneq::electromagnetics::RfSceneEmission* a,
                const oneq::electromagnetics::RfSceneEmission* b) {
-              return a->identity.platform_id != b->identity.platform_id
-                         ? a->identity.platform_id < b->identity.platform_id
-                     : a->identity.equipment_id != b->identity.equipment_id
-                         ? a->identity.equipment_id < b->identity.equipment_id
+              return a->identity.sensor_entity_id != b->identity.sensor_entity_id
+                         ? a->identity.sensor_entity_id < b->identity.sensor_entity_id
                          : a->identity.emission_id < b->identity.emission_id;
             });
   return sorted;
@@ -194,8 +190,7 @@ std::vector<EsrExclusionCauseEvent> EsrExclusionCauseRecorder::Update(
     if (!excluded_now) {
       EsrExclusionCauseEvent event;
       event.cycle_index = result.input_cycle_index;
-      event.identity.platform_id = state_it->first.platform_id;
-      event.identity.equipment_id = state_it->first.equipment_id;
+      event.identity.sensor_entity_id = state_it->first.sensor_entity_id;
       event.identity.emission_id = state_it->first.emission_id;
       event.kind = EsrExclusionCauseEventKind::kExited;
       event.previous_code = state_it->second.code;

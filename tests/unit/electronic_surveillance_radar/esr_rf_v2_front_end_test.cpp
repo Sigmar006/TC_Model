@@ -13,7 +13,6 @@ session::EsrCycleInput MakeInput() {
   input.cycle_index = 9U;
   input.cycle_start_time_s = 10.0;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = input.cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;
@@ -24,8 +23,7 @@ session::EsrCycleInput MakeInput() {
 oneq::electromagnetics::RfSceneEmission MakeEmission(std::uint64_t emission_id,
                                                       double x_offset_m, double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 10U + emission_id;
-  emission.identity.equipment_id = 20U + emission_id;
+  emission.identity.sensor_entity_id = 20U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = 6378137.0 + x_offset_m;
   emission.antenna.boresight_ecef.x = -1.0;
@@ -36,7 +34,6 @@ oneq::electromagnetics::RfSceneEmission MakeEmission(std::uint64_t emission_id,
 
 config::EsrHardwareConfig MakeHardware() {
   config::EsrHardwareConfig hardware;
-  hardware.receiver_equipment_id = 2U;
   hardware.receiver_band_lower_hz = 1.0e9;
   hardware.receiver_band_upper_hz = 18.0e9;
   hardware.maximum_linear_input_power_w = 1.0e-30f;
@@ -54,7 +51,7 @@ TEST(EsrRfV2FrontEndTest, ResolvesEveryEmissionOnceAndAggregatesInStableOrder) {
 
   EsrRfV2FrontEndResult result;
   ASSERT_TRUE(TryResolveEsrRfV2FrontEnd(input, MakeHardware(), MakeOrientation(), 0.0, 0.0, 10.0e9, 2.0e6, 0.0,
-                                        &result));
+                                        2U, &result));
   ASSERT_EQ(result.front_end_incident_links.size(), 2U);
   ASSERT_EQ(result.channel_incident_links.size(), 2U);
   EXPECT_EQ(result.front_end_incident_links[0].identity.emission_id, 1U);
@@ -73,7 +70,7 @@ TEST(EsrRfV2FrontEndTest, StrongHardwareBandSignalOutsideTunedChannelStillSatura
   hardware.receiver_band_upper_hz = 11.0e9;
   EsrRfV2FrontEndResult result;
   ASSERT_TRUE(TryResolveEsrRfV2FrontEnd(input, hardware, MakeOrientation(), 0.0, 0.0, 10.0e9, 2.0e6, 0.0,
-                                        &result));
+                                        2U, &result));
   ASSERT_EQ(result.front_end_incident_links.size(), 1U);
   ASSERT_EQ(result.channel_incident_links.size(), 1U);
   EXPECT_GT(result.front_end_incident_links[0].received_power_w, 0.0);
@@ -86,23 +83,22 @@ TEST(EsrRfV2FrontEndTest, RejectsUnmatchedFrameBeforeProducingResult) {
   input.rf_emissions.window_start_time_s += 0.1;
   EsrRfV2FrontEndResult result;
   EXPECT_FALSE(TryResolveEsrRfV2FrontEnd(input, MakeHardware(), MakeOrientation(), 0.0, 0.0, 10.0e9, 2.0e6, 0.0,
-                                         &result));
+                                         2U, &result));
 }
 
 TEST(EsrRfV2FrontEndTest, RequiresEquipmentSpecificCoSiteIsolation) {
   session::EsrCycleInput input = MakeInput();
   oneq::electromagnetics::RfSceneEmission emission = MakeEmission(1U, 0.0, 10.0);
-  emission.identity.platform_id = input.platform_entity_id;
-  emission.identity.equipment_id = 99U;
+  emission.identity.sensor_entity_id = 99U;
   input.rf_emissions.emissions.push_back(emission);
   EsrRfV2FrontEndResult result;
   EXPECT_FALSE(TryResolveEsrRfV2FrontEnd(input, MakeHardware(), MakeOrientation(), 0.0, 0.0, 10.0e9, 2.0e6, 0.0,
-                                         &result));
+                                         2U, &result));
 
   config::EsrHardwareConfig hardware = MakeHardware();
   hardware.co_site_paths.push_back(config::EsrCoSiteIsolationPath{99U, 80.0});
   EXPECT_TRUE(TryResolveEsrRfV2FrontEnd(input, hardware, MakeOrientation(), 0.0, 0.0, 10.0e9, 2.0e6, 0.0,
-                                        &result));
+                                        2U, &result));
 }
 
 TEST(EsrRfV2FrontEndTest, RealizesBoresightThroughInstallationChain) {
@@ -117,7 +113,7 @@ TEST(EsrRfV2FrontEndTest, RealizesBoresightThroughInstallationChain) {
   orientation.antenna_mount_az_deg = 10.0f;
   EsrRfV2FrontEndResult result;
   ASSERT_TRUE(TryResolveEsrRfV2FrontEnd(input, hardware, orientation, 0.0, 0.0, 10.0e9, 2.0e6, 0.0,
-                                        &result));
+                                        2U, &result));
 
   oneq::coordinate::LlaPositionDegM platform_lla;
   oneq::coordinate::Vector3d expected_ecef;

@@ -151,7 +151,6 @@ esr_session::EsrCycleInput MakeInput(const EsrCase& c, std::uint32_t cycle_index
   input.cycle_index = cycle_index;
   input.cycle_start_time_s = static_cast<double>(cycle_index - 1U);
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 9001U;
   input.platform_position_ecef_m.x_m = -2289512.0;
   input.platform_position_ecef_m.y_m = 4909946.0;
   input.platform_position_ecef_m.z_m = 3650982.0;
@@ -169,8 +168,7 @@ esr_session::EsrCycleInput MakeInput(const EsrCase& c, std::uint32_t cycle_index
     if (c.scenario_id.find("dense_emitters") != std::string::npos && index == 1U &&
         cycle_index >= 9U && cycle_index <= 12U) continue;
     oneq::electromagnetics::RfSceneEmission emission;
-    emission.identity.platform_id = 2001U + index;
-    emission.identity.equipment_id = 1U;
+    emission.identity.sensor_entity_id = 2001U + index;
     emission.identity.emission_id = index + 1U;
     const double azimuth_deg =
         (static_cast<double>(index) - 0.5 * static_cast<double>(count - 1U)) * 8.0;

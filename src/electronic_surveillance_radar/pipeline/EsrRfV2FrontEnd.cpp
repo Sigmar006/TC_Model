@@ -14,11 +14,8 @@ bool IsFinite(double value) { return std::isfinite(value) != 0; }
 
 bool IdentityLess(const oneq::electromagnetics::RfIncidentLinkResult& left,
                   const oneq::electromagnetics::RfIncidentLinkResult& right) {
-  if (left.identity.platform_id != right.identity.platform_id) {
-    return left.identity.platform_id < right.identity.platform_id;
-  }
-  if (left.identity.equipment_id != right.identity.equipment_id) {
-    return left.identity.equipment_id < right.identity.equipment_id;
+  if (left.identity.sensor_entity_id != right.identity.sensor_entity_id) {
+    return left.identity.sensor_entity_id < right.identity.sensor_entity_id;
   }
   return left.identity.emission_id < right.identity.emission_id;
 }
@@ -51,6 +48,7 @@ bool TryResolveBoresight(const session::EsrCycleInput& input,
 }
 
 bool TryBuildReceiverState(const session::EsrCycleInput& input,
+                           std::uint32_t sensor_entity_id,
                            const config::EsrHardwareConfig& hardware,
                            const config::EsrOrientationConfig& orientation,
                            double beam_az_deg, double beam_el_deg,
@@ -59,8 +57,7 @@ bool TryBuildReceiverState(const session::EsrCycleInput& input,
   if (receiver == nullptr) {
     return false;
   }
-  receiver->platform_id = input.platform_entity_id;
-  receiver->equipment_id = hardware.receiver_equipment_id;
+  receiver->sensor_entity_id = sensor_entity_id;
   receiver->position_ecef_m = input.platform_position_ecef_m;
   receiver->velocity_ecef_mps = input.platform_velocity_ecef_mps;
   receiver->window_start_time_s = input.cycle_start_time_s;
@@ -81,8 +78,7 @@ bool TryBuildReceiverState(const session::EsrCycleInput& input,
   receiver->co_site_paths.reserve(hardware.co_site_paths.size());
   for (const config::EsrCoSiteIsolationPath& path : hardware.co_site_paths) {
     oneq::electromagnetics::RfCoSiteIsolationPath resolved_path;
-    resolved_path.transmitter_equipment_id = path.transmitter_equipment_id;
-    resolved_path.receiver_equipment_id = hardware.receiver_equipment_id;
+    resolved_path.transmitter_sensor_entity_id = path.transmitter_sensor_entity_id;
     resolved_path.isolation_db = path.isolation_db;
     receiver->co_site_paths.push_back(resolved_path);
   }
@@ -99,10 +95,11 @@ bool TryResolveEsrRfV2FrontEnd(const session::EsrCycleInput& input,
                                double receiver_center_frequency_hz,
                                double receiver_bandwidth_hz,
                                double additional_propagation_loss_db,
+                               std::uint32_t sensor_entity_id,
                                EsrRfV2FrontEndResult* result) {
   if (result == nullptr ||
-      input.platform_entity_id == 0U ||
-      hardware.receiver_equipment_id == 0U || !IsFinite(receiver_center_frequency_hz) ||
+      sensor_entity_id == 0U ||
+      !IsFinite(receiver_center_frequency_hz) ||
       receiver_center_frequency_hz <= 0.0 || !IsFinite(receiver_bandwidth_hz) ||
       receiver_bandwidth_hz <= 0.0 || !IsFinite(additional_propagation_loss_db) ||
       additional_propagation_loss_db < 0.0 ||
@@ -122,10 +119,10 @@ bool TryResolveEsrRfV2FrontEnd(const session::EsrCycleInput& input,
       hardware.receiver_band_upper_hz - hardware.receiver_band_lower_hz;
   const double front_end_center_frequency_hz =
       0.5 * (hardware.receiver_band_lower_hz + hardware.receiver_band_upper_hz);
-  if (!TryBuildReceiverState(input, hardware, orientation, beam_az_deg, beam_el_deg,
+  if (!TryBuildReceiverState(input, sensor_entity_id, hardware, orientation, beam_az_deg, beam_el_deg,
                              front_end_center_frequency_hz, front_end_bandwidth_hz,
                              &candidate.front_end_receiver) ||
-      !TryBuildReceiverState(input, hardware, orientation, beam_az_deg, beam_el_deg,
+      !TryBuildReceiverState(input, sensor_entity_id, hardware, orientation, beam_az_deg, beam_el_deg,
                              receiver_center_frequency_hz, receiver_bandwidth_hz,
                              &candidate.channel_receiver)) {
     return false;

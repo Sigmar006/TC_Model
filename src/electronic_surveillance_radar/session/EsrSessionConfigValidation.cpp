@@ -57,8 +57,7 @@ session::EsrIssueList ValidateEsrSessionConfig(const config::EsrSessionConfig& c
   }
 
   const config::EsrHardwareConfig& hardware = config.hardware;
-  if (hardware.receiver_equipment_id == 0U ||
-      !oneq::common::validation::IsFinite(hardware.receiver_noise_figure_db) ||
+  if (!oneq::common::validation::IsFinite(hardware.receiver_noise_figure_db) ||
       hardware.receiver_noise_figure_db < 0.0f ||
       !oneq::common::validation::IsFinite(hardware.receiver_reference_temperature_k) ||
       hardware.receiver_reference_temperature_k <= 0.0f ||
@@ -79,11 +78,10 @@ session::EsrIssueList ValidateEsrSessionConfig(const config::EsrSessionConfig& c
          "Receiver RF hardware parameters must be finite and physically valid.");
   }
   for (const config::EsrCoSiteIsolationPath& path : hardware.co_site_paths) {
-    if (path.transmitter_equipment_id == 0U ||
-        path.transmitter_equipment_id == hardware.receiver_equipment_id ||
+    if (path.transmitter_sensor_entity_id == 0U ||
         !oneq::common::validation::IsFinite(path.isolation_db) || path.isolation_db < 0.0) {
       push(session::codes::kReceiverRfHardwareInvalid, "hardware.co_site_paths",
-           "Co-site paths require a distinct non-zero transmitter equipment ID and non-negative isolation.");
+           "Co-site paths require a non-zero transmitter sensor entity ID and non-negative isolation.");
       break;
     }
   }

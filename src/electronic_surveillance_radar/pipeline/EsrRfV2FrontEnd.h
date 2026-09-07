@@ -40,6 +40,7 @@ bool TryResolveEsrRfV2FrontEnd(const session::EsrCycleInput& input,
                                double receiver_center_frequency_hz,
                                double receiver_bandwidth_hz,
                                double additional_propagation_loss_db,
+                               std::uint32_t sensor_entity_id,
                                EsrRfV2FrontEndResult* result);
 
 }  // namespace pipeline

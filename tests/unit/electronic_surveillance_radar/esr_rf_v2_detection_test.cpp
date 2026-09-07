@@ -18,7 +18,6 @@ session::EsrCycleInput MakeInput() {
   input.cycle_index = 4U;
   input.cycle_start_time_s = 10.0;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = input.cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;
@@ -29,8 +28,7 @@ session::EsrCycleInput MakeInput() {
 oneq::electromagnetics::RfSceneEmission MakeEmission(std::uint64_t emission_id, double center_hz,
                                                      double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 10U + emission_id;
-  emission.identity.equipment_id = 20U + emission_id;
+  emission.identity.sensor_entity_id = 20U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = 6378137.0;
   emission.position_ecef_m.y_m = 1000.0;
@@ -41,10 +39,9 @@ oneq::electromagnetics::RfSceneEmission MakeEmission(std::uint64_t emission_id, 
 }
 
 oneq::electromagnetics::RfSceneEmission MakePulseTrainEmission(std::uint64_t emission_id,
-                                                                double center_hz, double power_w) {
+                                                               double center_hz, double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 10U + emission_id;
-  emission.identity.equipment_id = 20U + emission_id;
+  emission.identity.sensor_entity_id = 20U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = 6378137.0;
   emission.position_ecef_m.y_m = 1000.0;
@@ -55,10 +52,9 @@ oneq::electromagnetics::RfSceneEmission MakePulseTrainEmission(std::uint64_t emi
 }
 
 oneq::electromagnetics::RfSceneEmission MakeContinuousEmission(std::uint64_t emission_id,
-                                                                double center_hz, double power_w) {
+                                                               double center_hz, double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 10U + emission_id;
-  emission.identity.equipment_id = 20U + emission_id;
+  emission.identity.sensor_entity_id = 20U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = 6378137.0;
   emission.position_ecef_m.y_m = 1000.0;
@@ -72,8 +68,7 @@ oneq::electromagnetics::RfSceneEmission MakeSweepEmission(std::uint64_t emission
                                                            double start_hz, double stop_hz,
                                                            double power_w) {
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 10U + emission_id;
-  emission.identity.equipment_id = 20U + emission_id;
+  emission.identity.sensor_entity_id = 20U + emission_id;
   emission.identity.emission_id = emission_id;
   emission.position_ecef_m.x_m = 6378137.0;
   emission.position_ecef_m.y_m = 1000.0;
@@ -100,7 +95,6 @@ InterceptDetectionOutput RunDetection(const session::EsrCycleInput& input,
   pipeline_config.scan.scan_end_el_deg = 0.0f;
 
   extension::InterceptRuntimeConfig runtime_config;
-  runtime_config.receiver_hardware.receiver_equipment_id = 2U;
   runtime_config.receiver_hardware.receiver_band_lower_hz = 9.99e9;
   runtime_config.receiver_hardware.receiver_band_upper_hz = 10.01e9;
   runtime_config.receiver_hardware.beam_az_width_deg = beamwidth_deg;
@@ -237,11 +231,11 @@ TEST(EsrRfV2DetectionTest, TuningPlanUsesCompletedReceiveCyclesRatherThanInputCy
   EXPECT_DOUBLE_EQ(after_one_completed.receiver_center_frequency_hz, 10.0e9);
 }
 
-TEST(EsrRfV2DetectionTest, MissingCoSitePathRejectsTheV2CycleBeforeProducingObservation) {
+TEST(EsrRfV2DetectionTest, MissingCoSitePathNearFieldRejectsTheV2CycleBeforeProducingObservation) {
   session::EsrCycleInput input = MakeInput();
   oneq::electromagnetics::RfSceneEmission emission = MakeEmission(1U, 10.0e9, 1.0e6);
-  emission.identity.platform_id = input.platform_entity_id;
-  emission.identity.equipment_id = 99U;
+  emission.identity.sensor_entity_id = 99U;
+  emission.position_ecef_m = input.platform_position_ecef_m;
   input.rf_emissions.emissions.push_back(emission);
 
   const InterceptDetectionOutput output = RunDetection(input);
@@ -385,7 +379,6 @@ TEST(EsrRfV2DetectionTest, CoSiteEmissionWritesInfoExclusionDiagnostic) {
   session::EsrCycleInput input = MakeInput();
   // 低功率避免触发接收机饱和（最大线性输入 10 W）；同平台 → 同址链路。
   oneq::electromagnetics::RfSceneEmission emission = MakeEmission(9U, 10.0e9, 1.0e-6);
-  emission.identity.platform_id = input.platform_entity_id;
   input.rf_emissions.emissions.push_back(emission);
 
   // 接收机配置该发射设备的同址隔离路径后，同址链路可解析并被门控跳过。

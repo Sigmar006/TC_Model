@@ -24,7 +24,7 @@ struct ONEQ_API EsrTuningWindow {
 
 /** @brief ESR 接收设备的有向同平台隔离路径。 */
 struct ONEQ_API EsrCoSiteIsolationPath {
-  std::uint64_t transmitter_equipment_id{0U};
+  std::uint32_t transmitter_sensor_entity_id{0U};
   double isolation_db{0.0};
 };
 
@@ -32,7 +32,6 @@ struct ONEQ_API EsrCoSiteIsolationPath {
  * @brief EsrHardwareConfig 描述 ESR 装备固有参数。
  */
 struct ONEQ_API EsrHardwareConfig {
-  std::uint64_t receiver_equipment_id{1U}; /**< RF v2 接收设备身份。 */
   double receiver_band_lower_hz{0.23e9};   /**< 接收频段下限（单位：Hz） */
   double receiver_band_upper_hz{100.0e9};  /**< 接收频段上限（单位：Hz） */
   float receiver_sensitivity_w{1.0e-12f}; /**< 接收机等效噪声基底（单位：W）；设为 0 时由

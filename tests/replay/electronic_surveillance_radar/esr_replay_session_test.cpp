@@ -21,14 +21,12 @@ EsrCycleInput MakeWaveformClassInput(
   input.cycle_index = cycle_index;
   input.cycle_start_time_s = static_cast<double>(cycle_index - 1U);
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = cycle_index;
   input.rf_emissions.window_start_time_s = input.cycle_start_time_s;
   input.rf_emissions.window_duration_s = input.dt_sec;
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 2U;
-  emission.identity.equipment_id = 3U;
+  emission.identity.sensor_entity_id = 2U;
   emission.identity.emission_id = cycle_index;
   emission.position_ecef_m.x_m = 6378137.0;
   emission.position_ecef_m.y_m = 1000.0;
@@ -54,8 +52,7 @@ EsrCycleInput MakeContinuousInput(std::uint32_t cycle_index,
       cycle_index, oneq::electromagnetics::RfSceneWaveformKind::kContinuous);
   input.rf_emissions.emissions.clear();
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 2U;
-  emission.identity.equipment_id = 3U;
+  emission.identity.sensor_entity_id = 2U;
   emission.identity.emission_id = cycle_index;
   emission.position_ecef_m.x_m = 6378137.0;
   emission.position_ecef_m.y_m = 1000.0;
@@ -91,7 +88,6 @@ TEST(EsrReplaySessionTest, ReplaysDirectRfV2Input) {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 10.0;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = 1U;
   input.rf_emissions.window_start_time_s = 10.0;
@@ -307,15 +303,13 @@ TEST(EsrReplaySessionTest,
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0f;
-  input.platform_entity_id = 1U;
   input.platform_position_ecef_m.x_m = 6378137.0;
   input.rf_emissions.world_cycle_index = 1U;
   input.rf_emissions.window_start_time_s = 0.0;
   input.rf_emissions.window_duration_s = 1.0;
   for (std::uint32_t i = 0; i < 2; ++i) {
     oneq::electromagnetics::RfSceneEmission emission;
-    emission.identity.platform_id = 2U;
-    emission.identity.equipment_id = 3U;
+    emission.identity.sensor_entity_id = 2U;
     emission.identity.emission_id = static_cast<std::uint64_t>(10 + i);
     emission.position_ecef_m.x_m = 6378137.0;
     emission.position_ecef_m.y_m = 1000.0;
@@ -363,15 +357,13 @@ TEST(EsrReplaySessionTest,
     input.cycle_index = 1U;
     input.cycle_start_time_s = 0.0;
     input.dt_sec = 1.0f;
-    input.platform_entity_id = 1U;
     input.platform_position_ecef_m.x_m = 6378137.0;
     input.rf_emissions.world_cycle_index = 1U;
     input.rf_emissions.window_start_time_s = 0.0;
     input.rf_emissions.window_duration_s = 1.0;
     for (std::uint32_t i = 0; i < 2; ++i) {
       oneq::electromagnetics::RfSceneEmission emission;
-      emission.identity.platform_id = 2U;
-      emission.identity.equipment_id = 3U;
+      emission.identity.sensor_entity_id = 2U;
       emission.identity.emission_id = static_cast<std::uint64_t>(10 + i);
       emission.position_ecef_m.x_m = 6378137.0;
       emission.position_ecef_m.y_m = 1000.0;
@@ -466,15 +458,13 @@ TEST(EsrReplaySessionTest,
     input.cycle_index = 1U;
     input.cycle_start_time_s = 0.0;
     input.dt_sec = 1.0f;
-    input.platform_entity_id = 1U;
     input.platform_position_ecef_m.x_m = 6378137.0;
     input.rf_emissions.world_cycle_index = 1U;
     input.rf_emissions.window_start_time_s = 0.0;
     input.rf_emissions.window_duration_s = 1.0;
     for (std::uint32_t i = 0; i < 2; ++i) {
       oneq::electromagnetics::RfSceneEmission emission;
-      emission.identity.platform_id = 2U;
-      emission.identity.equipment_id = 3U;
+      emission.identity.sensor_entity_id = 2U;
       emission.identity.emission_id = static_cast<std::uint64_t>(10 + i);
       emission.position_ecef_m.x_m = 6378137.0;
       emission.position_ecef_m.y_m = 1000.0;

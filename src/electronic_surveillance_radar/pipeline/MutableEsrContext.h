@@ -43,8 +43,6 @@ class MutableEsrContext final {
   float GetCycleDeltaTimeSec() const;
   /** @brief 返回侦察平台姿态的只读引用。 */
   const oneq::coordinate::EulerAnglesDeg& GetPlatformAttitude() const;
-  /** @brief 返回接收平台实体标识。 */
-  std::uint64_t GetPlatformEntityId() const;
   /** @brief 返回接收平台 ECEF 位置。 */
   const oneq::coordinate::EcefPositionM& GetPlatformPositionEcefM() const;
   /** @brief 返回接收平台 ECEF 速度。 */
@@ -57,13 +55,21 @@ class MutableEsrContext final {
   const extension::InterceptPipelineConfig& GetPipelineConfig() const;
   /** @brief 返回运行态配置的只读引用。 */
   const extension::InterceptRuntimeConfig& GetRuntimeConfig() const;
+  /** @brief 设置接收设备 sensor_entity_id。 */
+  void SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept {
+    sensor_entity_id_ = sensor_entity_id;
+  }
+  /** @brief 返回接收设备 sensor_entity_id。 */
+  std::uint32_t GetSensorEntityId() const noexcept {
+    return (sensor_entity_id_ != 0U) ? sensor_entity_id_ : 2U;
+  }
 
  private:
   const session::EsrCycleInput* cycle_input_{nullptr};
   std::uint32_t cycle_index_{0U};
   double cycle_start_time_s_{0.0};
   float dt_sec_{1.0f};
-  std::uint64_t platform_entity_id_{0U};
+  std::uint32_t sensor_entity_id_{2U};
   oneq::coordinate::EcefPositionM platform_position_ecef_m_{};
   oneq::coordinate::EcefVelocityMps platform_velocity_ecef_mps_{};
   oneq::coordinate::EulerAnglesDeg platform_attitude_deg_{};

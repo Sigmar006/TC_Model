@@ -32,8 +32,7 @@ using oneq::foundation::ValidationLocationKind;
 // 构造仅携带 identity 的发射源（recorder 只读 identity，不执行管线）。
 RfSceneEmission MakeEmissionWithId(std::uint64_t emission_id) {
   RfSceneEmission emission;
-  emission.identity.platform_id = 10U + emission_id;
-  emission.identity.equipment_id = 20U + emission_id;
+  emission.identity.sensor_entity_id = static_cast<std::uint32_t>(20U + emission_id);
   emission.identity.emission_id = emission_id;
   return emission;
 }
@@ -69,7 +68,7 @@ EsrCycleInput MakeInputWithEmission(std::uint64_t emission_id) {
 }
 
 RfEmissionIdentity IdentityOf(std::uint64_t emission_id) {
-  return RfEmissionIdentity{10U + emission_id, 20U + emission_id, emission_id};
+  return RfEmissionIdentity{static_cast<std::uint32_t>(20U + emission_id), emission_id};
 }
 
 // 在事件列表中按 (identity, kind) 查找事件。
@@ -78,8 +77,7 @@ const EsrExclusionCauseEvent* FindEvent(const std::vector<EsrExclusionCauseEvent
                                         EsrExclusionCauseEventKind kind) {
   const RfEmissionIdentity wanted = IdentityOf(emission_id);
   for (const EsrExclusionCauseEvent& event : events) {
-    if (event.identity.platform_id == wanted.platform_id &&
-        event.identity.equipment_id == wanted.equipment_id &&
+    if (event.identity.sensor_entity_id == wanted.sensor_entity_id &&
         event.identity.emission_id == wanted.emission_id && event.kind == kind) {
       return &event;
     }

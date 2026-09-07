@@ -44,6 +44,19 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
    - 证明证据：契约规定破坏性 schema 变更随之中段整体升位，标识符升级防静默误解码，项目未上线不维护向后兼容分支。
    - 否定证据：发现可在现有保留槽位无损填充时间戳且不改变 binary layout 的合法途径。
    - 最小改动：修改 `sbirs_replay.fbs` 增加 `measurement_time_s` 槽位并将标识符升为 `SBI5`，适配对应 Codec。
+5. **待裁定项 5（检出记录与外层帧的周期号职责划分）**：
+   - 冻结什么：冻结“单条点目标检出记录 `SbirsDetectionRecord` 不设周期号字段，周期号留在外层输出帧 `output_frame.cycle_index`”的设计。
+   - 证明证据：单条点目标记录代表一次物理曝光事实，仅需知道绝对物理时刻 `measurement_time_s`；周期号是离散仿真步调（如 1s 步长）调度与批次打包的标识，属于帧级元数据。
+   - 否定证据：下游单目标跟踪或状态机明确需要从单条记录直接逆解调用方步调步长。
+   - 最小改动：保持 `SbirsDetectionRecord` 纯粹承载物理测量，不添加冗余周期号。
+6. **待裁定项 6（底层传感器管线内部目标动力学外推——方案 A 评估）**：
+   - 冻结什么：冻结“传感器管线内部是否应该按相对速度将目标位置推演至波束穿越时刻”的设计路线。
+   - 证明证据：若外推，必须证明该外推在惯性系下物理无歧义、不与现有误差模型冲突且不引起失锁。
+   - 否定证据（已证实反证）：
+     1. 地球自转假位移：在 ECI 惯性系下，地面静止目标具有 $\sim 460\text{ m/s}$ 的 ECI 输运速度，盲目按速度外推导致地面固定目标几何角严重失真；
+     2. 物理误差模型重复计模：`ApplyAngularErrorModel` 中已包含探测器动态滞后 $\frac{\omega}{2\pi f_{\text{det}}}$，几何外推导致相对运动效应被计算两次；
+     3. 高速目标脱靶死锁：高速交汇场景（如 $5\text{ km/s}$）下，外推使目标脱离当前瞬时视场造成虚假失锁。
+   - 最小改动：明确否决管线内目标动力学外推；传感器仅如实测量视线角并标定物理时刻，时空对齐严格归属下游融合层（FUSION-OQ-1）。
 
 ## §1 证据矩阵
 
@@ -53,6 +66,8 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 | 2. 任务配置支持初始扫描相位配置 | 真实星座多星异步开机；当前硬编码初始相位为 0 导致多星扫描步调完全同步，无法模拟错峰巡视 | - **证据**：[evidence: include/1q/sbirs_sensor/config/SbirsMissionConfig.h::SbirsMissionConfig]<br>- **证据**：[evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp::ApplyConfig] | 执行探针：检查 `SbirsPipeline.h` 中 `scan_phase_deg_{0.0f}` 硬编码为 0；在三星场景中三颗星在 $t=0$ 均从各自扇区起点同时向右推进，折返点完全一致 | 证明当前配置无法表达异步相位，且新增参数不破坏现有单星回归基线（默认 0 逐位不变） | 证明真实场景要求多星强行同步起跑，或现有字段已能表达 | pass |
 | 3. 融合输入 `DetectionRecord` 与适配层透传时间戳 | 传感器输出的时间戳必须能经由通用适配层流入多源融合引擎，形成端到端闭环 | - **证据**：[evidence: include/1q/fusion/DetectionRecord.h::DetectionRecord]<br>- **证据**：[evidence: src/precision_evaluation/SbirsBearingAdapter.cpp] | 执行探针：检查 `AdaptSbirsResultToDetectionRecords`，目前仅提取方位角与原点 LLA，无法向下游传递时间；`DetectionRecord` 亦无时间槽位 | 证明下游需要该字段作为时间对齐输入，且可选字段方案完全向后兼容其他传感器（如 AR/ESR） | 证明融合引擎拒绝接收时间戳，或必须将跨模块改造推迟到独立专项 | narrow<br>（仅先打通结构与透传，融合复杂滤波算法可分期） |
 | 4. FlatBuffers 回放 Schema 升级为 SBI5 | 依契约规则，输出表增加核心字段属于破坏性变更，必须升级文件标识符为 SBI5 防静默误读 | - **证据**：[evidence: schemas/replay/sbirs_replay.fbs]<br>- **证据**：[evidence: src/sbirs_sensor/session/SbirsReplayFlatbufferCodec.cpp] | 执行探针：检查 `sbirs_replay.fbs` 历史注释（SBI3/SBI4 升位记录明确声明无兼容分支，破坏性变更整体升位）；运行现有回放测试 100% 通过 | 证明字段变更影响 schema 布局，升位符合既有工程契约 | 证明可以在不改变 schema 标识符的情况下无缝兼容旧录像 | pass |
+| 5. 检出记录与输出帧周期号职责分离 | 单条检出记录代表物理测量事实，外层帧承载离散步调调度批次；单条记录无需冗余周期号 | - **证据**：[evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h::SbirsDetectionRecord]<br>- **证据**：[evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h::SbirsOutputFrame] | 执行探针：检查 `SbirsDetectionRecord` 历史字段（无周期号）；外层 `SbirsOutputFrame` 已有 `cycle_index`；仿真步长 1s 下单条记录携带精确物理时间戳 `measurement_time_s` 即可满足下游消费 | 证明单条记录仅需物理时间戳，外层帧承载离散打包，概念清晰无冗余 | 证明单条记录缺失周期号会导致下游无解 | pass |
+| 6. 传感器管线内目标动力学外推（方案 A） | 假设在传感器内将目标位置外推至穿越时刻可提升精度 | - **证据**：[evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp]<br>- **证据**：[evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp] | 执行探针：在管线中依相对速度推演目标位置，导致 5 个单测失败；证实 ECI 地转速度污染静态目标、重复叠加探测器动态滞后、高速目标视线脱离波束 | 证明外推在惯性系自洽且不破坏物理模型与单测基线 | 证实引入地转失真、重复计模与虚假脱靶（已证实） | reject |
 
 ## §2 判定汇总与待裁定问题
 
@@ -61,6 +76,8 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 2. **项 2（初始扫描相位，建议 pass）**：任务配置提供 `initial_scan_phase_deg`，默认 0.0f 保持历史单星测试逐位回归，同时赋能多星错峰场景。
 3. **项 3（融合输入结构与透传，建议 narrow）**：本次范围收窄为“在 `DetectionRecord` 增补可选时间戳，适配层透传”，融合引擎内部复杂的“非等间隔亚周期滤波推演”作为下阶段演进或由评估层先行消费，避免单次爆炸半径过大。
 4. **项 4（回放 Schema 升至 SBI5，建议 pass）**：严格遵循既有回放契约，升标识符并同步升级 Codec 与单元测试。
+5. **项 5（周期号职责划分，建议 pass）**：`SbirsDetectionRecord` 仅保留绝对物理时刻 `measurement_time_s`，不添加冗余周期号；`cycle_index` 保持在外层帧结构。
+6. **项 6（管线内部目标动力学外推，建议 reject）**：坚决否决方案 A（在底层传感器内部篡改目标几何位置）；传感器如实输出瞬时观测视线，时空对齐归属融合层（FUSION-OQ-1）。
 
 ### 2. 需用户裁定的核心问题
 1. **裁定点 1（时间戳语义与精度）**：
@@ -69,6 +86,8 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
    在多行牛耕式扫描模式下，除了水平初始相位 `initial_scan_phase_deg`，是否需要同步开放垂直初始行号 `initial_scan_row_index`？（建议：先做 `initial_scan_phase_deg`，栅格行若暂无强诉求可默认从第 0 行起，避免过度设计）。
 3. **裁定点 3（融合层实施深度）**：
    是否同意将融合层范围收窄为“`DetectionRecord` 增加字段 + 适配层透传 + 评估层消费”，融合引擎内部的连续时间卡尔曼滤波算法是否在本次一并改造，还是留待独立阶段实施？
+4. **裁定点 4（时空自洽与管线纯粹性）**：
+   是否同意否决“底层传感器管线内部目标动力学外推（方案 A）”，维持传感器“如实测量视线角并精准标定时间戳”的纯粹性，将多星异步观测间的时空补偿明确划归下游融合层状态滤波职责？
 
 ## §3 冻结契约（用户讨论结束后填写）
 
@@ -102,10 +121,12 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 - **schema/trace/replay**：禁止保留 SBI4 兼容分支（契约规定整体升位为 SBI5）；禁止触碰其他传感器的 replay schema。
 - **测试阈值/skip**：禁止放宽任何现有单元测试与验收测试的门限值，禁止新增 skip。
 - **兼容层**：禁止为旧版无时间戳写分支兼容胶水代码；未交付阶段坚持干净边界。
+- **管线动力学外推（方案 A 否决）**：禁止在底层传感器管线 `SbirsPipeline.cpp` 内部对输入场景目标做基于速度的几何外推与视线篡改；原始测量必须反映波束掠过视线时的真实物理观测，跨星异步观测的时空补偿严禁由传感器越权承担。
 
 ### 4. 行为边界
 - **输入**：`initial_scan_phase_deg` 必须在合法范围 $[0, \text{scan\_span})$ 内（配置校验防御越界），默认 0.0f。
 - **输出**：`measurement_time_s` 保证在当前周期窗口 $[t_{\text{cycle\_start}}, t_{\text{cycle\_start}} + dt]$ 之间，单调可信。
+- **数据流模型（离散调度与连续物理时刻分离）**：仿真引擎按整周期步长（如 1s）调度推进并打包返回输出帧，输出帧携带批次周期号 `output_frame.cycle_index`；帧内单条检出记录 `SbirsDetectionRecord` 携带连续物理测量时刻 `measurement_time_s`（如 A 星 0.5s、B 星 0.8s），二者语义分明、严格自洽。
 - **错误/回退**：输入非法初始相位返回校验 `kInvalidScanPhase` 或相应 IssueCode；回放解析遇到旧版 SBI4 返回解码失败。
 - **生命周期/调试/trace**：DebugView 与 LifecycleRecorder 同步增加 `measurement_time_s` 字段输出，与现有调试体系无缝兼容。
 
@@ -129,6 +150,7 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 - **非目标 1**：`FusionEngine` 内部非等间隔卡尔曼滤波推演（收窄裁定已定，留待后续专项）。
 - **非目标 2**：2-D 俯仰栅格初始行号 `initial_scan_row_index` 配置（本次仅开放水平初始相位）。
 - **非目标 3**：AR、ESR、EOS、RIR 等其他传感器的时间戳改造（本次仅针对 SBIRS 与通用探测记录）。
+- **非目标 4**：传感器管线内目标动力学外推（方案 A 已否决；时空对齐归属融合层 FUSION-OQ-1）。
 
 ## 修订记录
 
@@ -137,6 +159,10 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
   2. 裁定点 2：批准 2-D 俯仰栅格模式仅做水平方位初始相位 `initial_scan_phase_deg`，垂直行号暂默认从第 0 行起步。
   3. 裁定点 3：批准融合层实施范围收窄为“`DetectionRecord` 增补可选时间戳 + `SbirsBearingAdapter` 透传 + 评估层消费”，融合算法内部亚周期卡尔曼滤波作为后续专项演进。
   4. 状态由 draft 推进为 frozen，附 §3 冻结契约。
+- **修订 2（2026-09-07，时空自洽与管线纯粹性裁定）**：
+  1. 裁定点 4：明确否决底层传感器管线内部目标动力学外推（方案 A）；传感器如实测量视线角并精准标定时间戳，多星异步观测间的时空补偿由下游融合层状态滤波（FUSION-OQ-1）承担。
+  2. 明确 `SbirsDetectionRecord` 保持纯粹物理量测语义，不冗余设置周期号字段；周期号保留在外层帧结构。
+  3. 冻结“离散批量打包调度 (Frame Batching) + 连续物理测量时刻 (Continuous Physical Measurement Timestamp)”的数据流模型。
 
 ## §4 运行记录（Stage C 后填写）
 

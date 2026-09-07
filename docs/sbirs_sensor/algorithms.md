@@ -159,11 +159,16 @@ SBIRS 模拟天基红外监视卫星的宽视场（WFOV）扫描探测、星下�
 - **扫描模式**：
   - **方位基准**：`kEciAbsolute`（ECI 绝对角）与 `kNadirRelative`（相对星下点方位 atan2(-y, -x) 的动态偏移）。nadir 模式每周期按「配置扇区 $\cap$ 地球可见窗」裁剪有效跨度（可见窗 = 星下点方位 $\pm(\arcsin(R/\lvert r\rvert) + \text{wfov}_{az}/2)$），相位原点恒为配置起点、只裁远端。
   - **往复栅格推进**：2-D 栅格采用往复牛耕式折返（到边反射），消除锯齿大跳变；单行步进由 `scan_direction` 初始方向动态翻转。
+  - **初始扫描相位与多星异步**：任务配置支持 `initial_scan_phase_deg`（范围 $[0, \text{span})$ deg，默认 0.0f）；多星部署时赋予不同初始相位，实现各星错峰巡视，消除“同相广播体操”伪对称。
+  - **波束穿越时刻反解与量测时间戳**：往复扫描时，波束中心在当周期内扫过目标视线方位的时刻由扫描角速度闭式反解：
+    $$\Delta t = \text{clamp}\left( \frac{\lvert az_{\text{target}} - az_{\text{start}} \rvert}{\omega_{\text{scan}}}, 0, dt \right)$$
+    输出绝对物理量测时刻 $t_{\text{meas}} = t_{\text{cycle\_start}} + \Delta t$ 进 `SbirsDetectionRecord.measurement_time_s`。
+  - **管线内部不外推原则（方案 A 否决）**：传感器管线如实输出波束穿越瞬间的观测视线与时间戳，严禁在管线内依速度平移目标 ECI 位置（ECI 系内地转速度使静止目标失真，且与探测器动态滞后重叠）；多星异步时刻（如 A 星 0.5s vs B 星 0.8s）引起的空间位移补偿由下游融合滤波状态方程承担（FUSION-OQ-1）。
 - **实现边界与工程简化**：
   - 扫描相位用 `std::fmod` 常数时间推进；`span=360°` 跨 ±180° 不产生数轴断点。
   - `kWideSearch` 只产生 channel=`-1` 的 WFOV 观测，不分配 NFOV；WFOV 带误差位置是仿真观测/cue，不是目标真值。
 - **反直觉点（扇区 patch 的相位处理）**：扇区 patch 后，当前绝对方位仍位于新有向半开区间时重算 phase 并保持指向（腿方向保留），否则 phase 归零转到新起点且腿复位初始方向；2-D 栅格 patch 下旧行中心 el 映射到新栅格最近行；从 SearchAndStare 切入时释放 NFOV/pointing/filter 绑定但**保留** scan phase、测量随机流与已有 WFOV cue 历史。
-- **证据链**：[evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp]
+- **证据链**：[evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp::WfovCrossingTimeCalculatesSubCycleMeasurementTimestamp]、[evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp::InitialScanPhaseOffsetsSweep]
 
 ---
 

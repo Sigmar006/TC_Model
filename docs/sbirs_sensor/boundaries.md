@@ -1,4 +1,4 @@
-﻿---
+---
 Status: active
 Last-reviewed: 2026-08-23
 Authority: sbirs_sensor 模块级边界、非目标、能力决策与变更规则
@@ -42,6 +42,16 @@ SBIRS 非执行周期（校验失败/执行 abort）的产品层一律为空载�
 调用方用执行层 `status` / `abort_reason` 判断周期状态。落地前空帧 `cycle_index` 仍可能为 0。
 
 [evidence: tests/contract/sbirs_sensor/sbirs_public_api_convenience_test.cpp::StepReturnsEmptyFrameOnValidationFailureAfterSuccess]
+
+### 测量物理时刻与离散步调调度边界（连续物理时刻 vs 离散批次号）
+
+`SbirsDetectionRecord` 纯粹表达单次物理红外曝光事实，携带 `measurement_time_s`（绝对仿真时刻，单位秒），
+不设周期号字段。外层帧 `SbirsOutputFrame.cycle_index` 承载离散步调调度（如 1s 步长）批次标识。
+调用方步调步长属于外层调度与批量通信（Frame Batching）；多星异步扫描下单周期内各星检出时刻
+（如 A 星 0.5s、B 星 0.8s）由各自 `measurement_time_s` 准确记录，时空语义严格解耦。
+
+[evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h::SbirsDetectionRecord]
+[evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp::WfovCrossingTimeCalculatesSubCycleMeasurementTimestamp]
 
 ### 三写约束（abort_reason + issues + 日志）
 
@@ -196,6 +206,7 @@ session 等价；这些性质只能由对应的 unit/integration/replay 测试�
 | 威胁等级/航迹质量/任务优先级联合评分 | reject in sensor ownership | 分层契约归决策层（threat_assessment）；传感器侧只输出通道调度/资源跳过/失败回退事件 |
 | 高精度轨道传播 | reject in sensor ownership | cycle input 已提供同一时标下的平台/目标状态；默认归属场景或平台动力学模块 |
 | 地面任务规划、区域重访与星座协同 | reject in sensor ownership | 属于任务规划/星座资源域，应通过 session config/input 驱动传感器 |
+| 传感器管线内目标运动几何外推（方案 A） | reject | 在 ECI 惯性系下引入地转假位移（静止目标失真），且与 `ApplyAngularErrorModel` 中探测器积分动态滞后误差模型重复叠加，破坏高速目标视线几何；时空对齐与运动补偿严格归属下游融合层（FUSION-OQ-1） |
 | 复刻真实 SBIRS 保密参数或处理链 | reject | 不可审计、不可验证；只使用可追溯公开资料、仓库内模型假设和独立测试证据 |
 
 [evidence: tests/unit/sbirs_sensor/sbirs_cue_predictor_test]

@@ -1,0 +1,100 @@
+---
+Status: draft
+Date: 2026-09-07
+Review-Baseline: `evidence/sbirs-measurement-timestamp-and-phase` @ `68295515`
+Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract.md、docs/common/session_contract.md
+  及各模块 docs/<module>/design.md 为准；与库实现冲突时以库为准；
+  权威回写完成、合并进 main 前移除本文档。
+---
+
+# sbirs-measurement-timestamp-and-phase：证据矩阵
+
+<!-- 本文档写作规则：
+1、证据一律写成一行：- **证据**：[evidence: 路径]，可加 ::符号名；禁止行号。
+2、说明简要，一项一行；多个要点用 1、2、3 序号分点分行，禁止大段描述。
+3、引用规则时直接写出规则内容，并用证据形式锁定来源文件；禁止写"见xx规则"。
+4、面向非专业开发者，用平实中文；术语首次出现时给一句白话解释。
+5、探针/测试必须是已实际执行的；无法直接验证的判断以"推理："开头标注。
+-->
+
+## §0 背景与待裁定的问题
+
+- **触发来源**：开放议题 SBIRS-OQ-6（量测时间戳与扫描初始相位缺失）与 FUSION-OQ-1（亚周期时间对齐缺失）长期作为技术债务共存；当前三星场景已正式运行，粗颗粒度周期号驱动在多星异步与高速目标场景下精度瓶颈显现。
+- **证据**：[evidence: docs/common/open_questions.md]
+
+各待裁定项四问分析（冻结什么 / 证明证据 / 否定证据 / 最小范围）：
+
+1. **待裁定项 1（检出时间戳字段需求）**：
+   - 冻结什么：冻结“SBIRS 检出记录必须包含绝对测量时刻字段”的需求，废除仅由周期号推定时序的粗暴近似。
+   - 证明证据：高速机动目标在整周期（如 1~5 秒）内空间位移显著，波束穿越目标的实际时刻与周期采样时刻存在秒级偏差，导致下游交叉定位失真；且扫描方位与目标视线几何允许闭式解析求出波束穿越时刻。
+   - 否定证据：所有下游消费方（融合/评估）均证明整周期采样误差在容忍度内，或无法在源头解析出亚周期时刻。
+   - 最小改动：在 `SbirsOutputTypes.h` 的 `SbirsDetectionRecord` 中增加 `double measurement_time_s`，并在 `SbirsPipeline.cpp` 中根据扫描几何解析计算。
+2. **待裁定项 2（多星异步初始扫描相位配置需求）**：
+   - 冻结什么：冻结“SBIRS 任务配置必须支持设置初始扫描相位”的需求，废除所有卫星开机一律从 0° 起扫的同步假象。
+   - 证明证据：真实星座各卫星独立开机且需要错峰交替巡视；目前全仓代码硬编码初始相位为 0，三颗星运动步调完全重合（广播体操效应）。
+   - 否定证据：多星协同作战推演明确要求各星必须绝对同相起跑，或初始相位可由现有其他字段无损表达。
+   - 最小改动：在 `SbirsMissionConfig.h` 增加 `initial_scan_phase_deg` 并在 `SbirsPipeline.cpp` 构造/重锚时作为初始值。
+3. **待裁定项 3（下游融合层 `DetectionRecord` 与适配层时间戳贯通）**：
+   - 冻结什么：冻结“融合通用探测记录扩充时间戳字段，并在 SBIRS 适配层完成数据透传”的需求。
+   - 证明证据：时间戳必须进入跨模块消费链路，否则传感器源头输出的时间戳成为死数据，无法形成精度评估闭环。
+   - 否定证据：跨模块改动破坏现有版本稳定性，或融合算法当前无法承受时间戳字段引入。
+   - 最小改动：在 `DetectionRecord.h` 增加可选 `has_timestamp` / `timestamp_s`，并在 `SbirsBearingAdapter.cpp` 中映射赋值。
+4. **待裁定项 4（FlatBuffers 回放 Schema 升级与标识符演进至 SBI5）**：
+   - 冻结什么：冻结“公共输出结构增加字段必须按契约规则同步升级 FlatBuffers schema 并晋升文件标识符为 SBI5”的工程约束。
+   - 证明证据：契约规定破坏性 schema 变更随之中段整体升位，标识符升级防静默误解码，项目未上线不维护向后兼容分支。
+   - 否定证据：发现可在现有保留槽位无损填充时间戳且不改变 binary layout 的合法途径。
+   - 最小改动：修改 `sbirs_replay.fbs` 增加 `measurement_time_s` 槽位并将标识符升为 `SBI5`，适配对应 Codec。
+
+## §1 证据矩阵
+
+| 待裁定项 | 假设（要证明什么） | 证据来源 | 探针/测试（已执行） | 通过条件 | 否定条件 | 建议判定 |
+|---|---|---|---|---|---|---|
+| 1. 检出记录增加绝对测量时刻字段 | 检出记录缺失时间信息导致多星交会无法对齐；且波束穿越目标时刻可在源头闭式反解 | - **证据**：[evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h::SbirsDetectionRecord]<br>- **证据**：[evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp] | 执行探针：核验 `SbirsDetectionRecord` 确无时间字段；核验 `SbirsPipeline.cpp` 中扫描中心由 `scan_rate_deg_per_sec` 匀速推进，目标视线方位已知，穿越时间差 $\Delta t = \|az_{\text{tgt}} - az_{\text{prev}}\| / \omega$ 可解析求出 | 证明时间缺失导致下游产生等效空间失配，且穿越时刻可解析求出 | 证明整周期误差无影响，或穿越时刻无法在传感器层确定 | pass |
+| 2. 任务配置支持初始扫描相位配置 | 真实星座多星异步开机；当前硬编码初始相位为 0 导致多星扫描步调完全同步，无法模拟错峰巡视 | - **证据**：[evidence: include/1q/sbirs_sensor/config/SbirsMissionConfig.h::SbirsMissionConfig]<br>- **证据**：[evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp::ApplyConfig] | 执行探针：检查 `SbirsPipeline.h` 中 `scan_phase_deg_{0.0f}` 硬编码为 0；在三星场景中三颗星在 $t=0$ 均从各自扇区起点同时向右推进，折返点完全一致 | 证明当前配置无法表达异步相位，且新增参数不破坏现有单星回归基线（默认 0 逐位不变） | 证明真实场景要求多星强行同步起跑，或现有字段已能表达 | pass |
+| 3. 融合输入 `DetectionRecord` 与适配层透传时间戳 | 传感器输出的时间戳必须能经由通用适配层流入多源融合引擎，形成端到端闭环 | - **证据**：[evidence: include/1q/fusion/DetectionRecord.h::DetectionRecord]<br>- **证据**：[evidence: src/precision_evaluation/SbirsBearingAdapter.cpp] | 执行探针：检查 `AdaptSbirsResultToDetectionRecords`，目前仅提取方位角与原点 LLA，无法向下游传递时间；`DetectionRecord` 亦无时间槽位 | 证明下游需要该字段作为时间对齐输入，且可选字段方案完全向后兼容其他传感器（如 AR/ESR） | 证明融合引擎拒绝接收时间戳，或必须将跨模块改造推迟到独立专项 | narrow<br>（仅先打通结构与透传，融合复杂滤波算法可分期） |
+| 4. FlatBuffers 回放 Schema 升级为 SBI5 | 依契约规则，输出表增加核心字段属于破坏性变更，必须升级文件标识符为 SBI5 防静默误读 | - **证据**：[evidence: schemas/replay/sbirs_replay.fbs]<br>- **证据**：[evidence: src/sbirs_sensor/session/SbirsReplayFlatbufferCodec.cpp] | 执行探针：检查 `sbirs_replay.fbs` 历史注释（SBI3/SBI4 升位记录明确声明无兼容分支，破坏性变更整体升位）；运行现有回放测试 100% 通过 | 证明字段变更影响 schema 布局，升位符合既有工程契约 | 证明可以在不改变 schema 标识符的情况下无缝兼容旧录像 | pass |
+
+## §2 判定汇总与待裁定问题
+
+### 1. 判定汇总
+1. **项 1（检出时间戳，建议 pass）**：传感器输出层必须提供真实测量物理时刻，消除源头信息丢弃。
+2. **项 2（初始扫描相位，建议 pass）**：任务配置提供 `initial_scan_phase_deg`，默认 0.0f 保持历史单星测试逐位回归，同时赋能多星错峰场景。
+3. **项 3（融合输入结构与透传，建议 narrow）**：本次范围收窄为“在 `DetectionRecord` 增补可选时间戳，适配层透传”，融合引擎内部复杂的“非等间隔亚周期滤波推演”作为下阶段演进或由评估层先行消费，避免单次爆炸半径过大。
+4. **项 4（回放 Schema 升至 SBI5，建议 pass）**：严格遵循既有回放契约，升标识符并同步升级 Codec 与单元测试。
+
+### 2. 需用户裁定的核心问题
+1. **裁定点 1（时间戳语义与精度）**：
+   `measurement_time_s` 建议采用**绝对仿真时间（double，单位秒）**，即 $t_{\text{cycle\_start}} + \Delta t_{\text{crossing}}$。是否批准此口径？（替代方案为相对本周期的偏移 `float time_offset_s`）。
+2. **裁定点 2（2-D 俯仰栅格模式的初始行配置）**：
+   在多行牛耕式扫描模式下，除了水平初始相位 `initial_scan_phase_deg`，是否需要同步开放垂直初始行号 `initial_scan_row_index`？（建议：先做 `initial_scan_phase_deg`，栅格行若暂无强诉求可默认从第 0 行起，避免过度设计）。
+3. **裁定点 3（融合层实施深度）**：
+   是否同意将融合层范围收窄为“`DetectionRecord` 增加字段 + 适配层透传 + 评估层消费”，融合引擎内部的连续时间卡尔曼滤波算法是否在本次一并改造，还是留待独立阶段实施？
+
+## §3 冻结契约（用户讨论结束后填写）
+
+<!-- 一行一项：
+1、允许范围：模块/目录、类/函数、测试与文档。
+2、明确禁止范围：公开头文件、跨模块类型、schema/回放、测试阈值、兼容层。
+3、行为边界：输入、输出、错误回退、生命周期。
+4、爆炸半径与回滚：下游消费方影响、回退难度（无损/破坏性/回滚注意点）。
+5、验收门：构建、聚焦测试、契约测试、特征化测试、探针转正（有回归价值的探针转正式测试）。
+6、非目标。
+-->
+
+## 修订记录
+
+<!-- 编号条目（修订 1、修订 2……）：日期、裁定内容、来源（用户指令/新证据）；不静默改写既有条目。 -->
+
+## §4 运行记录（Stage C 后填写）
+
+<!-- 对照强制回写清单勾项，全部完成才允许拆脚手架（见 SKILL.md 收尾规则）：
+1、实现范围：改动文件与接口。
+2、验证命令与结果：命令: pass/fail（含转正的探针测试）。
+3、权威回写去向：
+   1、正向边界：docs/<module>/design.md（boundaries/data-flow/algorithms 按归属选）。
+   2、否决记录：docs/<module>/design.md 的"架构裁定与否决记录"专节（体裁见 docs-governance-standard）。
+   3、开放议题：docs/common/open_questions.md 登记（编号）。
+   4、证据锁：新增/修订规则后附 - **证据**：[evidence: 路径]。
+4、残留风险。
+5、后续冻结项。
+-->

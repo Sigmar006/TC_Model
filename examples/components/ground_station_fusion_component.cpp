@@ -15,7 +15,6 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <set>
 #include <utility>
 
 #include "1q/coordinate/inertial_transform.h"
@@ -318,7 +317,9 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
             continue;
           }
 
-          // 优化 1（建轨期严格时差门禁）：若尚无速度估计，强制同周期且物理时差 <= 1.5s
+          // 建轨期（尚无可信速度做运动补偿）只收严格配对：两星观测须同周期，
+          // 且量测时刻差不超过 1.5 s（场景周期 1 s，同周期差必小于 1 s，
+          // 1.5 s 留余量挡异常时刻，避免交会基点错位起轨）。
           if (!has_velocity) {
             if (max_c != min_c) {
               continue;
@@ -328,10 +329,12 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
             }
           }
 
-          // 计算参考交会时刻（两星观测物理时刻均值）
+          // 参考交会时刻 = 两星观测物理时刻均值
           const double t_ref = 0.5 * (a.measurement_time_s + b.measurement_time_s);
 
-          // 优化 1（跟踪期视线运动补偿）：利用航迹估计速度，将两星视线发射基点平移投影到 t_ref
+          // 跟踪期视线运动补偿：两星观测时刻不同、目标已移动，用航迹估计速度
+          // 把两条视线的发射基点平移到同一参考时刻再交会（目标在 t_ref 的位置
+          // 等价于基点沿速度方向前推后的视线交点）。
           oneq::coordinate::EcefPositionM sat_pos_a = a.satellite_position_ecef;
           oneq::coordinate::EcefPositionM sat_pos_b = b.satellite_position_ecef;
           if (has_velocity) {
@@ -354,7 +357,8 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
             continue;
           }
 
-          // 残差门禁：剔除空间公垂线偏差过大的无效交会解
+          // 残差门禁：残差 = 两视线公垂线长度，正常几何下百米级；
+          // 超 2.5 km 判为视线错位（如引导/折返镜的过渡态），整对丢弃。
           if (residual_m > 2500.0) {
             continue;
           }

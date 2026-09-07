@@ -164,6 +164,8 @@ struct MeasurementSample {
   double verdict{0.0};
   double quality{0.0};
   std::uint64_t cycle{0U};
+  bool has_timestamp{false};
+  double timestamp_s{0.0};
 };
 
 // 航迹（库内状态，业务不可见）。
@@ -177,6 +179,12 @@ struct Track {
   std::size_t hits{0U};            /**< 累计命中数（确认门输入） */
   bool filter_initialized{false};  /**< 航迹滤波器是否已起始（P2） */
   std::uint64_t filter_cycle{0U};  /**< 滤波器最近推进周期 */
+  bool filter_has_timestamp{false}; /**< 滤波器时间基准是否已含物理时刻（FUSION-OQ-1） */
+  double filter_timestamp_s{0.0};  /**< 滤波器当前状态对应的物理时刻(s) */
+  bool velocity_initialized{false}; /**< 初速是否已完成两点差分初始化 */
+  bool has_first_position{false};  /**< 是否已记录首个位置点（差分初速输入） */
+  EcefPositionM first_position{};  /**< 首个量测位置 */
+  double first_timestamp_s{0.0};   /**< 首个量测时刻(s) */
   Eigen::Matrix<float, 6, 1> filter_mean{Eigen::Matrix<float, 6, 1>::Zero()};
   Eigen::Matrix<float, 6, 6> filter_cov{Eigen::Matrix<float, 6, 6>::Identity()};
   Track() = default;
@@ -289,7 +297,17 @@ class FusionEngine::Impl {
         keyed[detections[i].key].push_back(i);
       }
     }
-    for (const auto& group : keyed) {
+    const double nominal_cycle_time =
+        static_cast<double>(cycle) * config_.track_cycle_period_sec;
+    const auto timestamp_order = [&detections, nominal_cycle_time](std::size_t a, std::size_t b) {
+      const double ta =
+          detections[a].has_timestamp ? detections[a].timestamp_s : nominal_cycle_time;
+      const double tb =
+          detections[b].has_timestamp ? detections[b].timestamp_s : nominal_cycle_time;
+      return ta < tb;
+    };
+    for (auto& group : keyed) {
+      std::stable_sort(group.second.begin(), group.second.end(), timestamp_order);
       auto it = tracks_.find(group.first);
       if (it == tracks_.end()) {
         it = tracks_.emplace(group.first, Track{group.first}).first;
@@ -341,6 +359,8 @@ class FusionEngine::Impl {
     sample.verdict = detection.verdict;
     sample.quality = detection.quality;
     sample.cycle = cycle;
+    sample.has_timestamp = detection.has_timestamp;
+    sample.timestamp_s = detection.timestamp_s;
     track->channel_samples[detection.source_id].push_back(std::move(sample));
     track->anchor = track->channel_samples[detection.source_id].back();
     track->has_anchor = true;
@@ -377,6 +397,18 @@ class FusionEngine::Impl {
     if (indices.empty()) {
       return;
     }
+    std::vector<std::size_t> sorted_indices = indices;
+    const double nominal_cycle_time =
+        static_cast<double>(cycle) * config_.track_cycle_period_sec;
+    std::stable_sort(
+        sorted_indices.begin(), sorted_indices.end(),
+        [&detections, nominal_cycle_time](std::size_t a, std::size_t b) {
+          const double ta =
+              detections[a].has_timestamp ? detections[a].timestamp_s : nominal_cycle_time;
+          const double tb =
+              detections[b].has_timestamp ? detections[b].timestamp_s : nominal_cycle_time;
+          return ta < tb;
+        });
     std::vector<std::uint64_t> anchor_track_keys;
     std::vector<EcefPositionM> anchors;
     for (const auto& entry : tracks_) {
@@ -396,7 +428,7 @@ class FusionEngine::Impl {
       tree.buildIndex();
     }
 
-    for (const std::size_t i : indices) {
+    for (const std::size_t i : sorted_indices) {
       const DetectionRecord& detection = detections[i];
       double best_cost = std::numeric_limits<double>::infinity();
       std::uint64_t best_key = 0U;
@@ -528,6 +560,9 @@ class FusionEngine::Impl {
       SetIsotropicCovariance(track, config_.track_initial_position_std_m,
                              config_.track_initial_velocity_std_m_per_s);
       track->filter_initialized = true;
+      track->has_first_position = true;
+      track->first_position = ecef;
+      track->velocity_initialized = false;
       return true;
     }
     if (detection.has_bearing && detection.has_sensor_origin) {
@@ -570,7 +605,7 @@ class FusionEngine::Impl {
 
   void PredictTrack(Track* track, float dt) const {
     estimation::UnscentedPredictorConfig predictor_config;
-    predictor_config.noise_diff_coeff = config_.track_process_noise;
+    predictor_config.noise_diff_coeff = static_cast<float>(config_.track_process_noise);
     const estimation::LinearCvTransitionModel<6> cv_model;
     const estimation::UnscentedPredictor<6, 2> predictor(&cv_model, predictor_config);
     estimation::GaussianState<6, 2> state;
@@ -587,12 +622,92 @@ class FusionEngine::Impl {
         return;
       }
       track->filter_cycle = cycle;
+      track->filter_has_timestamp = detection.has_timestamp;
+      track->filter_timestamp_s = detection.has_timestamp ? detection.timestamp_s : 0.0;
+      track->first_timestamp_s = track->filter_timestamp_s;
+      if (track->has_first_position) {
+        // 位置起始：滤波均值即本量测位置，跳过同帧重复量测更新；
+        // 初速由下一个位置量测两点差分建立（见下）。
+        return;
+      }
+      // 方位起始：首拍量测照常执行量测更新（角度-only 航迹的距离收敛依赖此更新）。
     }
-    const double dt =
-        static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
-    if (dt > 0.0) {
-      PredictTrack(track, static_cast<float>(dt));
-      track->filter_cycle = cycle;
+
+    // 两点差分初速：位置起始航迹的第二个位置量测以 (p2 − p1)/Δt 直接建立初速，
+    // 替代零速先验起步，消除建轨期的速度新息超调。
+    if (detection.has_position && !track->velocity_initialized && track->has_first_position) {
+      EcefPositionM z_ecef{};
+      if (oneq::coordinate::TryLlaToEcef(detection.position, &z_ecef)) {
+        double dt_diff = 0.0;
+        if (detection.has_timestamp && track->filter_has_timestamp) {
+          dt_diff = detection.timestamp_s - track->first_timestamp_s;
+        } else {
+          dt_diff = static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
+        }
+        // 物理间隔过近的两点差分会把位置噪声放大 1/Δt 倍，至少间隔 50 ms 才差分。
+        if (dt_diff > 0.05) {
+          const double inv_dt = 1.0 / dt_diff;
+          const double vx = (z_ecef.x_m - track->first_position.x_m) * inv_dt;
+          const double vy = (z_ecef.y_m - track->first_position.y_m) * inv_dt;
+          const double vz = (z_ecef.z_m - track->first_position.z_m) * inv_dt;
+
+          track->filter_mean(0) = static_cast<float>(z_ecef.x_m);
+          track->filter_mean(1) = static_cast<float>(vx);
+          track->filter_mean(2) = static_cast<float>(z_ecef.y_m);
+          track->filter_mean(3) = static_cast<float>(vy);
+          track->filter_mean(4) = static_cast<float>(z_ecef.z_m);
+          track->filter_mean(5) = static_cast<float>(vz);
+
+          const double pos_var =
+              config_.default_position_noise_std_m * config_.default_position_noise_std_m;
+          // 速度方差 = 2·位置方差/Δt²（两点差分标准传递）+ (100 m/s)² 地板，
+          // 地板挡住长间隔差分方差过小、滤波过信差分速度的情形。
+          const double vel_var = 2.0 * pos_var * inv_dt * inv_dt + 100.0 * 100.0;
+          track->filter_cov = Eigen::Matrix<float, 6, 6>::Zero();
+          track->filter_cov(0, 0) = static_cast<float>(pos_var);
+          track->filter_cov(1, 1) = static_cast<float>(vel_var);
+          track->filter_cov(2, 2) = static_cast<float>(pos_var);
+          track->filter_cov(3, 3) = static_cast<float>(vel_var);
+          track->filter_cov(4, 4) = static_cast<float>(pos_var);
+          track->filter_cov(5, 5) = static_cast<float>(vel_var);
+
+          track->filter_cycle = cycle;
+          // 时间基准与常规更新同约定：无时间戳量测不把航迹降级回纯周期模式，
+          // 物理时钟按差分间隔从首拍时刻前推。
+          if (detection.has_timestamp) {
+            track->filter_has_timestamp = true;
+            track->filter_timestamp_s = detection.timestamp_s;
+          } else if (track->filter_has_timestamp) {
+            track->filter_timestamp_s = track->first_timestamp_s + dt_diff;
+          }
+          track->velocity_initialized = true;
+          return;
+        }
+      }
+    } else {
+      double dt = 0.0;
+      if (detection.has_timestamp && track->filter_has_timestamp) {
+        dt = detection.timestamp_s - track->filter_timestamp_s;
+      } else {
+        dt = static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
+      }
+      dt = std::max(0.0, dt);
+      if (dt > 0.0) {
+        PredictTrack(track, static_cast<float>(dt));
+        track->filter_cycle = cycle;
+        if (detection.has_timestamp) {
+          track->filter_has_timestamp = true;
+          track->filter_timestamp_s = detection.timestamp_s;
+        } else if (track->filter_has_timestamp) {
+          track->filter_timestamp_s += dt;
+        }
+      } else {
+        track->filter_cycle = cycle;
+        if (detection.has_timestamp) {
+          track->filter_has_timestamp = true;
+          track->filter_timestamp_s = std::max(track->filter_timestamp_s, detection.timestamp_s);
+        }
+      }
     }
 
     if (detection.has_position) {
@@ -602,7 +717,8 @@ class FusionEngine::Impl {
       }
       const estimation::LinearPositionMeasurementModel<6, 3> position_model;
       estimation::UnscentedUpdaterConfig updater_config;
-      updater_config.measurement_noise_std = config_.default_position_noise_std_m;
+      updater_config.measurement_noise_std =
+          static_cast<float>(config_.default_position_noise_std_m);
       const estimation::UnscentedUpdater<6, 3> updater(&position_model, updater_config);
       estimation::GaussianState<6, 3> state;
       state.mean = track->filter_mean;
@@ -663,6 +779,9 @@ class FusionEngine::Impl {
       if (dt > 0.0) {
         PredictTrack(&track, static_cast<float>(dt));
         track.filter_cycle = cycle;
+        if (track.filter_has_timestamp) {
+          track.filter_timestamp_s += dt;
+        }
       }
     }
   }

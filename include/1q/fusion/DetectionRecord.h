@@ -39,6 +39,8 @@ struct ONEQ_API DetectionRecord {
   std::vector<double> feature{};         /**< 特征向量（可选，空 = 无特征） */
   double verdict{0.0};                   /**< 判决值（0/1） */
   double quality{0.0};                   /**< 探测质量归一化值（[0,1]） */
+  bool has_timestamp{false};             /**< 是否携带量测绝对时间戳 */
+  double timestamp_s{0.0};               /**< 量测绝对时刻（单位：秒） */
 };
 
 }  // namespace fusion

@@ -2835,4 +2835,63 @@ TEST(SbirsPipelineTest, ExternalCueInvalidIsDroppedWithIssue) {
   EXPECT_TRUE(result.detections.empty());
 }
 
+TEST(SbirsPipelineTest, InitialScanPhaseOffsetsSweep) {
+  sbirs_sensor::config::SbirsSessionConfig config = PipelineConfig();
+  config.mission.scan_start_az_deg = 0.0f;
+  config.mission.scan_span_deg = 20.0f;
+  config.mission.scan_rate_deg_per_sec = 2.0f;
+  config.mission.initial_scan_phase_deg = 5.0f;
+
+  sbirs_sensor::pipeline::SbirsPipeline pipeline(
+      sbirs_sensor::runtime::MapSessionToInternal(config));
+
+  const auto init_snapshot = pipeline.CaptureRuntimeState();
+  EXPECT_FLOAT_EQ(init_snapshot.scan_phase_deg, 5.0f);
+
+  sbirs_sensor::session::SbirsCycleInput input =
+      sbirs_sensor::session::SbirsCycleInputBuilder()
+          .WithCycleIndex(1U)
+          .WithDeltaTimeSec(3.0f)
+          .WithUtcJulianDay(2451544.2230698913)
+          .WithSatellitePosition(Vector(7000000.0, 0.0, 0.0))
+          .WithSatelliteVelocity(sbirs_sensor::session::SbirsVector3M{})
+          .WithSatelliteAttitude(sbirs_sensor::session::SbirsEulerAnglesDeg{})
+          .Build();
+  const sbirs_sensor::pipeline::SbirsPipelineResult result = pipeline.RunCycle(input);
+  const double az_deg = result.scan_azimuth_rad * 180.0 / kPi;
+  EXPECT_NEAR(az_deg, 11.0, 1.0e-3);
+  EXPECT_FLOAT_EQ(pipeline.CaptureRuntimeState().scan_phase_deg, 11.0f);
+}
+
+TEST(SbirsPipelineTest, WfovCrossingTimeCalculatesSubCycleMeasurementTimestamp) {
+  sbirs_sensor::config::SbirsSessionConfig config = PipelineConfig();
+  config.mission.work_mode = sbirs_sensor::config::SbirsWorkMode::kWideSearch;
+  config.mission.scan_start_az_deg = 0.0f;
+  config.mission.scan_span_deg = 30.0f;
+  config.mission.scan_rate_deg_per_sec = 2.0f;
+  config.mission.wide_field_fov_az_deg = 15.0f;
+  config.mission.wide_field_fov_el_deg = 15.0f;
+
+  sbirs_sensor::pipeline::SbirsPipeline pipeline(
+      sbirs_sensor::runtime::MapSessionToInternal(config));
+
+  sbirs_sensor::session::SbirsCycleInput input =
+      sbirs_sensor::session::SbirsCycleInputBuilder()
+          .WithCycleIndex(1U)
+          .WithDeltaTimeSec(5.0f)
+          .WithUtcJulianDay(2451544.2230698913)
+          .WithSatellitePosition(Vector(7000000.0, 0.0, 0.0))
+          .WithSatelliteVelocity(sbirs_sensor::session::SbirsVector3M{})
+          .WithSatelliteAttitude(sbirs_sensor::session::SbirsEulerAnglesDeg{})
+          .AddTarget(HotTargetAtAngles(1U, 6.0, 0.0))
+          .Build();
+
+  const sbirs_sensor::pipeline::SbirsPipelineResult result = pipeline.RunCycle(input);
+  ASSERT_FALSE(result.detections.empty());
+  const double meas_time_s = result.detections[0].record.measurement_time_s;
+  EXPECT_GE(meas_time_s, 5.0);
+  EXPECT_LE(meas_time_s, 10.0);
+  EXPECT_NEAR(meas_time_s, 8.0, 0.1);
+}
+
 }  // namespace

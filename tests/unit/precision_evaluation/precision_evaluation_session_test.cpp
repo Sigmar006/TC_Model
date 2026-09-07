@@ -554,6 +554,7 @@ TEST(SbirsBearingAdapterTest, EciBearingMapsToSatelliteLocalEnu) {
   detection.elevation_rad = 0.0f;
   detection.infrared_snr_linear = 500.0f;
   detection.detected = true;
+  detection.measurement_time_s = 45.678;
   result.output_frame.detections.push_back(detection);
   sbirs_sensor::attribution::SbirsDetectionAttributionRecord attribution;
   attribution.detection_id = 1U;
@@ -578,6 +579,8 @@ TEST(SbirsBearingAdapterTest, EciBearingMapsToSatelliteLocalEnu) {
   EXPECT_DOUBLE_EQ(record.sensor_origin.longitude_deg, expected_origin.longitude_deg);
   EXPECT_DOUBLE_EQ(record.sensor_origin.altitude_m, expected_origin.altitude_m);
   EXPECT_NEAR(record.quality, 0.5, 1.0e-9);  // SNR 500 / 1000
+  EXPECT_TRUE(record.has_timestamp);
+  EXPECT_DOUBLE_EQ(record.timestamp_s, 45.678);
 
   // 非执行周期（关机/待机）显式空返回，不产出量测。
   result.status = sbirs_sensor::session::SbirsCycleStatus::kPoweredOff;

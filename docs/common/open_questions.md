@@ -1,4 +1,4 @@
-﻿---
+---
 Status: active
 Authority: 非规定性记录（不构成契约约束）
 Lifecycle: 条目有结论后回写 contract.md 或 design.md 并从本文删除；不保留已收敛条目
@@ -41,8 +41,8 @@ Last-reviewed: 2026-09-07
 | SBIRS-OQ-3 | sbirs_sensor | 多目标随机样本与输入顺序 | 全局用途流，无 target 不变性 | open |
 | SBIRS-OQ-4 | sbirs_sensor | Estimated 航迹真值初始化 | 首捕用真值位置/速度初始化滤波均值 | open |
 | SBIRS-OQ-5 | sbirs_sensor | 俯仰中心手工配置与基准 nadir 化 | scan_center_el 仍需手填；非 GEO 轨道星下点俯仰漂移会配错且无告警 | open |
-| SBIRS-OQ-6 | sbirs_sensor | 量测时间戳与扫描初始相位缺失 | 检出无时间字段、初始相位硬 0；扫描"穿越时刻"信息在源头丢弃 | open |
-| FUSION-OQ-1 | fusion | 亚周期时间对齐缺失 | 融合按周期号驱动，无测量时间字段；跨周期对齐暂由评估层配对窗承担 | open |
+| SBIRS-OQ-6 | sbirs_sensor | 量测时间戳与扫描初始相位缺失 | 检出无时间字段、初始相位硬 0；扫描"穿越时刻"信息在源头丢弃 | resolved (feat/sbirs-measurement-timestamp-and-phase) |
+| FUSION-OQ-1 | fusion | 亚周期时间对齐缺失 | 融合按周期号驱动，无测量时间字段；跨周期对齐暂由评估层配对窗承担 | resolved (feat/sbirs-measurement-timestamp-and-phase) |
 | RIR-OQ-1 | remote_identification_radar | 特征量测保真度边界 | 真值×效能约束转换，非加噪量测 | open |
 | TARGET-OQ-1 | target-layer | AR 估计/推演职责前置 | 消费级航迹产品 + 识别结论回填 public 输出 | open |
 | TARGET-OQ-2 | target-layer | ESR 威胁等级进 public 输出 | threat_level 由传感器生产并被 ECM 下游消费 | open |
@@ -335,37 +335,33 @@ Last-reviewed: 2026-09-07
 
 ### SBIRS-OQ-6：量测时间戳与扫描初始相位缺失
 
-- **现状**：检出记录无时间字段（只有 az/el/SNR/阶段），扫描相位每周期按 rate×dt 抽帧推进，
-  波束"何时穿越目标"的信息在源头丢弃；多星初始扫描相位一律硬置 0（配置无相位字段），
-  现实中各星独立开机、相位任意。
-  [evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h]
-  [evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp]
-- **后果**：扫描模式下"哪一周期检出"是抽帧相位的人为产物；下游（融合/评估）拿不到测量时刻，
-  只能以周期号为时间基准。当前由评估层配对窗（`dual_sat_pair_window_cycles`）在消费侧补偿，
-  属权宜口径。
-- **待决问题**：扫描模式是否输出"穿越时刻"量测（ping-pong 相位确定，穿越时刻可解析求出）；
-  是否给配置加扫描初始相位字段以表达多星异步。
-- **当前边界**：kSearchAndStare 下 WFOV 扫描检测无独立外发通道（量测产品被 NFOV 交接门控），
-  时间戳补位若立项须一并考虑外发通道形态。
-- **再进入条件 (Stage A)**：扫描模式进入正式验收且需要亚周期量测精度，或出现非 GEO/多星
-  异步扫描集成需求。
+- **现状**：已在 `feat/sbirs-measurement-timestamp-and-phase` 闭环。`SbirsDetectionRecord` 增加
+  `measurement_time_s`（绝对物理秒），WFOV 往复扫闭式反解波束中心穿越目标时刻；`SbirsMissionConfig` 增加
+  `initial_scan_phase_deg` 支持多星错峰；FlatBuffers 回放升级为 `SBI5`；下游 `DetectionRecord` 增补
+  可选时间戳并由适配层透传。
+  [evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h::SbirsDetectionRecord]
+  [evidence: include/1q/sbirs_sensor/config/SbirsMissionConfig.h::SbirsMissionConfig]
+  [evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp::WfovCrossingTimeCalculatesSubCycleMeasurementTimestamp]
+  [evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp::InitialScanPhaseOffsetsSweep]
+- **后果**：传感器具备源头连续物理测量时刻输出与多星异步错峰配置能力，消除同相广播体操与整周期粗颗粒误差。
+- **待决问题**：已闭环。后续多星异步量测的时空补偿与滤波外推推进至 FUSION-OQ-1 处理。
+- **当前边界**：传感器管线严禁内部做目标动力学外推（方案 A 已否决）；离散批量打包调度（1s）与连续物理时刻严格分离。
+- **再进入条件 (Stage A)**：本项已闭环。
 
 ## Fusion 非阻塞边界
 
 ### FUSION-OQ-1：亚周期时间对齐缺失
 
-- **现状**：`DetectionRecord` 无时间字段，`FusionEngine::Update` 按周期号驱动；同周期多源
-  量测被视为同一时刻。跨周期的时间对齐目前由评估层配对窗承担（精度评估模块，2026-08-31）。
-  [evidence: include/1q/fusion/DetectionRecord.h]
-  [evidence: include/1q/fusion/FusionEngine.h]
-- **后果**：传感器若将来携带测量时间戳（见 SBIRS-OQ-6），融合滤波器无法利用其做
-  "外推到测量时刻再更新"的时间对齐；现实地面融合"按时刻对齐零点几秒观测差"的环节在库内
-  没有对应物。
-- **待决问题**：`DetectionRecord` 是否加可选测量时间字段；逐航迹滤波是否支持按量测时刻
-  推进（现有周期驱动 + coasting 是其自然推广）。
-- **当前边界**：身份键跨源关联不受影响（双星量测经归属键进同一航迹已被场景证据覆盖）。
-- **再进入条件 (Stage A)**：SBIRS-OQ-6 立项后随时间戳进融合，或出现对融合产品有亚周期
-  时间精度要求的下游。
+- **现状**：`DetectionRecord` 已增补可选时间戳字段（`has_timestamp` / `timestamp_s`），SBIRS 适配层
+  已打通源头时间透传；`FusionEngine::Update` 内部已升级支持连续物理时间戳对齐与多源异步时序推进（FUSION-OQ-1 闭环）。
+  [evidence: include/1q/fusion/DetectionRecord.h::DetectionRecord]
+  [evidence: src/fusion/FusionEngine.cpp::ApplyFilterSample]
+  [evidence: tests/unit/fusion/track_filtering_test.cpp::SubCycleTimestampPropagatesMovingTrackBetweenAsyncDetections]
+  [evidence: tests/unit/fusion/track_filtering_test.cpp::SubCycleBearingDualSatResolvesRange]
+- **后果**：传感器携带物理测量时间戳（见 SBIRS-OQ-6）进入融合层后，航迹滤波状态按量测时刻推进外推再行更新；同周期内多星/多源异步观测自动按时间戳升序对齐，彻底消除空间运动滞后引起的虚假残差。
+- **待决问题**：已闭环。
+- **当前边界**：未带时间戳的量测（legacy）无缝退化为既有基于周期的 dt 外推；带时间戳量测严格按物理间隔推进，失跟（coasting）航迹按周期步长同步推进物理与周期基准。
+- **再进入条件 (Stage A)**：本项已闭环。
 
 ## SAR 非阻塞边界
 

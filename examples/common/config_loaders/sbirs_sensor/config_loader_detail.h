@@ -154,6 +154,9 @@ inline void LoadSbirsMission(const examples::JsonValue& j,
   if (j.Has("scan_span_deg")) {
     v->scan_span_deg = static_cast<float>(j["scan_span_deg"].AsDouble());
   }
+  if (j.Has("initial_scan_phase_deg")) {
+    v->initial_scan_phase_deg = static_cast<float>(j["initial_scan_phase_deg"].AsDouble());
+  }
   if (j.Has("scan_direction")) {
     v->scan_direction = SbirsScanDirectionFromString(j["scan_direction"].AsString());
   }

@@ -42,6 +42,7 @@ table SbirsMissionConfig {
   // 方位基准（2026-08-31）：0 = kEciAbsolute（默认），1 = kNadirRelative（相对星下点
   // 偏移）。追加在表尾（review 修订）：中段插字段会使旧缓冲 vtable 槽位整体错位。
   scan_azimuth_reference: int32 = 0;
+  initial_scan_phase_deg: float = 0.0;
 }
 
 table SbirsDetectionPolicyConfig {
@@ -133,7 +134,9 @@ root_type SbirsSessionConfig;
 // v2：与 sbirs_replay.fbs 同步版本化（scan_start_az 语义改 ECI 方位 [0,360)）。
 // v4（2026-09-02）：调度器表删 max_concurrent_nfov_locks（单镜筒化）——中段字段
 // 变更，与 v3 载荷互不兼容；标识符随共享常量升 SBI4（见 SbirsReplayFlatbufferCodec.h）。
-file_identifier "SBI4";
+// v5（2026-09-07）：与 sbirs_replay.fbs 同步版本化（任务配置增加 initial_scan_phase_deg）；
+// 标识符随共享常量升 SBI5（见 SbirsReplayFlatbufferCodec.h）。
+file_identifier "SBI5";
 
 table SbirsRuntimeConfigPatch {
   has_mission: bool;

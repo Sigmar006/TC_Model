@@ -3,18 +3,25 @@
  * @brief 消息驱动地面站融合组件实现。
  *
  * 1. 订阅探测批次 / SBIRS 帧事件，写入成员收件箱（本周期任意数量卫星）；
- * 2. 在本地把展平字段重建为库类型，适配后一次 FusionEngine::Update；
+ * 2. 各星对同一目标的观测先入锚点缓存，配对窗内择优两星做双视线交会，
+ *    解得的三维位置（带量测时刻）与其他探测记录一并送 FusionEngine::Update；
  * 3. 若挂了评估会话：从本周期帧里按评估源通道挑两颗，喂双星交会 API。
  */
 
 #include "ground_station_fusion_component.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <utility>
 
 #include "1q/coordinate/inertial_transform.h"
+#include "1q/coordinate/position_transform.h"
 #include "1q/coordinate/types.h"
 #include "1q/fusion/DetectionRecord.h"
+#include "1q/precision_evaluation/DualLosFix.h"
 #include "1q/precision_evaluation/SbirsBearingAdapter.h"
 #include "1q/sbirs_sensor/session/SbirsCycleResult.h"
 #include "core/fusion_detection_bridge.h"
@@ -38,6 +45,7 @@ sbirs_sensor::session::SbirsCycleResult RebuildSbirsCycleResult(
     detection.azimuth_rad = sample.azimuth_rad;
     detection.elevation_rad = sample.elevation_rad;
     detection.infrared_snr_linear = sample.infrared_snr_linear;
+    detection.measurement_time_s = sample.measurement_time_s;
     detection.detected = true;
     // 观测阶段回填（消息平铺 → 库枚举；双星定位仅收窄场数据的过滤依据）。
     switch (sample.observation_stage) {
@@ -84,6 +92,20 @@ const SbirsFrameSubmittedEvent* FindFrameBySource(
     }
   }
   return nullptr;
+}
+
+bool TryRotateEciDirectionToEcef(const oneq::coordinate::Vector3d& direction_eci, double gmst_rad,
+                                 oneq::coordinate::Vector3d* direction_ecef) {
+  if (direction_ecef == nullptr) {
+    return false;
+  }
+  const oneq::coordinate::EciPositionM eci(direction_eci.x, direction_eci.y, direction_eci.z);
+  oneq::coordinate::EcefPositionM ecef;
+  if (!oneq::coordinate::TryEciToEcef(eci, gmst_rad, &ecef)) {
+    return false;
+  }
+  *direction_ecef = oneq::coordinate::Vector3d(ecef.x_m, ecef.y_m, ecef.z_m);
+  return true;
 }
 
 }  // namespace
@@ -192,15 +214,216 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
       oneq::coordinate::TryComputeGmstRad(scene.sbirs_utc_julian_day, &gmst_rad);
   std::vector<sbirs_sensor::session::SbirsCycleResult> rebuilt_results;
   rebuilt_results.reserve(sbirs_inbox_.size());
+
+  // 1. 提取各星本周期检测，更新观测锚点缓存
   for (const SbirsFrameSubmittedEvent& frame : sbirs_inbox_) {
     rebuilt_results.push_back(RebuildSbirsCycleResult(frame));
     if (!have_gmst) {
       continue;
     }
-    const std::vector<fusion::DetectionRecord> adapted =
-        precision_evaluation::AdaptSbirsResultToDetectionRecords(
-            rebuilt_results.back(), FrameEcef(frame), gmst_rad, frame.source_id);
-    fusion_records.insert(fusion_records.end(), adapted.begin(), adapted.end());
+    const oneq::coordinate::EcefPositionM sat_ecef = FrameEcef(frame);
+    for (const SbirsBearingSample& sample : frame.detections) {
+      if (sample.target_id == 0U) {
+        continue;
+      }
+      // 评审 2026-08-31 建模口径：双星定位交会仅收闭环精跟数据（kNarrowFieldTrack，stage=2），
+      // 过滤宽场搜索（stage=0）与过渡捕获态（stage=1）的未稳光轴测角，消除建轨期 15km 伪定位跳变。
+      if (sample.observation_stage < 2) {
+        continue;
+      }
+      const oneq::coordinate::Vector3d dir_eci =
+          precision_evaluation::EciDirectionFromAzimuthElevationRad(
+              static_cast<double>(sample.azimuth_rad), static_cast<double>(sample.elevation_rad));
+      oneq::coordinate::Vector3d dir_ecef;
+      if (!TryRotateEciDirectionToEcef(dir_eci, gmst_rad, &dir_ecef)) {
+        continue;
+      }
+      TargetObservationAnchor& anchor =
+          target_observations_[sample.target_id][frame.source_id];
+      anchor.valid = true;
+      anchor.cycle = inbox_cycle_;
+      anchor.measurement_time_s = sample.measurement_time_s;
+      anchor.satellite_position_ecef = sat_ecef;
+      anchor.direction_ecef = dir_ecef;
+      anchor.infrared_snr_linear = sample.infrared_snr_linear;
+      anchor.source_id = frame.source_id;
+    }
+  }
+
+  // 2. 淘汰过旧观测（超出配对窗宽度的历史条目）
+  for (auto& target_entry : target_observations_) {
+    auto& sat_map = target_entry.second;
+    for (auto it = sat_map.begin(); it != sat_map.end();) {
+      if (inbox_cycle_ > it->second.cycle + pair_window_cycles_) {
+        it = sat_map.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // 3. 对每个目标择优两星做双视线交会，解 3D 目标空间位置（跨星时空配对在本层完成）
+  if (have_gmst) {
+    for (const auto& target_entry : target_observations_) {
+      const std::uint64_t target_id = target_entry.first;
+      const auto& sat_map = target_entry.second;
+      if (sat_map.size() < 2U) {
+        continue;
+      }
+
+      // 检查当前目标是否已有收敛的航迹速度估计（用于视线发射基点运动补偿）
+      bool has_velocity = false;
+      oneq::coordinate::Vector3d target_vel{0.0, 0.0, 0.0};
+      for (const auto& t : targets_) {
+        if (t.key == target_id && t.has_kinematic_estimate) {
+          const auto& v = t.kinematic_estimate.velocity_ecef_m_per_s;
+          const double speed_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+          if (speed_sq > 100.0) {  // 速度模长 > 10 m/s，判定具有可信运动学估值
+            has_velocity = true;
+            target_vel.x = v[0];
+            target_vel.y = v[1];
+            target_vel.z = v[2];
+          }
+          break;
+        }
+      }
+
+      struct CandidateFix {
+        bool valid{false};
+        std::int64_t cycle_diff{0};
+        double residual_m{0.0};
+        double ref_time_s{0.0};
+        oneq::coordinate::EcefPositionM fix_position{};
+        TargetObservationAnchor obs_a{};
+        TargetObservationAnchor obs_b{};
+      };
+      CandidateFix best_fix;
+
+      for (auto it_a = sat_map.begin(); it_a != sat_map.end(); ++it_a) {
+        auto it_b = it_a;
+        ++it_b;
+        for (; it_b != sat_map.end(); ++it_b) {
+          const TargetObservationAnchor& a = it_a->second;
+          const TargetObservationAnchor& b = it_b->second;
+          if (!a.valid || !b.valid) {
+            continue;
+          }
+          if (a.cycle != inbox_cycle_ && b.cycle != inbox_cycle_) {
+            continue;
+          }
+          const std::uint64_t max_c = std::max(a.cycle, b.cycle);
+          const std::uint64_t min_c = std::min(a.cycle, b.cycle);
+          if (max_c - min_c > pair_window_cycles_) {
+            continue;
+          }
+
+          // 建轨期（尚无可信速度做运动补偿）只收严格配对：两星观测须同周期，
+          // 且量测时刻差不超过 1.5 s（场景周期 1 s，同周期差必小于 1 s，
+          // 1.5 s 留余量挡异常时刻，避免交会基点错位起轨）。
+          if (!has_velocity) {
+            if (max_c != min_c) {
+              continue;
+            }
+            if (std::abs(a.measurement_time_s - b.measurement_time_s) > 1.5) {
+              continue;
+            }
+          }
+
+          // 参考交会时刻 = 两星观测物理时刻均值
+          const double t_ref = 0.5 * (a.measurement_time_s + b.measurement_time_s);
+
+          // 跟踪期视线运动补偿：两星观测时刻不同、目标已移动，用航迹估计速度
+          // 把两条视线的发射基点平移到同一参考时刻再交会（目标在 t_ref 的位置
+          // 等价于基点沿速度方向前推后的视线交点）。
+          oneq::coordinate::EcefPositionM sat_pos_a = a.satellite_position_ecef;
+          oneq::coordinate::EcefPositionM sat_pos_b = b.satellite_position_ecef;
+          if (has_velocity) {
+            const double dt_a = t_ref - a.measurement_time_s;
+            const double dt_b = t_ref - b.measurement_time_s;
+            sat_pos_a.x_m += target_vel.x * dt_a;
+            sat_pos_a.y_m += target_vel.y * dt_a;
+            sat_pos_a.z_m += target_vel.z * dt_a;
+            sat_pos_b.x_m += target_vel.x * dt_b;
+            sat_pos_b.y_m += target_vel.y * dt_b;
+            sat_pos_b.z_m += target_vel.z * dt_b;
+          }
+
+          oneq::coordinate::EcefPositionM fix_pos;
+          double residual_m = 0.0;
+          if (!precision_evaluation::TryComputeDualLosFixM(
+                  sat_pos_a, a.direction_ecef,
+                  sat_pos_b, b.direction_ecef,
+                  &fix_pos, &residual_m)) {
+            continue;
+          }
+
+          // 残差门禁：残差 = 两视线公垂线长度，正常几何下百米级；
+          // 超 2.5 km 判为视线错位（如引导/折返镜的过渡态），整对丢弃。
+          if (residual_m > 2500.0) {
+            continue;
+          }
+
+          const std::int64_t cycle_diff = static_cast<std::int64_t>(max_c - min_c);
+          bool is_better = false;
+          if (!best_fix.valid) {
+            is_better = true;
+          } else if (cycle_diff < best_fix.cycle_diff) {
+            is_better = true;
+          } else if (cycle_diff == best_fix.cycle_diff && residual_m < best_fix.residual_m) {
+            is_better = true;
+          }
+
+          if (is_better) {
+            best_fix.valid = true;
+            best_fix.cycle_diff = cycle_diff;
+            best_fix.residual_m = residual_m;
+            best_fix.ref_time_s = t_ref;
+            best_fix.fix_position = fix_pos;
+            best_fix.obs_a = a;
+            best_fix.obs_b = b;
+          }
+        }
+      }
+
+      if (best_fix.valid) {
+        bool track_already_exists = false;
+        for (const auto& t : targets_) {
+          if (t.key == target_id && t.has_kinematic_estimate) {
+            track_already_exists = true;
+            break;
+          }
+        }
+        if (!track_already_exists && best_fix.cycle_diff > 0) {
+          continue;
+        }
+        oneq::coordinate::LlaPositionDegM fix_lla;
+        if (oneq::coordinate::TryEcefToLla(best_fix.fix_position, &fix_lla)) {
+          fusion::DetectionRecord record;
+          record.key = target_id;
+          // 一条融合记录只能挂一个源通道：跨周期配对挂当周期观测的那颗星；
+          // 同周期配对按周期奇偶轮换，让两颗星的通道样本计数都在增长
+          //（融合按源通道分别记样本数）。
+          if (best_fix.obs_a.cycle == inbox_cycle_ && best_fix.obs_b.cycle != inbox_cycle_) {
+            record.source_id = best_fix.obs_a.source_id;
+          } else if (best_fix.obs_b.cycle == inbox_cycle_ && best_fix.obs_a.cycle != inbox_cycle_) {
+            record.source_id = best_fix.obs_b.source_id;
+          } else {
+            record.source_id =
+                (inbox_cycle_ % 2 == 0) ? best_fix.obs_a.source_id : best_fix.obs_b.source_id;
+          }
+          record.has_position = true;
+          record.position = fix_lla;
+          record.has_timestamp = true;
+          record.timestamp_s = best_fix.ref_time_s;
+          record.verdict = 1.0;
+          const double avg_snr =
+              0.5 * (static_cast<double>(best_fix.obs_a.infrared_snr_linear) +
+                     static_cast<double>(best_fix.obs_b.infrared_snr_linear));
+          record.quality = std::max(0.0, std::min(1.0, avg_snr / 1000.0));
+          fusion_records.push_back(record);
+        }
+      }
+    }
   }
 
   const std::uint64_t cycle = world.scene_state().cycle;

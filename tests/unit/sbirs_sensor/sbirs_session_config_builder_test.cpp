@@ -417,4 +417,27 @@ TEST(SbirsSessionConfigValidationTest, ElevationRasterMustFitSensorScanLimits) {
   EXPECT_TRUE(sbirs_sensor::config::ValidateSbirsSessionConfig(config).empty());
 }
 
+TEST(SbirsSessionConfigValidationTest, ValidatesInitialScanPhase) {
+  sbirs_sensor::config::SbirsSessionConfig config;
+  config.mission.scan_span_deg = 60.0f;
+  config.mission.initial_scan_phase_deg = 0.0f;
+  EXPECT_TRUE(sbirs_sensor::config::ValidateSbirsSessionConfig(config).empty());
+
+  config.mission.initial_scan_phase_deg = 30.0f;
+  EXPECT_TRUE(sbirs_sensor::config::ValidateSbirsSessionConfig(config).empty());
+
+  config.mission.initial_scan_phase_deg = -0.1f;
+  EXPECT_TRUE(ContainsCode(sbirs_sensor::config::ValidateSbirsSessionConfig(config),
+                           "sbirs.validation.invalid_initial_scan_phase"));
+
+  config.mission.initial_scan_phase_deg = 60.0f;
+  EXPECT_TRUE(ContainsCode(sbirs_sensor::config::ValidateSbirsSessionConfig(config),
+                           "sbirs.validation.invalid_initial_scan_phase"));
+
+  config.mission.initial_scan_phase_deg = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_TRUE(ContainsCode(sbirs_sensor::config::ValidateSbirsSessionConfig(config),
+                           "sbirs.validation.invalid_initial_scan_phase"));
+}
+
 }  // namespace
+

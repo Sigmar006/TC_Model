@@ -22,7 +22,9 @@ struct SbirsReplayState {
 
 bool DetectionEqual(const output::SbirsDetectionRecord& left,
                     const output::SbirsDetectionRecord& right) {
-  return left.detection_id == right.detection_id && left.azimuth_rad == right.azimuth_rad &&
+  return left.detection_id == right.detection_id &&
+         left.measurement_time_s == right.measurement_time_s &&
+         left.azimuth_rad == right.azimuth_rad &&
          left.elevation_rad == right.elevation_rad &&
          left.infrared_snr_linear == right.infrared_snr_linear &&
          left.observation_stage == right.observation_stage && left.detected == right.detected;

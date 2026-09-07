@@ -397,5 +397,157 @@ TEST(FusionTrackFilteringTest, DeterministicAfterReset) {
   }
 }
 
+TEST(FusionTrackFilteringTest, SubCycleTimestampPropagatesMovingTrackBetweenAsyncDetections) {
+  FusionConfig config = MakeFilteringConfig();
+  config.track_process_noise = 0.1;
+  config.default_position_noise_std_m = 1.0;
+
+  const EcefPositionM p0(kEarthRadiusM, 0.0, 0.0);
+  const EcefPositionM v(0.0, 500.0, 0.0);
+
+  auto make_record = [&](std::uint64_t key, double t_sec, std::uint32_t src) {
+    const EcefPositionM truth(p0.x_m, p0.y_m + v.y_m * t_sec, p0.z_m);
+    DetectionRecord record = MakePositionRecord(key, EcefToLla(truth));
+    record.source_id = src;
+    record.has_timestamp = true;
+    record.timestamp_s = t_sec;
+    return record;
+  };
+
+  // 1) 正常次序送入：同一周期包含两个不同时刻量测 (t=1.2s, t=1.7s)
+  FusionEngine engine_in_order(config);
+  auto res1 = engine_in_order.Update({make_record(1U, 1.2, 10U), make_record(1U, 1.7, 20U)}, 1U);
+  ASSERT_EQ(res1.size(), 1U);
+  ASSERT_TRUE(res1.front().has_kinematic_estimate);
+
+  // 周期 2：送入 t=2.3s, t=2.8s
+  auto res2 = engine_in_order.Update({make_record(1U, 2.3, 10U), make_record(1U, 2.8, 20U)}, 2U);
+  ASSERT_EQ(res2.size(), 1U);
+  ASSERT_TRUE(res2.front().has_kinematic_estimate);
+
+  const EcefPositionM truth_final(p0.x_m, p0.y_m + v.y_m * 2.8, p0.z_m);
+  const EcefPositionM est_pos = EstimatePositionEcef(res2.front());
+  const double pos_err = DistanceM(est_pos, truth_final);
+  EXPECT_LT(pos_err, 5.0) << "Position estimate should track sub-cycle trajectory accurately";
+
+  const auto& vel = res2.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_NEAR(vel[0], 0.0, 20.0);
+  EXPECT_NEAR(vel[1], 500.0, 50.0) << "Velocity should converge toward 500 m/s with sub-cycle dt";
+  EXPECT_NEAR(vel[2], 0.0, 20.0);
+
+  // 2) 逆序送入验证 stable_sort：在同周期内若乱序输入 (t=1.7s 在前, t=1.2s 在后)，
+  //    引擎内部升序排序后输出应与正常次序完全一致。
+  FusionEngine engine_shuffled(config);
+  auto res1_shuf = engine_shuffled.Update({make_record(1U, 1.7, 20U), make_record(1U, 1.2, 10U)}, 1U);
+  auto res2_shuf = engine_shuffled.Update({make_record(1U, 2.8, 20U), make_record(1U, 2.3, 10U)}, 2U);
+  ASSERT_EQ(res2_shuf.size(), 1U);
+  const EcefPositionM est_pos_shuf = EstimatePositionEcef(res2_shuf.front());
+  EXPECT_DOUBLE_EQ(est_pos.x_m, est_pos_shuf.x_m);
+  EXPECT_DOUBLE_EQ(est_pos.y_m, est_pos_shuf.y_m);
+  EXPECT_DOUBLE_EQ(est_pos.z_m, est_pos_shuf.z_m);
+}
+
+TEST(FusionTrackFilteringTest, SubCycleBearingDualSatResolvesRange) {
+  FusionEngine engine(MakeFilteringConfig());
+  std::mt19937 engine_random(42U);
+  const EcefPositionM origin_a(kEarthRadiusM + 20000.0, 0.0, 0.0);
+  EcefPositionM origin_b{};
+  ASSERT_TRUE(oneq::coordinate::TryLlaToEcef(LlaPositionDegM(10.0, 10.0, 20000.0), &origin_b));
+
+  const LlaPositionDegM origin_a_lla = EcefToLla(origin_a);
+  const LlaPositionDegM origin_b_lla = EcefToLla(origin_b);
+  const TestEnuBasis basis_a = MakeBasis(origin_a);
+  const TestEnuBasis basis_b = MakeBasis(origin_b);
+  const EcefPositionM p0(kEarthRadiusM, 300000.0, 100000.0);
+  const EcefPositionM v(-500.0, 1000.0, 0.0);
+
+  double radial_err_m = -1.0;
+  for (std::uint64_t cycle = 1U; cycle <= 15U; ++cycle) {
+    const double base_t = static_cast<double>(cycle - 1U);
+    const double t_a = base_t + 0.2;
+    const double t_b = base_t + 0.7;
+    const EcefPositionM truth_a(p0.x_m + v.x_m * t_a, p0.y_m + v.y_m * t_a, p0.z_m + v.z_m * t_a);
+    const EcefPositionM truth_b(p0.x_m + v.x_m * t_b, p0.y_m + v.y_m * t_b, p0.z_m + v.z_m * t_b);
+
+    DetectionRecord rec_a = MakeBearingRecord(
+        9U, origin_a, NoisyBearing(BearingTo(origin_a, truth_a, basis_a), 2.0e-4, engine_random),
+        2.0e-4, origin_a_lla);
+    rec_a.has_timestamp = true;
+    rec_a.timestamp_s = t_a;
+
+    DetectionRecord rec_b = MakeBearingRecord(
+        9U, origin_b, NoisyBearing(BearingTo(origin_b, truth_b, basis_b), 2.0e-4, engine_random),
+        2.0e-4, origin_b_lla);
+    rec_b.has_timestamp = true;
+    rec_b.timestamp_s = t_b;
+
+    const auto targets = engine.Update({rec_a, rec_b}, cycle);
+    ASSERT_EQ(targets.size(), 1U);
+    ASSERT_TRUE(targets.front().has_kinematic_estimate);
+
+    if (cycle == 15U) {
+      const EcefPositionM estimate = EstimatePositionEcef(targets.front());
+      double los[3] = {truth_b.x_m - origin_a.x_m, truth_b.y_m - origin_a.y_m,
+                       truth_b.z_m - origin_a.z_m};
+      const double los_norm = std::sqrt(los[0] * los[0] + los[1] * los[1] + los[2] * los[2]);
+      for (int i = 0; i < 3; ++i) {
+        los[i] /= los_norm;
+      }
+      radial_err_m = std::abs((estimate.x_m - truth_b.x_m) * los[0] +
+                              (estimate.y_m - truth_b.y_m) * los[1] +
+                              (estimate.z_m - truth_b.z_m) * los[2]);
+    }
+  }
+  EXPECT_LT(radial_err_m, 3000.0)
+      << "Asynchronous bearing observations with sub-cycle propagation must resolve range";
+}
+
+TEST(FusionTrackFilteringTest, TwoPointDifferencingInitializesVelocityAccurately) {
+  FusionConfig config = MakeFilteringConfig();
+  config.track_process_noise = 0.5;
+  config.default_position_noise_std_m = 10.0;
+
+  const EcefPositionM p0(kEarthRadiusM, 0.0, 0.0);
+  const EcefPositionM v(300.0, -1800.0, 80.0);
+
+  auto make_record = [&](std::uint64_t key, double t_sec, std::uint32_t src) {
+    const EcefPositionM truth(p0.x_m + v.x_m * t_sec, p0.y_m + v.y_m * t_sec,
+                              p0.z_m + v.z_m * t_sec);
+    DetectionRecord record = MakePositionRecord(key, EcefToLla(truth));
+    record.source_id = src;
+    record.has_timestamp = true;
+    record.timestamp_s = t_sec;
+    return record;
+  };
+
+  FusionEngine engine(config);
+
+  // 周期 1：首个位置量测到达（t=1.0s），航迹建立，初速为 0
+  auto res1 = engine.Update({make_record(10U, 1.0, 1U)}, 1U);
+  ASSERT_EQ(res1.size(), 1U);
+  ASSERT_TRUE(res1.front().has_kinematic_estimate);
+  EXPECT_DOUBLE_EQ(res1.front().kinematic_estimate.velocity_ecef_m_per_s[0], 0.0);
+  EXPECT_DOUBLE_EQ(res1.front().kinematic_estimate.velocity_ecef_m_per_s[1], 0.0);
+  EXPECT_DOUBLE_EQ(res1.front().kinematic_estimate.velocity_ecef_m_per_s[2], 0.0);
+
+  // 周期 2：第二个位置量测到达（t=2.0s），触发两点差分初速初始化
+  auto res2 = engine.Update({make_record(10U, 2.0, 2U)}, 2U);
+  ASSERT_EQ(res2.size(), 1U);
+  ASSERT_TRUE(res2.front().has_kinematic_estimate);
+  const auto& vel2 = res2.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_NEAR(vel2[0], v.x_m, 1.0);
+  EXPECT_NEAR(vel2[1], v.y_m, 1.0);
+  EXPECT_NEAR(vel2[2], v.z_m, 1.0);
+
+  // 周期 3：第三个量测（t=3.0s），进入常规 UKF 滤波更新，无超调震荡
+  auto res3 = engine.Update({make_record(10U, 3.0, 1U)}, 3U);
+  ASSERT_EQ(res3.size(), 1U);
+  ASSERT_TRUE(res3.front().has_kinematic_estimate);
+  const auto& vel3 = res3.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_NEAR(vel3[0], v.x_m, 2.0);
+  EXPECT_NEAR(vel3[1], v.y_m, 2.0);
+  EXPECT_NEAR(vel3[2], v.z_m, 2.0);
+}
+
 }  // namespace
 }  // namespace fusion

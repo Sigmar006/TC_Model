@@ -335,6 +335,7 @@ struct SbirsBearingSample {
   bool has_focal_plane_offset{false}; /**< 是否携带 NFOV 焦平面脱靶量（验收判定标准 第26项 数据源） */
   float focal_plane_offset_x_m{0.0f}; /**< 焦平面脱靶量 x（m） */
   float focal_plane_offset_y_m{0.0f}; /**< 焦平面脱靶量 y（m） */
+  double measurement_time_s{0.0};     /**< 测量时刻（s） */
 };
 
 /**

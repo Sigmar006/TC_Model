@@ -220,6 +220,8 @@ std::vector<DetectionRecord> AdaptSbirsDetectionsToDetectionRecords(
     detection.verdict = 1.0;
     detection.quality = oneq::common::numerics::Clamp01(
         static_cast<double>(record.infrared_snr_linear) / 4.0);
+    detection.has_timestamp = true;
+    detection.timestamp_s = record.measurement_time_s;
     detections.push_back(detection);
   }
   return detections;

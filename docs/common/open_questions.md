@@ -23,7 +23,7 @@ Last-reviewed: 2026-09-07
 | COMMON-OQ-1 | common | Windows 全链 CI 验收缺口 | 本机构建/交付已成治理事实；CI 仅 macOS、依赖引导无校验 | open |
 | COMMON-OQ-8 | common | 周期时间/窗口静默拒绝 | 三类不同性质的拒绝门被并列；空帧 envelope 语义 AR/ESR 分裂 | open |
 | COMMON-OQ-9 | common | RIR 补丁提交策略归类 | 暂存+下周期批量提交、无 resolver 校验、恒 true，不符现有二分类 | open |
-| COMMON-OQ-10 | common | examples 会话配置三处同构维护 | 模板 + 16 场景 JSON + loader 键映射靠人工同步，字段变更漏一处即静默失配 | open |
+| COMMON-OQ-10 | common | examples 会话配置三处同构维护 | 模板 + 12 场景 JSON + loader 键映射靠人工同步，字段变更漏一处即静默失配 | open |
 | COMMON-OQ-11 | common | AR/ESR/ECM 全极化放行冻结 | kFullPolarization 仅 RIR 放行；共享计算层已支持值 5 | open |
 | COMMON-OQ-12 | common | 全极化对非极化功率守恒口径 | 冻结保守 3.0103 dB；守恒 0 dB 口径待干扰/杂波定量验收触发 | open |
 | SAR-OQ-1 | sar | RDA 性能数字是否重测 | /O2 实测数字来自旧档位，需确认是否随真发布档更新 | open |
@@ -98,7 +98,7 @@ Last-reviewed: 2026-09-07
   校验、恒返回 `true`——既不属于事务性提交，也不属于立即提交，与"patch 必须经 resolver 校验"的条款
   冲突。分类表现无 RIR 行。
   [evidence: src/remote_identification_radar/session/RirSession.cpp]
-  [evidence: docs/common/session_contract.md §运行期配置提交策略]
+  [evidence: docs/common/session_contract.md]
 - **后果**：会话契约的分类表缺 RIR 一行；RIR 补丁仅暂存不校验，无效补丁会静默排入下一成功周期，
   调用方无即时反馈。分类规则（"归属由状态空间决定"）未表述 RIR 这种"仅暂存、无校验、无失败路径"的形态。
 - **待决问题**：RIR 补丁提交策略应归入哪一类——是否增设第三类"暂存提交"（仅暂存、无 resolver 校验、
@@ -112,14 +112,15 @@ Last-reviewed: 2026-09-07
 
 - **现状**：session_config"挂载即全量"口径落地后，同一份传感器配置结构存在三处同构拷贝，靠人工同步。
   1. `examples/basic_config/` 六域模板（batch_validation 夹具同源引用同一批文件）。
-  2. 16 个场景 JSON 的 `session_config` 子块（模板整份拷贝后按场景改值）。
+  2. 14 个场景 JSON 中的 12 份 `session_config` 子块（模板整份拷贝后按场景改值；
+     两个 SBIRS 场景无该子块）。
   3. `examples/common/config_loaders/` 的叶子键映射（决定读哪些键、缺键回落库默认）。
   [evidence: examples/basic_config]
-- **后果**：传感器配置字段增删改需要人工同步模板 + 16 份场景 JSON + loader 映射；
+- **后果**：传感器配置字段增删改需要人工同步模板 + 12 份场景 JSON + loader 映射；
   漏一处要么静默失配（缺键回落库默认值），要么场景间隐性漂移；副本完备性目前只能靠人工审计确认。
 - **待决问题**：是否将"场景自持全量副本"收敛为单源机制——运行期模板 ⊕ 场景覆写、
   脚本生成场景 JSON、CI 键树校验三者的取舍或组合。
-- **当前边界**：保持 schema v2 挂载即全量口径与 16 份全量副本不变；不得在机制定论前
+- **当前边界**：保持 schema v2 挂载即全量口径与现有全量副本不变；不得在机制定论前
   引入"部分字段块"混用形态。
 - **再进入条件 (Stage A)**：下一次传感器配置字段增删改需触及超过 5 份 JSON，
   或发现任一场景 `session_config` 键树与模板漂移。
@@ -141,8 +142,8 @@ Last-reviewed: 2026-09-07
 
 - **现状**：全极化对非极化冻结为保守 3.0103 dB（"任一侧非极化固定 3.0103 dB"公理优先于
   全极化规则）；物理上双通道功率相加可回收全部非极化功率（0 dB）。
-  [evidence: src/common/electromagnetics/RfLinkBudget.cpp]::TryPolarizationLoss
-  [evidence: tests/unit/common/common_rf_scene_test.cpp]::FullPolarizationPairingAppliesMergeAndHalfRules
+  [evidence: src/common/electromagnetics/RfLinkBudget.cpp]
+  [evidence: tests/unit/common/common_rf_scene_test.cpp]
 - **后果**：全极化接收对非极化干扰/杂波按半功率计入——对接收方偏乐观（漏计一半干扰功率）；
   对信号检测偏保守。
 - **待决问题**：是否改按功率守恒 0 dB 口径，或按"信号/干扰分路"区分口径。
@@ -153,7 +154,7 @@ Last-reviewed: 2026-09-07
 
 ### AR-OQ-2：集成层 rf-world 干扰接线是否补入模块文档
 
-- **现状**：`examples/component_attachment` 集成层把 ECM 等发射设备发布的 `RfEmissionFrame` 汇入共享
+- **现状**：`examples/components` 集成层把 ECM 等发射设备发布的 `RfEmissionFrame` 汇入共享
   rf-world（`rf_world_broker.h`），再经 `BuildArInterferenceFromRfWorld` 组装 `ArCycleInput::interference`
   （排除自身平台发射设备）。AR 模块契约本身仍以 `ArCycleInput::interference` 接收 `RfEmissionFrame`，未变。
   [evidence: examples/components/ar_sensor_component.cpp]
@@ -217,17 +218,19 @@ Last-reviewed: 2026-09-07
 ### ESR-OQ-2：运行时补丁扫描中心静默关闭显式扫描边界
 
 - **现状**：`EsrRuntimeConfigResolver` 在应用 `has_scan_center_az_deg` 或 `has_scan_center_el_deg` 补丁时，
-  会同时设置 `use_explicit_scan_bounds = false`，静默将扫描模式从显式边界切换为中心驱动。两个副作用：
+  会同时设置 `use_explicit_scan_bounds = false`，静默将扫描模式从显式边界切换为中心驱动。三个事实：
   1. 用户仅调整扫描中心，不会预期丢失之前配置的四个扫描边界角。
   2. 单独补丁 azimuth center 也会导致 elevation 侧跟着切模式（副作用跨轴传播）。
+  3. 显式边界的补丁路径已存在（`has_explicit_scan_bounds`，含 enabled 与四边界角），
+     可显式开/关该模式——但 center 补丁的隐式关闭仍与之并存。
   [evidence: src/electronic_surveillance_radar/session/EsrRuntimeConfigResolver.cpp]
 - **后果**：用户难以预判 scan center 补丁会清空显式边界配置且跨轴生效，配置结果与意图偏离。
 - **待决问题**：
-  1. 是否将模式切换设为显式补丁字段（`has_use_explicit_scan_bounds`），而非由 scan center 补丁隐含触发。
+  1. center 补丁是否不再隐式关闭显式边界模式（模式切换只经 `has_explicit_scan_bounds`）。
   2. 或保留当前行为但增加返回值/日志提示。
 - **当前边界**：当前行为为 scan center 补丁隐式关闭显式边界模式。消费方必须知晓此副作用。
-- **再进入条件 (Stage A)**：出现真实场景要求"调整扫描中心但保留显式边界模式"，先评估将模式切换提取为
-  独立补丁字段的 API 变更成本和向后兼容性。
+- **再进入条件 (Stage A)**：出现真实场景要求"调整扫描中心但保留显式边界模式"，先评估移除
+  隐式触发对既有补丁序列的兼容成本。
 
 ### ESR-OQ-4：扫描采样点数上限的截断策略
 
@@ -273,12 +276,12 @@ Last-reviewed: 2026-09-07
 
 ### SBIRS-OQ-2：WFOV、Estimated 与 Sensor-like 的分阶段误差统计
 
-- **现状**：三条用途使用独立随机子流，但共同读取 `SbirsErrorModelConfig` 的同一组角度/距离统计参数。
+- **现状**：WFOV 搜索、Estimated 校正量测、NFOV Sensor-like 输出三条用途使用独立随机子流，
+  但共同读取 `SbirsErrorModelConfig` 的同一组角度/距离统计参数。单镜筒 NFOV 落地（2026-09-02）
+  后，调度与指向扰动已有独立配置块（`SbirsSchedulerConfig`/`SbirsPointingDisturbanceConfig`），
+  误差统计参数本身仍三用途共享。
   [evidence: include/1q/sbirs_sensor/config/SbirsPolicyConfig.h]
 - **后果**：共享参数掩盖了三条链路在真实载荷上的精度差异，仿真结果可能高估某条链路的精度。
-  1. WFOV 搜索。
-  2. Estimated 校正量测。
-  3. NFOV Sensor-like 输出。
 - **待决问题**：是否需要分别表达三用途的精度等级（WFOV 搜索、Estimated 校正量测、NFOV Sensor-like 输出）。
 - **当前边界**：共享参数是当前确定性简化，不得宣称代表真实 WFOV/NFOV 载荷精度差异。
 - **再进入条件 (Stage A)**：取得可追溯的分阶段参数依据，或构造出共享参数无法满足的 SBIRS 场景验收矩阵后，
@@ -298,17 +301,22 @@ Last-reviewed: 2026-09-07
 
 ### SBIRS-OQ-4：Estimated 航迹的真值初始化
 
-- **现状**：Estimated 航迹初始化分两个阶段：
-  1. 首次捕获后用输入场景真值 ECEF 位置和速度初始化滤波均值。
-  2. 后续才使用带误差角度量测。
-  [evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp]
-- **后果**：`Estimated` 描述为生产仿真链，但首捕阶段含 truth-seeded 简化，若被当作完全无真值辅助的真实载荷
-  跟踪器使用，会高估其无辅助条件下的起始性能。
-- **待决问题**：是否需要改为仅由被动角度 cue 和显式距离/运动先验初始化，以形成无真值航迹起始链。
-- **当前边界**：`Estimated` 是生产仿真链，但当前仍包含 truth-seeded track initiation 简化，不得描述为完全
-  无真值辅助的真实载荷跟踪器。
-- **再进入条件 (Stage A)**：先定义被动角度不可观测距离的初始化先验、收敛时间和失败判据，并提供与当前方案
-  的捕获率、位置协方差、丢锁率及 replay 对比证据，再决定是否替换。
+- **现状**：Estimated 首捕初始化按后端分两轨：
+  1. 默认 EKF/IMM 后端：首次捕获后用输入场景真值 ECEF 位置和速度初始化滤波均值，
+     后续才使用带误差角度量测。
+  2. 实验后端 kAngleCvKf（非默认）：4 维角度 CV 线性 KF，首捕仅用当前量测角度点迹
+     初始化、变化率置 0，禁止真值三维。
+  [evidence: src/sbirs_sensor/pipeline/SbirsTrackingCoordinator.h]
+  [evidence: src/sbirs_sensor/tracking/SbirsAngleCvKalman.h]
+- **后果**：默认链的 `Estimated` 描述为生产仿真链，但首捕阶段含 truth-seeded 简化，若被当作
+  完全无真值辅助的真实载荷跟踪器使用，会高估其无辅助条件下的起始性能；无真值初始化路径
+  目前仅实验后端可用。
+- **待决问题**：kAngleCvKf 的纯量测初始化是否转正为默认航迹起始链；EKF/IMM 后端是否同样
+  去真值化，或维持"真值种子 + 实验对照"格局。
+- **当前边界**：默认 `Estimated`（EKF/IMM）仍包含 truth-seeded track initiation 简化，不得描述为完全
+  无真值辅助的真实载荷跟踪器；kAngleCvKf 为实验后端，不作为验收默认口径。
+- **再进入条件 (Stage A)**：转正评估时提供 kAngleCvKf 与 EKF/IMM 的捕获率、位置协方差、丢锁率及
+  replay 对比证据，并定义角度-only（距离不可观测）时的初始化先验与失败判据。
 
 ### SBIRS-OQ-5：俯仰中心手工配置与基准 nadir 化
 
@@ -330,8 +338,8 @@ Last-reviewed: 2026-09-07
 - **现状**：检出记录无时间字段（只有 az/el/SNR/阶段），扫描相位每周期按 rate×dt 抽帧推进，
   波束"何时穿越目标"的信息在源头丢弃；多星初始扫描相位一律硬置 0（配置无相位字段），
   现实中各星独立开机、相位任意。
-  [evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h] ::SbirsDetectionRecord
-  [evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp] ::ApplyConfig
+  [evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h]
+  [evidence: src/sbirs_sensor/pipeline/SbirsPipeline.cpp]
 - **后果**：扫描模式下"哪一周期检出"是抽帧相位的人为产物；下游（融合/评估）拿不到测量时刻，
   只能以周期号为时间基准。当前由评估层配对窗（`dual_sat_pair_window_cycles`）在消费侧补偿，
   属权宜口径。
@@ -348,8 +356,8 @@ Last-reviewed: 2026-09-07
 
 - **现状**：`DetectionRecord` 无时间字段，`FusionEngine::Update` 按周期号驱动；同周期多源
   量测被视为同一时刻。跨周期的时间对齐目前由评估层配对窗承担（精度评估模块，2026-08-31）。
-  [evidence: include/1q/fusion/DetectionRecord.h] ::DetectionRecord
-  [evidence: include/1q/fusion/FusionEngine.h] ::Update
+  [evidence: include/1q/fusion/DetectionRecord.h]
+  [evidence: include/1q/fusion/FusionEngine.h]
 - **后果**：传感器若将来携带测量时间戳（见 SBIRS-OQ-6），融合滤波器无法利用其做
   "外推到测量时刻再更新"的时间对齐；现实地面融合"按时刻对齐零点几秒观测差"的环节在库内
   没有对应物。
@@ -366,7 +374,7 @@ Last-reviewed: 2026-09-07
 - **现状**：`docs/sar/algorithms.md` 性能注记记录 Windows 消费工程实测（1024×1024 孔径 / 20 点滤波器，
   RDA 总耗时约 0.29-0.39 s），数字来自 e1484476 时期 /O2 实测。bfb53867 后 MSVC Release 已为真发布档
   （/O2 /Ob2 /Oi），该数字仍代表 /O2 量级、语义未失效，但不是当前构建档位的重新实测。
-  [evidence: docs/sar/algorithms.md 性能注记]
+  [evidence: docs/sar/algorithms.md]
 - **后果**：若消费方按"当前构建档位权威数字"引用会有轻微偏差；但无需阻止任何使用。
 - **待决问题**：是否在新 Release 档位重新实测并更新注记中的数字与修订日期，还是维持现值并在下一次
   SAR 性能变更时一并刷新。
@@ -375,9 +383,10 @@ Last-reviewed: 2026-09-07
 
 ### SAR-OQ-2：脉冲环缓冲 O(1) 去重是否作为复杂度契约写入文档
 
-- **现状**：`SarProcessingPipeline` 的脉冲推入重复检查由 O(n) 全量扫描改为依赖"严格递增脉冲 ID"不变量
-  的 O(1) 拒绝（00a6d1f7）；现有文档（含 data-flow.md 状态所有权）对 push 复杂度无任何断言。
-  [evidence: src/sar/pipeline/SarProcessingPipeline.cpp]
+- **现状**：脉冲环缓冲 `PulseRingBuffer` 的推入重复检查依赖"严格递增脉冲 ID"不变量
+  实现 O(1) 拒绝（Push 拒绝 id <= back，RestoreRuntimeState 校验 IsStrictlyIncreasing）；
+  现有文档（含 data-flow.md 状态所有权）对 push 复杂度无任何断言。
+  [evidence: src/sar/runtime/PulseRingBuffer.cpp]
 - **后果**：O(1) 去重依赖输入严格递增不变量，若未来调用方以乱序/重复脉冲输入，该复杂度契约不再成立；
   文档未记录该依赖。
 - **待决问题**：是否在 data-flow.md（或 algorithms.md 登记表）把"脉冲 ID 严格递增、push 重复拒绝 O(1)"
@@ -425,7 +434,7 @@ Last-reviewed: 2026-09-07
   效能约束转换，非加噪量测"），物理化列为独立后续冻结项。
   [evidence: src/remote_identification_radar/recognition/RcsFeatureExtractor.cpp]
   [evidence: src/remote_identification_radar/recognition/PolarizationFeatureExtractor.cpp]
-  [evidence: docs/review/rir_dual_product_stage_a_2026-08-18.md §0 裁定点 2/§3.1]
+  [evidence: docs/review/rir_dual_product_stage_a_2026-08-18.md]
   [evidence: include/1q/remote_identification_radar/session/RirFeatureMeasurementTypes.h]
 - **后果**：
   1. 统计类评估（蒙特卡洛识别率、融合收益）中特征不含测量随机性，结果不能代表真实
@@ -475,3 +484,21 @@ Last-reviewed: 2026-09-07
   不得零碎单独修改。
 
 ### TARGET-OQ-2：ESR 威胁等级进 public 输出（ECM 下游消费）
+
+- **现状**：`EmitterHypothesis.threat_level`（public DTO 字段）由
+  `HypothesisAssociator::InferThreatFromCluster`（模式+SNR 启发式）计算并对外发布；ECM 侧
+  `EcmEsrAdapter` 消费该字段二次计分为调度排序输入。同一关联器内的 `InferModeFromCluster`
+  （PRI/脉宽→工作模式）与假设关联/生命周期（最小费用流指派 + 指数混合平滑）也在传感器内。
+  [evidence: include/1q/electronic_surveillance_radar/session/EmitterHypothesis.h]
+  [evidence: src/electronic_surveillance_radar/pipeline/HypothesisAssociator.cpp]
+  [evidence: src/electronic_countermeasure/EcmEsrAdapter.cpp]
+- **后果**：决策层产品（威胁等级）由传感器生产并进入 public 输出，违反分层契约规则 2；ECM
+  调度输入依赖传感器的越层字段，形成越层消费链。模式推断与假设平滑的归属存在语义争议（可
+  辩护为 ESM 量测语义标注 / ESM 产品形态）。
+- **待决问题**：`threat_level` 是否从 public DTO 退出（破坏性公共 API 变更，需冻结迁移契约；
+  ECM 调度输入改由 threat_assessment 或调用方供给）；ESM 假设管理（关联/生命周期/平滑）是否
+  作为合法 ESM 产品形态保留。
+- **当前边界**：`threat_level` 为冻结公共 API，不追溯回改；处置前 ESM 假设管理保留现状，
+  不得新增同类威胁语义字段。
+- **再进入条件 (Stage A)**：ESR 公共 API 修订立项时，提交 `threat_level` 迁移契约（含 ECM
+  消费路径改造与 replay 兼容性裁定）。

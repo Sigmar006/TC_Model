@@ -127,6 +127,7 @@ Each module keeps a design-doc set — `design.md` (navigation entry) + `boundar
 **User work rules**
 - Document clarification gate: confirm uncertain issues (direction, terminology, semantics, scope, gate values) with the user before writing — never embed silent assumptions; adjudicated content and frozen contracts need no re-confirmation.
 - Plain-language bias: user-facing text favors plain language, terms explained on first use; readability outranks brevity; code comments and normative contracts keep full precision.
+- Modular milestone cadence: for complex tasks spanning multiple business modules (AR, ESR, ECM, RIR, EOS, SAR, etc.) or multi-layer dependencies, avoid continuous execution across all modules in a single autonomous tool turn. Pause tool execution and report phase progress to the user upon completing each module (with its localized build and test verification), stating completed work, verified status, and next steps before proceeding.
 
 **Branching**
 - Evidence-first work uses `evidence/<topic>` then `feat/<topic>` (see `.claude/skills/evidence-first-freeze-contract`). After the user asks to merge: `git merge --no-ff feat/<topic>` into `main`, then delete **both** process branches.

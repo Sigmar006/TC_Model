@@ -230,6 +230,7 @@ Implementation rules:
 - Keep cross-domain symmetry meaningful: copy shape only when responsibilities match.
 - Keep code, tests, and the relevant `docs/*/design.md` boundary text synchronized when behavior changes.
 - Prefer focused tests first, then contract tests, then broader CI labels appropriate to the touched module.
+- **Modular milestone cadence（模块化分步交付与汇报）**：跨多个业务模块的 Stage B 实现，禁止在单轮自治循环中连续执行所有模块直至终局验收。每完成一个模块的代码修改与局部构建/测试验证，必须主动结束当轮工具调用，输出该模块的完成进展与下一步计划，由用户触发或确认后再进入下一个模块。
 
 ## Stage C: Verification and Authority Writeback
 

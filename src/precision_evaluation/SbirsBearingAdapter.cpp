@@ -88,6 +88,8 @@ std::vector<fusion::DetectionRecord> AdaptSbirsResultToDetectionRecords(
                             180.0 / 3.14159265358979323846;
     record.has_sensor_origin = true;
     record.sensor_origin = satellite_lla;
+    record.has_timestamp = true;
+    record.timestamp_s = detection.measurement_time_s;
     // 质量：IR SNR/1000 截断 [0,1]（线性 SNR 典型 4~1e3+，与官方适配器 SNR/4 相比
     // 压低强信号饱和；评估侧只影响融合置信度权重，不影响量测本身）。
     const double snr = static_cast<double>(detection.infrared_snr_linear);

@@ -40,7 +40,6 @@ table ArMissionConfig {
 }
 
 table TransmitterConfig {
-  equipment_id:ulong;
   peak_power_w:float;
   frequency_hz:float;
   bandwidth_hz:float;
@@ -73,13 +72,11 @@ table AntennaConfig {
 }
 
 table RfCoSiteIsolationPath {
-  transmitter_equipment_id:ulong;
-  receiver_equipment_id:ulong;
+  transmitter_sensor_entity_id:uint;
   isolation_db:double;
 }
 
 table ReceiverConfig {
-  equipment_id:ulong;
   noise_figure_db:float;
   receive_loss_db:float;
   cross_polarization_isolation_db:float;
@@ -245,4 +242,4 @@ table ArSessionConfig {
 }
 
 root_type ArSessionConfig;
-file_identifier "ARSC";
+file_identifier "ARSD";

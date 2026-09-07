@@ -1,7 +1,7 @@
 // esr_session_replay.fbs
 // ESR 模块 replay FlatBuffers schema：session_config 与 runtime_config_patch 载荷
 //
-// file_identifier: ESRS (ESR Session)
+// file_identifier: ESRT (ESR Session)
 
 namespace esr.replay;
 
@@ -14,12 +14,11 @@ table EsrTuningWindow {
 }
 
 table EsrCoSiteIsolationPath {
-  transmitter_equipment_id: uint64;
+  transmitter_sensor_entity_id: uint;
   isolation_db: double;
 }
 
 table EsrHardwareConfig {
-  receiver_equipment_id:      uint64 = 1;
   receiver_band_lower_hz:      double;
   receiver_band_upper_hz:      double;
   receiver_sensitivity_w:      float;
@@ -105,7 +104,7 @@ table EsrSessionConfig {
 }
 
 root_type EsrSessionConfig;
-file_identifier "ESRS";
+file_identifier "ESRT";
 
 // ---- EsrRuntimeConfigPatch ----
 

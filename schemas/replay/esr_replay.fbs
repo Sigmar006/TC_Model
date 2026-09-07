@@ -1,9 +1,11 @@
 // esr_replay.fbs
 // ESR 模块 replay FlatBuffers schema：cycle_input 与 cycle_output 载荷
 //
-// file_identifier: ESRC (ESR Cycle)
+// file_identifier: ESRD (ESR Cycle)
 // 2026-08-24：EsrCycleInput 去 has_platform_ecef_kinematics 在场标志（必填输入不用
 // 可选模式），表槽位前移——与此前载荷互不兼容；项目未上线，无兼容分支。
+// 2026-09-06：RF 标识收敛：RfSceneEmission 使用 sensor_entity_id + emission_id，
+// 移除 EsrCycleInput.platform_entity_id，file_identifier 升至 ESRD。
 
 namespace esr.replay;
 
@@ -60,9 +62,8 @@ table RfWaveformSchedule {
 }
 
 table RfSceneEmission {
-  platform_id: uint64;
-  equipment_id: uint64;
-  emission_id: uint64;
+  sensor_entity_id: uint;
+  emission_id: ulong;
   position_ecef_m: Vec3;
   velocity_ecef_mps: Vec3;
   antenna: RfSceneAntennaPattern;
@@ -80,7 +81,6 @@ table RfSceneFrame {
 table EsrCycleInput {
   cycle_index:             uint32;
   dt_sec:                  float;
-  platform_entity_id:      uint64 = 0;
   platform_position_ecef_m: Vec3;
   platform_velocity_ecef_mps: Vec3;
   platform_attitude_deg: EulerDeg;
@@ -89,7 +89,7 @@ table EsrCycleInput {
 }
 
 root_type EsrCycleInput;
-file_identifier "ESRC";
+file_identifier "ESRD";
 
 // ---- EsrOutputFrame ----
 

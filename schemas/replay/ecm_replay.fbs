@@ -31,7 +31,6 @@ table AntennaPattern {
 table EcmSessionConfig {
   power_on:bool;
   random_seed:uint32;
-  transmitter_equipment_id:uint64;
   channel_count:uint32;
   minimum_frequency_hz:double;
   maximum_frequency_hz:double;
@@ -102,7 +101,6 @@ table EcmCycleInput {
   cycle_start_time_s:double;
   dt_sec:double;
   input_mode:int32;
-  platform_entity_id:uint64;
   platform_position_ecef_m:Vec3;
   platform_velocity_ecef_mps:Vec3;
   transmit_antenna:AntennaPattern;
@@ -113,11 +111,10 @@ table EcmCycleInput {
 }
 
 root_type EcmCycleInput;
-file_identifier "ECMC";
+file_identifier "ECMD";
 
 table RfEmissionIdentity {
-  platform_id:uint64;
-  equipment_id:uint64;
+  sensor_entity_id:uint32;
   emission_id:uint64;
 }
 

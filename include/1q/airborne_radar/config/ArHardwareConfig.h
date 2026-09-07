@@ -104,8 +104,10 @@ struct ONEQ_API ReceiverConfig {
   float interference_observation_jn_gate_db{6.0f};          /**< 干扰观测发布 J/N 门限（dB）。 */
   oneq::electromagnetics::RfScenePolarization scene_polarization{
       oneq::electromagnetics::RfScenePolarization::kHorizontal}; /**< RF v2 接收极化。 */
-  std::vector<oneq::electromagnetics::RfCoSiteIsolationPath> co_site_paths{
-      {1U, 120.0}}; /**< 发射设备到接收设备的显式有向隔离路径。 */
+  std::vector<oneq::electromagnetics::RfCoSiteIsolationPath> co_site_paths{};
+  /**< 伙伴发射源的显式有向隔离路径（端点 = 对方传感器实体 ID）。自身发射泄漏
+       隔离不在此配置：会话组装接收状态时按当前实体身份自动附加（显式配置
+       同自身实体 ID 的路径可覆盖缺省隔离值）。 */
 };
 
 /**

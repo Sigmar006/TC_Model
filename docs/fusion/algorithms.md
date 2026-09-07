@@ -109,8 +109,10 @@ has_sensor_origin + origin（失败退化为无原点记录）→ 记录可参�
 
 - **开关**：`enable_track_filtering` 默认 true。置 false 时引擎行为与 P2 前
   完全一致（关联/置信度/删除语义不变，仅输出追加 lifecycle 字段，无运动学估计）。
-- **状态**：每航迹 6 维 ECEF CV [x,vx,y,vy,z,vz]；预测 = 无迹 + `LinearCvTransitionModel`
-  （`track_process_noise`），dt = (cycle − 上次滤波周期) × `track_cycle_period_sec`。
+- **状态与时间对齐**：每航迹 6 维 ECEF CV [x,vx,y,vy,z,vz]；预测 = 无迹 + `LinearCvTransitionModel`
+  （`track_process_noise`）。时间推进支持双轨（FUSION-OQ-1 闭环）：若量测携带有效物理时间戳 `has_timestamp`，dt 为前后量测物理时间差 dt = t_meas − t_last；若为纯周期驱动，回退为 dt = (cycle − 上次滤波周期) × `track_cycle_period_sec`。同周期内多源异步量测按物理时间戳升序排序依次推进，消除跨传感器观测的时间偏差；失跟（coasting）按周期步长同步推进物理与周期基准。
+  [evidence: tests/unit/fusion/track_filtering_test.cpp::SubCycleTimestampPropagatesMovingTrackBetweenAsyncDetections]
+  [evidence: tests/unit/fusion/track_filtering_test.cpp::SubCycleBearingDualSatResolvesRange]
 - **位置通道更新**：z = LLA→ECEF 位置，`UnscentedUpdater<6,3>` +
   `LinearPositionMeasurementModel`；R = `default_position_noise_std_m`²（记录级
   位置噪声通道为后续冻结项，当前仅配置默认）。

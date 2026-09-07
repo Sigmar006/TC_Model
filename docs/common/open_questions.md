@@ -42,7 +42,7 @@ Last-reviewed: 2026-09-07
 | SBIRS-OQ-4 | sbirs_sensor | Estimated 航迹真值初始化 | 首捕用真值位置/速度初始化滤波均值 | open |
 | SBIRS-OQ-5 | sbirs_sensor | 俯仰中心手工配置与基准 nadir 化 | scan_center_el 仍需手填；非 GEO 轨道星下点俯仰漂移会配错且无告警 | open |
 | SBIRS-OQ-6 | sbirs_sensor | 量测时间戳与扫描初始相位缺失 | 检出无时间字段、初始相位硬 0；扫描"穿越时刻"信息在源头丢弃 | resolved (feat/sbirs-measurement-timestamp-and-phase) |
-| FUSION-OQ-1 | fusion | 亚周期时间对齐缺失 | 融合按周期号驱动，无测量时间字段；跨周期对齐暂由评估层配对窗承担 | open (DetectionRecord 时间戳字段已打通) |
+| FUSION-OQ-1 | fusion | 亚周期时间对齐缺失 | 融合按周期号驱动，无测量时间字段；跨周期对齐暂由评估层配对窗承担 | resolved (feat/sbirs-measurement-timestamp-and-phase) |
 | RIR-OQ-1 | remote_identification_radar | 特征量测保真度边界 | 真值×效能约束转换，非加噪量测 | open |
 | TARGET-OQ-1 | target-layer | AR 估计/推演职责前置 | 消费级航迹产品 + 识别结论回填 public 输出 | open |
 | TARGET-OQ-2 | target-layer | ESR 威胁等级进 public 输出 | threat_level 由传感器生产并被 ECM 下游消费 | open |
@@ -353,15 +353,15 @@ Last-reviewed: 2026-09-07
 ### FUSION-OQ-1：亚周期时间对齐缺失
 
 - **现状**：`DetectionRecord` 已增补可选时间戳字段（`has_timestamp` / `timestamp_s`），SBIRS 适配层
-  已打通源头时间透传；`FusionEngine::Update` 内部仍按周期号驱动。跨周期的时间对齐目前由评估层配对窗承担（精度评估模块，2026-08-31）。
+  已打通源头时间透传；`FusionEngine::Update` 内部已升级支持连续物理时间戳对齐与多源异步时序推进（FUSION-OQ-1 闭环）。
   [evidence: include/1q/fusion/DetectionRecord.h::DetectionRecord]
-  [evidence: include/1q/fusion/FusionEngine.h]
-- **后果**：传感器已携带测量时间戳（见 SBIRS-OQ-6），融合滤波器尚未利用其做
-  "外推到测量时刻再更新"的时间对齐；现实地面融合"按时刻对齐零点几秒观测差"的环节在库内
-  仍待算法演进。
-- **待决问题**：逐航迹滤波何时支持按量测时刻推进（现有周期驱动 + coasting 是其自然推广，通过状态转移矩阵 $\mathbf{\Phi}(\Delta t)$ 对齐）。
-- **当前边界**：身份键跨源关联不受影响（双星量测经归属键进同一航迹已被场景证据覆盖）。
-- **再进入条件 (Stage A)**：出现对融合产品有严格亚周期时间精度要求的下游或立项专门演进。
+  [evidence: src/fusion/FusionEngine.cpp::ApplyFilterSample]
+  [evidence: tests/unit/fusion/track_filtering_test.cpp::SubCycleTimestampPropagatesMovingTrackBetweenAsyncDetections]
+  [evidence: tests/unit/fusion/track_filtering_test.cpp::SubCycleBearingDualSatResolvesRange]
+- **后果**：传感器携带物理测量时间戳（见 SBIRS-OQ-6）进入融合层后，航迹滤波状态按量测时刻推进外推再行更新；同周期内多星/多源异步观测自动按时间戳升序对齐，彻底消除空间运动滞后引起的虚假残差。
+- **待决问题**：已闭环。
+- **当前边界**：未带时间戳的量测（legacy）无缝退化为既有基于周期的 dt 外推；带时间戳量测严格按物理间隔推进，失跟（coasting）航迹按周期步长同步推进物理与周期基准。
+- **再进入条件 (Stage A)**：本项已闭环。
 
 ## SAR 非阻塞边界
 

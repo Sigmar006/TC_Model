@@ -164,6 +164,8 @@ struct MeasurementSample {
   double verdict{0.0};
   double quality{0.0};
   std::uint64_t cycle{0U};
+  bool has_timestamp{false};
+  double timestamp_s{0.0};
 };
 
 // 航迹（库内状态，业务不可见）。
@@ -177,6 +179,8 @@ struct Track {
   std::size_t hits{0U};            /**< 累计命中数（确认门输入） */
   bool filter_initialized{false};  /**< 航迹滤波器是否已起始（P2） */
   std::uint64_t filter_cycle{0U};  /**< 滤波器最近推进周期 */
+  bool filter_has_timestamp{false}; /**< 滤波器时间基准是否已含物理时刻（FUSION-OQ-1） */
+  double filter_timestamp_s{0.0};  /**< 滤波器当前状态对应的物理时刻(s) */
   Eigen::Matrix<float, 6, 1> filter_mean{Eigen::Matrix<float, 6, 1>::Zero()};
   Eigen::Matrix<float, 6, 6> filter_cov{Eigen::Matrix<float, 6, 6>::Identity()};
   Track() = default;
@@ -289,7 +293,17 @@ class FusionEngine::Impl {
         keyed[detections[i].key].push_back(i);
       }
     }
-    for (const auto& group : keyed) {
+    const double nominal_cycle_time =
+        static_cast<double>(cycle) * config_.track_cycle_period_sec;
+    const auto timestamp_order = [&detections, nominal_cycle_time](std::size_t a, std::size_t b) {
+      const double ta =
+          detections[a].has_timestamp ? detections[a].timestamp_s : nominal_cycle_time;
+      const double tb =
+          detections[b].has_timestamp ? detections[b].timestamp_s : nominal_cycle_time;
+      return ta < tb;
+    };
+    for (auto& group : keyed) {
+      std::stable_sort(group.second.begin(), group.second.end(), timestamp_order);
       auto it = tracks_.find(group.first);
       if (it == tracks_.end()) {
         it = tracks_.emplace(group.first, Track{group.first}).first;
@@ -341,6 +355,8 @@ class FusionEngine::Impl {
     sample.verdict = detection.verdict;
     sample.quality = detection.quality;
     sample.cycle = cycle;
+    sample.has_timestamp = detection.has_timestamp;
+    sample.timestamp_s = detection.timestamp_s;
     track->channel_samples[detection.source_id].push_back(std::move(sample));
     track->anchor = track->channel_samples[detection.source_id].back();
     track->has_anchor = true;
@@ -377,6 +393,18 @@ class FusionEngine::Impl {
     if (indices.empty()) {
       return;
     }
+    std::vector<std::size_t> sorted_indices = indices;
+    const double nominal_cycle_time =
+        static_cast<double>(cycle) * config_.track_cycle_period_sec;
+    std::stable_sort(
+        sorted_indices.begin(), sorted_indices.end(),
+        [&detections, nominal_cycle_time](std::size_t a, std::size_t b) {
+          const double ta =
+              detections[a].has_timestamp ? detections[a].timestamp_s : nominal_cycle_time;
+          const double tb =
+              detections[b].has_timestamp ? detections[b].timestamp_s : nominal_cycle_time;
+          return ta < tb;
+        });
     std::vector<std::uint64_t> anchor_track_keys;
     std::vector<EcefPositionM> anchors;
     for (const auto& entry : tracks_) {
@@ -396,7 +424,7 @@ class FusionEngine::Impl {
       tree.buildIndex();
     }
 
-    for (const std::size_t i : indices) {
+    for (const std::size_t i : sorted_indices) {
       const DetectionRecord& detection = detections[i];
       double best_cost = std::numeric_limits<double>::infinity();
       std::uint64_t best_key = 0U;
@@ -570,7 +598,7 @@ class FusionEngine::Impl {
 
   void PredictTrack(Track* track, float dt) const {
     estimation::UnscentedPredictorConfig predictor_config;
-    predictor_config.noise_diff_coeff = config_.track_process_noise;
+    predictor_config.noise_diff_coeff = static_cast<float>(config_.track_process_noise);
     const estimation::LinearCvTransitionModel<6> cv_model;
     const estimation::UnscentedPredictor<6, 2> predictor(&cv_model, predictor_config);
     estimation::GaussianState<6, 2> state;
@@ -587,12 +615,32 @@ class FusionEngine::Impl {
         return;
       }
       track->filter_cycle = cycle;
-    }
-    const double dt =
-        static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
-    if (dt > 0.0) {
-      PredictTrack(track, static_cast<float>(dt));
-      track->filter_cycle = cycle;
+      track->filter_has_timestamp = detection.has_timestamp;
+      track->filter_timestamp_s = detection.has_timestamp ? detection.timestamp_s : 0.0;
+    } else {
+      double dt = 0.0;
+      if (detection.has_timestamp && track->filter_has_timestamp) {
+        dt = detection.timestamp_s - track->filter_timestamp_s;
+      } else {
+        dt = static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
+      }
+      dt = std::max(0.0, dt);
+      if (dt > 0.0) {
+        PredictTrack(track, static_cast<float>(dt));
+        track->filter_cycle = cycle;
+        if (detection.has_timestamp) {
+          track->filter_has_timestamp = true;
+          track->filter_timestamp_s = detection.timestamp_s;
+        } else if (track->filter_has_timestamp) {
+          track->filter_timestamp_s += dt;
+        }
+      } else {
+        track->filter_cycle = cycle;
+        if (detection.has_timestamp) {
+          track->filter_has_timestamp = true;
+          track->filter_timestamp_s = std::max(track->filter_timestamp_s, detection.timestamp_s);
+        }
+      }
     }
 
     if (detection.has_position) {
@@ -602,7 +650,8 @@ class FusionEngine::Impl {
       }
       const estimation::LinearPositionMeasurementModel<6, 3> position_model;
       estimation::UnscentedUpdaterConfig updater_config;
-      updater_config.measurement_noise_std = config_.default_position_noise_std_m;
+      updater_config.measurement_noise_std =
+          static_cast<float>(config_.default_position_noise_std_m);
       const estimation::UnscentedUpdater<6, 3> updater(&position_model, updater_config);
       estimation::GaussianState<6, 3> state;
       state.mean = track->filter_mean;
@@ -663,6 +712,9 @@ class FusionEngine::Impl {
       if (dt > 0.0) {
         PredictTrack(&track, static_cast<float>(dt));
         track.filter_cycle = cycle;
+        if (track.filter_has_timestamp) {
+          track.filter_timestamp_s += dt;
+        }
       }
     }
   }

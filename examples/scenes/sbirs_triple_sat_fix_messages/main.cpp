@@ -130,6 +130,10 @@ sbirs_sensor::config::SbirsSessionConfig LoadSatelliteConfig(const examples::Jso
   }
   config.mission.scan_span_deg =
       block.Has("scan_span_deg") ? static_cast<float>(block["scan_span_deg"].AsDouble()) : 11.0f;
+  if (block.Has("initial_scan_phase_deg")) {
+    config.mission.initial_scan_phase_deg =
+        static_cast<float>(block["initial_scan_phase_deg"].AsDouble());
+  }
   config.mission.scan_rate_deg_per_sec =
       block.Has("scan_rate_deg_per_sec")
           ? static_cast<float>(block["scan_rate_deg_per_sec"].AsDouble())
@@ -716,6 +720,7 @@ int main(int argc, char* argv[]) {
                                                                  evaluation_source_ids)));
   component_attachment::GroundStationFusionComponent* fusion =
       ground_station.Find<component_attachment::GroundStationFusionComponent>();
+  fusion->SetPairWindowCycles(scene.config.dual_sat_pair_window_cycles);
 
   // 评审 2026-08-26 条12：订阅落点预报外发事件，收件回执写 integration_events.log
   // （验证分发链路真实可达，非仅日志口径；接收方为 impact_receiver 实体）。

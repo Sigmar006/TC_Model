@@ -7,9 +7,11 @@
 #define EXAMPLES_COMPONENT_ATTACHMENT_COMPONENTS_GROUND_STATION_FUSION_COMPONENT_H_
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <vector>
 
+#include "1q/coordinate/types.h"
 #include "1q/fusion/FusionEngine.h"
 #include "1q/fusion/FusedTarget.h"
 #include "1q/precision_evaluation/PrecisionEvaluationSession.h"
@@ -81,7 +83,21 @@ class GroundStationFusionComponent : public Component {
 
   precision_evaluation::PrecisionEvaluationReport SummarizeEvaluation() const;
 
+  /** @brief 设置双星视线交会配对窗口（周期数，0 为严格同周期，>=1 允许跨周期滑窗交会）。 */
+  void SetPairWindowCycles(std::uint32_t window) { pair_window_cycles_ = window; }
+  std::uint32_t pair_window_cycles() const { return pair_window_cycles_; }
+
  private:
+  struct TargetObservationAnchor {
+    bool valid{false};
+    std::uint64_t cycle{0U};
+    double measurement_time_s{0.0};
+    oneq::coordinate::EcefPositionM satellite_position_ecef{};
+    oneq::coordinate::Vector3d direction_ecef{};
+    float infrared_snr_linear{0.0f};
+    std::uint32_t source_id{0U};
+  };
+
   void EnsureSignalConnections(World& world);
   void OnDetectionBatchSubmitted(const DetectionBatchSubmittedEvent& event);
   void OnSbirsFrameSubmitted(const SbirsFrameSubmittedEvent& event);
@@ -93,6 +109,9 @@ class GroundStationFusionComponent : public Component {
   std::uint64_t inbox_cycle_{0U};
   std::vector<FusionDetectionSample> detection_inbox_{};
   std::vector<SbirsFrameSubmittedEvent> sbirs_inbox_{};
+
+  std::uint32_t pair_window_cycles_{1U};
+  std::map<std::uint64_t, std::map<std::uint32_t, TargetObservationAnchor>> target_observations_{};
 
   std::unique_ptr<precision_evaluation::PrecisionEvaluationSession> evaluation_;
   std::vector<std::uint32_t> evaluation_source_ids_{};

@@ -681,6 +681,7 @@ void SbirsSensorComponent::PublishToGroundStation(
       sample.azimuth_rad = record.azimuth_rad;
       sample.elevation_rad = record.elevation_rad;
       sample.infrared_snr_linear = record.infrared_snr_linear;
+      sample.measurement_time_s = record.measurement_time_s;
       // 观测阶段随消息透出（双星定位仅收窄场数据，2026-08-31 建模口径）。
       sample.observation_stage = static_cast<int>(record.observation_stage);
       // 焦平面脱靶量随消息透出（归属记录携带；精度评估层第26项 消费）。

@@ -20,7 +20,6 @@ int main() {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
-  input.platform.platform_entity_id = 1U;
   input.platform.platform_position_ecef_m.x_m = 6378137.0;
   const airborne_radar::session::ArCycleResult first = session.StepWithResult(input);
   if (first.status != airborne_radar::session::ArCycleStatus::kCompleted) {

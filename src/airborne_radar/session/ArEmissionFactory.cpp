@@ -55,8 +55,7 @@ bool ArEmissionFactory::TryBuildEmission(
   const config::engineering::TransmitterConfig& transmitter = detection.transmitter;
   const config::engineering::ReceiverConfig& receiver = detection.receiver;
 
-  emission->identity.platform_id = input.platform_id;
-  emission->identity.equipment_id = transmitter.equipment_id;
+  emission->identity.sensor_entity_id = input.sensor_entity_id;
   emission->identity.emission_id = emission_id;
   emission->position_ecef_m = input.platform_position_ecef_m;
   emission->velocity_ecef_mps = input.platform_velocity_ecef_mps;

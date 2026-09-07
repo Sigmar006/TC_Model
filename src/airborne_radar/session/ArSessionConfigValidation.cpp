@@ -3,6 +3,9 @@
 
 #include "1q/airborne_radar/config/ArSessionConfigValidation.h"
 
+#include <cstdint>
+#include <set>
+
 #include "1q/airborne_radar/session/ArIssueCodes.h"
 #include "common/validation/ValidationUtils.h"
 
@@ -61,11 +64,6 @@ session::ArIssueList ValidateArSessionConfig(const config::ArSessionConfig& conf
     push(session::codes::kTransmitterOperatingEnvelopeInvalid, "hardware.transmitter",
          "Transmitter power, duty cycle and pulse energy must stay inside hardware limits.");
   }
-  if (transmitter.equipment_id == 0U || receiver.equipment_id == 0U ||
-      transmitter.equipment_id == receiver.equipment_id) {
-    push(session::codes::kEquipmentIdentityInvalid, "hardware.*.equipment_id",
-         "Transmitter and receiver equipment identifiers must be non-zero and distinct.");
-  }
   if (!oneq::common::validation::IsFinite(receiver.cross_polarization_isolation_db) ||
       receiver.cross_polarization_isolation_db < 0.0f ||
       !oneq::common::validation::IsFinite(receiver.minimum_far_field_range_m) ||
@@ -81,13 +79,13 @@ session::ArIssueList ValidateArSessionConfig(const config::ArSessionConfig& conf
     push(session::codes::kReceiverRfHardwareInvalid, "hardware.receiver",
          "Receiver RF isolation, far-field range and linear input limit must be valid.");
   }
+  std::set<std::uint32_t> co_site_tx_ids;
   for (const auto& path : receiver.co_site_paths) {
-    if (path.transmitter_equipment_id == 0U ||
-        path.receiver_equipment_id != receiver.equipment_id ||
-        path.transmitter_equipment_id == path.receiver_equipment_id ||
-        !oneq::common::validation::IsFinite(path.isolation_db) || path.isolation_db < 0.0) {
+    if (path.transmitter_sensor_entity_id == 0U ||
+        !oneq::common::validation::IsFinite(path.isolation_db) || path.isolation_db < 0.0 ||
+        !co_site_tx_ids.insert(path.transmitter_sensor_entity_id).second) {
       push(session::codes::kReceiverRfHardwareInvalid, "hardware.receiver.co_site_paths",
-           "Each co-site path must be a valid directed path into the receiver equipment.");
+           "Each co-site path must specify a unique, valid non-zero transmitter entity and non-negative isolation.");
       break;
     }
   }

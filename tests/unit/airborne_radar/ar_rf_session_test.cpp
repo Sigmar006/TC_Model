@@ -31,7 +31,6 @@ ArCycleInput MakeInput(std::uint32_t cycle, double start_time_s) {
   input.cycle_index = cycle;
   input.cycle_start_time_s = start_time_s;
   input.dt_sec = 0.5;
-  input.platform.platform_entity_id = 10U;
   oneq::coordinate::LlaPositionDegM platform_lla;
   platform_lla.latitude_deg = 31.0;
   platform_lla.longitude_deg = 121.0;
@@ -64,7 +63,7 @@ ArCycleInput MakeInput(std::uint32_t cycle, double start_time_s) {
 void AddNoiseInterference(double transmit_power_w, ArCycleInput* input) {
   ASSERT_NE(input, nullptr);
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity = {99U, 3U, 1U};
+  emission.identity = {99U, 1U};
   emission.position_ecef_m = input->platform.platform_position_ecef_m;
   emission.position_ecef_m.x_m += 10000.0;
   const double radar_frequency_hz =
@@ -82,7 +81,7 @@ void AddUnconfiguredCoSiteInterference(ArCycleInput* input) {
   ASSERT_NE(input, nullptr);
   AddNoiseInterference(1.0, input);
   oneq::electromagnetics::RfSceneEmission& emission = input->interference.emissions.back();
-  emission.identity.platform_id = input->platform.platform_entity_id;
+  emission.identity.sensor_entity_id = 999U;
   emission.position_ecef_m = input->platform.platform_position_ecef_m;
 }
 

@@ -176,7 +176,6 @@ TEST(RadarSessionConfigBuilderTest, RuntimePatchCanBeAppliedWithoutReconstructin
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
-  input.platform.platform_entity_id = 42U;
   input.platform.platform_position_ecef_m.x_m = 6378137.0;
   const session::ArCycleResult result = session.StepWithResult(input);
   EXPECT_FALSE(session::HasValidationError(result.issues));
@@ -328,20 +327,12 @@ TEST(RadarSessionConfigValidationTest, ValidatesEngineeringTransmitterEnvelopeAn
   EXPECT_EQ(issues.front().code,
             "ar.validation.transmitter_operating_envelope_invalid");
 
-  session_config.hardware.transmitter.maximum_peak_power_w = 1.2e6f;
-  session_config.hardware.receiver.equipment_id = session_config.hardware.transmitter.equipment_id;
-  issues = config::ValidateArSessionConfig(session_config);
-  ASSERT_FALSE(issues.empty());
-  EXPECT_EQ(issues.front().code, "ar.validation.equipment_identity_invalid");
 }
 
 TEST(RadarSessionConfigValidationTest, ValidatesReceiverRfHardwareBoundary) {
   config::ArSessionConfig session_config;
   ASSERT_EQ(session_config.hardware.receiver.co_site_paths.size(), 1U);
-  EXPECT_EQ(session_config.hardware.receiver.co_site_paths.front().transmitter_equipment_id,
-            session_config.hardware.transmitter.equipment_id);
-  EXPECT_EQ(session_config.hardware.receiver.co_site_paths.front().receiver_equipment_id,
-            session_config.hardware.receiver.equipment_id);
+  EXPECT_EQ(session_config.hardware.receiver.co_site_paths.front().transmitter_sensor_entity_id, 1U);
   session_config.hardware.receiver.maximum_linear_input_power_w = 0.0f;
   auto issues = config::ValidateArSessionConfig(session_config);
   ASSERT_FALSE(issues.empty());
@@ -360,9 +351,9 @@ TEST(RadarSessionConfigValidationTest, ValidatesReceiverRfHardwareBoundary) {
   EXPECT_TRUE(config::ValidateArSessionConfig(session_config).empty());
 
   session_config.hardware.receiver.co_site_paths.push_back(
-      oneq::electromagnetics::RfCoSiteIsolationPath{1U, 2U, 80.0});
+      oneq::electromagnetics::RfCoSiteIsolationPath{101U, 80.0});
   EXPECT_TRUE(config::ValidateArSessionConfig(session_config).empty());
-  session_config.hardware.receiver.co_site_paths.back().receiver_equipment_id = 3U;
+  session_config.hardware.receiver.co_site_paths.back().transmitter_sensor_entity_id = 0U;
   issues = config::ValidateArSessionConfig(session_config);
   ASSERT_FALSE(issues.empty());
   EXPECT_EQ(issues.back().code, "ar.validation.receiver_rf_hardware_invalid");

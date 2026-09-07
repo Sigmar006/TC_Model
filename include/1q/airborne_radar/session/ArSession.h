@@ -124,9 +124,9 @@ class ONEQ_API ArSession {
   void AttachExclusionCauseRecorder(ArExclusionCauseRecorder* recorder) noexcept;
 
   /**
-   * @brief 设置传感器设备实体 ID（用于周期摘要日志行标记与融合源通道对齐）。
+   * @brief 设置传感器设备实体 ID（贯通 RF 发射/接收身份、自剔除与融合/日志通道标注）。
    * @param[in] sensor_entity_id 传感器设备实体 ID；传 0 恢复缺省常量。
-   * @note 构造后注入设备号，任意时刻可调，下一周期起生效。不影响雷达物理计算。
+   * @note 构造后注入设备号，任意时刻可调，下一周期起生效。
    */
   void SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept;
 

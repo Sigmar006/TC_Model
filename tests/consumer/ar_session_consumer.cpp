@@ -43,7 +43,6 @@ int main() {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 1.0;
-  input.platform.platform_entity_id = 1U;
   oneq::coordinate::LlaPositionDegM platform_lla;
   if (!oneq::coordinate::TryLlaToEcef(
           platform_lla, &input.platform.platform_position_ecef_m)) {

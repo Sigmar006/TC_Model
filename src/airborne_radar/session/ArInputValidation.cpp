@@ -109,16 +109,15 @@ ArIssueList ValidateArCycleInput(const ArCycleInput& input) {
   oneq::coordinate::LocalFrameReference reference;
   oneq::coordinate::Vector3d radar_local_velocity;
   const oneq::coordinate::EulerAnglesDeg zero_mount{};
-  if (input.platform.platform_entity_id == 0U ||
-      !oneq::coordinate::IsFinite(input.platform.platform_position_ecef_m) ||
+  if (!oneq::coordinate::IsFinite(input.platform.platform_position_ecef_m) ||
       !oneq::coordinate::IsFinite(input.platform.platform_velocity_mps) ||
       !oneq::coordinate::IsFinite(input.platform.platform_attitude_deg) ||
       !TryMakeArPoseFromPlatform(input.platform, zero_mount, &reference,
-                                &radar_local_velocity)) {
+                                 &radar_local_velocity)) {
     issues.push_back(MakeIssue(ArIssueSeverity::kError, codes::kInvalidPlatformInput,
                                oneq::foundation::ValidationLocationKind::kPlatform,
                                static_cast<std::size_t>(-1), "platform",
-                               "platform requires non-zero identity and finite world kinematics"));
+                               "platform requires finite world kinematics"));
   } else {
     std::unordered_map<std::uint64_t, std::size_t> first_seen_target_index;
     for (std::size_t index = 0U; index < input.targets.size(); ++index) {

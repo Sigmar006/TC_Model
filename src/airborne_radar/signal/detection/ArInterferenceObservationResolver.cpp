@@ -70,7 +70,7 @@ bool TryEcefPositionToRadarLocalAngles(const oneq::coordinate::EcefPositionM& em
 
 bool SameIdentity(const oneq::electromagnetics::RfEmissionIdentity& left,
                   const oneq::electromagnetics::RfEmissionIdentity& right) {
-  return left.platform_id == right.platform_id && left.equipment_id == right.equipment_id &&
+  return left.sensor_entity_id == right.sensor_entity_id &&
          left.emission_id == right.emission_id;
 }
 
@@ -125,8 +125,7 @@ std::uint64_t Mix64(std::uint64_t value) {
 }
 
 std::uint64_t HashEmissionIdentity(const oneq::electromagnetics::RfEmissionIdentity& identity) {
-  std::uint64_t hash = Mix64(identity.platform_id);
-  hash = Mix64(hash ^ identity.equipment_id);
+  std::uint64_t hash = Mix64(identity.sensor_entity_id);
   return Mix64(hash ^ identity.emission_id);
 }
 
@@ -343,10 +342,8 @@ bool TryResolveArInterferenceObservations(
     const ObservationSortKey right_key = MakeSortKey(right.observation);
     return left_key != right_key
                ? left_key < right_key
-               : std::tie(left.identity.platform_id, left.identity.equipment_id,
-                          left.identity.emission_id) < std::tie(right.identity.platform_id,
-                                                                right.identity.equipment_id,
-                                                                right.identity.emission_id);
+               : std::tie(left.identity.sensor_entity_id, left.identity.emission_id) <
+                     std::tie(right.identity.sensor_entity_id, right.identity.emission_id);
   });
 
   for (std::size_t index = 0U; index < candidate.size(); ++index) {

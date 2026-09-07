@@ -38,7 +38,6 @@ session::ArCycleInput MakeValidCycleInput() {
   input.cycle_index = 1U;
   input.cycle_start_time_s = 0.0;
   input.dt_sec = 0.5;
-  input.platform.platform_entity_id = 42U;
 
   oneq::coordinate::LlaPositionDegM platform_lla;
   platform_lla.latitude_deg = 31.0;
@@ -86,8 +85,7 @@ const session::ArIssue* FindIssue(const session::ArIssueList& issues,
 void AddValidInterferenceEmission(session::ArCycleInput* input) {
   ASSERT_NE(input, nullptr);
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 99U;
-  emission.identity.equipment_id = 5U;
+  emission.identity.sensor_entity_id = 99U;
   emission.identity.emission_id = 1U;
   emission.position_ecef_m = input->platform.platform_position_ecef_m;
   emission.position_ecef_m.x_m += 10000.0;
@@ -210,12 +208,8 @@ TEST(ArCycleInputValidationTest, CycleDurationMustBeFiniteAndPositive) {
   EXPECT_NE(FindIssue(ValidateArCycleInput(input), "non_finite_cycle_delta_time"), nullptr);
 }
 
-TEST(ArCycleInputValidationTest, PlatformIdentityAndWorldKinematicsAreRequired) {
+TEST(ArCycleInputValidationTest, PlatformWorldKinematicsAreRequired) {
   session::ArCycleInput input = MakeValidCycleInput();
-  input.platform.platform_entity_id = 0U;
-  EXPECT_NE(FindIssue(ValidateArCycleInput(input), "invalid_platform_input"), nullptr);
-
-  input = MakeValidCycleInput();
   input.platform.platform_velocity_mps.z_mps =
       std::numeric_limits<double>::quiet_NaN();
   EXPECT_NE(FindIssue(ValidateArCycleInput(input), "invalid_platform_input"), nullptr);

@@ -468,7 +468,6 @@ flatbuffers::Offset<session_fb::DetectionConfig> EncodeSessionDetectionConfig(
     flatbuffers::FlatBufferBuilder* builder, const config::DetectionConfig& value) {
   const auto frequency_plan = builder->CreateVector(value.transmitter.frequency_plan_hz);
   session_fb::TransmitterConfigBuilder transmitter_builder(*builder);
-  transmitter_builder.add_equipment_id(value.transmitter.equipment_id);
   transmitter_builder.add_peak_power_w(value.transmitter.peak_power_w);
   transmitter_builder.add_frequency_hz(value.transmitter.frequency_hz);
   transmitter_builder.add_bandwidth_hz(value.transmitter.bandwidth_hz);
@@ -495,12 +494,11 @@ flatbuffers::Offset<session_fb::DetectionConfig> EncodeSessionDetectionConfig(
   co_site_paths.reserve(value.receiver.co_site_paths.size());
   for (const oneq::electromagnetics::RfCoSiteIsolationPath& path : value.receiver.co_site_paths) {
     co_site_paths.push_back(session_fb::CreateRfCoSiteIsolationPath(
-        *builder, path.transmitter_equipment_id, path.receiver_equipment_id, path.isolation_db));
+        *builder, path.transmitter_sensor_entity_id, path.isolation_db));
   }
   // 向量必须在打开 table builder 之前创建（flatbuffers NotNested 约束）。
   const auto co_site_paths_vec = builder->CreateVector(co_site_paths);
   session_fb::ReceiverConfigBuilder receiver_builder(*builder);
-  receiver_builder.add_equipment_id(value.receiver.equipment_id);
   receiver_builder.add_noise_figure_db(value.receiver.noise_figure_db);
   receiver_builder.add_receive_loss_db(value.receiver.receive_loss_db);
   receiver_builder.add_cross_polarization_isolation_db(
@@ -673,7 +671,6 @@ config::DetectionConfig DecodeSessionDetectionConfig(const session_fb::Detection
   if (value != nullptr) {
     const session_fb::TransmitterConfig* transmitter = value->transmitter();
     if (transmitter != nullptr) {
-      result.transmitter.equipment_id = transmitter->equipment_id();
       result.transmitter.peak_power_w = transmitter->peak_power_w();
       result.transmitter.frequency_hz = transmitter->frequency_hz();
       result.transmitter.bandwidth_hz = transmitter->bandwidth_hz();
@@ -710,7 +707,6 @@ config::DetectionConfig DecodeSessionDetectionConfig(const session_fb::Detection
     }
     const session_fb::ReceiverConfig* receiver = value->receiver();
     if (receiver != nullptr) {
-      result.receiver.equipment_id = receiver->equipment_id();
       result.receiver.noise_figure_db = receiver->noise_figure_db();
       result.receiver.receive_loss_db = receiver->receive_loss_db();
       result.receiver.cross_polarization_isolation_db = receiver->cross_polarization_isolation_db();
@@ -728,8 +724,7 @@ config::DetectionConfig DecodeSessionDetectionConfig(const session_fb::Detection
         result.receiver.co_site_paths.reserve(receiver->co_site_paths()->size());
         for (const session_fb::RfCoSiteIsolationPath* encoded : *receiver->co_site_paths()) {
           oneq::electromagnetics::RfCoSiteIsolationPath path;
-          path.transmitter_equipment_id = encoded->transmitter_equipment_id();
-          path.receiver_equipment_id = encoded->receiver_equipment_id();
+          path.transmitter_sensor_entity_id = encoded->transmitter_sensor_entity_id();
           path.isolation_db = encoded->isolation_db();
           result.receiver.co_site_paths.push_back(path);
         }
@@ -913,7 +908,7 @@ flatbuffers::Offset<fb::RfSceneAntennaPatternV2> EncodeRfV2Antenna(
 flatbuffers::Offset<fb::RfEmissionIdentityV2> EncodeRfV2Identity(
     flatbuffers::FlatBufferBuilder* builder,
     const oneq::electromagnetics::RfEmissionIdentity& value) {
-  return fb::CreateRfEmissionIdentityV2(*builder, value.platform_id, value.equipment_id,
+  return fb::CreateRfEmissionIdentityV2(*builder, value.sensor_entity_id,
                                         value.emission_id);
 }
 
@@ -1022,8 +1017,7 @@ oneq::electromagnetics::RfSceneEmission DecodeRfV2Emission(const fb::RfSceneEmis
   oneq::electromagnetics::RfSceneEmission result;
   if (value != nullptr) {
     if (value->identity() != nullptr) {
-      result.identity.platform_id = value->identity()->platform_id();
-      result.identity.equipment_id = value->identity()->equipment_id();
+      result.identity.sensor_entity_id = value->identity()->sensor_entity_id();
       result.identity.emission_id = value->identity()->emission_id();
     }
     result.position_ecef_m = DecodeRfV2Position(value->position_ecef_m());
@@ -1084,7 +1078,7 @@ oneq::coordinate::EcefVelocityMps DecodeEcefVelocityV3(const fb::EcefVelocityV3*
 
 flatbuffers::Offset<fb::ArPlatformInputV3> EncodePlatformInputV3(
     flatbuffers::FlatBufferBuilder* builder, const ArPlatformInput& value) {
-  return fb::CreateArPlatformInputV3(*builder, value.platform_entity_id,
+  return fb::CreateArPlatformInputV3(*builder,
                                      EncodeRfV2Position(builder, value.platform_position_ecef_m),
                                      EncodeEcefVelocityV3(builder, value.platform_velocity_mps),
                                      EncodeEulerAnglesV3(builder, value.platform_attitude_deg));
@@ -1093,7 +1087,6 @@ flatbuffers::Offset<fb::ArPlatformInputV3> EncodePlatformInputV3(
 ArPlatformInput DecodePlatformInputV3(const fb::ArPlatformInputV3* value) {
   ArPlatformInput result;
   if (value != nullptr) {
-    result.platform_entity_id = value->platform_entity_id();
     result.platform_position_ecef_m = DecodeRfV2Position(value->platform_position_ecef_m());
     result.platform_velocity_mps = DecodeEcefVelocityV3(value->platform_velocity_mps());
     result.platform_attitude_deg = DecodeEulerAnglesV3(value->platform_attitude_deg());
@@ -1432,7 +1425,7 @@ bool DecodeCycleInputFlatbuffer(const std::string& payload_bytes, ArCycleInput* 
   }
   if (!flatbuffers::BufferHasIdentifier(payload_bytes.data(), fb::ArCycleInputV3Identifier())) {
     if (error != nullptr) {
-      *error = "ArCycleInputV3 payload missing ARC3 file identifier";
+      *error = "ArCycleInputV3 payload missing ARC4 file identifier";
     }
     return false;
   }
@@ -1468,7 +1461,7 @@ bool DecodeCycleReplayRecordFlatbuffer(const std::string& payload_bytes,
   // 显式拒绝，不按新布局静默解码。
   if (!flatbuffers::BufferHasIdentifier(payload_bytes.data(), fb::ArCycleInputV3Identifier())) {
     if (error != nullptr) {
-      *error = "ArCycleReplayRecordV3 payload missing ARC3 file identifier";
+      *error = "ArCycleReplayRecordV3 payload missing ARC4 file identifier";
     }
     return false;
   }

@@ -159,12 +159,25 @@ TEST(RirReplayCodecRoundtripTest, RejectsPayloadWithoutCurrentIdentifier) {
   record.session_state.detection_random_seed = 7U;
   std::string encoded = session::EncodeCycleReplayRecordFlatbuffer(record);
   ASSERT_GE(encoded.size(), 8U);
-  // 抹掉 file_identifier "RIR3"，模拟旧版录制（RIR1/RIR2 等）：必须显式拒绝而非静默误读。
+  // 抹掉 file_identifier "RIR4"，模拟旧版录制（RIR1/RIR2/RIR3 等）：必须显式拒绝而非静默误读。
   const char* identifier = flatbuffers::GetBufferIdentifier(encoded.data());
   encoded[static_cast<std::size_t>(identifier - encoded.data())] = 'X';
   encoded[static_cast<std::size_t>(identifier - encoded.data()) + 1U] = 'X';
   encoded[static_cast<std::size_t>(identifier - encoded.data()) + 2U] = 'X';
   encoded[static_cast<std::size_t>(identifier - encoded.data()) + 3U] = 'X';
+  RirCycleReplayRecord decoded;
+  std::string error;
+  EXPECT_FALSE(session::DecodeCycleReplayRecordFlatbuffer(encoded, &decoded, &error));
+  EXPECT_FALSE(error.empty());
+}
+
+TEST(RirReplayCodecRoundtripTest, RejectsLegacyRir3Identifier) {
+  RirCycleReplayRecord record;
+  record.session_state.detection_random_seed = 7U;
+  std::string encoded = session::EncodeCycleReplayRecordFlatbuffer(record);
+  ASSERT_GE(encoded.size(), 8U);
+  const char* identifier = flatbuffers::GetBufferIdentifier(encoded.data());
+  std::memcpy(const_cast<char*>(identifier), "RIR3", 4U);
   RirCycleReplayRecord decoded;
   std::string error;
   EXPECT_FALSE(session::DecodeCycleReplayRecordFlatbuffer(encoded, &decoded, &error));
@@ -369,8 +382,7 @@ TEST(RirReplayCodecRoundtripTest, EmissionFrameRoundtripPreserved) {
   record.result.emission_frame.window_duration_s = 0.05;
 
   oneq::electromagnetics::RfSceneEmission emission;
-  emission.identity.platform_id = 2U;
-  emission.identity.equipment_id = 1U;
+  emission.identity.sensor_entity_id = 2U;
   emission.identity.emission_id = 7U;
   emission.position_ecef_m.x_m = 1000.0;
   emission.position_ecef_m.y_m = 2000.0;
@@ -406,8 +418,7 @@ TEST(RirReplayCodecRoundtripTest, EmissionFrameRoundtripPreserved) {
   EXPECT_DOUBLE_EQ(decoded.result.emission_frame.window_start_time_s, 5.5);
   EXPECT_DOUBLE_EQ(decoded.result.emission_frame.window_duration_s, 0.05);
   ASSERT_EQ(decoded.result.emission_frame.emissions.size(), 2U);
-  EXPECT_EQ(decoded.result.emission_frame.emissions[0].identity.platform_id, 2U);
-  EXPECT_EQ(decoded.result.emission_frame.emissions[0].identity.equipment_id, 1U);
+  EXPECT_EQ(decoded.result.emission_frame.emissions[0].identity.sensor_entity_id, 2U);
   EXPECT_EQ(decoded.result.emission_frame.emissions[0].identity.emission_id, 7U);
   EXPECT_DOUBLE_EQ(decoded.result.emission_frame.emissions[0].position_ecef_m.x_m, 1000.0);
   EXPECT_DOUBLE_EQ(decoded.result.emission_frame.emissions[0].waveform.transmit_power_w,

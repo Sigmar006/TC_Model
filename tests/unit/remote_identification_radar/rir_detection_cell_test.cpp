@@ -45,10 +45,9 @@ oneq::electromagnetics::RfIncidentLinkResult MakeIncidentLink(
     const oneq::electromagnetics::RfWaveformSchedule& waveform, double received_power_w,
     std::uint64_t emission_id = 6U) {
   oneq::electromagnetics::RfIncidentLinkResult link;
-  link.identity = oneq::electromagnetics::RfEmissionIdentity{4U, 5U, emission_id};
+  link.identity = oneq::electromagnetics::RfEmissionIdentity{4U, emission_id};
   link.emission_waveform = waveform;
-  link.receiver_platform_id = 1U;
-  link.receiver_equipment_id = 2U;
+  link.receiver_sensor_entity_id = 5U;
   link.received_power_before_overlap_w = received_power_w;
   link.received_power_w = received_power_w;
   return link;
@@ -63,7 +62,7 @@ RirDetectionCellTarget MakeTarget(double range_m) {
   return target;
 }
 
-const oneq::electromagnetics::RfEmissionIdentity kOwnIdentity{1U, 2U, 3U};
+const oneq::electromagnetics::RfEmissionIdentity kOwnIdentity{5U, 3U};
 
 /// @brief 物理量自检：R⁴ 规律、时延线性、多普勒为正、脉压增益 = B·τ。
 TEST(RirDetectionCellTest, EchoRangeDelayDopplerAndCompressionArePhysical) {

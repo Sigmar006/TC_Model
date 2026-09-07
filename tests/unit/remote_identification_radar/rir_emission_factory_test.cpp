@@ -20,7 +20,7 @@ using dwell::RirRfCycleInput;
 
 RirRfCycleInput MakeDefaultRfInput() {
   RirRfCycleInput input;
-  input.platform_id = 42U;
+  input.sensor_entity_id = 42U;
   input.beam_pointing_deg.az_deg = 0.0f;
   input.beam_pointing_deg.el_deg = 0.0f;
   input.window_start_time_s = 1.0;
@@ -49,8 +49,7 @@ TEST(RirEmissionFactoryTest, BuildsEmissionWithBoresightAndIdentity) {
   oneq::electromagnetics::RfSceneEmission emission;
   ASSERT_TRUE(RirEmissionFactory::TryBuildEmission(
       input, hardware, 7U, 3.0e9, 1.0 / 300.0, 10U, 123U, 1U, &emission));
-  EXPECT_EQ(emission.identity.platform_id, 42U);
-  EXPECT_EQ(emission.identity.equipment_id, hardware.transmitter.equipment_id);
+  EXPECT_EQ(emission.identity.sensor_entity_id, 42U);
   EXPECT_EQ(emission.identity.emission_id, 7U);
   const double boresight_norm = std::sqrt(emission.antenna.boresight_ecef.x *
                                               emission.antenna.boresight_ecef.x +

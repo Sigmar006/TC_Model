@@ -48,7 +48,6 @@ RirCycleInput MakeInput(std::uint32_t cycle) {
 
 RirSessionConfig MakeIdentifyConfig() {
   RirSessionConfig session_config;
-  session_config.platform_id = 42U;
   session_config.mission.work_mode = RirWorkMode::kIdentify;
   session_config.policy.detection.gate_mode = config::RirDetectionGateMode::kSnrFallback;
   return session_config;
@@ -74,6 +73,7 @@ oneq::coordinate::Vector3d ExpectedBoresightEcef(
 TEST(RirEmissionFrameTest, CompletedIdentifyCyclePublishesEmissionFrame) {
   const RirSessionConfig session_config = MakeIdentifyConfig();
   RirSession session = RirSession::Create(session_config);
+  session.SetSensorEntityId(42U);
   const RirCycleInput input = MakeInput(1U);
 
   const auto result = session.StepWithResult(input);
@@ -88,9 +88,7 @@ TEST(RirEmissionFrameTest, CompletedIdentifyCyclePublishesEmissionFrame) {
   ASSERT_GT(result.recognition_summary.dwell_budget.scheduled_dwell_count, 0U);
   EXPECT_EQ(result.emission_frame.emissions.size(),
             result.recognition_summary.dwell_budget.scheduled_dwell_count);
-  EXPECT_EQ(result.emission_frame.emissions.front().identity.platform_id, 42U);
-  EXPECT_EQ(result.emission_frame.emissions.front().identity.equipment_id,
-            session_config.hardware.transmitter.equipment_id);
+  EXPECT_EQ(result.emission_frame.emissions.front().identity.sensor_entity_id, 42U);
   EXPECT_GT(result.emission_frame.emissions.front().waveform.transmit_power_w, 0.0);
 }
 
@@ -99,7 +97,7 @@ TEST(RirEmissionFrameTest, CompletedIdentifyCyclePublishesEmissionFrame) {
 ///        emission_id 保持 = 周期号（单驻留行为兼容）。
 TEST(RirEmissionFrameTest, MultiDwellCycleRecordsEmissionPerDwell) {
   runtime::RirController controller;
-  controller.SetPlatformId(42U);
+  controller.SetSensorEntityId(42U);
   config::RirMissionConfig mission;
   mission.work_mode = RirWorkMode::kIdentify;
   config::RirPolicyConfig policy;

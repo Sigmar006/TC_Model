@@ -85,7 +85,6 @@ struct ONEQ_API RirAntennaConfig {
  * @brief 接收机工程参数。
  */
 struct ONEQ_API RirReceiverConfig {
-  std::uint64_t equipment_id{2U}; /**< 接收设备身份；同平台内必须唯一。 */
   float noise_figure_db{4.0f};    /**< 接收机噪声系数。 */
   float receive_loss_db{2.0f};    /**< 接收链路损耗。 */
   float cross_polarization_isolation_db{30.0f}; /**< 正交极化隔离（dB）。 */
@@ -98,7 +97,6 @@ struct ONEQ_API RirReceiverConfig {
  * @brief 发射机工程参数。
  */
 struct ONEQ_API RirTransmitterConfig {
-  std::uint64_t equipment_id{1U}; /**< RF scene 中的发射设备身份；同平台内必须唯一。 */
   float peak_power_w{1e6f};       /**< 峰值发射功率。 */
   float frequency_hz{3e9f};       /**< 工作频率。 */
   float bandwidth_hz{4.5e6f};     /**< 发射带宽。 */

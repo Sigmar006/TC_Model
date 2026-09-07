@@ -349,10 +349,10 @@ void WriteRirInterferenceLinks(
   if (links.empty()) {
     return;
   }
-  // 验收判定标准 第30项：身份只写 干扰源ID=（干扰平台实体）+ 到达雷达功率；
-  // 平台/设备/发射三元组、路径与时频域重叠（链路上下文）不写。
+  // 验收判定标准 第30项：身份只写 干扰源ID=（干扰实体）+ 到达雷达功率；
+  // 发射二元组、路径与时频域重叠（链路上下文）不写。
   for (const oneq::electromagnetics::RfIncidentLinkResult& link : links) {
-    std::string content = "干扰源ID=" + std::to_string(link.identity.platform_id);
+    std::string content = "干扰源ID=" + std::to_string(link.identity.sensor_entity_id);
     content += " 到达雷达功率=" + FormatSci(link.received_power_w) + "W";
     RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "干扰功率计算功能测试", content);
   }

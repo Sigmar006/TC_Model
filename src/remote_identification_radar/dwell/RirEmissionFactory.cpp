@@ -60,8 +60,7 @@ bool RirEmissionFactory::TryBuildEmission(
   const config::hardware::RirReceiverConfig& receiver = hardware.receiver;
   const config::hardware::RirAntennaConfig& antenna = hardware.antenna;
 
-  emission->identity.platform_id = input.platform_id;
-  emission->identity.equipment_id = transmitter.equipment_id;
+  emission->identity.sensor_entity_id = input.sensor_entity_id;
   emission->identity.emission_id = emission_id;
   emission->position_ecef_m = input.platform_position_ecef_m;
   emission->velocity_ecef_mps = input.platform_velocity_ecef_mps;

@@ -17,7 +17,7 @@ namespace dwell {
 
 /** @brief RF 发射/接收构造所需的周期输入（无 ECCM 控制档）。 */
 struct RirRfCycleInput {
-  std::uint64_t platform_id{0U};                              /**< RF platform 身份；须非零。 */
+  std::uint32_t sensor_entity_id{0U};                         /**< 传感器实体身份；非零，缺省 5。 */
   oneq::coordinate::EcefPositionM platform_position_ecef_m{};   /**< 平台 ECEF 位置。 */
   oneq::coordinate::EcefVelocityMps platform_velocity_ecef_mps{}; /**< 平台 ECEF 速度。 */
   oneq::coordinate::EulerAnglesDeg radar_frame_attitude_deg{};    /**< 雷达局部相对 ENU 姿态。 */

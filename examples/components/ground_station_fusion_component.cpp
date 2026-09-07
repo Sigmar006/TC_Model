@@ -11,6 +11,11 @@
 #include "ground_station_fusion_component.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <set>
 #include <utility>
 
 #include "1q/coordinate/inertial_transform.h"
@@ -222,6 +227,11 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
       if (sample.target_id == 0U) {
         continue;
       }
+      // 评审 2026-08-31 建模口径：双星定位交会仅收闭环精跟数据（kNarrowFieldTrack，stage=2），
+      // 过滤宽场搜索（stage=0）与过渡捕获态（stage=1）的未稳光轴测角，消除建轨期 15km 伪定位跳变。
+      if (sample.observation_stage < 2) {
+        continue;
+      }
       const oneq::coordinate::Vector3d dir_eci =
           precision_evaluation::EciDirectionFromAzimuthElevationRad(
               static_cast<double>(sample.azimuth_rad), static_cast<double>(sample.elevation_rad));
@@ -262,10 +272,28 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
         continue;
       }
 
+      // 检查当前目标是否已有收敛的航迹速度估计（用于视线发射基点运动补偿）
+      bool has_velocity = false;
+      oneq::coordinate::Vector3d target_vel{0.0, 0.0, 0.0};
+      for (const auto& t : targets_) {
+        if (t.key == target_id && t.has_kinematic_estimate) {
+          const auto& v = t.kinematic_estimate.velocity_ecef_m_per_s;
+          const double speed_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+          if (speed_sq > 100.0) {  // 速度模长 > 10 m/s，判定具有可信运动学估值
+            has_velocity = true;
+            target_vel.x = v[0];
+            target_vel.y = v[1];
+            target_vel.z = v[2];
+          }
+          break;
+        }
+      }
+
       struct CandidateFix {
         bool valid{false};
         std::int64_t cycle_diff{0};
         double residual_m{0.0};
+        double ref_time_s{0.0};
         oneq::coordinate::EcefPositionM fix_position{};
         TargetObservationAnchor obs_a{};
         TargetObservationAnchor obs_b{};
@@ -290,12 +318,44 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
             continue;
           }
 
+          // 优化 1（建轨期严格时差门禁）：若尚无速度估计，强制同周期且物理时差 <= 1.5s
+          if (!has_velocity) {
+            if (max_c != min_c) {
+              continue;
+            }
+            if (std::abs(a.measurement_time_s - b.measurement_time_s) > 1.5) {
+              continue;
+            }
+          }
+
+          // 计算参考交会时刻（两星观测物理时刻均值）
+          const double t_ref = 0.5 * (a.measurement_time_s + b.measurement_time_s);
+
+          // 优化 1（跟踪期视线运动补偿）：利用航迹估计速度，将两星视线发射基点平移投影到 t_ref
+          oneq::coordinate::EcefPositionM sat_pos_a = a.satellite_position_ecef;
+          oneq::coordinate::EcefPositionM sat_pos_b = b.satellite_position_ecef;
+          if (has_velocity) {
+            const double dt_a = t_ref - a.measurement_time_s;
+            const double dt_b = t_ref - b.measurement_time_s;
+            sat_pos_a.x_m += target_vel.x * dt_a;
+            sat_pos_a.y_m += target_vel.y * dt_a;
+            sat_pos_a.z_m += target_vel.z * dt_a;
+            sat_pos_b.x_m += target_vel.x * dt_b;
+            sat_pos_b.y_m += target_vel.y * dt_b;
+            sat_pos_b.z_m += target_vel.z * dt_b;
+          }
+
           oneq::coordinate::EcefPositionM fix_pos;
           double residual_m = 0.0;
           if (!precision_evaluation::TryComputeDualLosFixM(
-                  a.satellite_position_ecef, a.direction_ecef,
-                  b.satellite_position_ecef, b.direction_ecef,
+                  sat_pos_a, a.direction_ecef,
+                  sat_pos_b, b.direction_ecef,
                   &fix_pos, &residual_m)) {
+            continue;
+          }
+
+          // 残差门禁：剔除空间公垂线偏差过大的无效交会解
+          if (residual_m > 2500.0) {
             continue;
           }
 
@@ -313,6 +373,7 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
             best_fix.valid = true;
             best_fix.cycle_diff = cycle_diff;
             best_fix.residual_m = residual_m;
+            best_fix.ref_time_s = t_ref;
             best_fix.fix_position = fix_pos;
             best_fix.obs_a = a;
             best_fix.obs_b = b;
@@ -349,8 +410,7 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
           record.has_position = true;
           record.position = fix_lla;
           record.has_timestamp = true;
-          record.timestamp_s =
-              0.5 * (best_fix.obs_a.measurement_time_s + best_fix.obs_b.measurement_time_s);
+          record.timestamp_s = best_fix.ref_time_s;
           record.verdict = 1.0;
           const double avg_snr =
               0.5 * (static_cast<double>(best_fix.obs_a.infrared_snr_linear) +

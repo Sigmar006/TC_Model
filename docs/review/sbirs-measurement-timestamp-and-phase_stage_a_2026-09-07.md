@@ -1,5 +1,5 @@
 ---
-Status: frozen
+Status: final
 Date: 2026-09-07
 Review-Baseline: `evidence/sbirs-measurement-timestamp-and-phase` @ `68295515`
 Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract.md、docs/common/session_contract.md
@@ -166,9 +166,26 @@ Authority: 过程脚手架记录（非耐久）；结论以 docs/common/contract
 
 ## §4 运行记录（Stage C 后填写）
 
-<!-- 对照强制回写清单勾项，全部完成才允许拆脚手架（见 SKILL.md 收尾规则）：
-1、正向边界：docs/<module>/ 对应文档
-2、否决记录：docs/<module>/design.md 架构裁定与否决记录专节
-3、开放议题：docs/common/open_questions.md 登记新议题
-4、证据锁：[evidence: ...] 指向代码/测试永久锚点
--->
+1、实现范围：
+   - `include/1q/sbirs_sensor/session/SbirsOutputTypes.h` & `src/sbirs_sensor/pipeline/SbirsPipeline.cpp`：`measurement_time_s` 量测绝对时刻与往复扫描穿越时刻闭式反解；
+   - `include/1q/sbirs_sensor/config/SbirsMissionConfig.h` & `src/sbirs_sensor/session/SbirsSessionConfigValidation.cpp`：`initial_scan_phase_deg` 初始扫描相位配置与范围校验；
+   - `schemas/replay/sbirs_replay.fbs` & `src/sbirs_sensor/session/SbirsReplayFlatbufferCodec.cpp`：回放 Schema 升级为 `SBI5`，拒绝 `SBI4`；
+   - `include/1q/fusion/DetectionRecord.h`：增加 `has_timestamp` / `timestamp_s`；
+   - `src/fusion/SensorAdapters.cpp` & `src/precision_evaluation/SbirsBearingAdapter.cpp`：透传 SBIRS 测量时刻至通用探测记录。
+2、验证命令与结果：
+   - `ctest --preset llvm-ninja-release-local -R "sbirs"`: 5/5 passed (含转正探针 1 `WfovCrossingTimeCalculatesSubCycleMeasurementTimestamp`、探针 2 `InitialScanPhaseOffsetsSweep`、回放 SBI5 测试及旧标识符拒测)；
+   - `ctest --preset llvm-ninja-release-local -R "unit::fusion"`: 1/1 passed (含转正探针 3 `SbirsDetectionsAdaptToDetectionRecords` 时间戳传递验证)；
+   - `ctest --preset llvm-ninja-release-local -R "unit::precision_evaluation"`: 1/1 passed (含 `SbirsBearingAdapterTest.EciBearingMapsToSatelliteLocalEnu` 时间戳传递验证)；
+   - `python3 scripts/utf8_bom.py check`: 全部通过。
+3、权威回写去向：
+   1、正向边界：`docs/sbirs_sensor/boundaries.md`（连续物理时刻 vs 离散批次号边界）、`docs/sbirs_sensor/algorithms.md`（初始扫描相位与波束穿越时刻反解算法）
+   2、否决记录：`docs/sbirs_sensor/boundaries.md`（能力决策表：否决方案 A 底层管线内目标运动外推）
+   3、开放议题：`docs/common/open_questions.md`（SBIRS-OQ-6 标记为 resolved，FUSION-OQ-1 登记时间戳字段已打通）
+   4、证据锁：
+      - [evidence: include/1q/sbirs_sensor/session/SbirsOutputTypes.h::SbirsDetectionRecord]
+      - [evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp::WfovCrossingTimeCalculatesSubCycleMeasurementTimestamp]
+      - [evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test.cpp::InitialScanPhaseOffsetsSweep]
+      - [evidence: tests/unit/fusion/sensor_adapters_test.cpp::SbirsDetectionsAdaptToDetectionRecords]
+      - [evidence: tests/unit/precision_evaluation/precision_evaluation_session_test.cpp::SbirsBearingAdapterTest]
+4、残留风险：无破坏性回归风险；旧版 SBI4 回放录像不兼容（依契约升位断言拒绝）。
+5、后续冻结项：FUSION-OQ-1 融合滤波器内部基于量测时刻的状态转移推演 $\mathbf{\Phi}(\Delta t)$。

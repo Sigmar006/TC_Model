@@ -41,6 +41,7 @@
             "name": "llvm-ninja-debug",
             "inherits": "macos-base",
             "displayName": "macOS LLVM Ninja Debug",
+            "description": "Daily macOS debugging; JSBSim-linked tests run ~6x slower than release",
             "binaryDir": "${sourceDir}/build/llvm-ninja-debug-local",
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/llvm-ninja-debug-local/build/Debug/generators/conan_toolchain.cmake",
@@ -54,6 +55,7 @@
             "name": "llvm-ninja-coverage",
             "inherits": "macos-base",
             "displayName": "macOS LLVM Ninja Coverage (source-based)",
+            "description": "Source-based coverage; drive tests via tools/coverage_report.sh only, never ctest by hand",
             "binaryDir": "${sourceDir}/build/llvm-ninja-coverage-local",
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/llvm-ninja-coverage-local/build/Debug/generators/conan_toolchain.cmake",
@@ -68,6 +70,7 @@
             "name": "llvm-ninja-release",
             "inherits": "macos-base",
             "displayName": "macOS LLVM Ninja Release",
+            "description": "macOS daily-dev default — preferred over debug (JSBSim ~6x faster)",
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/llvm-ninja-release/build/Release/generators/conan_toolchain.cmake",
                 "CMAKE_BUILD_TYPE": "Release",

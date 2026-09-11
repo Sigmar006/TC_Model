@@ -323,11 +323,17 @@ def run_history(args):
     print("history mode — seeds are defects this repository actually shipped")
     print("  candidates: %d fix commits touching src/ or include/\n" % len(candidates))
 
+    # --only restricts to commits already reviewed by hand — the workflow the marked
+    # list exists to feed: look at each one, decide it is a single defect, then run it.
+    only = [name.strip() for name in args.only.split(",") if name.strip()]
+
     seeds, marked, unreachable = [], [], []
     for candidate in candidates:
+        if only and not any(candidate["short"].startswith(name) for name in only):
+            continue
         if not is_reversible(candidate):
             unreachable.append(candidate)
-        elif len(candidate["paths"]) > 1 and not args.include_multi:
+        elif len(candidate["paths"]) > 1 and not (args.include_multi or only):
             marked.append(candidate)
         else:
             seeds.append(candidate)
@@ -494,6 +500,9 @@ def main():
     parser.add_argument("--include-multi", action="store_true",
                         help="history mode: also run seeds that touch several files "
                              "(default: mark them for separate review instead)")
+    parser.add_argument("--only", default="",
+                        help="history mode: run only these commits (comma-separated sha "
+                             "prefixes), after you have reviewed the marked ones by hand")
     parser.add_argument("--operators", default="", help="comma-separated subset; default all")
     parser.add_argument("--limit", type=int, default=0, help="stop after N mutants (0 = all)")
     parser.add_argument("--list", action="store_true", help="enumerate mutants and exit")

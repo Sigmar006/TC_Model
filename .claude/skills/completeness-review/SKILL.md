@@ -1,6 +1,6 @@
 ---
 name: completeness-review
-description: Review uncommitted code changes for correctness, code quality, and test coverage, then gate the merge. Triggered by the pre-commit hook for core-library C++ changes (≥3 files or ≥50 lines in src/ or include/1q/) and by "/completeness-review". Review depth follows risk: core-library changes always run the code-review lane; the code-simplifier lane runs only when the review gates a branch merge; the static test-coverage lane runs only when the change adds a new module (refactors and deletions skip both). Example/doc/deletion-layer changes get a light single-lane review. Quality-gated merge flow.
+description: Review uncommitted code changes for correctness, code quality, and test coverage, then gate the merge. Invoked only by the user via "/completeness-review" — no hook fires it. Review depth follows risk: core-library changes always run the code-review lane; the code-simplifier lane runs only when the review gates a branch merge; the static test-coverage lane runs only when the change adds a new module (refactors and deletions skip both). Example/doc/deletion-layer changes get a light single-lane review. Quality-gated merge flow.
 argument-hint: "[optional diff range]"
 allowed-tools:
   - Bash
@@ -38,7 +38,7 @@ whether the change is complete.
 
 ## Step 0.5: Classify review depth (follows risk)
 
-Run the same classifier the pre-commit hook uses:
+Classify the change first:
 
 ```bash
 python3 scripts/pre-commit-review.py
@@ -47,11 +47,10 @@ python3 scripts/pre-commit-review.py
 - **tier = major** — C++ changes touching the **core library** (`src/` or `include/1q/`,
   ≥3 files or ≥50 lines): algorithm/contract changes. Run the **full review** (Step 3): the
   code-review lane always; the code-simplifier lane only when this review gates a branch merge;
-  the test-coverage lane only when the change adds a new module. The pre-commit hook blocks these
-  commits until review passes.
+  the test-coverage lane only when the change adds a new module.
 - **tier = minor** — C++ changes confined to non-core layers (`examples/`, `tests/`, `docs/`,
-  `tools/`, `cmake/`): example-layer refactors, test-only edits, pure deletions. The hook does NOT
-  block these. Review depth is **light**: single code-review lane + static test-coverage check +
+  `tools/`, `cmake/`): example-layer refactors, test-only edits, pure deletions. Review depth is
+  **light**: single code-review lane + static test-coverage check +
   build/tests (see Step 3-Light). Compile-time checks (fmt consteval, static asserts) already cover
   much of what a full lane would find in this layer — do not over-review example code.
 - **tier = trivial** — no C++ changes. No review lanes; build/tests only if the change affects build

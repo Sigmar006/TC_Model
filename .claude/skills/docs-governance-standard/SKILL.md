@@ -121,9 +121,7 @@ Each doc file has a fixed skeleton. Read the matching reference before writing:
   分小节，不写大段叙述。模块此前无此节时在 design.md 末尾新建；已收敛开放议题的
   结论若为否决，迁回写时同落此节。
 - Commit messages for this work — `type(scope): description`, imperative, module
-  scopes (title format enforced by `.githooks/commit-msg`), docs commits carry a body
-  listing what changed where.
-  → `references/commit-message.md`
+  scopes, docs commits carry a body listing what changed where.
 
 For `open_questions.md` itself, follow `open-questions-doc-standard` — this skill only
 decides *when* an entry is born (Stage 5 divergence) and *when* it must leave.

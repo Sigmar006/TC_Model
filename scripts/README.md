@@ -7,7 +7,7 @@
 | `1q.sh` | 跨平台 | 构建/测试统一入口（bootstrap / configure / build / test / install / clean-stale / doctor） | 人、`docs/practice/*`、示例说明 |
 | `bootstrap_conan.sh` | 跨平台 | 按 preset 派生参数执行 conan install，生成 toolchain 与 CMakeDeps | 人；CI（`ci.yml` ×2、`nightly.yml` ×3）；`tests/contract/check_preset_provider_contract.cmake`（**按路径 file(READ)，移动即断 contract 门禁**） |
 | `utf8_bom.py` | 跨平台 | UTF-8 BOM 维护（convert / check / strip） | CI `check` 作业；`.githooks/pre-commit` 的提示文案 |
-| `pre-commit-review.py` | 跨平台 | 提交门禁分级（major / minor / trivial） | `.githooks/pre-commit`（仓库根相对路径，**失效会静默降级成 tier=error → 门禁失效**） |
+| `pre-commit-review.py` | 跨平台 | 改动分级（major / minor / trivial） | `completeness-review` 技能（用户手动触发；仓库根相对路径执行） |
 | `1q_clean_stale.sh` | 跨平台 | 删指定 preset 下某模块的增量产物，强制该模块全量重编（治头文件布局变更后的脏 TU） | `1q.sh clean-stale` |
 | `activate_1q_git_bash.sh` | 转发壳（无逻辑） | 仅为已写入用户 `~/.bashrc` 的老路径保留；迁移完成后删除 | 用户 `~/.bashrc` |
 | `lib/1q_env.sh` | 跨平台 | 环境解析：`ONEQ_ROOT`、cmake/ctest PATH（内含 Windows 兜底搜索） | 上述所有 shell 脚本 source 它 |

@@ -21,6 +21,12 @@ _LOG_DEPS_NON_WINDOWS = {
 
 _GTEST_VERSION = "gtest/1.12.1"
 
+# 属性测试库，仅测试期依赖（与 gtest 同门控）。ConanCenter 配方只安装上游
+# include/，不安装 extras/，因此 rapidcheck/gtest.h 需仓库自带适配头：
+# tests/support/rapidcheck_gtest.h。配方的 enable_gtest 选项保持默认关闭，
+# 避免把 rapidcheck 的 gtest 组件耦合进依赖图。
+_RAPIDCHECK_VERSION = "rapidcheck/cci.20231215"
+
 
 class OneQConan(ConanFile):
     name = "1q"
@@ -69,6 +75,7 @@ class OneQConan(ConanFile):
     def build_requirements(self):
         if self.options.enable_testing:
             self.test_requires(_GTEST_VERSION)
+            self.test_requires(_RAPIDCHECK_VERSION)
 
     def generate(self):
         CMakeDeps(self).generate()

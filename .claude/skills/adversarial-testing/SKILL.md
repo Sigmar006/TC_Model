@@ -209,41 +209,70 @@ Record it: paste the string into the test file as a comment next to the property
 
 ## Mutation Probe — does the suite have teeth?
 
-Everything above is about writing better tests. None of it proves the tests would **fail against a wrong implementation**; that was previously a self-report. `scripts/mutation_probe.py` replaces the self-report with a measurement: it applies small semantic mutations to a source file, rebuilds, runs the owning partition, and records whether the tests caught each one.
+Everything above is about writing better tests. None of it proves the tests would **fail against a wrong implementation**; that was previously a self-report. `scripts/mutation_probe.py` replaces the self-report with a measurement.
+
+**Read the result asymmetrically, because the evidence is asymmetric:**
+
+- **A survivor is evidence.** It proves that no test in the partition distinguishes that mutant. The conclusion is closed.
+- **A kill is not.** It proves only that there is no blind spot *at the points the tool mutated*. A high score therefore says as much about the operator set as about the tests.
+
+This is not a hypothetical caveat. This repository's actual `fix` history is dominated by wrong-variable, wrong-unit, wrong-sign, missing-update, wrong-ordering and wrong-formula defects — and the textual operator set (space-delimited ` < `, ` + `, ` && `, `0.0` …) produces **none** of those. What it produces is operator swaps, which are exactly what a test author covers first. So a 100% score is *not* evidence that the suite is strong; it is frequently evidence that the probe only poked where the tests already looked. **Never report a bare score — report the operator or seed set that produced it.**
+
+### Two seeding modes
+
+**Operator mode** — mutate a file you name:
 
 ```bash
-# enumerate first — cheap, shows the mutation points and their lines
 scripts/mutation_probe.py --source src/<module>/<file>.cpp \
-    --target 1q_<domain>_unit_tests --test unit::<domain> --list
-
-# measure (bound it while iterating)
+    --target 1q_<domain>_unit_tests --test unit::<domain> --list   # enumerate first
 scripts/mutation_probe.py --source src/<module>/<file>.cpp \
     --target 1q_<domain>_unit_tests --test unit::<domain> \
     --operators rel_lt,rel_le,rel_eq --limit 20
 ```
 
+**History mode** — seed with defects this repository actually shipped:
+
+```bash
+scripts/mutation_probe.py --history [--include-multi] [--history-limit 60]
+```
+
+It takes `fix` commits touching `src/`/`include/`, reverses them with `git apply -R` — the seed is the exact pre-fix state, not a reconstruction — rebuilds, and runs the owning partition. The question is strictly stronger than operator mode's:
+
+> 不是"测试能否区分我构造的变异"，而是"测试能否抓住我们实际犯过的错"。
+
+Nothing is interpreted, so no selection bias enters on the part of whoever chose the seeds. Commits whose context has drifted can no longer be reversed and are reported as **unreachable**; that set only ever grows, so run history mode before the seeds decay.
+
+**Triage every MISSED seed — not every `fix:` commit is a behavioural defect.** The seed set includes comment and log-string rewrites, warning fixes, layering changes (dropping a cross-layer include) and compiler-compat shims. Reversing those is *supposed* to go unnoticed; counting them as gaps inflates the finding list with noise and destroys the value of the mode. The tool prints each seed's subject and diffstat to make the call quick, and deliberately prints no score — the denominator contains non-defects, so a percentage would be a number nobody should act on. Only a seed that reverts **control flow, a value, a validation or an update order** and still passes is a real finding.
+
+**Module attribution is by path.** A fix in a shared file whose behaviour is consumed elsewhere (e.g. a change under `src/common/` made for an ESR-facing defect) will be tested against `unit::common`, which may not be where the behaviour is pinned. If a MISSED seed looks behavioural but the partition seems wrong, rerun it with an explicit `--test`/`--target` before recording it.
+
+**Marked commits.** How many defects live in one commit cannot be decided mechanically — a commit touching two files may be one defect spread across a header and its implementation, or several unrelated fixes. The tool does not guess: it runs single-file commits by default and **marks multi-file ones for separate review**, listing their paths. Check each by hand; use `--include-multi` once you know it is one defect.
+
 | Result | Meaning |
 |---|---|
-| `KILLED` | tests failed under the mutant — the suite has a detector for this behaviour |
-| `SURVIVED` | tests passed — **classify before acting** (below); report the line, the mutation, and the source line |
-| `BUILD ERROR` | mutant did not compile (stillborn) — excluded from the score. Note that a mutant which only fails to compile because the *test* is over-specified is not stillborn in any meaningful sense; check the build output before dismissing it |
+| `KILLED` / `CAUGHT` | tests failed under the mutant — a detector for this behaviour exists |
+| `SURVIVED` / `MISSED` | tests passed — **classify before acting** (below) |
+| `BUILD ERROR` | mutant did not compile (stillborn) — excluded. A mutant that fails to compile only because the *test* is over-specified is not stillborn in any meaningful sense; check the build output before dismissing it |
+| `UNREACHABLE` | history mode: the fix no longer applies backwards (context drifted) |
+| `MARKED` | history mode: several files in one commit — review separately |
 
-Exit status is 1 when any mutant survived, 0 otherwise, so it can gate. The probe refuses to run on a file with uncommitted changes (it restores via the original text and verifies the sha256), and restores on Ctrl-C.
+Exit status is 1 when anything survived or was missed. The probe refuses to run when the target has uncommitted changes, restores the original (sha256-verified in operator mode, `git checkout` plus a cleanliness check in history mode), and restores on Ctrl-C.
 
-**Reading the result.** The mutation score is a *diagnostic*, not a target — do not chase a number, and never weaken the probe (removing operators, mutating a copy, excluding survivors) to raise it.
-
-**Classify every survivor before acting on it.** The probe's kill criterion is *the unit tests* — so a survivor does not automatically mean "a test is missing":
+**Classify every survivor before acting on it.** The kill criterion is *the unit tests*, so a survivor does not automatically mean "a test is missing":
 
 | survivor 的性质 | 判断 | 处置 |
 |---|---|---|
 | **点值缺失** | 该行为该由单元断言判定，但没写 | 补单元测试 |
 | **不变量缺失** | 该行为该由属性判定，但没写 | 补属性测试 |
 | **等价变异体** | 变异前后语义相同，没有任何测试能区分 | 就地记录，不补测试（补不出）。例：`min(n-1, ceil(0.95n)-1)` 里 `n-1` 恒不绑定 |
-| **过程形态** | 该行为的正确性本来就不由单元测试判定（轨迹形状、收敛、漂移…） | **不补单元测试**——移交导出分析层或 batch validation，并在报告里注明"非单元测试管辖" |
+| **过程形态** | 该行为的正确性本来就不由单元测试判定 | **不补单元测试**——移交导出分析层或 batch validation，并在报告里注明"非单元测试管辖" |
+| **历史缺陷 MISSED** | 仓库实际发过的 bug，今天仍测不出 | 优先级最高——它证明的不是"某处没测"，而是"这类错我们犯过，且仍然抓不住" |
 
-把过程形态的 survivor 当作测试缺口，会逼出一个假的点式测试——它锁定不了真正的问题，却看起来合规。那比不写更糟。同样，等价变异体不补测试，也不是"接受的缺口"，而是**探针的已知盲区**。
+把过程形态的 survivor 当成测试缺口，会逼出一个假的点式测试——它锁定不了真正的问题，却看起来合规。等价变异体不补测试，也不是"接受的缺口"，而是**探针的已知盲区**。
 
-**Limits to state in the report.** Text-level mutation, one point at a time, on space-delimited operators only (so `std::vector<double>` and `<<` are never touched); it cannot see mutants that need multiple coordinated edits; and it only covers the file you point it at.
+**Never turn the score into a gate.** A proxy metric that blocks a merge gets optimised rather than used — the same reason `docs/practice/ci.md` is cautious about coverage thresholds.
+
+**Limits to state in the report.** Text-level, one point at a time, space-delimited operators only (`std::vector<double>` and `<<` are never touched). Operator mode does **not** produce wrong-variable, wrong-unit, wrong-sign, reordered-update or wrong-formula mutants. History mode sees only fixes whose context has not drifted, and cannot attribute a result when a commit holds several defects.
 
 ## Deliverable
 
@@ -272,9 +301,12 @@ The verdict column is replaced by findings — you do not decide pass/fail.
 - 升格状态：<未升格（仅观察，不阻断）/ 已升格为阻断断言，已走 evidence-first 门禁>
 
 ### 变异探针
+- 模式与种子集：<算子模式：算子清单 / 历史模式：候选 N、可反向应用 M、标记待查 K、不可达 J>
 - 命令：
-- 结果：killed N / survived M / build-error K，score X%
-- survivors：<逐条：行号、变异、源码行 + **分类**（点值缺失 / 不变量缺失 / 等价变异体 / 过程形态）+ 处置>
+- 结果：killed/caught N，survived/missed M，build-error K
+- **证据边界（必填）**：本结果只覆盖 <算子集 / 历史种子集>；未覆盖 <错误变量、单位、符号、更新顺序、公式> 等类别。**不得只报分数**——高分反映的是种子集，不是测试强度
+- survivors / MISSED：<逐条：行号或提交号、变异或缺陷、**分类**（点值缺失 / 不变量缺失 / 等价变异体 / 过程形态 / 历史缺陷）+ 处置>
+- 标记待查的提交：<逐条列出并说明单独复核结论>
 
 ### 实现派生测试（IMPL-DERIVED）
 - <仅规格沉默处；说明规格未回答的问题>
@@ -302,7 +334,8 @@ Report a finding for every assertion you could not justify, every spec line you 
 - [ ] Every randomized input is reproducible: literal seed, `RC_PARAMS` documented, or `reproduce=` recorded.
 - [ ] Every floating-point tolerance has a stated derivation.
 - [ ] Every post-failure edit to a test is disclosed with its reason.
-- [ ] The mutation probe ran on the touched surface, and every survivor is **classified** (点值缺失 / 不变量缺失 / 等价变异体 / 过程形态) with the disposition that classification calls for — not reflexively turned into a unit test.
+- [ ] The mutation probe ran on the touched surface, and every survivor is **classified** (点值缺失 / 不变量缺失 / 等价变异体 / 过程形态 / 历史缺陷) with the disposition that classification calls for — not reflexively turned into a unit test.
+- [ ] The report states the **seed/operator set** the probe result came from, and does not present a bare score as evidence of test strength.
 - [ ] Any process-form judgement was written down **before** the data was produced, with its basis, and its promotion status is stated (observation-only vs promoted to a blocking assertion).
 - [ ] Files live at `tests/unit/<domain>/<domain>_<name>_test.cpp` (or the correct type/domain), named per `tests/README.md`; shared helpers in `tests/support/`.
 - [ ] `flight_dynamic` is the exception to glob discovery — a new file there must be added to `tests/cmake/FlightDynamicPartitions.cmake` explicitly.

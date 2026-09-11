@@ -39,7 +39,7 @@ Beyond that, work in whatever order fits the target. Three things worth doing ev
 
 - **Classify the defect form before choosing a tool.** Not every defect is "a wrong value at some input". Trajectory shape, convergence, drift and oscillation are **process form**: every sample can be right while the process is wrong, and no point assertion or shrunk counterexample expresses them. This repository has four verification lanes and only one is GoogleTest — forcing process-form behaviour into GTest produces tests that lock nothing while looking compliant. Pick the instrument from the skill's table first, and if the answer is the export-and-analyze lane, say so in the report rather than writing a hollow assertion.
 - **Reconnaissance from the spec and the headers.** Note every documented postcondition, precondition, invariant, unit, sign convention, and failure code; read `docs/<module>/algorithms.md`, `boundaries.md`, and the relevant contract sections; read the existing tests to find the gaps rather than duplicating coverage.
-- **Run the mutation probe on the surface you touched, and classify every survivor before acting**: 点值缺失 → unit test; 不变量缺失 → property test; 等价变异体 → record it, no test exists that could kill it; 过程形态 → the export/analysis or batch-validation lane, **not** a new unit test.
+- **Run the mutation probe on the surface you touched, and classify every survivor before acting**: 点值缺失 → unit test; 不变量缺失 → property test; 等价变异体 → record it, no test exists that could kill it; 过程形态 → the export/analysis or batch-validation lane, **not** a new unit test. `--history` seeds the probe with `fix` commits reversed via `git apply -R`, which asks a stronger question — "can the suite catch a mistake we actually made?" — and a MISSED history seed outranks anything operator mode can produce. Report the seed set either way: a high score reflects the seeds, not the tests.
 
 ## Output
 
@@ -61,7 +61,7 @@ You do not issue a pass/fail verdict. A run with zero findings must say so plain
 | Threshold/skip changes are gated | `.claude/skills/evidence-first-freeze-contract/SKILL.md` |
 | Property-test reference implementation | `tests/unit/common/common_property_test.cpp` |
 | RapidCheck adapter | `tests/support/rapidcheck_gtest.h` |
-| Mutation probe | `scripts/mutation_probe.py`, `scripts/1q.sh mutate` |
+| Mutation probe | `scripts/mutation_probe.py`, `scripts/1q.sh mutate` — operator mode (`--source`) and history mode (`--history`) |
 
 Build and run:
 

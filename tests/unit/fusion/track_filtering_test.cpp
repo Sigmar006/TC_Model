@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <random>
@@ -547,6 +548,185 @@ TEST(FusionTrackFilteringTest, TwoPointDifferencingInitializesVelocityAccurately
   EXPECT_NEAR(vel3[0], v.x_m, 2.0);
   EXPECT_NEAR(vel3[1], v.y_m, 2.0);
   EXPECT_NEAR(vel3[2], v.z_m, 2.0);
+}
+
+// ---------------------------------------------------------------------------
+// 航迹初始化路径（algorithms.md §4「起始」与「两点差分初速（位置起始航迹，
+// 2026-09-07）」；design.md「追认：滤波引擎内部亚周期对齐与两点差分初速」）。
+// 锁定首拍量测在两种起始形态下的行为：位置起始只建航迹、不做同帧重复更新；
+// 方位起始保留首拍量测更新（角度-only 距离收敛依赖它）。
+// ---------------------------------------------------------------------------
+
+// 位置状态三轴在 6×6 ECEF 行主序协方差 [x,vx,y,vy,z,vz] 中的对角下标：0/14/28。
+std::array<double, 3U> PositionVarianceDiag(const FusedTarget& target) {
+  const auto& cov = target.kinematic_estimate.covariance_ecef;
+  return {cov[0], cov[14], cov[28]};
+}
+
+// 位置起始航迹：首拍量测只建航迹、不做同帧重复量测更新。
+// 依据：algorithms.md §4 起始「位置记录 → ECEF 位置 + 零速 + 配置先验」；
+//       两点差分初速条「首个位置量测只建航迹、不做同帧重复量测更新」。
+TEST(FusionTrackFilteringTest, PositionInitFirstMeasurementSkipsSameFrameUpdate) {
+  FusionConfig config = MakeFilteringConfig();  // 起始位置 1-σ 2000 m
+  config.default_position_noise_std_m = 50.0;
+  FusionEngine engine(config);
+  const EcefPositionM truth(kEarthRadiusM, 0.0, 0.0);
+  const LlaPositionDegM measured = EcefToLla(truth);
+
+  const auto targets = engine.Update({MakePositionRecord(21U, measured)}, 1U);
+  ASSERT_EQ(targets.size(), 1U);
+  const FusedTarget& target = targets.front();
+  ASSERT_TRUE(target.has_kinematic_estimate);
+
+  // 零速起始（配置先验）。
+  EXPECT_DOUBLE_EQ(target.kinematic_estimate.velocity_ecef_m_per_s[0], 0.0);
+  EXPECT_DOUBLE_EQ(target.kinematic_estimate.velocity_ecef_m_per_s[1], 0.0);
+  EXPECT_DOUBLE_EQ(target.kinematic_estimate.velocity_ecef_m_per_s[2], 0.0);
+
+  // 起始均值直接落在量测位置。
+  EXPECT_LT(DistanceM(EstimatePositionEcef(target), truth), 1.0);
+
+  // 位置协方差保持配置先验（track_initial_position_std_m² = 2000² = 4.0e6 m²）。
+  // 若首拍又跑了一次量测更新，位置方差会塌缩到量测噪声 50² = 2.5e3 m²——
+  // 据此断言首拍未执行同帧更新。
+  for (double var : PositionVarianceDiag(target)) {
+    EXPECT_GT(var, 1.0e6) << "first position measurement must not collapse covariance to noise";
+    EXPECT_LT(var, 1.0e7) << "position covariance must equal the configured init prior";
+  }
+}
+
+// 位置起始航迹：第二个位置量测（物理间隔 > 50 ms）以 (p₂ − p₁)/Δt 直接建立初速。
+// 依据：algorithms.md §4 两点差分初速条。
+TEST(FusionTrackFilteringTest, PositionInitSecondMeasurementDifferencingFiresAboveGate) {
+  FusionConfig config = MakeFilteringConfig();
+  config.default_position_noise_std_m = 1.0;  // 差分精度只取决于位置差
+  const EcefPositionM p0(kEarthRadiusM, 0.0, 0.0);
+  const EcefPositionM v(300.0, -1800.0, 80.0);
+  auto make_record = [&](double t_sec) {
+    const EcefPositionM truth(p0.x_m + v.x_m * t_sec, p0.y_m + v.y_m * t_sec,
+                              p0.z_m + v.z_m * t_sec);
+    DetectionRecord record = MakePositionRecord(41U, EcefToLla(truth));
+    record.has_timestamp = true;
+    record.timestamp_s = t_sec;
+    return record;
+  };
+
+  FusionEngine engine(config);
+  engine.Update({make_record(1.0)}, 1U);
+  const auto result = engine.Update({make_record(1.1)}, 2U);  // Δt = 0.1 s > 50 ms
+  ASSERT_EQ(result.size(), 1U);
+  ASSERT_TRUE(result.front().has_kinematic_estimate);
+
+  // 直接差分：(p₂ − p₁)/Δt。位置为真值，故应精确复现 v。
+  const auto& vel = result.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_NEAR(vel[0], v.x_m, 1.0);
+  EXPECT_NEAR(vel[1], v.y_m, 1.0);
+  EXPECT_NEAR(vel[2], v.z_m, 1.0);
+
+  // 速度方差 = 2·位置方差/Δt² + (100 m/s)² 地板。此处 2·(1 m)²/(0.1 s)² = 200 m²/s²，
+  // 远低于地板 1.0e4 m²/s²——地板必须在场（挡长间隔差分方差过小导致滤波过信）。
+  const auto& cov = result.front().kinematic_estimate.covariance_ecef;
+  EXPECT_GE(cov[7], 1.0e4) << "vx variance must carry the (100 m/s)^2 floor";
+  EXPECT_GE(cov[21], 1.0e4) << "vy variance must carry the (100 m/s)^2 floor";
+  EXPECT_GE(cov[35], 1.0e4) << "vz variance must carry the (100 m/s)^2 floor";
+}
+
+// 方位起始航迹：首拍量测照常执行量测更新（角度-only 距离收敛依赖此更新）。
+// 依据：algorithms.md §4 两点差分初速条「方位起始航迹不差分，且首拍量测照常执行
+//       量测更新」；design.md 追认条附带修复记录（首版跳过首拍更新致评估会话
+//       60 周期落点收敛回退 448 km，超 300 km 门限）。
+TEST(FusionTrackFilteringTest, BearingInitFirstMeasurementPerformsUpdate) {
+  FusionConfig config = MakeFilteringConfig();
+  // 收窄起始距离先验（默认 300000 m）：横向前验过大会让 UKF 在首拍量测上进入强
+  // 非线性区，导致“更新是否发生”的协方差判据失效。30000 m 于 250000 m 距离处
+  // 对应约 7°，量测近线性，横向后验 ≈ (250000·2e-4)² ≈ 2.5e3 m² 可判。
+  config.track_bearing_init_range_std_m = 30000.0;
+  const double prior_var = 30000.0 * 30000.0;  // 各向同性起始位置方差 9.0e8 m²
+
+  const EcefPositionM origin(kEarthRadiusM + 20000.0, 0.0, 0.0);
+  const LlaPositionDegM origin_lla = EcefToLla(origin);
+  const TestEnuBasis basis = MakeBasis(origin);
+  // LOS 精确沿 ECEF +y (= 原点处 ENU east)，真值恰在起始距离先验 250000 m 上：
+  // 方位量测优良条件（az=90°、el=0°，非简并），横向 = ECEF x/z 两轴。
+  const EcefPositionM truth(origin.x_m, origin.y_m + config.track_bearing_init_range_m,
+                            origin.z_m);
+  const EcefPositionDegM bearing = BearingTo(origin, truth, basis);
+
+  FusionEngine engine(config);
+  const auto targets =
+      engine.Update({MakeBearingRecord(31U, origin, bearing, 2.0e-4, origin_lla)}, 1U);
+  ASSERT_EQ(targets.size(), 1U);
+  const FusedTarget& target = targets.front();
+  ASSERT_TRUE(target.has_kinematic_estimate);
+
+  const std::array<double, 3U> pos_var = PositionVarianceDiag(target);
+  // 首拍更新若被跳过，三轴方差均停留在各向同性先验 9.0e8 m²。更新发生后横向两轴
+  // 应塌缩到 (range·σ)² ≈ (250000·2e-4)² ≈ 2.5e3 m²，远低于先验；LOS 方向（y）
+  // 保持弱可观测、不被方位量测压低。
+  EXPECT_LT(pos_var[0], 0.1 * prior_var)
+      << "x (cross-range) variance must reflect the first-cycle bearing update";
+  EXPECT_LT(pos_var[2], 0.1 * prior_var)
+      << "z (cross-range) variance must reflect the first-cycle bearing update";
+  EXPECT_GT(pos_var[1], 0.5 * prior_var)
+      << "range (LOS) direction stays weakly observable and must not collapse";
+}
+
+// 位置起始航迹的双点差分也走纯周期 dt（algorithms.md §4 状态与时间对齐：「纯周期
+// 驱动回退为 dt = (cycle − 上次滤波周期) × track_cycle_period_sec」）。无时间戳时
+// 首发零速、次发按周期 dt 差分——验证初始化时间基准不依赖时间戳通道。
+TEST(FusionTrackFilteringTest, PositionInitDifferencingUsesPeriodicDtWithoutTimestamps) {
+  FusionConfig config = MakeFilteringConfig();
+  config.default_position_noise_std_m = 1.0;
+  config.track_cycle_period_sec = 1.0;
+  const EcefPositionM p0(kEarthRadiusM, 0.0, 0.0);
+  const EcefPositionM v(0.0, 200.0, 0.0);
+  auto record = [&](std::uint64_t cycle) {
+    const double t = static_cast<double>(cycle - 1U);
+    const EcefPositionM truth(p0.x_m + v.x_m * t, p0.y_m + v.y_m * t, p0.z_m + v.z_m * t);
+    return MakePositionRecord(61U, EcefToLla(truth));  // 无 has_timestamp
+  };
+
+  FusionEngine engine(config);
+  const auto first = engine.Update({record(1U)}, 1U);
+  ASSERT_EQ(first.size(), 1U);
+  ASSERT_TRUE(first.front().has_kinematic_estimate);
+  EXPECT_DOUBLE_EQ(first.front().kinematic_estimate.velocity_ecef_m_per_s[1], 0.0);
+
+  const auto second = engine.Update({record(2U)}, 2U);  // 周期间隔 1.0 s > 50 ms
+  ASSERT_EQ(second.size(), 1U);
+  ASSERT_TRUE(second.front().has_kinematic_estimate);
+  const auto& vel = second.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_NEAR(vel[0], v.x_m, 1.0);
+  EXPECT_NEAR(vel[1], v.y_m, 1.0);
+  EXPECT_NEAR(vel[2], v.z_m, 1.0);
+}
+
+// IMPL-DERIVED：规格只声明「物理间隔 > 50 ms 才两点差分」这一门槛，未规定 ≤ 50 ms
+// 时第二个位置量测如何处置。实测当前行为：差分分支不触发；该分支既不预测也不返回，
+// 记录随后落到常规位置量测更新（同状态、无时间推进），而位置量测对速度增益为零，
+// 故初速保持在起始零速、不被爆速污染。本条只记录当前行为，不构成正确性证据。
+TEST(FusionTrackFilteringTest, PositionInitSecondMeasurementBelowGateKeepsZeroVelocity) {
+  FusionConfig config = MakeFilteringConfig();
+  config.default_position_noise_std_m = 1.0;
+  const EcefPositionM p1(kEarthRadiusM, 0.0, 0.0);
+  // 第二点相对第一点偏移 1000 m；若差分误触发将得到 1000/0.04 = 25000 m/s 爆速。
+  const EcefPositionM p2(p1.x_m + 1000.0, p1.y_m, p1.z_m);
+  auto record = [](double t_sec, const EcefPositionM& pos) {
+    DetectionRecord r = MakePositionRecord(51U, EcefToLla(pos));
+    r.has_timestamp = true;
+    r.timestamp_s = t_sec;
+    return r;
+  };
+
+  FusionEngine engine(config);
+  engine.Update({record(1.0, p1)}, 1U);
+  const auto result = engine.Update({record(1.04, p2)}, 2U);  // Δt = 0.04 s ≤ 50 ms
+  ASSERT_EQ(result.size(), 1U);
+  ASSERT_TRUE(result.front().has_kinematic_estimate);
+  const auto& vel = result.front().kinematic_estimate.velocity_ecef_m_per_s;
+  EXPECT_DOUBLE_EQ(vel[0], 0.0) << "differencing must not fire below the 50 ms gate";
+  EXPECT_DOUBLE_EQ(vel[1], 0.0);
+  EXPECT_DOUBLE_EQ(vel[2], 0.0);
 }
 
 }  // namespace

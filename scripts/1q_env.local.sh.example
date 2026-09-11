@@ -1,2 +1,0 @@
-# 机器本地 Git Bash 环境覆盖（本文件可加入 .gitignore；模板见 1q_env.local.sh.example）
-export ONEQ_CMAKE_ROOT='D:/environment/CMake'

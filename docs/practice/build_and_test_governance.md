@@ -26,7 +26,7 @@ Authority: build infrastructure, test infrastructure
    v141 工具集，本机 `scripts/1q.sh` 下 bootstrap/configure/build/test/install 全链经
    build preset 驱动，示例层加 `-DENABLE_EXAMPLES=ON` 亦可构建）；VS2015 C++14
    预设（`VisualStudio.14.0-amd64`，无测试）与 no-Conan 模式
-   （`VisualStudio.14.0-amd64-none`，含 `fetch_third_party.bat`）仍属未验收脚手架，
+   （`VisualStudio.14.0-amd64-none`，含 `scripts/win/fetch_third_party.bat`）仍属未验收脚手架，
    不改变上述支持契约——CI 尚无 Windows job，"已支持 Windows"的宣称仍以真实
    Windows runner 上的全链证据为准。
 5. MSVC 配置语义（`cmake/compilers/CompilerMSVC.cmake`，2026-08-20 修订）：**Release

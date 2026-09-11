@@ -23,7 +23,7 @@ Authority: build & test infrastructure
 当前 CI 仅覆盖 macOS（`macos-14` arm64 runner）。理由：
 - macOS 路径下 Conan 提供全部依赖（含 JSBSim 预编译包 `jsbsim/1.3.1`），最干净可靠。
 - Windows v141 预设（`VisualStudio.15.0-amd64`）是本机 Windows 开发主线，但 CI 尚无
-  Windows runner job；VS2015 C++14 预设、no-Conan 模式和 `scripts/fetch_third_party.bat`
+  Windows runner job；VS2015 C++14 预设、no-Conan 模式和 `scripts/win/fetch_third_party.bat`
   仍属未验收脚手架，不是支持声明（见 `build_and_test_governance.md` 与"扩展指南"）。
 
 Contract 测试数量不在本文硬编码；以配置后执行

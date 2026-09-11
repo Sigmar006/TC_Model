@@ -3,7 +3,7 @@
 #
 # PACKAGE_MANAGER 已在 ProjectOptions.cmake 校验为 none。本 provider 不调用
 # conan、不读 conan data 文件、不假设 conan toolchain。第三方依赖来自工作空间
-# third_party/ 目录，由 scripts/fetch_third_party.bat 把各库源码 git clone 到位
+# third_party/ 目录，由 scripts/win/fetch_third_party.bat 把各库源码 git clone 到位
 # （版本与 conanfile.py 对齐）。本文件从该目录消费：
 #   - header-only 库（eigen、nanoflann、flatbuffers 运行时头、boost）：只暴露 include 路径，
 #     以 INTERFACE IMPORTED target 形式提供，不触发其各自 add_subdirectory 的构建逻辑。
@@ -16,7 +16,7 @@
 # ONEQ_ENABLE_HDF5_OUTPUT 等输出变量，故 src/、tests/、install 等下游消费点不感知
 # provider 切换。
 
-# third_party/ 根目录约定（与 scripts/fetch_third_party.bat、.gitignore 一致）。
+# third_party/ 根目录约定（与 scripts/win/fetch_third_party.bat、.gitignore 一致）。
 set(ONEQ_THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/third_party")
 
 # 校验 third_party/ 存在；缺失时给出明确的引导提示而非晦涩的下游报错。
@@ -24,7 +24,7 @@ set(ONEQ_THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/third_party")
 if(NOT EXISTS "${ONEQ_THIRD_PARTY_DIR}/eigen")
     message(FATAL_ERROR
         "PACKAGE_MANAGER=none 要求 third_party/ 已就绪，但缺失：${ONEQ_THIRD_PARTY_DIR}/eigen\n"
-        "请先在仓库根目录运行：scripts\\fetch_third_party.bat\n"
+        "请先在仓库根目录运行：scripts\\win\\fetch_third_party.bat\n"
         "（该脚本拉取 eigen/nanoflann/flatbuffers/zlib 并下载 boost 源码包到 third_party/）")
 endif()
 
@@ -161,14 +161,14 @@ endif()
 # ---------------------------------------------------------------------------
 # boost 1.85.0（header-only）：airborne_radar 使用 boost/math/special_functions/gamma.hpp
 # 与 boost/pool/object_pool.hpp。boost 是 modular superproject，源码包（由
-# scripts/fetch_third_party.bat 下载解压）自带预合并的 boost/ 头目录，无需 b2 headers。
+# scripts/win/fetch_third_party.bat 下载解压）自带预合并的 boost/ 头目录，无需 b2 headers。
 # 故 third_party/boost 即 boost/ 头父目录。
 # ---------------------------------------------------------------------------
 if(NOT TARGET Boost::boost)
     if(NOT EXISTS "${ONEQ_THIRD_PARTY_DIR}/boost/boost")
         message(FATAL_ERROR
             "PACKAGE_MANAGER=none 缺失 boost 头：${ONEQ_THIRD_PARTY_DIR}/boost/boost\n"
-            "请重跑 scripts\\fetch_third_party.bat（含 boost 源码包下载步骤）。")
+            "请重跑 scripts\\win\\fetch_third_party.bat（含 boost 源码包下载步骤）。")
     endif()
     add_library(boost_vendor INTERFACE IMPORTED)
     set_target_properties(boost_vendor PROPERTIES
@@ -179,7 +179,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 # sqlite3 3.53.4：需编译静态库（airborne_radar 识别特征库加载）。
-# amalgamation（sqlite3.c/sqlite3.h 单文件）由 scripts/fetch_third_party.bat 从
+# amalgamation（sqlite3.c/sqlite3.h 单文件）由 scripts/win/fetch_third_party.bat 从
 # sqlite.org 发布包下载解压至 third_party/sqlite/（GitHub sqlite 镜像只含 src/*.c
 # 拆分源，不含 amalgamation）。直接单文件编译，不引入官方 CMakeLists（其 target
 # 命名/示例构建与项目约定不一致）。
@@ -192,7 +192,7 @@ if(NOT TARGET SQLite::SQLite3)
     if(NOT EXISTS "${ONEQ_THIRD_PARTY_DIR}/sqlite/sqlite3.c")
         message(FATAL_ERROR
             "PACKAGE_MANAGER=none 缺失 sqlite3 amalgamation：${ONEQ_THIRD_PARTY_DIR}/sqlite/sqlite3.c\n"
-            "请重跑 scripts\\fetch_third_party.bat。")
+            "请重跑 scripts\\win\\fetch_third_party.bat。")
     endif()
     add_library(sqlite3_vendor STATIC
         "${ONEQ_THIRD_PARTY_DIR}/sqlite/sqlite3.c")

@@ -117,7 +117,7 @@ World::Step:
 ## 构建与运行
 
 ```bash
-source scripts/activate_1q_git_bash.sh
+source scripts/win/activate_git_bash.sh
 scripts/1q.sh build VisualStudio.15.0-amd64-release --target sbirs_triple_sat_fix_messages
 ./build/VisualStudio.15.0-amd64/Release/bin/sbirs_triple_sat_fix_messages.exe
 ```

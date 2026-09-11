@@ -4,8 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../lib/1q_env.sh
-source "${SCRIPT_DIR}/../lib/1q_env.sh"
+# shellcheck source=../../lib/1q_env.sh
+source "${SCRIPT_DIR}/../../lib/1q_env.sh"
 
 if [[ -n "${ONEQ_REAL_CMAKE:-}" && -x "${ONEQ_REAL_CMAKE}" ]]; then
   exec "${ONEQ_REAL_CMAKE}" "$@"

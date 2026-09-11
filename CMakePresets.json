@@ -108,7 +108,7 @@
         {
             "name": "1q_log_vs2015",
             "displayName": "1q acceptance logs (VS2015 x64, no Conan)",
-            "description": "VisualStudio.14.0-amd64-none variant with all five per-layer acceptance files ON by default (sbirs/rir/fusion/inference/precision_acceptance.log; docs/review/acceptance_item_catalog_2026-08-22.md). Run scripts/fetch_third_party.bat first. VS2015+Conan is not viable on this machine: CMake 4.3.1 emits v145 toolset requirements that MSBuild v140 cannot satisfy (flatbuffers recipe build fails).",
+            "description": "VisualStudio.14.0-amd64-none variant with all five per-layer acceptance files ON by default (sbirs/rir/fusion/inference/precision_acceptance.log; docs/review/acceptance_item_catalog_2026-08-22.md). Run scripts/win/fetch_third_party.bat first. VS2015+Conan is not viable on this machine: CMake 4.3.1 emits v145 toolset requirements that MSBuild v140 cannot satisfy (flatbuffers recipe build fails).",
             "inherits": "VisualStudio.14.0-amd64-none",
             "cacheVariables": {
                 "ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG": "ON",
@@ -151,7 +151,7 @@
         {
             "name": "VisualStudio.14.0-amd64-none",
             "displayName": "Visual Studio 14 2015 (x64, no Conan)",
-            "description": "VS2015 x64 without Conan: run scripts/fetch_third_party.bat first to git clone deps into third_party/, consumed by VendorPackages.cmake",
+            "description": "VS2015 x64 without Conan: run scripts/win/fetch_third_party.bat first to git clone deps into third_party/, consumed by VendorPackages.cmake",
             "inherits": "windows-base-none",
             "generator": "Visual Studio 14 2015",
             "cacheVariables": {

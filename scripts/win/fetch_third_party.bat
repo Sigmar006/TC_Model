@@ -9,7 +9,7 @@ REM 锁定与 conanfile.py 完全一致的版本 tag。VendorPackages.cmake 会�
 REM 以 add_subdirectory / header-only 方式消费它们，无需 conan、无需 toolchain。
 REM
 REM 用法（在仓库根目录执行）：
-REM   scripts\fetch_third_party.bat
+REM   scripts\win\fetch_third_party.bat
 REM
 REM 前置条件：本机已安装 git，且 PATH 中可调用 git。
 REM

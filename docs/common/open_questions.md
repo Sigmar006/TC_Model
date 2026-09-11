@@ -56,17 +56,17 @@ Last-reviewed: 2026-09-07
   2. VS2015 no-Conan（`VisualStudio.14.0-amd64-none` / `1q_log_vs2015`）为交付层真实路径：
      运行手册 `docs/practice/windows_local_build.md`（零修改 consumer 镜像 + 零 C4819 +
      验收行为判据）。
-  3. 依赖引导 `scripts/fetch_third_party.bat` 存在两个风险点：下载来源含 GitLab/archives.boost.io
+  3. 依赖引导 `scripts/win/fetch_third_party.bat` 存在两个风险点：下载来源含 GitLab/archives.boost.io
      （非锁定 GitHub）；未对下载内容做 hash 校验。
   4. CI（ci.yml / nightly.yml）仍仅 macOS runner。
-  [evidence: scripts/fetch_third_party.bat]
+  [evidence: scripts/win/fetch_third_party.bat]
   [evidence: docs/practice/windows_local_build.md]
 - **后果**：
   1. 本机交付流程已受治理，但依赖→configure→build→install→consumer 全链未在任何 Windows
      CI runner 上证明，回归靠人工。
   2. 无校验的下载链不可重复——同一脚本在不同时间/网络可能拉到不同内容。
 - **待决问题**：是否为 Windows 引入 CI runner（或 nightly 一档）固化全链验收；
-  `fetch_third_party.bat` 是否升级为锁定来源 + hash 校验矩阵。
+  `scripts/win/fetch_third_party.bat` 是否升级为锁定来源 + hash 校验矩阵。
 - **当前边界**：Windows 支持按现有治理文档表述（v141 本机主线、VS2015 交付层）；
   不得宣称 Windows 全链有 CI 验收，也不得宣称依赖引导可重复。
 - **再进入条件 (Stage A)**：Windows 交付出现一次因依赖漂移或环境差异导致的不可复现失败，

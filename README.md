@@ -62,8 +62,8 @@ cmake --install build/VisualStudio.15.0-amd64 --config Release
 ### Alternative paths (unaccepted scaffolding)
 
 - VS2015: preset `VisualStudio.14.0-amd64` (C++11, no tests).
-- No Conan: run `scripts\fetch_third_party.bat` first to fetch pinned dependency sources into `third_party/` (consumed by `VendorPackages.cmake`), then use preset `VisualStudio.14.0-amd64-none` (C++11, delivery tier — same as `1q_log_vs2015` which adds acceptance logs).
-- Encoding: all tracked C/C++ sources carry a UTF-8 BOM (`scripts/utf8_bom.py` maintains; a `.githooks/pre-commit` hook auto-prepends it at commit time — activate via `scripts/activate_1q_git_bash.sh`; CI enforces via `check`). MSVC reads BOM files as UTF-8 unconditionally — no `/utf-8` compile flag is needed or propagated, so consumers on VS2015 (any Update) compile Chinese-commented headers correctly without any special options.
+- No Conan: run `scripts\win\fetch_third_party.bat` first to fetch pinned dependency sources into `third_party/` (consumed by `VendorPackages.cmake`), then use preset `VisualStudio.14.0-amd64-none` (C++11, delivery tier — same as `1q_log_vs2015` which adds acceptance logs).
+- Encoding: all tracked C/C++ sources carry a UTF-8 BOM (`scripts/utf8_bom.py` maintains; a `.githooks/pre-commit` hook auto-prepends it at commit time — activate via `scripts/win/activate_git_bash.sh`; CI enforces via `check`). MSVC reads BOM files as UTF-8 unconditionally — no `/utf-8` compile flag is needed or propagated, so consumers on VS2015 (any Update) compile Chinese-commented headers correctly without any special options.
 
 Full dual-platform instructions: see the Build and Test section of `CLAUDE.md`; Windows environment setup, troubleshooting, delivery-tier runbook, and historical errata: `docs/practice/windows_local_build.md`; build/test governance: `docs/practice/build_and_test_governance.md`.
 

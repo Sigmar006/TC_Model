@@ -11,7 +11,7 @@ alwaysApply: true
 ## 会话门禁（每个终端 / 每次代理开跑前）
 
 ```bash
-source scripts/activate_1q_git_bash.sh
+source scripts/win/activate_git_bash.sh
 scripts/1q.sh doctor
 # doctor 须：cmake=有路径、ctest=有路径（指向 scripts/bin 包装或 *.exe）
 # uname=Linux（WSL）可接受；SHELL_NOTE 不是失败。SHELL_WARNING 或 ctest=NOT FOUND 才失败
@@ -19,7 +19,7 @@ scripts/1q.sh doctor
 
 门禁失败：**先修 PATH / `ONEQ_CMAKE_ROOT`，禁止改业务代码碰运气。**
 
-持久化（Git Bash）：`echo 'source "/d/1q/1q/scripts/activate_1q_git_bash.sh" 2>/dev/null' >> ~/.bashrc`
+持久化（Git Bash）：`echo 'source "/d/1q/1q/scripts/win/activate_git_bash.sh" 2>/dev/null' >> ~/.bashrc`
 本机 cmake 路径：`scripts/1q_env.local.sh`（`ONEQ_CMAKE_ROOT='D:/environment/CMake'`，已在 .gitignore）
 
 ## 标准命令（一律走 preset / 1q.sh；同 preset 先 build 再 test）
@@ -37,7 +37,7 @@ scripts/1q.sh test VisualStudio.15.0-amd64-release -R "unit::<module>" -j 4
 ```
 
 裸目录构建自 2026-08-21 起可用（64 位注册表 KitsRoot10 已修复为真实 SDK 路径，UCRTContentRoot 注入已退役）；
-仍推荐 preset / 1q.sh 入口。`scripts/bin/ctest` / `1q.sh test` 会解析 `ctest.exe`。
+仍推荐 preset / 1q.sh 入口。`scripts/win/bin/ctest` / `1q.sh test` 会解析 `ctest.exe`。
 
 ## UTF-8 BOM（中文注释）
 

@@ -17,7 +17,7 @@
 #   cmake --build --preset VisualStudio.14.0-amd64-debug
 #
 # Windows (VS2015 + 验收日志开关默认 ON)：无 Conan 变体，不走本脚本——
-#   scripts\fetch_third_party.bat          # 1. 拉取第三方源码到 third_party/（一次性）
+#   scripts\win\fetch_third_party.bat      # 1. 拉取第三方源码到 third_party/（一次性）
 #   cmake --preset 1q_log_vs2015           # 2. 配置（验收日志开关默认 ON）
 #   cmake --build --preset 1q_log_vs2015-release
 #

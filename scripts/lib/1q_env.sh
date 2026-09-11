@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 1Q Git Bash 环境：补 PATH（cmake/ctest）。
-# 由 scripts/activate_1q_git_bash.sh、scripts/1q.sh、scripts/bin/cmake 等 source。
+# 由 scripts/win/activate_git_bash.sh、scripts/1q.sh、scripts/win/bin/cmake 等 source。
+# 跨平台：Windows 侧负责补 cmake/ctest PATH，macOS/Linux 侧只在 cmake 不在 PATH 时兜底。
 # 幂等：重复 source 安全。
 #
 # 机器级覆盖（可选，不进 git）：scripts/1q_env.local.sh
@@ -72,7 +73,7 @@ if [[ -z "${ONEQ_REAL_CMAKE:-}" ]]; then
   if command -v cmake >/dev/null 2>&1; then
     _existing_cmake="$(command -v cmake)"
     case "${_existing_cmake}" in
-      "${ONEQ_ROOT}/scripts/bin/cmake"|"${ONEQ_ROOT}/scripts/bin/cmake.exe")
+      "${ONEQ_ROOT}/scripts/win/bin/cmake"|"${ONEQ_ROOT}/scripts/win/bin/cmake.exe")
         _resolved="$(_oneq_resolve_cmake_executable || true)"
         [[ -n "${_resolved:-}" ]] && export ONEQ_REAL_CMAKE="${_resolved}"
         ;;
@@ -90,6 +91,6 @@ if [[ -n "${ONEQ_REAL_CMAKE:-}" ]]; then
   _oneq_prepend_path_if_dir "$(dirname "${ONEQ_REAL_CMAKE}")"
 fi
 
-_oneq_prepend_path_if_dir "${ONEQ_ROOT}/scripts/bin"
+_oneq_prepend_path_if_dir "${ONEQ_ROOT}/scripts/win/bin"
 
 unset _existing_cmake _resolved _oneq_prepend_path_if_dir _oneq_resolve_cmake_executable _oneq_cmake_candidates

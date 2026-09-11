@@ -34,11 +34,11 @@ binaryDir 是 `build/llvm-ninja-release`（无 `-local` 后缀的历史遗留）
 ## 一次性环境准备
 
 1. **壳 / `1q.sh`**：Git Bash（MINGW）或 Cursor 落到的 WSL bash 均可，前提是
-   `source scripts/activate_1q_git_bash.sh` 后 `scripts/1q.sh doctor` 能解析到
+   `source scripts/win/activate_git_bash.sh` 后 `scripts/1q.sh doctor` 能解析到
    Windows `cmake`/`ctest`（`scripts/bin` 包装或 `*.exe`）。不要用 Linux 自带
    cmake 去配 `VisualStudio.*`。Cursor 打开本仓库时，用户集成终端默认仍是
    Git Bash（`.vscode/settings.json`）；Agent 若在 WSL 里，同样走 `1q.sh`。
-2. `source scripts/activate_1q_git_bash.sh`（Git Bash 可写入 `~/.bashrc`；activate
+2. `source scripts/win/activate_git_bash.sh`（Git Bash 可写入 `~/.bashrc`；activate
    会补 cmake/ctest PATH、自愈 `core.hooksPath=.githooks`）。机器本地 cmake 路径
    覆盖：`scripts/1q_env.local.sh`（模板见 `.example`，已 gitignore）。
 3. 建议把仓库目录加入 Windows Defender 排除（管理员 PowerShell：
@@ -51,7 +51,7 @@ binaryDir 是 `build/llvm-ninja-release`（无 `-local` 后缀的历史遗留）
 
 按序归因，**禁止跳过前几步去改业务代码碰运气**：
 
-1. **壳/PATH**：先 `source scripts/activate_1q_git_bash.sh && scripts/1q.sh doctor`。
+1. **壳/PATH**：先 `source scripts/win/activate_git_bash.sh && scripts/1q.sh doctor`。
    `cmake=`/`ctest=` 必须有路径。WSL（`uname=Linux` + `/mnt/d/...`）可继续，只要
    `1q.sh` 能 exec 到 Windows `cmake.exe`/`ctest.exe`。真正的失败态是 `ctest=NOT FOUND`
    或误用 Linux `/usr/bin/ctest` 去跑 VisualStudio 测试树。
@@ -139,7 +139,7 @@ INTERFACE 传播）。BOM 使 cl.exe 无条件按 UTF-8 解码。维护链：
 
 | Preset | 用途 |
 |---|---|
-| `1q_log_vs2015` | **交付验证**：v140 x64，无 Conan（先跑 `fetch_third_party.bat`），C++11，五层验收文件（sbirs/rir/fusion/inference/precision）ON |
+| `1q_log_vs2015` | **交付验证**：v140 x64，无 Conan（先跑 `scripts/win/fetch_third_party.bat`），C++11，五层验收文件（sbirs/rir/fusion/inference/precision）ON |
 | `VisualStudio.14.0-amd64-none` | 交付基座（同上去掉验收日志） |
 | `VisualStudio.15.0-amd64` | Windows 开发主线：VS2026 + v141，C++17，Conan |
 | `llvm-ninja-*` | macOS CI/开发主线 |
@@ -162,7 +162,7 @@ INTERFACE 传播）。BOM 使 cl.exe 无条件按 UTF-8 解码。维护链：
 `HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots\KitsRoot10` 覆盖为仅含
 Debuggers/Catalogs 的目录，v141 的 ucrt.props 解析到死路径——裸目录构建报
 `corecrt.h` not found (C1083) / LNK1104 (ucrtd.lib)（2026-08-19 复现）。当时的
-规避是 preset/脚本注入 `UCRTContentRoot` + 禁止裸目录构建 + `scripts/bin/cmake`
+规避是 preset/脚本注入 `UCRTContentRoot` + 禁止裸目录构建 + `scripts/win/bin/cmake`
 拦截。2026-08-21 机器级修复：两个注册表视图均指向真实 SDK
 （`C:\Program Files (x86)\Windows Kits\10\`），全部规避已退役（preset 不再注入
 环境变量、拦截已移除），裸目录构建与 IDE MSBuild 恢复可用。

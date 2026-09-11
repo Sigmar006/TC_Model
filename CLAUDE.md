@@ -66,6 +66,7 @@ scripts/1q.sh test VisualStudio.15.0-amd64-release -R "unit::<module>"
 - **Modular cadence (Strict)**: For tasks spanning multiple modules (AR, ESR, SAR, etc.), complete and verify one module (build + unit test) before touching the next. Report progress and pause for user check-in between modules.
 - **Plan before complex refactor**: Propose an implementation plan before making architectural or multi-module changes; trivial single-file edits do not require a plan.
 - **Ask on ambiguity**: Clarify ambiguous requirements or boundary values before editing code; do not make silent assumptions.
+- **Commit on completion**: A task with clear boundaries is committed as soon as it is done — do not ask first. Group and word it per the `commit-standard` skill. Only merging asks: merge, push, branch deletion, and anything else that publishes the work. Never leave a finished task sitting uncommitted, and never fold unrelated working-tree changes into it. A deliberately red test or a knowingly incomplete piece must be stated in the commit body, not hidden.
 
 ## CodeGraph
 

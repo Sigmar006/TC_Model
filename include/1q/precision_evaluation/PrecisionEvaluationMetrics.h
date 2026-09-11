@@ -25,8 +25,9 @@ ErrorMetricSummary ONEQ_API SummarizeErrorSeries(const std::vector<double>& erro
  * @brief 误差归一化评分：score = ref/(ref+rmse)。
  * @param[in] rmse 误差均方根
  * @param[in] reference_error 参考误差（rmse=ref 时得 0.5；误差越小分越接近 1）
- * @return 归一化得分 ∈ [0,1)；ref≤0、rmse<0 或 rmse 非有限（含 +∞，评估侧
- *         以 +∞ 表示零证据指标）时返回 0
+ * @return 归一化得分 ∈ [0,1]；ref 非正或非有限（NaN/±∞）、rmse<0、或 rmse 非有限
+ *         时返回 0。有效输入的取值落在 (0,1]：rmse=0 时恰为 1。
+ *         评估侧以 rmse=+∞ 表示零证据指标（count=0），据此得 0 分。
  * @note 平滑单调映射，无断点配置；参考误差语义见 PrecisionEvaluationConfig。
  */
 double ONEQ_API NormalizeErrorScore(double rmse, double reference_error);

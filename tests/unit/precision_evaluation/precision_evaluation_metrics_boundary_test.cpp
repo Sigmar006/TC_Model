@@ -205,11 +205,12 @@ TEST(PrecisionScoreComposeBoundaryTest, NonPositiveReferenceScoresZeroWithoutNaN
 }
 
 // 单个非有限参考误差不得静默污染综合分与其余指标。
-// 依据：PrecisionEvaluationTypes.h 声明 composite_score「∈ [0,1]（越大越好）」为无条件
-// 字段契约，且 boundaries.md「非目标 4」要求评估失败显式返回 false/标志、不静默退化；
-// AhpEvaluator.h 只规定「≤0 的项得分记 0」，未对非有限参考误差设前置条件，
-// 故 ref=NaN 是合法输入而逐项得分未作规定——本用例只断言可推导的部分：
-// 四个有效指标得分不受影响（0.5），综合分必须落在文档区间内且有限。
+// 依据：PrecisionEvaluationMetrics.h 明确规定「ref 非正或非有限（NaN/±∞）…
+// 时返回 0」，PrecisionEvaluationTypes.h 声明 composite_score「∈ [0,1]（越大越好）」
+// 为无条件字段契约，boundaries.md「非目标 4」要求不静默退化；AhpEvaluator.h
+// 「≤0 的项得分记 0」给出同类不可用参考误差的既有处理方式。
+// 手算：w_i=0.2、ref=(NaN,10,10,10,10)、rmse 全 10 ⇒ 第 0 项 0 分、其余 10/20=0.5；
+// composite = 4×0.2×0.5 = 0.4（若第 0 项静默变 NaN，综合分即 NaN）。
 TEST(PrecisionScoreComposeBoundaryTest, NonFiniteReferenceDoesNotPoisonCompositeRange) {
   const double weights[kPrecisionMetricCount] = {0.2, 0.2, 0.2, 0.2, 0.2};
   const double rmse[kPrecisionMetricCount] = {10.0, 10.0, 10.0, 10.0, 10.0};
@@ -218,11 +219,14 @@ TEST(PrecisionScoreComposeBoundaryTest, NonFiniteReferenceDoesNotPoisonComposite
   pe::PrecisionEvaluationReport report;
   pe::ComposePrecisionScore(weights, rmse, references, &report);
 
+  // 参考误差不可用 ⇒ 该项记 0，与 ref≤0 同类；不得因 NaN 比较恒假而漏网。
+  EXPECT_DOUBLE_EQ(report.metric_scores[0U], 0.0);
   for (std::size_t index = 1U; index < kPrecisionMetricCount; ++index) {
     SCOPED_TRACE(::testing::Message() << "index=" << index);
     // 这些指标的量测与参考误差均有效，得分必须是 10/(10+10)=0.5，不受第 0 项影响。
     EXPECT_DOUBLE_EQ(report.metric_scores[index], 0.5);
   }
+  EXPECT_NEAR(report.composite_score, 0.4, 1.0e-12);
   // 文档区间契约：越界或 NaN 都意味着一个配置项静默毁掉了整份报告。
   EXPECT_TRUE(std::isfinite(report.composite_score));
   EXPECT_GE(report.composite_score, 0.0);

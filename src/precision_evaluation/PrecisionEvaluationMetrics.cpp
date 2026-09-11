@@ -32,7 +32,11 @@ ErrorMetricSummary SummarizeErrorSeries(const std::vector<double>& errors) {
 }
 
 double NormalizeErrorScore(double rmse, double reference_error) {
-  if (reference_error <= 0.0 || rmse < 0.0 || !std::isfinite(rmse)) {
+  // 中译：参考误差非有限时必须显式记 0——NaN 与任何数比较都为假，
+  //       仅靠 reference_error <= 0.0 拦不住它，会一路除成 NaN 污染综合分。
+  // 标识：precision_evaluation 规则 9（不得静默退化）
+  if (reference_error <= 0.0 || !std::isfinite(reference_error) || rmse < 0.0 ||
+      !std::isfinite(rmse)) {
     return 0.0;
   }
   return reference_error / (reference_error + rmse);

@@ -95,13 +95,19 @@ def _resolve_field(preset_name: str, field: str, root: Path) -> str:
         return configure_name
     if field == "binaryDir":
         return str(_binary_dir(root, configure_name, merged))
+    if field == "toolchain":
+        # 无 Conan 的 preset（如 1q_log_vs2015）没有该字段，返回空串表示无需 bootstrap。
+        raw = merged.get("cacheVariables", {}).get("CMAKE_TOOLCHAIN_FILE", "")
+        if isinstance(raw, dict):
+            raw = raw.get("value", "")
+        return raw.replace("${sourceDir}", str(root)).replace("${presetName}", configure_name)
     raise SystemExit(f"unknown field: {field}")
 
 
 def main() -> int:
     if len(sys.argv) != 3:
         print("usage: 1q_preset_query.py <build-preset|configure-preset> <field>", file=sys.stderr)
-        print("  field: configurePreset | binaryDir", file=sys.stderr)
+        print("  field: configurePreset | binaryDir | toolchain", file=sys.stderr)
         return 2
 
     preset_name = sys.argv[1]

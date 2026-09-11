@@ -112,6 +112,17 @@ _oneq_binary_dir() {
   "${py}" "${SCRIPT_DIR}/lib/1q_preset_query.py" "${preset}" binaryDir
 }
 
+# 解析 preset 的 conan toolchain 路径（无 Conan 的 preset 输出为空，如 1q_log_vs2015）。
+_oneq_toolchain_file() {
+  local preset="$1" py
+  py="$(command -v python3 || command -v python || true)"
+  if [[ -z "${py}" ]]; then
+    echo "[1q.sh] 需要 python3 解析 preset 的 toolchain" >&2
+    return 1
+  fi
+  "${py}" "${SCRIPT_DIR}/lib/1q_preset_query.py" "${preset}" toolchain
+}
+
 cmd="${1:-}"
 shift || true
 
@@ -122,7 +133,17 @@ case "${cmd}" in
     ;;
   configure)
     [[ $# -ge 1 ]] || { usage; exit 2; }
-    exec cmake --preset "$1"
+    preset="$1"
+    shift || true
+    # 首次配置自动引导：preset 的 conan toolchain 不存在时先跑 bootstrap（一次性；
+    # 无 Conan 的 preset 无 toolchain 字段，不触发）。
+    _tc="$(_oneq_toolchain_file "${preset}" 2>/dev/null || true)"
+    if [[ -n "${_tc}" ]] && [[ ! -f "${_tc}" ]]; then
+      echo "[1q.sh configure] conan toolchain 缺失，自动 bootstrap: ${preset}"
+      bash "${SCRIPT_DIR}/bootstrap_conan.sh" "${preset}"
+    fi
+    unset _tc
+    exec cmake --preset "${preset}" "$@"
     ;;
   build)
     [[ $# -ge 1 ]] || { usage; exit 2; }

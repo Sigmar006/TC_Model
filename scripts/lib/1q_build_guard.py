@@ -49,7 +49,27 @@ def _resolve_existing(raw: str, root: Path) -> Path | None:
     return None
 
 
+def _cmake_generator(binary_dir: Path) -> str:
+    cache = binary_dir / "CMakeCache.txt"
+    try:
+        for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("CMAKE_GENERATOR:INTERNAL="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
 def cmake_stamp_stale(binary_dir: Path, root: Path) -> str | None:
+    """仅在生成器产出 generate.stamp 时判定陈旧（VS / Unix Makefiles）。
+
+    Ninja 树没有 CMakeFiles/generate.stamp——Ninja 在 build 时自行扫描依赖并
+    触发 regen，因此"无 stamp"不等于"未配置"（未配置已由 CMakeCache.txt 检查
+    覆盖）。此处放行，避免 macOS 主线 preset 被误拦。
+    """
+    if _cmake_generator(binary_dir).startswith("Ninja"):
+        return None
+
     stamp = binary_dir / "CMakeFiles" / "generate.stamp"
     depend = binary_dir / "CMakeFiles" / "generate.stamp.depend"
     if not stamp.is_file():

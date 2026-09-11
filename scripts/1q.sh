@@ -7,6 +7,7 @@
 #   scripts/1q.sh configure VisualStudio.15.0-amd64
 #   scripts/1q.sh build VisualStudio.15.0-amd64-release [--target T ...]
 #   scripts/1q.sh test VisualStudio.15.0-amd64-release [-R regex] [-j N]
+#   scripts/1q.sh install llvm-ninja-release-local [--prefix DIR]
 #   scripts/1q.sh clean-stale VisualStudio.15.0-amd64 remote_identification_radar
 #   scripts/1q.sh doctor
 set -euo pipefail
@@ -23,6 +24,7 @@ usage() {
   scripts/1q.sh configure <configure_preset>
   scripts/1q.sh build <build_preset> [--target T ...] [-j N]
   scripts/1q.sh test <test_preset> [-R regex] [-j N]
+  scripts/1q.sh install <configure_preset> [--prefix DIR]   # 打包安装（不构建）
   scripts/1q.sh clean-stale <configure_preset> <module_slug>
   scripts/1q.sh doctor
 
@@ -96,6 +98,18 @@ _oneq_resolve_ctest() {
   return 1
 }
 
+# 解析 preset 的 binaryDir：不能假定 build/<preset>——binaryDir 由 preset 自己
+# 决定（例：llvm-ninja-debug 指向 build/llvm-ninja-debug-local）。
+_oneq_binary_dir() {
+  local preset="$1" py
+  py="$(command -v python3 || command -v python || true)"
+  if [[ -z "${py}" ]]; then
+    echo "[1q.sh] 需要 python3 解析 preset 的 binaryDir" >&2
+    return 1
+  fi
+  "${py}" "${SCRIPT_DIR}/lib/1q_preset_query.py" "${preset}" binaryDir
+}
+
 cmd="${1:-}"
 shift || true
 
@@ -141,6 +155,13 @@ case "${cmd}" in
       exit 127
     fi
     exec "${_ctest}" --preset "${preset}" "${extra[@]}"
+    ;;
+  install)
+    [[ $# -ge 1 ]] || { usage; exit 2; }
+    preset="$1"
+    shift
+    _bin="$(_oneq_binary_dir "${preset}")" || exit 1
+    exec cmake --install "${_bin}" "$@"
     ;;
   clean-stale)
     [[ $# -eq 2 ]] || { usage; exit 2; }

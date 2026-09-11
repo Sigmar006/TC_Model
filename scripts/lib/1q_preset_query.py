@@ -32,26 +32,39 @@ def _load_build_presets(root: Path) -> list[dict[str, Any]]:
     return presets
 
 
+def _inherit_names(value: Any) -> list[str]:
+    """CMake presets 的 `inherits` 允许字符串或字符串数组两种写法。"""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    raise SystemExit(f"invalid `inherits` value: {value!r}")
+
+
 def _merge_configure_preset(
-    by_name: dict[str, dict[str, Any]], name: str, seen: set[str] | None = None
+    by_name: dict[str, dict[str, Any]], name: str, chain: frozenset[str] = frozenset()
 ) -> dict[str, Any]:
-    if seen is None:
-        seen = set()
-    if name in seen:
+    # chain 逐分支拷贝（而非共享可变集合），否则 A、B 同时继承 C 的菱形结构
+    # 会被误判成循环继承。
+    if name in chain:
         raise SystemExit(f"circular configure preset inheritance at {name}")
-    seen.add(name)
+    if name not in by_name:
+        raise SystemExit(f"unknown configure preset: {name}")
+
     preset = dict(by_name[name])
-    inherit = preset.pop("inherits", None)
-    if inherit is None:
-        return preset
-    parent = _merge_configure_preset(by_name, inherit, seen)
-    merged = dict(parent)
+    next_chain = chain | {name}
+    merged: dict[str, Any] = {}
+    parent_cache: dict[str, Any] = {}
+    # 数组形式按 CMake 语义合并：靠后的父 preset 覆盖靠前的，自身字段覆盖全部父。
+    for parent_name in _inherit_names(preset.pop("inherits", None)):
+        parent = _merge_configure_preset(by_name, parent_name, next_chain)
+        parent_cache.update(parent.get("cacheVariables", {}))
+        merged.update(parent)
     merged.update(preset)
-    parent_cache = dict(parent.get("cacheVariables", {}))
-    child_cache = dict(preset.get("cacheVariables", {}))
-    parent_cache.update(child_cache)
-    if parent_cache:
-        merged["cacheVariables"] = parent_cache
+    if parent_cache or "cacheVariables" in preset:
+        merged["cacheVariables"] = {**parent_cache, **preset.get("cacheVariables", {})}
     return merged
 
 

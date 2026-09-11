@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# 1Q Git Bash 构建/测试统一入口（统一 PATH 与 preset 流）。
+# 1Q 构建/测试统一入口（跨平台：macOS / Linux 直接用原生 cmake+ctest；
+# Windows Git Bash/WSL 经 scripts/win/ 的包装器 exec cmake.exe/ctest.exe）。
+# 平台矩阵与各脚本归属见 scripts/README.md。
 #
 # 用法：
-#   source scripts/activate_1q_git_bash.sh    # 每个 Git Bash 会话一次（或写入 ~/.bashrc）
-#   scripts/1q.sh bootstrap VisualStudio.15.0-amd64
-#   scripts/1q.sh configure VisualStudio.15.0-amd64
-#   scripts/1q.sh build VisualStudio.15.0-amd64-release [--target T ...]
-#   scripts/1q.sh test VisualStudio.15.0-amd64-release [-R regex] [-j N]
+#   source scripts/win/activate_git_bash.sh    # 仅 Windows：每个 Git Bash 会话一次（或写入 ~/.bashrc）
+#   scripts/1q.sh bootstrap llvm-ninja-release-local
+#   scripts/1q.sh configure llvm-ninja-release-local
+#   scripts/1q.sh build llvm-ninja-release-local [--target T ...]
+#   scripts/1q.sh test llvm-ninja-release-local [-R regex] [-j N]
 #   scripts/1q.sh install llvm-ninja-release-local [--prefix DIR]
 #   scripts/1q.sh clean-stale VisualStudio.15.0-amd64 remote_identification_radar
 #   scripts/1q.sh doctor
@@ -18,7 +20,7 @@ source "${SCRIPT_DIR}/lib/1q_env.sh"
 
 usage() {
   cat <<'EOF'
-1Q Git Bash 工具
+1Q 构建/测试工具（跨平台；平台矩阵见 scripts/README.md）
 
   scripts/1q.sh bootstrap <configure_preset>
   scripts/1q.sh configure <configure_preset>
@@ -28,13 +30,13 @@ usage() {
   scripts/1q.sh clean-stale <configure_preset> <module_slug>
   scripts/1q.sh doctor
 
-configure_preset 例：VisualStudio.15.0-amd64
-build/test preset 例：VisualStudio.15.0-amd64-release | VisualStudio.15.0-amd64-debug
+configure_preset 例：llvm-ninja-release-local | VisualStudio.15.0-amd64
+build/test preset 例：llvm-ninja-release-local | VisualStudio.15.0-amd64-release
 
 build 禁止隐式 reconfigure：CMake/依赖变更后须先 configure 对应 preset，再 build。
 切换 preset 时 configure/build/test 三者的 preset 族必须一致（例：15.0-amd64 / 15.0-amd64-release）。
 
-首次使用：source scripts/activate_1q_git_bash.sh
+Windows（Git Bash/WSL）首次使用：source scripts/win/activate_git_bash.sh
 EOF
 }
 
@@ -69,7 +71,7 @@ doctor() {
       echo "  Do not use Linux-native cmake/ctest against VisualStudio.* presets."
     else
       echo "SHELL_WARNING=WSL bash cannot resolve ctest.exe."
-      echo "  source scripts/activate_1q_git_bash.sh so scripts/bin/ctest is on PATH."
+      echo "  source scripts/win/activate_git_bash.sh so scripts/win/bin/ctest is on PATH."
       echo "  Do not invoke Linux /usr/bin/ctest against a VisualStudio build tree."
     fi
   fi
@@ -150,7 +152,7 @@ case "${cmd}" in
     fi
     _ctest="$(_oneq_resolve_ctest || true)"
     if [[ -z "${_ctest}" ]]; then
-      echo "[1q.sh test] ctest not found. Run: source scripts/activate_1q_git_bash.sh && scripts/1q.sh doctor" >&2
+      echo "[1q.sh test] ctest not found. Run: source scripts/win/activate_git_bash.sh && scripts/1q.sh doctor" >&2
       echo "  Wrappers exec Windows ctest.exe from Git Bash or WSL. Do not use Linux /usr/bin/ctest." >&2
       exit 127
     fi

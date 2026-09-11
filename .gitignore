@@ -101,6 +101,9 @@ src/airborne_radar/signal/Stone-Soup/
 .omo/
 .zcode/
 
+# CodeGraph 索引数据（工具生成、随机器本地，不纳入版本控制）
+.codegraph/
+
 # Local working documents (not tracked)
 Work/
 

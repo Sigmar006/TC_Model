@@ -241,8 +241,8 @@ Fix the blocking issues, then re-run /completeness-review.
 
 ## Step 7: Build & test verification
 
-Verify Done Means with the repository-prescribed workflow. **Use the release preset** (AGENTS.md:
-"Prefer release — JSBSim runs ~6× faster"):
+Verify the build with the repository-prescribed workflow. **Use the release preset** (see the
+`llvm-ninja-release` preset description — JSBSim runs ~6× faster than debug):
 
 ```bash
 preset="llvm-ninja-release-local"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Adversarial Testing"
+  short_description: "Write killer tests from the interface contract alone — evaluator half of the generator/evaluator split"
+  default_prompt: "Use $adversarial-testing to write adversarial tests for this interface. You will receive only the public headers and the requirements — do not read src/, and return a defect-and-counterexample list instead of a pass/fail verdict."

@@ -109,6 +109,8 @@ Eigen 是 header-only：没有 `.lib` 可链接，**每个包含 estimation 模�
    `generate.stamp` 新，build 会失败并提示先 `scripts/1q.sh configure <preset>`；
    切换 preset 时必须 configure 对应的 configure_preset（例：build
    `VisualStudio.15.0-amd64-release` 对应 configure `VisualStudio.15.0-amd64`）。
+   基座 preset 设 `CMAKE_SUPPRESS_REGENERATION=ON`，避免 VS/MSBuild 在构建期自行
+   重跑 cmake。
 5. **区分「检查」与「重编」**：增量有效时，第二次 build 应在数秒内结束，日志无
    `编译源文件 xxx.cpp`；若仍出现大量 cl 输出，先查是否改了 common 头或刚 configure。
 

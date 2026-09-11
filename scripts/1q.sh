@@ -28,6 +28,7 @@ usage() {
   scripts/1q.sh test <test_preset> [-R regex] [-j N]
   scripts/1q.sh install <configure_preset> [--prefix DIR]   # 打包安装（不构建）
   scripts/1q.sh clean-stale <configure_preset> <module_slug>
+  scripts/1q.sh mutate <build_preset> --source S --target T --test R [opts]
   scripts/1q.sh doctor
 
 configure_preset 例：llvm-ninja-release-local | VisualStudio.15.0-amd64
@@ -189,6 +190,14 @@ case "${cmd}" in
   clean-stale)
     [[ $# -eq 2 ]] || { usage; exit 2; }
     exec bash "${SCRIPT_DIR}/1q_clean_stale.sh" "$1" "$2"
+    ;;
+  mutate)
+    # 变异探针：度量测试分区能否杀死错误实现（见 scripts/mutation_probe.py）。
+    # 会改写 src/ 下的源文件并重建，故要求该文件工作区干净。
+    [[ $# -ge 1 ]] || { usage; exit 2; }
+    preset="$1"
+    shift
+    exec python3 "${SCRIPT_DIR}/mutation_probe.py" --preset "${preset}" "$@"
     ;;
   doctor)
     doctor

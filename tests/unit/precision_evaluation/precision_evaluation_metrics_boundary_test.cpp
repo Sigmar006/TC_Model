@@ -55,6 +55,12 @@ TEST(PrecisionMetricsBoundaryTest, P95IsOrderInvariantNearestRank) {
   EXPECT_DOUBLE_EQ(first.p95, 19.0);
   EXPECT_DOUBLE_EQ(first.max, 20.0);
 
+  // 变异探针已知 survivor（等价变异体，非测试缺口，勿重复调查）：
+  //   arith_sub @ PrecisionEvaluationMetrics.cpp:26  `size() - 1U` -> `size() + 1U`
+  //   p95_index = min(n-1, ceil(0.95·n)-1)，而 ceil(0.95·n) ≤ n 恒成立，
+  //   故第二参恒 ≤ 第一参，min 从不取到 size()-1U；改大它结果不变。
+  //   唯一可能区分的 n=0 已被函数开头的 errors.empty() 提前返回挡掉。
+
   // 确定性：boundaries.md 声明纯算法面「无状态、确定性」⇒ 同输入两次调用逐位一致。
   const pe::ErrorMetricSummary second = pe::SummarizeErrorSeries(errors);
   EXPECT_EQ(second.count, first.count);

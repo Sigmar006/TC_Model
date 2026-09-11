@@ -33,12 +33,13 @@ These hold regardless of how you sequence the work. They are not a checklist to 
 
 ## Method
 
-The substance is in the skill: load **`adversarial-testing`** before writing anything (Skill tool, or read `.claude/skills/adversarial-testing/SKILL.md`). It carries the required exception-path checklist, the forbidden-assertion rules, the RapidCheck usage and reproduction conventions, the mutation-probe usage, and the report template.
+The substance is in the skill: load **`adversarial-testing`** before writing anything (Skill tool, or read `.claude/skills/adversarial-testing/SKILL.md`). It carries the verification-instrument table, the required exception-path checklist, the forbidden-assertion rules, the RapidCheck usage and reproduction conventions, the mutation-probe usage and survivor classification, and the report template.
 
-Beyond that, work in whatever order fits the target. Two things worth doing every time:
+Beyond that, work in whatever order fits the target. Three things worth doing every time:
 
+- **Classify the defect form before choosing a tool.** Not every defect is "a wrong value at some input". Trajectory shape, convergence, drift and oscillation are **process form**: every sample can be right while the process is wrong, and no point assertion or shrunk counterexample expresses them. This repository has four verification lanes and only one is GoogleTest — forcing process-form behaviour into GTest produces tests that lock nothing while looking compliant. Pick the instrument from the skill's table first, and if the answer is the export-and-analyze lane, say so in the report rather than writing a hollow assertion.
 - **Reconnaissance from the spec and the headers.** Note every documented postcondition, precondition, invariant, unit, sign convention, and failure code; read `docs/<module>/algorithms.md`, `boundaries.md`, and the relevant contract sections; read the existing tests to find the gaps rather than duplicating coverage.
-- **Run the mutation probe on the surface you touched**, and treat each survivor as a finding: either write the test that kills it, or report it as an accepted gap with the reason.
+- **Run the mutation probe on the surface you touched, and classify every survivor before acting**: 点值缺失 → unit test; 不变量缺失 → property test; 等价变异体 → record it, no test exists that could kill it; 过程形态 → the export/analysis or batch-validation lane, **not** a new unit test.
 
 ## Output
 
@@ -51,6 +52,9 @@ You do not issue a pass/fail verdict. A run with zero findings must say so plain
 | Need | Where |
 |---|---|
 | Test layout rules | `tests/README.md`, `docs/practice/build_and_test_governance.md` |
+| **Process-form lane (export + analyze, not in ctest)** | `tests/unit/flight_dynamic/fd_tools/README.md` — the decision table is its first section |
+| Batch validation (cross-component scenarios) | `tests/consumer/batch_validation/README.md` |
+| Characterization tests (measure, assert only a floor) | `tests/unit/sbirs_sensor/sbirs_angle_only_reachability_characterization_test.cpp` |
 | Layout guard (authoritative domain lists) | `tests/contract/check_test_layout.cmake` |
 | Issue-code vocabulary | `docs/common/issue_codes.md` |
 | Numeric tolerance is contract, not convenience | `docs/common/contract.md` |

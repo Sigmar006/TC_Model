@@ -33,6 +33,31 @@ When the specification is silent on a behaviour a test must pin — an unspecifi
 
 An undeclared implementation-derived test is the violation, not the reading.
 
+## Choosing the Verification Instrument
+
+**Classify the defect form before writing anything.** The commonest authoring failure is reaching for the instrument you know instead of the one the defect needs. This repository has **three verification lanes** — GoogleTest, export-and-analyze, and batch validation — plus characterization as a GoogleTest *sub-form* rather than a lane of its own. Only one of the three is GoogleTest.
+
+| 缺陷形态 | 工具 | 载体 | 交付物 |
+|---|---|---|---|
+| 某个输入上的错误取值 | GTest 常量用例 | `tests/<type>/<domain>/` | 触发输入 + 期望/实际 |
+| 必须对所有输入成立的不变量 | 属性测试（RapidCheck） | 同上 | 收缩后的最小反例 |
+| 边界 / 退化 / 非法输入 | GTest 常量用例 | 同上 | 触发输入 |
+| **过程形态：轨迹形状、收敛、漂移、振荡、几何关系** | **逐帧导出 + 脚本/图表分析** | `fd_tools/` 式工具（随测试编译，**不注册 ctest**）或 `tools/*.py` | **判据 + 序列 + 结论** |
+| 跨组件端到端场景 | batch validation | `tests/consumer/batch_validation/` | 场景级指标 |
+| 已测行为的度量与下限 | characterization 测试 | `*_characterization_test.cpp` + `RecordProperty` | 测量值 + 物理下限 |
+
+**过程形态是这里唯一没有"最小反例"的一类**：每个采样点都可能正确，而过程仍然是错的。收缩、单点反例、点条件异常路径对它全都不适用。六自由度轨迹、滤波器长时间收敛、扫描图案的周期一致性、图像质量随参数退化的趋势，都属于这一类。`tests/unit/flight_dynamic/fd_tools/README.md` 是制度化先例，它把这条决策写得比本节更早："六自由度轨迹的'对不对'很难用单断言表达（GTest 适合确定性不变式，不适合轨迹形状/收敛过程判断）"。SAR 走同一条路（导出 raw 图像 + `tools/analyze_sar_psf.py`）。
+
+新建同类工具时照 `fd_tools` 的形态：独立 `main`、随测试构建、**不注册 ctest**。它可以使用 `src/` 内部头（开发期验证的合法需求，FD 的工具就读取起落架/推进器状态），这不代表消费方集成方式。
+
+### 过程形态的判据：先声明，后测量
+
+判据（收敛时间、超调量、p95 误差、半径一致性…）通常是一条工程期望，未必写在任何文档里。三条规则：
+
+1. **判据必须在跑数据之前写下来**，连同依据（物理推导 / 装备指标 / 既有文档），放在工具或分析记录的头部。看到曲线之后再定阈值，等于用观察到的行为反推期望——同一种确认偏差，只是发生在连续域，而且更难发现，因为曲线"看起来对"。
+2. **观察层不阻断，因此不触发阈值门禁**：导出分析的结果供人判断，不写硬断言。
+3. **升格才是门禁事件**：一旦判据写成 `EXPECT_*` 断言、batch validation 的阻断阈值，或文档验收条款，它就成了仓库规则意义上的 test-threshold / acceptance-bar，按 `contract.md` 强制规则 6a 走全流程门禁（证据分支 + Stage A 证据矩阵）。**触发门禁的是"升格"这个动作，不是"第一次写判据"**——判据写在分析工具里不需要证据文档，把它变成阻断断言才需要。
+
 ## Honesty over self-restraint
 
 You cannot be trusted about your own rigor, and neither can any author. So this workflow does not ask you to promise — it asks you to disclose, and it verifies mechanically:
@@ -131,7 +156,7 @@ RC_GTEST_PROP(CoordinateAttitudePropertyTest, MatrixComposedWithInverseIsIdentit
 
 **Use for** pure functions, inverse/round-trip pairs, algebraic invariants, monotonicity, limit behaviour, numeric stability over a wide input range.
 
-**Do not use for** session-level or integration flows, or anything needing a full simulated scenario — those belong to `tests/integration/`, the replay partitions, or `tests/consumer/batch_validation`. A property test must be cheap enough to run hundreds of cases; if one case costs a simulated second, this is the wrong tool.
+**Do not use for** session-level or integration flows, anything needing a full simulated scenario (→ `tests/integration/`, the replay partitions, or `tests/consumer/batch_validation`), or **process-form behaviour** — trajectory shape, convergence, drift, oscillation (→ the export-and-analyze lane in "Choosing the Verification Instrument"). A property test must be cheap enough to run hundreds of cases; if one case costs a simulated second, this is the wrong tool, and widening the input range will not rescue it.
 
 ### Generators
 
@@ -200,12 +225,23 @@ scripts/mutation_probe.py --source src/<module>/<file>.cpp \
 | Result | Meaning |
 |---|---|
 | `KILLED` | tests failed under the mutant — the suite has a detector for this behaviour |
-| `SURVIVED` | tests passed — **a blind spot, and a finding**; report the line, the mutation, and the source line |
-| `BUILD ERROR` | mutant did not compile (stillborn) — excluded from the score |
+| `SURVIVED` | tests passed — **classify before acting** (below); report the line, the mutation, and the source line |
+| `BUILD ERROR` | mutant did not compile (stillborn) — excluded from the score. Note that a mutant which only fails to compile because the *test* is over-specified is not stillborn in any meaningful sense; check the build output before dismissing it |
 
 Exit status is 1 when any mutant survived, 0 otherwise, so it can gate. The probe refuses to run on a file with uncommitted changes (it restores via the original text and verifies the sha256), and restores on Ctrl-C.
 
-**Reading the result.** The mutation score is a *diagnostic*, not a target — do not chase a number, and never weaken the probe (removing operators, mutating a copy, excluding survivors) to raise it. Work the other direction: each survivor names a behaviour no test pins. Either add the test that kills it, or report it as an accepted gap with the reason the behaviour is untested.
+**Reading the result.** The mutation score is a *diagnostic*, not a target — do not chase a number, and never weaken the probe (removing operators, mutating a copy, excluding survivors) to raise it.
+
+**Classify every survivor before acting on it.** The probe's kill criterion is *the unit tests* — so a survivor does not automatically mean "a test is missing":
+
+| survivor 的性质 | 判断 | 处置 |
+|---|---|---|
+| **点值缺失** | 该行为该由单元断言判定，但没写 | 补单元测试 |
+| **不变量缺失** | 该行为该由属性判定，但没写 | 补属性测试 |
+| **等价变异体** | 变异前后语义相同，没有任何测试能区分 | 就地记录，不补测试（补不出）。例：`min(n-1, ceil(0.95n)-1)` 里 `n-1` 恒不绑定 |
+| **过程形态** | 该行为的正确性本来就不由单元测试判定（轨迹形状、收敛、漂移…） | **不补单元测试**——移交导出分析层或 batch validation，并在报告里注明"非单元测试管辖" |
+
+把过程形态的 survivor 当作测试缺口，会逼出一个假的点式测试——它锁定不了真正的问题，却看起来合规。那比不写更糟。同样，等价变异体不补测试，也不是"接受的缺口"，而是**探针的已知盲区**。
 
 **Limits to state in the report.** Text-level mutation, one point at a time, on space-delimited operators only (so `std::vector<double>` and `<<` are never touched); it cannot see mutants that need multiple coordinated edits; and it only covers the file you point it at.
 
@@ -225,13 +261,20 @@ The verdict column is replaced by findings — you do not decide pass/fail.
 ### 新增测试
 | 文件 | 覆盖需求条目 | 用例数 |
 
-### 漏洞与反例清单
+### 漏洞与反例清单（点式）
 | # | 严重度 | 需求条目 | 最小反例输入 | 观察行为 | 期望行为（依据） | 复现方式 |
+
+### 过程形态分析（若适用）
+- 缺陷形态判定：<为何属过程形态而非点式——轨迹形状/收敛/漂移/振荡/几何>
+- 判据（**声明时间与依据**；须先于跑数据写下）：
+- 序列产物：<CSV/raw 路径 + 生成命令>
+- 结论：<是否满足判据；不满足时的具体偏离>
+- 升格状态：<未升格（仅观察，不阻断）/ 已升格为阻断断言，已走 evidence-first 门禁>
 
 ### 变异探针
 - 命令：
 - 结果：killed N / survived M / build-error K，score X%
-- survivors：<行号、变异、源码行>（每个 survivor 要么补上杀它的测试，要么说明为何接受该缺口）
+- survivors：<逐条：行号、变异、源码行 + **分类**（点值缺失 / 不变量缺失 / 等价变异体 / 过程形态）+ 处置>
 
 ### 实现派生测试（IMPL-DERIVED）
 - <仅规格沉默处；说明规格未回答的问题>
@@ -249,7 +292,8 @@ Report a finding for every assertion you could not justify, every spec line you 
 
 ## Pre-Submit Self-Check
 
-- [ ] The interface packet cited documents; it was not a paraphrase. Gaps were sent back, not filled from the implementation.
+- [ ] **The defect form was classified, and the instrument matches it** — a process-form defect (trajectory shape, convergence, drift) was not forced into point assertions.
+- [ ] Interface packet cited documents; it was not a paraphrase. Gaps were sent back, not filled from the implementation.
 - [ ] Where the Tier 1 firewall applied, `git diff --stat src/ include/` is empty and no implementation file was read except under the named exception.
 - [ ] Any implementation-derived test is marked `// IMPL-DERIVED:` and listed separately.
 - [ ] Every assertion cites a requirement, doc section, issue code, or mathematical property.
@@ -258,6 +302,7 @@ Report a finding for every assertion you could not justify, every spec line you 
 - [ ] Every randomized input is reproducible: literal seed, `RC_PARAMS` documented, or `reproduce=` recorded.
 - [ ] Every floating-point tolerance has a stated derivation.
 - [ ] Every post-failure edit to a test is disclosed with its reason.
-- [ ] The mutation probe ran on the touched surface, and every survivor is either killed by a new test or reported as an accepted gap.
+- [ ] The mutation probe ran on the touched surface, and every survivor is **classified** (点值缺失 / 不变量缺失 / 等价变异体 / 过程形态) with the disposition that classification calls for — not reflexively turned into a unit test.
+- [ ] Any process-form judgement was written down **before** the data was produced, with its basis, and its promotion status is stated (observation-only vs promoted to a blocking assertion).
 - [ ] Files live at `tests/unit/<domain>/<domain>_<name>_test.cpp` (or the correct type/domain), named per `tests/README.md`; shared helpers in `tests/support/`.
 - [ ] `flight_dynamic` is the exception to glob discovery — a new file there must be added to `tests/cmake/FlightDynamicPartitions.cmake` explicitly.

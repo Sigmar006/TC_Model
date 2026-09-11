@@ -1,7 +1,7 @@
 # Commit message standard — 契约收敛与 docs 工作
 
-仓库提交规范（AGENTS.md）要求 Conventional Commits + `Co-Authored-By` 结尾。
-本文件给出契约收敛工作下的具体写法（母本分支 42 个提交的模式）。
+提交标题格式由 `.githooks/commit-msg` 强制（Conventional Commits，违规即拒绝提交）；
+提交信息不带署名尾行。本文件给出契约收敛工作下的具体写法（母本分支 42 个提交的模式）。
 
 ## 模板
 
@@ -9,8 +9,6 @@
 <type>(<scope>): <imperative 描述>
 
 <可选 body：关键决策 / 改动清单 / 验证结果>
-
-Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ## type 与 scope 对照
@@ -54,11 +52,10 @@ scope 取值（模块/域）：`airborne_radar`、`electronic_surveillance_radar
 
 - 描述空泛无符号：`update docs` → 应 `mark rule 14 alignment complete across all five modules`。
 - 代码提交混 docs：契约/回写与代码分提交。
-- 缺少 `Co-Authored-By` 结尾行。
 
 ## 自检清单
 
 - [ ] `type(scope):` 合法（type ∈ feat/fix/refactor/docs/test/chore/perf；scope 为模块/域）
 - [ ] 描述 imperative/短句，含关键新符号
 - [ ] body 有内容（冻结决策 / 文件清单 / Validation 块），不只靠描述
-- [ ] 末尾 `Co-Authored-By: Claude <noreply@anthropic.com>`
+- [ ] 无署名尾行

@@ -4,6 +4,10 @@
       "mcp__codegraph__*"
     ]
   },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "hooks": {
     "UserPromptSubmit": [
       {

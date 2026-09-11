@@ -29,6 +29,7 @@ usage() {
   scripts/1q.sh install <configure_preset> [--prefix DIR]   # 打包安装（不构建）
   scripts/1q.sh clean-stale <configure_preset> <module_slug>
   scripts/1q.sh mutate <build_preset> --source S --target T --test R [opts]
+  scripts/1q.sh mutate <build_preset> --history [--include-multi]   # 历史缺陷种子
   scripts/1q.sh doctor
 
 configure_preset 例：llvm-ninja-release-local | VisualStudio.15.0-amd64

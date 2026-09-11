@@ -186,7 +186,7 @@ config_loader，遵循惯例：块内缺省字段静默默认、语法错误与�
 历史注：v1 场景的顶层 `eos_scan`/`sar`/`fusion`/`threat` 覆写块与
 `sbirs_satellite` 的焦平面/命中门键已并入 `session_config` 对应子块（生效值 =
 模板 ⊕ 场景覆写）；ECM 由代码默认（MakeDefaultEcmConfig）升为 `session_config.ecm`
-数据。场景验证工作流（预期事件表/三分类判定/原型库）见仓库 skill `scenario-verify`。
+数据。
 
 ## 现有场景集
 

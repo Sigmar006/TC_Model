@@ -32,26 +32,24 @@ EOF
 PRESET="$1"
 MODULE="$2"
 
-case "${PRESET}" in
-  VisualStudio.15.0-amd64)
-    BINARY_DIR="${ONEQ_ROOT}/build/VisualStudio.15.0-amd64"
-    ;;
-  VisualStudio.14.0-amd64)
-    BINARY_DIR="${ONEQ_ROOT}/build/VisualStudio.14.0-amd64"
-    ;;
-  1q_log_vs2015|VisualStudio.14.0-amd64-none)
-    BINARY_DIR="${ONEQ_ROOT}/build/${PRESET}"
-    ;;
-  llvm-ninja-debug|llvm-ninja-debug-local)
-    BINARY_DIR="${ONEQ_ROOT}/build/llvm-ninja-debug-local"
-    ;;
-  llvm-ninja-release|llvm-ninja-release-local)
-    BINARY_DIR="${ONEQ_ROOT}/build/llvm-ninja-release-local"
-    ;;
-  *)
-    BINARY_DIR="${ONEQ_ROOT}/build/${PRESET}"
-    ;;
-esac
+# binaryDir 由 preset 自己决定（例：llvm-ninja-debug 指向 build/llvm-ninja-debug-local），
+# 权威解析器是 lib/1q_preset_query.py。**不要在这里维护第二份 preset→目录映射表**：
+# 1q.sh 的构建守卫已明确“不能假定 build/<preset>”，两份表迟早漂移。
+_resolve_binary_dir() {
+  local preset="$1" py out
+  py="$(command -v python3 || command -v python || true)"
+  if [[ -n "${py}" ]]; then
+    if out="$("${py}" "${SCRIPT_DIR}/lib/1q_preset_query.py" "${preset}" binaryDir 2>/dev/null)" \
+      && [[ -n "${out}" ]]; then
+      printf '%s' "${out}"
+      return 0
+    fi
+  fi
+  echo "[1q_clean_stale] 提示：无法解析 preset「${preset}」的 binaryDir，回退到 build/${preset}" >&2
+  printf '%s' "${ONEQ_ROOT}/build/${preset}"
+}
+
+BINARY_DIR="$(_resolve_binary_dir "${PRESET}")"
 
 if [[ ! -d "${BINARY_DIR}" ]]; then
   echo "[1q_clean_stale] 跳过：binaryDir 不存在 ${BINARY_DIR}" >&2

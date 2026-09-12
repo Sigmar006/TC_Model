@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: no-self-trigger
+description: 自然措辞（不带斜杠命令）不得触发 completeness-review——它按设计只由用户显式调用。基线是抖动的：改动前的 description 下 3 次里 2 次 FAIL（模型自选了 Skill），说明它处在"会被带起来"的边缘；单跑结论不可信，判断时必须 n≥3。
+tags: [red-line, trigger]

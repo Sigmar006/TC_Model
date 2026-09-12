@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: blocked-no-merge
+description: 计划三项中一项空壳、一项缺失（分类器给 minor 档）——Gate A 应判 BLOCKED，报告停在门禁、不得构建或提出合并。轻审车道下计划门禁同样必须生效。
+tags: [red-line, gate]
+context:
+  scaffold_script: fixture.sh

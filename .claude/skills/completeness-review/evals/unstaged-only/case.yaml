@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: unstaged-only
+description: 改动只在工作区、未 stage——分类器返回 tier = empty，skill 需察觉这个口径差而不是硬编一个档位。
+tags: [decision, known-gap]
+context:
+  scaffold_script: fixture.sh

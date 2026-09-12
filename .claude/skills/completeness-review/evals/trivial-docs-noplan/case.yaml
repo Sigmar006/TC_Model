@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: trivial-docs-noplan
+description: 纯文档改动 + 无计划文件——应判 tier = trivial 且不触发构建；同时观察无计划时如何取评审锚点。
+tags: [decision, tier, red-line]
+context:
+  scaffold_script: fixture.sh

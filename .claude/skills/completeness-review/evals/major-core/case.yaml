@@ -1,6 +1,0 @@
-schema_version: "1.1"
-name: major-core
-description: 核心库实质改动（src/ 与 include/1q/）——应判 tier = major 并声明全量评审的 lane 取舍。
-tags: [decision, tier]
-context:
-  scaffold_script: fixture.sh

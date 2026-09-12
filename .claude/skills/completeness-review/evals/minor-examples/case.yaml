@@ -1,6 +1,0 @@
-schema_version: "1.1"
-name: minor-examples
-description: 改动局限于示例层（examples/）——应判 tier = minor 并只跑单条轻审车道。
-tags: [decision, tier]
-context:
-  scaffold_script: fixture.sh

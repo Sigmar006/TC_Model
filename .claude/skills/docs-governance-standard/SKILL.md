@@ -35,7 +35,6 @@ the docs writeback and review loop close. This skill makes that loop reproducibl
   skill references it; do not duplicate its 5-field template here).
 - High-risk algorithm/architecture gate process → `evidence-first-freeze-contract`.
 - Module contract-gap audit / repair → `evidence-first-freeze-contract`.
-- Commit gate → `completeness-review`.
 
 ## The closed loop (7 stages)
 

@@ -47,6 +47,10 @@ if(ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG)
     target_compile_definitions(sbirs_engine PRIVATE ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=1)
     target_compile_definitions(sbirs_core PRIVATE ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=1)
 endif()
+# 第 11–14 项按验收文件独立判定：SBIRS 物理量同时写入 fusion_acceptance.log。
+if(ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG)
+    target_compile_definitions(sbirs_engine PRIVATE ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG=1)
+endif()
 # Keep file-local detection lookup helpers in separate translation units under
 # Unity Build; the recorder and debug-view builder use identical local names.
 set_source_files_properties(session/SbirsDetectionLifecycleRecorder.cpp

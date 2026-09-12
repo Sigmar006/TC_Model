@@ -29,4 +29,29 @@
 
 #endif
 
+#if defined(ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG) && ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG
+
+#define SBIRS_FUSION_ACCEPTANCE_LOG_ENABLED() true
+#define SBIRS_FUSION_ACCEPTANCE_RECORD(text) \
+  ::oneq::logging::WriteAcceptanceLog(::oneq::logging::AcceptanceChannel::kFusion, (text))
+#define SBIRS_FUSION_ACCEPTANCE_ITEM(sim_time, cycle, item, content) \
+  SBIRS_FUSION_ACCEPTANCE_RECORD(                                    \
+      ::oneq::logging::FormatAcceptanceLine((sim_time), (cycle), (item), (content)))
+
+#else
+
+#define SBIRS_FUSION_ACCEPTANCE_LOG_ENABLED() false
+#define SBIRS_FUSION_ACCEPTANCE_RECORD(text) ((void)0)
+#define SBIRS_FUSION_ACCEPTANCE_ITEM(sim_time, cycle, item, content) ((void)0)
+
+#endif
+
+#define SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED() \
+  (SBIRS_ACCEPTANCE_LOG_ENABLED() || SBIRS_FUSION_ACCEPTANCE_LOG_ENABLED())
+#define SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time, cycle, item, content)        \
+  do {                                                                    \
+    SBIRS_ACCEPTANCE_ITEM((sim_time), (cycle), (item), (content));        \
+    SBIRS_FUSION_ACCEPTANCE_ITEM((sim_time), (cycle), (item), (content)); \
+  } while (false)
+
 #endif  // ONEQ_SRC_SBIRS_SENSOR_PIPELINE_SBIRS_ACCEPTANCE_LOG_H_

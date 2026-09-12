@@ -36,9 +36,11 @@ std::string FormatRotation(const oneq::coordinate::RotationMatrix3d& r) {
 }
 
 oneq::coordinate::RotationMatrix3d ComposeMountAndMisalignment(
-    const oneq::coordinate::EulerAnglesDeg& mount, const oneq::coordinate::EulerAnglesDeg& misalign) {
-  return oneq::coordinate::Compose(oneq::coordinate::BuildRotationMatrix(mount),
-                                   oneq::coordinate::Inverse(oneq::coordinate::BuildRotationMatrix(misalign)));
+    const oneq::coordinate::EulerAnglesDeg& mount,
+    const oneq::coordinate::EulerAnglesDeg& misalign) {
+  return oneq::coordinate::Compose(
+      oneq::coordinate::BuildRotationMatrix(mount),
+      oneq::coordinate::Inverse(oneq::coordinate::BuildRotationMatrix(misalign)));
 }
 
 /** @brief 第7项可探测性行待定条目（单星候选顺延至确定无第二星再落盘）。 */
@@ -49,6 +51,7 @@ struct DetectabilityEntry {
   double slant_range_m{0.0};
   double measured_az_rad{0.0};
   double measured_el_rad{0.0};
+  bool narrow_field{false};
   double satellite_ecef_m[3]{0.0, 0.0, 0.0};
   double gmst_rad{0.0};
 };
@@ -130,7 +133,8 @@ void WriteSbirsInstallMatrices(std::uint32_t satellite_id,
   if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
-  const oneq::coordinate::RotationMatrix3d r_mount = oneq::coordinate::BuildRotationMatrix(mount_deg);
+  const oneq::coordinate::RotationMatrix3d r_mount =
+      oneq::coordinate::BuildRotationMatrix(mount_deg);
   const oneq::coordinate::RotationMatrix3d r_mis =
       oneq::coordinate::BuildRotationMatrix(misalignment_deg);
   const oneq::coordinate::RotationMatrix3d r_actual =
@@ -165,9 +169,9 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
   // 定位误差抽样口径（评审 2026-08-26 条1 + 2026-08-27 条4）：东/北 = 轨道角抽样
   // 弧长映射（轨道角 σ 为 0 的场景仍有径向分量），天 = 径向按导航 σ 独立抽样；
   // 真值（传入 ECEF）不可用时退化为按导航 σ 三维随机抽样（分量记 X/Y/Z）。
-  const double r_norm = std::sqrt(satellite_ecef.x * satellite_ecef.x +
-                                  satellite_ecef.y * satellite_ecef.y +
-                                  satellite_ecef.z * satellite_ecef.z);
+  const double r_norm =
+      std::sqrt(satellite_ecef.x * satellite_ecef.x + satellite_ecef.y * satellite_ecef.y +
+                satellite_ecef.z * satellite_ecef.z);
   const double radial = nav_sigma * SampleNormal(cycle, 47U + sat_salt);
   const bool have_truth_ecef = r_norm > 0.0;
   double dx;
@@ -195,8 +199,8 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
     const double up_z = satellite_ecef.z / r_norm;
     // 东向单位矢 = ẑ×r̂ = (-ry, rx, 0)/|·|（极轨卫星不在极点，叉积非退化；退化时
     // 回退到经度 0 的本地东北天基）；北向单位矢 = r̂×east。
-    const double east_norm = std::sqrt(satellite_ecef.x * satellite_ecef.x +
-                                       satellite_ecef.y * satellite_ecef.y);
+    const double east_norm =
+        std::sqrt(satellite_ecef.x * satellite_ecef.x + satellite_ecef.y * satellite_ecef.y);
     double east_x;
     double east_y;
     if (east_norm > 1.0e-6) {
@@ -215,15 +219,14 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
     nav += " 真值ECEF=";
     nav += FormatVec3(satellite_ecef.x, satellite_ecef.y, satellite_ecef.z, 1);
     nav += "m 实际ECEF=";
-    nav += FormatVec3(satellite_ecef.x + vec_x, satellite_ecef.y + vec_y,
-                      satellite_ecef.z + vec_z, 1);
+    nav +=
+        FormatVec3(satellite_ecef.x + vec_x, satellite_ecef.y + vec_y, satellite_ecef.z + vec_z, 1);
     nav += "m 定位误差ECEF=(" + FormatF(vec_x, 1) + "," + FormatF(vec_y, 1) + "," +
            FormatF(vec_z, 1) + ")m";
   } else {
     // 传入 ECEF 不可用：位置字段如实记不可用，误差向量按导航 σ 三维抽样。
     nav += " 真值ECEF=不可用 实际ECEF=不可用";
-    nav += " 定位误差ECEF=(" + FormatF(dx, 1) + "," + FormatF(dy, 1) + "," + FormatF(dz, 1) +
-           ")m";
+    nav += " 定位误差ECEF=(" + FormatF(dx, 1) + "," + FormatF(dy, 1) + "," + FormatF(dz, 1) + ")m";
   }
   nav += " |定位误差|=" + FormatF(err_norm, 1) + "m";
   SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "卫星自身定位误差功能测试", nav);
@@ -271,8 +274,8 @@ bool TryEciAzElToEcefDirection(double az_rad, double el_rad, double gmst_rad, do
 }
 
 // 双视线最近交会（ECEF）：两射线最近点取中点；平行/退化返回 false。
-bool TryDualLosMidpointEcef(const DetectabilityEntry& a, const DetectabilityEntry& b,
-                            double* x_m, double* y_m, double* z_m) {
+bool TryDualLosMidpointEcef(const DetectabilityEntry& a, const DetectabilityEntry& b, double* x_m,
+                            double* y_m, double* z_m) {
   double dax = 0.0;
   double day = 0.0;
   double daz = 0.0;
@@ -280,7 +283,7 @@ bool TryDualLosMidpointEcef(const DetectabilityEntry& a, const DetectabilityEntr
   double dby = 0.0;
   double dbz = 0.0;
   if (!TryEciAzElToEcefDirection(a.measured_az_rad, a.measured_el_rad, a.gmst_rad, &dax, &day,
-                                  &daz) ||
+                                 &daz) ||
       !TryEciAzElToEcefDirection(b.measured_az_rad, b.measured_el_rad, b.gmst_rad, &dbx, &dby,
                                  &dbz)) {
     return false;
@@ -323,8 +326,7 @@ void EmitDetectabilityLine(std::uint64_t target_id,
     double z_m = 0.0;
     oneq::coordinate::LlaPositionDegM fix_lla{};
     if (TryDualLosMidpointEcef(first, it_b->second, &x_m, &y_m, &z_m) &&
-        oneq::coordinate::TryEcefToLla(oneq::coordinate::EcefPositionM(x_m, y_m, z_m),
-                                       &fix_lla)) {
+        oneq::coordinate::TryEcefToLla(oneq::coordinate::EcefPositionM(x_m, y_m, z_m), &fix_lla)) {
       content += " 位置LLA=(" + FormatF(fix_lla.latitude_deg, 6) + "," +
                  FormatF(fix_lla.longitude_deg, 6) + "," + FormatF(fix_lla.altitude_m, 1) + ")";
     }
@@ -335,6 +337,7 @@ void EmitDetectabilityLine(std::uint64_t target_id,
     content += " 相对卫星斜距=" + FormatF(entry.slant_range_m, 1) + "m";
     content += " 量测方位/俯仰(ECI)=(" + FormatF(entry.measured_az_rad, 8) + "," +
                FormatF(entry.measured_el_rad, 8) + ")rad";
+    content += entry.narrow_field ? " 阶段=NFOV" : " 阶段=WFOV";
   }
   content += " 红外可探测=是";
   SBIRS_ACCEPTANCE_ITEM(first.sim_time_sec, first.cycle, "目标可探测性与动态参数生成功能测试",
@@ -346,9 +349,9 @@ void EmitDetectabilityLine(std::uint64_t target_id,
 void WriteSbirsTargetDetectability(std::uint32_t satellite_entity_id, float sim_time_sec,
                                    std::uint32_t cycle, std::uint64_t target_id,
                                    double slant_range_m, double measured_az_rad,
-                                   double measured_el_rad, double satellite_ecef_x_m,
-                                   double satellite_ecef_y_m, double satellite_ecef_z_m,
-                                   double gmst_rad) {
+                                   double measured_el_rad, bool narrow_field,
+                                   double satellite_ecef_x_m, double satellite_ecef_y_m,
+                                   double satellite_ecef_z_m, double gmst_rad) {
   if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -368,6 +371,7 @@ void WriteSbirsTargetDetectability(std::uint32_t satellite_entity_id, float sim_
   entry.slant_range_m = slant_range_m;
   entry.measured_az_rad = measured_az_rad;
   entry.measured_el_rad = measured_el_rad;
+  entry.narrow_field = narrow_field;
   entry.satellite_ecef_m[0] = satellite_ecef_x_m;
   entry.satellite_ecef_m[1] = satellite_ecef_y_m;
   entry.satellite_ecef_m[2] = satellite_ecef_z_m;
@@ -411,8 +415,7 @@ void WriteSbirsAngleStateEstimate(float sim_time_sec, std::uint32_t cycle, std::
   SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "目标角度状态估计", content);
 }
 
-void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,
-                               std::uint32_t cycle,
+void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
                                const std::vector<session::SbirsDetectionLifecycleEvent>& events,
                                const session::SbirsCycleInput& input) {
   if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {

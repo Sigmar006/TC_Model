@@ -1,6 +1,6 @@
 ---
 name: completeness-review
-description: Review uncommitted code changes for correctness, code quality, and test coverage, then gate the merge. Invoked only by the user via "/completeness-review" — no hook fires it. Review depth follows risk: core-library changes always run the code-review lane; the code-simplifier lane runs only when the review gates a branch merge; the static test-coverage lane runs only when the change adds a new module (refactors and deletions skip both). Example/doc/deletion-layer changes get a light single-lane review. Quality-gated merge flow.
+description: Heavy, merge-gating review of the current change set — run ONLY when the user explicitly types /completeness-review. Never self-invoke it: a general request to look at, review, or sanity-check some changes must be answered directly, not by this skill. This flow runs review lanes, build/test verification, and offers to merge a branch, so invoking it has to be a deliberate act. Depth follows risk — core-library changes always run the code-review lane; the code-simplifier lane only when the review gates a branch merge; the static test-coverage lane only when the change adds a new module (refactors and deletions skip both); example/doc/deletion layers get a light single-lane review.
 argument-hint: "[optional diff range]"
 allowed-tools:
   - Bash

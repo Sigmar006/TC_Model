@@ -23,6 +23,14 @@ Most of the benefit comes from the first two. A fresh context that has never see
 
 **When the firewall applies**: where `docs/common/contract.md` 强制规则 6 的 Tier 1 门禁 applies — public API and facades under `include/1q/`, algorithms/physics/signal/control logic, output semantics, and anything whose failure is silent (numerics, scoring, state machines). For everything else, rely on fresh context and specification-first and read whatever you need. In this 1Q repository, the qa-adversary subagent will typically be dispatched *because* the target is Tier 1.
 
+### Execution Models & Isolation Levels
+
+1. **Subagent 物理派发（首选）**：在具备子代理能力的宿主中，主 Agent 仅装配接口包（仅包含公开头与文档路径），派发全新的 `qa-adversary` 子代理。子代理拥有全新上下文，指令与工具严格限制触碰 `src/`。
+2. **单 Agent 两阶段盲写协议（单会话兜底）**：若只能在单一会话内执行，不得假装具备物理隔离，必须严格遵循两阶段：
+   - **Phase 1（盲写阶段）**：只读 `include/` 与 `docs/`，严禁发出任何针对 `src/` 的读取/搜索工具调用。写出测试用例并执行。
+   - **Phase 2（缺陷核对阶段）**：测试断言若与当前实现行为不符，**严禁自行查阅 `src/` 调整断言迎合现有代码**。该不符之处即为核心发现，直接记入反例漏洞清单。
+3. **诚实性原则（Honesty clause）**：若会话中模型已事先读过实现代码（带有先验记忆），必须在报告头部明示为“降级单元测试（已阅读过实现）”，严禁伪装为严格对抗性测试。
+
 ### The named exception
 
 When the specification is silent on a behaviour a test must pin — an unspecified input domain, an undefined failure mode — you may read the implementation **for that question only**, and you must then:
@@ -72,11 +80,22 @@ If a test you wrote from the spec fails, that is the finding. Do not weaken the 
 
 Ask for what is missing; do not fill a gap by reading the implementation.
 
-- **Requirement text — with source paths.** The packet must *cite* `docs/<module>/algorithms.md §…`, `boundaries.md`, `contract.md` rule numbers, `issue_codes.md` entries. **A paraphrase authored by the dispatcher is not acceptable.** An interface packet that restates the requirements in the dispatcher's own words launders implementation assumptions into the "specification" and defeats the isolation while looking compliant. If the packet contains a prose summary with no document citations, send it back and ask for the sources.
+### 准入模式（Gate Mode vs. Agile Mode）
+
+- **门禁模式（Gate Mode / Tier 1 Stage A）**：严格执行文档先行。接口包必须**显式引用** `docs/<module>/algorithms.md §…`、`boundaries.md`、`contract.md` 规则编号、`issue_codes.md` 条目。**严禁派发者口头转述**（转述会把实现假设洗白为“需求”）。缺少文档引用的，必须原样退回要求补充来源。
+- **敏捷模式（Agile Mode / 日常开发辅助）**：若开发者以自然语言提出测试需求（如“为新加的旋转矩阵补测试”），**Agent 不得生硬拒收**，而应执行**主动溯源（Self-Sourcing）**：主动检索 `docs/<module>/` 与 `include/1q/` 的 Doxygen 契约，向用户反向确认：“已定位需求依据为 `docs/...§X`，将以此作为断言基准”，确认后再行推进。
+
+### 接口包要素
+
+- **Requirement text — with source paths.** 文档章节或 Doxygen 契约规范。
 - **Public interface** — the `include/1q/<module>/**` headers, or an exact symbol list.
 - **Target domain** — which `tests/<type>/<domain>/` partition the tests belong to.
 - **Issue-code vocabulary** — the relevant slice of `docs/common/issue_codes.md` when the API reports failures through issue lists.
 - **Out of scope** — behaviours deliberately unconstrained, so you neither assert them nor count them as gaps.
+
+### 规范沉默的处置
+
+若文档与公开头文件确实对某类边界行为（如空输入、越界容错）未作定义，**严禁通过查阅 `src/` 来推测期望**。应将该未定义行为直接列入报告的 `### 未覆盖 / 存疑`，作为待决架构议题（Class D / OQ）交付，而不是私自脑补。
 
 ## Required Exception Paths
 
@@ -158,6 +177,12 @@ RC_GTEST_PROP(CoordinateAttitudePropertyTest, MatrixComposedWithInverseIsIdentit
 
 **Do not use for** session-level or integration flows, anything needing a full simulated scenario (→ `tests/integration/`, the replay partitions, or `tests/consumer/batch_validation`), or **process-form behaviour** — trajectory shape, convergence, drift, oscillation (→ the export-and-analyze lane in "Choosing the Verification Instrument"). A property test must be cheap enough to run hundreds of cases; if one case costs a simulated second, this is the wrong tool, and widening the input range will not rescue it.
 
+### 代数不变量双轨覆盖原则（Dual-Track Principle）
+
+- **全域验证与跨平台底线**：RapidCheck 属性测试（`RC_GTEST_PROP`）负责生成数百组随机输入并收缩出最小反例，是 macOS/Linux/Conan 预设下的高级验证手段。
+- **跨平台交付托底（Windows VS2015）**：Windows 交付预设（无 Conan 模式）下属性测试不参与构建。**严禁把核心代数不变量或边界条件完全押在 RapidCheck 上**。
+- **强制双轨规则**：每一个用属性测试表达的不变量（如旋转逆复合为单位阵、协方差正定、指标归一化范围），**必须在同模块测试中配有至少一组确定性的 GTest 常量用例（`TEST`）**，显式覆盖典型主轴、零点、边界点。确保在不支持 RapidCheck 的交付构建链上，不变量依然具备确定性的回归防护底线。
+
 ### Generators
 
 ```cpp
@@ -231,9 +256,10 @@ The verdict column is replaced by findings — you do not decide pass/fail.
 ## 对抗性测试报告 — <module / interface>
 
 ### 接口包
-- 需求来源：<文档路径与章节 — 必须是引用，不是转述>
+- 隔离级别：<物理子代理隔离 / 单会话两阶段盲写 / 降级单元测试（已阅读过实现）>
+- 需求来源：<文档路径与章节 — 门禁模式为显式引用；敏捷模式为主动溯源确认之路径>
 - 接口定义：<include/1q/... headers>
-- 防火墙：本次是否适用 Tier 1；若适用，声明未读取 src/ 下任何实现文件
+- 防火墙：本次是否适用 Tier 1；若适用，声明未读取 src/ 下任何实现文件（单会话盲写声明 Phase 1 阶段零触碰）
 - `git diff --stat src/ include/`：<输出，应为空>
 
 ### 新增测试
@@ -261,7 +287,7 @@ The verdict column is replaced by findings — you do not decide pass/fail.
 - <失败后对测试的每一处修改：对应的失败、修改理由。无修改则写"无">
 
 ### 未覆盖 / 存疑
-- <需要真值数据、场景文件或用户裁定才能判定的条目>
+- <规格未定义/沉默的边界行为（转为 Class D / 待决议题 OQ 交付）；或需要真值数据、场景文件、用户裁定才能判定的条目>
 ```
 
 Severity: **高** = violates a requirement, contract rule, or invariant (including silent degradation and non-determinism). **中** = boundary behaviour undefined or inconsistent with the documentation. **低** = tolerance looser than justified, naming, readability.
@@ -271,9 +297,11 @@ Report a finding for every assertion you could not justify, every spec line you 
 ## Pre-Submit Self-Check
 
 - [ ] **The defect form was classified, and the instrument matches it** — a process-form defect (trajectory shape, convergence, drift) was not forced into point assertions.
-- [ ] Interface packet cited documents; it was not a paraphrase. Gaps were sent back, not filled from the implementation.
+- [ ] 隔离级别已真实披露（物理子代理 / 单会话盲写 / 降级单元测试），未在已读代码的情况下伪装严格对抗。
+- [ ] Interface packet cited documents; in agile mode, self-sourcing cited specific sections and confirmed with user. Spec gaps were filed as findings, not filled from implementation.
 - [ ] Where the Tier 1 firewall applied, `git diff --stat src/ include/` is empty and no implementation file was read except under the named exception.
 - [ ] Any implementation-derived test is marked `// IMPL-DERIVED:` and listed separately.
+- [ ] 代数不变量遵循双轨原则：除 RapidCheck 属性测试外，具备确定性 GTest 常量用例（`TEST`）作为跨平台（Windows VS2015 无 Conan）基线托底。
 - [ ] Every assertion cites a requirement, doc section, issue code, or mathematical property.
 - [ ] Each exception-path category is covered or explained as not applicable.
 - [ ] No repository-specific forbidden assertion (Table A) appears.

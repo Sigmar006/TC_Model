@@ -1,29 +1,29 @@
 ---
 name: adversarial-testing
-description: Use when writing or reviewing tests for 1Q core algorithms, physics/signal models, or public API — and specifically when dispatched as the qa-adversary evaluator, which must produce tests from the interface contract alone without reading the implementation. Trigger for 对抗性测试、写测试、补测试、QA、测试集、属性测试、property-based、RapidCheck、不变量、边界/异常路径、反例、漏洞清单、杀死实现、确认偏差、迎合性测试. Also use when auditing whether an existing test could actually fail (assertion quality review) or when a test must be written against a public header whose .cpp the author must not read.
+description: 为 1Q 核心算法、物理/信号模型或公共 API 编写或审查测试时使用 — 特别是作为独立的 qa-adversary 评估者派发时，仅凭接口契约生成测试而不阅读实现代码。触发词：对抗性测试、写测试、补测试、QA、测试集、属性测试、property-based、RapidCheck、不变量、边界/异常路径、反例、漏洞清单、杀死实现、确认偏差、迎合性测试。也用于审查既有测试是否具备杀伤力（断言质量审查），或针对作者不得阅读 .cpp 实现的公开头文件编写测试。
 ---
 
-# Adversarial Testing
+# 对抗性测试规范 (Adversarial Testing)
 
-Write tests that can **kill a wrong implementation** — not tests that confirm the one in front of you.
+写出**能够杀死错误实现的测试** — 而不是确认眼前实现的测试。
 
-The failure mode: an author who has just written the implementation writes tests that inherit its assumptions. Assertions then encode the *current behaviour* rather than the *required behaviour*, so a bug is frozen into the contract and the suite stays green forever.
+失败模式：刚写完实现的作者所编写的测试，必然会继承实现时的全部假设。此时断言编码的是*当前行为*而非*所需行为*，从而把 Bug 永久固化到契约中，测试套件永远全绿。
 
-## What actually does the work
+## 核心机制：究竟靠什么发挥作用
 
-Three mechanisms prevent this. They cost very different amounts, so they are not bundled into one rule:
+三个机制能够阻断这种确认偏差。它们的执行成本差异巨大，因此不捆绑为单一条款：
 
-| Mechanism | Cost | When |
+| 机制 | 成本 | 适用场景 |
 |---|---|---|
-| **Fresh context** — the evaluator did not write the implementation and carries none of its reasoning | free, and the largest single source of benefit | always |
-| **Specification-first** — derive expectations from the requirement text, not from observed output | free | always |
-| **Implementation firewall** — do not read `src/` | expensive: it also blocks the questions the spec leaves unanswered | high-risk surfaces only (below) |
+| **全新上下文 (Fresh context)** — 评估者未参与实现编写，不携带实现者的思维定势 | 零成本，且是收益最大的单一来源 | 始终适用 |
+| **规范优先 (Specification-first)** — 严格从需求文本推导期望，不从实测输出倒推 | 零成本 | 始终适用 |
+| **实现防火墙 (Implementation firewall)** — 严禁阅读 `src/` 代码 | 成本高昂：同时会阻断规格未说明行为的澄清通道 | 仅限高风险核心表面（见下文） |
 
-Most of the benefit comes from the first two. A fresh context that has never seen the implementation does not need a firewall to avoid inheriting its assumptions. The firewall buys an additional *guarantee*, and the price is real: when the specification is silent on a behaviour a test must pin, the blocked question becomes an untested behaviour.
+绝大部分收益来源于前两条。一个从未见过实现的全新上下文，无需依赖防火墙也能避免继承其假设。防火墙买到的是额外的*硬性保证*，但代价真实存在：当规范对测试必须锁定的行为保持沉默时，被阻断的疑问就会成为未测盲区。
 
-**When the firewall applies**: where `docs/common/contract.md` 强制规则 6 的 Tier 1 门禁 applies — public API and facades under `include/1q/`, algorithms/physics/signal/control logic, output semantics, and anything whose failure is silent (numerics, scoring, state machines). For everything else, rely on fresh context and specification-first and read whatever you need. In this 1Q repository, the qa-adversary subagent will typically be dispatched *because* the target is Tier 1.
+**防火墙适用场景**：匹配 `docs/common/contract.md` 强制规则 6 的 Tier 1 门禁范围 — `include/1q/` 下的公共 API 与 Facade、算法/物理/信号/控制逻辑、输出语义，以及任何静默失效项（数值计算、评分评估、状态机）。对于其他所有内容，依靠全新上下文与规范优先即可，按需阅读即可。在 1Q 仓库中，`qa-adversary` 子代理通常正是*因为*目标属于 Tier 1 而被派发。
 
-### Execution Models & Isolation Levels
+### 执行模型与隔离级别 (Execution Models & Isolation Levels)
 
 1. **Subagent 物理派发（首选）**：在具备子代理能力的宿主中，主 Agent 仅装配接口包（仅包含公开头与文档路径），派发全新的 `qa-adversary` 子代理。子代理拥有全新上下文，指令与工具严格限制触碰 `src/`。
 2. **单 Agent 两阶段盲写协议（单会话兜底）**：若只能在单一会话内执行，不得假装具备物理隔离，必须严格遵循两阶段：
@@ -31,19 +31,19 @@ Most of the benefit comes from the first two. A fresh context that has never see
    - **Phase 2（缺陷核对阶段）**：测试断言若与当前实现行为不符，**严禁自行查阅 `src/` 调整断言迎合现有代码**。该不符之处即为核心发现，直接记入反例漏洞清单。
 3. **诚实性原则（Honesty clause）**：若会话中模型已事先读过实现代码（带有先验记忆），必须在报告头部明示为“降级单元测试（已阅读过实现）”，严禁伪装为严格对抗性测试。
 
-### The named exception
+### 具名例外 (The named exception)
 
-When the specification is silent on a behaviour a test must pin — an unspecified input domain, an undefined failure mode — you may read the implementation **for that question only**, and you must then:
+当规范对测试必须锁定的行为保持沉默时 — 未指定的输入定义域、未定义的失败模式 — 你可以**仅就该特定问题**查阅实现代码，且必须满足：
 
-- mark the test with a `// IMPL-DERIVED:` comment naming the question the spec did not answer;
-- list it under a separate **Implementation-derived tests** heading in the report, never in the adversarial findings;
-- not count it as evidence of correctness. It documents current behaviour; it does not verify required behaviour.
+- 用 `// IMPL-DERIVED:` 注释标记测试，注明规范未回答的具体问题；
+- 在报告中单列在 **实现派生测试 (Implementation-derived tests)** 标题下，严禁混入对抗性发现清单；
+- 不得计为正确性证据。它仅记录当前行为，不代表所需契约。
 
-An undeclared implementation-derived test is the violation, not the reading.
+未明示声明的实现派生测试属于违规，阅读本身并非违规。
 
-## Choosing the Verification Instrument
+## 验证仪器选型 (Choosing the Verification Instrument)
 
-**Classify the defect form before writing anything.** The commonest authoring failure is reaching for the instrument you know instead of the one the defect needs. This repository has **three verification lanes** — GoogleTest, export-and-analyze, and batch validation — plus characterization as a GoogleTest *sub-form* rather than a lane of its own. Only one of the three is GoogleTest.
+**动笔前必须先对缺陷形态定级。** 最常见的编写失败，就是顺手抄起自己熟悉的工具，而非缺陷所需的形式。本仓库拥有**三条验证通道** — GoogleTest、逐帧导出分析（export-and-analyze）、批量场景验证（batch validation）— 外加作为 GoogleTest *子形态*而非独立通道的特性表征测试（characterization）。其中只有一条是纯 GoogleTest。
 
 | 缺陷形态 | 工具 | 载体 | 交付物 |
 |---|---|---|---|
@@ -54,31 +54,31 @@ An undeclared implementation-derived test is the violation, not the reading.
 | 跨组件端到端场景 | batch validation | `tests/consumer/batch_validation/` | 场景级指标 |
 | 已测行为的度量与下限 | characterization 测试 | `*_characterization_test.cpp` + `RecordProperty` | 测量值 + 物理下限 |
 
-**过程形态是这里唯一没有"最小反例"的一类**：每个采样点都可能正确，而过程仍然是错的。收缩、单点反例、点条件异常路径对它全都不适用。六自由度轨迹、滤波器长时间收敛、扫描图案的周期一致性、图像质量随参数退化的趋势，都属于这一类。`tests/unit/flight_dynamic/fd_tools/README.md` 是制度化先例，它把这条决策写得比本节更早："六自由度轨迹的'对不对'很难用单断言表达（GTest 适合确定性不变式，不适合轨迹形状/收敛过程判断）"。SAR 走同一条路（导出 raw 图像 + `tools/analyze_sar_psf.py`）。
+**过程形态是这里唯一没有“最小反例”的一类**：每一个离散采样点都可能完全合法，而整体过程仍然是错的。收缩、单点反例、点条件异常路径对其全都不适用。六自由度轨迹、滤波器长时间收敛、扫描图案的周期一致性、图像质量随参数退化的趋势，均属此类。`tests/unit/flight_dynamic/fd_tools/README.md` 是制度化先例，它把该决策写得比本节更早：“六自由度轨迹的‘对不对’很难用单断言表达（GTest 适合确定性不变式，不适合轨迹形状/收敛过程判断）”。SAR 走同一条路（导出 raw 图像 + `tools/analyze_sar_psf.py`）。
 
 新建同类工具时照 `fd_tools` 的形态：独立 `main`、随测试构建、**不注册 ctest**。它可以使用 `src/` 内部头（开发期验证的合法需求，FD 的工具就读取起落架/推进器状态），这不代表消费方集成方式。
 
 ### 过程形态的判据：先声明，后测量
 
-判据（收敛时间、超调量、p95 误差、半径一致性…）通常是一条工程期望，未必写在任何文档里。三条规则：
+判据（收敛时间、超调量、p95 误差、半径一致性…）通常是一条工程期望，未必写在任何文档里。必须遵循三条规则：
 
-1. **判据必须在跑数据之前写下来**，连同依据（物理推导 / 装备指标 / 既有文档），放在工具或分析记录的头部。看到曲线之后再定阈值，等于用观察到的行为反推期望——同一种确认偏差，只是发生在连续域，而且更难发现，因为曲线"看起来对"。
+1. **判据必须在跑数据之前写下来**，连同依据（物理推导 / 装备指标 / 既有文档），写在工具源码或分析记录的头部。看到曲线之后再定阈值，等于用观察到的行为反推期望 — 同一种确认偏差，只是发生在连续域，而且更难发现，因为曲线“看起来对”。
 2. **观察层不阻断，因此不触发阈值门禁**：导出分析的结果供人判断，不写硬断言。
-3. **升格才是门禁事件**：一旦判据写成 `EXPECT_*` 断言、batch validation 的阻断阈值，或文档验收条款，它就成了仓库规则意义上的 test-threshold / acceptance-bar，按 `contract.md` 强制规则 6a 走全流程门禁（证据分支 + Stage A 证据矩阵）。**触发门禁的是"升格"这个动作，不是"第一次写判据"**——判据写在分析工具里不需要证据文档，把它变成阻断断言才需要。
+3. **升格才是门禁事件**：一旦判据写成 `EXPECT_*` 断言、batch validation 的阻断阈值，或文档验收条款，它就成了仓库规则意义上的 test-threshold / acceptance-bar，按 `contract.md` 强制规则 6a 走全流程门禁（证据分支 + Stage A 证据矩阵）。**触发门禁的是“升格”这个动作，不是“第一次写判据”** — 判据写在分析工具里不需要证据文档，把它变成阻断断言才需要。
 
-## Honesty over self-restraint
+## 诚实优于自律 (Honesty over self-restraint)
 
-You cannot be trusted about your own rigor, and neither can any author. So this workflow does not ask you to promise — it asks you to disclose, and it verifies mechanically:
+任何作者（包括你自身）在严谨性上的自我保证都是不可靠的。因此，本工作流不要求你空口承诺 — 而是要求如实披露，并通过机械手段验证：
 
-- **`git diff --stat src/ include/` must be empty** when you finish. Mechanical, checkable, and stated at the top of your report.
-- **Every edit to a test after it failed must be disclosed** with the failure it answered and the reason. Editing a test after a failure is *permitted* — the judge of whether it was legitimate is a reader, not a rule. Fixing a compile error, correcting an assertion you over-specified beyond what the spec supports, and fixing a wrong citation are all fine. What is never fine is an undisclosed edit, or one whose stated reason is "it was failing".
-- **The mutation score** (below) measures whether the tests have teeth, independently of anything you say about them.
+- 任务完成时 **`git diff --stat src/ include/` 必须为空**。机械、可查，并在报告头部明确声明。
+- **测试失败后的每一次修改都必须如实披露**，附带其响应的失败信息与修改理由。允许在测试失败后修改测试代码 — 合理性交由读者判断，而非教条。修复编译错误、纠正超出规格支持的过度断言、修正错误引用均属正当；未予披露的修改，或修改理由写为“因为测试挂了”，属于绝对红线。
+- **变异打断机制**（下文）独立客观地检验测试是否具备杀伤力，不受任何自述左右。
 
-If a test you wrote from the spec fails, that is the finding. Do not weaken the assertion, widen the tolerance, broaden a skip, or re-derive the expectation from observed output. `docs/common/contract.md` 强制规则 5: **验收失败时回到证据矩阵重新拆分原因；不得通过放宽阈值、扩大 skip 或弱化测试制造通过。**
+若依据规格编写的测试失败了，失败本身就是交付的发现项。严禁放宽断言、放宽容差、扩大 skip 范围，或根据实测输出反推期望。`docs/common/contract.md` 强制规则 5：**验收失败时回到证据矩阵重新拆分原因；不得通过放宽阈值、扩大 skip 或弱化测试制造通过。**
 
-## Input Contract (Interface Packet)
+## 接口输入包 (Interface Packet)
 
-Ask for what is missing; do not fill a gap by reading the implementation.
+缺什么要什么，严禁靠阅读实现填补信息缺口。
 
 ### 准入模式（Gate Mode vs. Agile Mode）
 
@@ -87,62 +87,62 @@ Ask for what is missing; do not fill a gap by reading the implementation.
 
 ### 接口包要素
 
-- **Requirement text — with source paths.** 文档章节或 Doxygen 契约规范。
-- **Public interface** — the `include/1q/<module>/**` headers, or an exact symbol list.
-- **Target domain** — which `tests/<type>/<domain>/` partition the tests belong to.
-- **Issue-code vocabulary** — the relevant slice of `docs/common/issue_codes.md` when the API reports failures through issue lists.
-- **Out of scope** — behaviours deliberately unconstrained, so you neither assert them nor count them as gaps.
+- **需求条目文本及源路径 (Requirement text — with source paths)**：文档章节或 Doxygen 契约规范。
+- **公共接口 (Public interface)**：`include/1q/<module>/**` 头文件，或精确的符号清单。
+- **目标测试域 (Target domain)**：测试归属的 `tests/<type>/<domain>/` 分区。
+- **问题列表词汇表 (Issue-code vocabulary)**：当 API 通过问题列表上报故障时，提供 `docs/common/issue_codes.md` 的对应切片。
+- **范围外约定 (Out of scope)**：明确有意未做约束的行为，以便既不对其断言，也不将其计入缺陷漏洞。
 
 ### 规范沉默的处置
 
 若文档与公开头文件确实对某类边界行为（如空输入、越界容错）未作定义，**严禁通过查阅 `src/` 来推测期望**。应将该未定义行为直接列入报告的 `### 未覆盖 / 存疑`，作为待决架构议题（Class D / OQ）交付，而不是私自脑补。
 
-## Required Exception Paths
+## 必须覆盖的异常路径 (Required Exception Paths)
 
-Cover each category, or state in the report why it does not apply. "Not applicable" is an acceptable answer; silence is not.
+覆盖每一类异常路径，或在报告中明确说明为何不适用。“不适用”是可接受的结论，沉默不是。
 
-**Input degeneracy** — empty container/sequence/zero-length span; single element where the algorithm needs N≥2; `nullptr` optional dependency; zero and negative sizes and steps.
+**输入退化 (Input degeneracy)** — 空容器/空序列/零长切片；算法要求 N≥2 时的单元素；`nullptr` 可选依赖；零尺寸与负步长。
 
-**Numeric boundaries** — NaN and ±Inf constructed explicitly (`std::numeric_limits<double>::quiet_NaN()`); division by zero, zero norm, singular/rank-deficient matrix, non-positive-definite covariance. **σ = 0**: a zero standard deviation reaches `std::normal_distribution(0.0, 0.0)`, on which MSVC's Debug CRT asserts — guard the generator and test the σ=0 path deliberately. **Domain edges of `acos`/`asin`**: floating-point error routinely pushes a mathematically in-range value to `1 + 1e-16` and produces NaN. Angle wrap at ±180° and the 0/360 crossing. Unit edges (Hz vs rad/s, dB vs linear).
+**数值边界 (Numeric boundaries)** — 显式构造 NaN 与 ±Inf（`std::numeric_limits<double>::quiet_NaN()`）；除以零、零范数、奇异/奇异亏秩矩阵、非正定协方差。**σ = 0**：零标准差会传给 `std::normal_distribution(0.0, 0.0)`，MSVC 的 Debug CRT 会直接触发断言崩溃 — 必须对生成器进行数值保护并专门测试 σ=0 路径。**`acos`/`asin` 定义域边界**：浮点误差极易把数学上处于范围内的值推到 `1 + 1e-16` 并产生 NaN。角度在 ±180° 的环绕与 0/360 跨越。单位边界（Hz 与 rad/s，dB 与线性值）。
 
-**Contract edges** — every failure code the API can report gets at least one triggering case, asserted **by code string** (`FindIssue(issues, "...")` + `HasValidationError(issues)`, as in `tests/unit/airborne_radar/ar_input_validation_test.cpp`; vocabulary in `docs/common/issue_codes.md`). Invalid enums, out-of-range indices, duplicated input. Preconditions unsatisfied must yield an explicit invalid flag — non-silent degradation is a contract requirement (contract.md 分层契约 规则 9); also assert the degraded value is *not* a plausible-looking default.
+**契约边界 (Contract edges)** — API 能报告的每一个错误码，都必须有至少一个触发用例，且**按错误码字符串**精确断言（`FindIssue(issues, "...")` + `HasValidationError(issues)`，参见 `tests/unit/airborne_radar/ar_input_validation_test.cpp`；词汇表见 `docs/common/issue_codes.md`）。无效枚举、越界索引、重复输入。前置条件未满足时必须返回明确的无效标记 — 非静默降级是硬性契约要求（contract.md 分层契约 规则 9）；同时必须断言降级值*绝不是*看起来很正常的虚假默认值。
 
-**State and lifecycle** — use before initialization, repeated initialization, illegal transition, reuse after reset. Cross-cycle drift; covariance symmetry and positive-definiteness after N updates.
+**状态与生命周期 (State and lifecycle)** — 未初始化即使用、重复初始化、非法状态转移、重置后复用。跨周期漂移；N 次更新后的协方差对称性与正定性保持。
 
-**Determinism** — same seed, two runs, bit-identical (`EXPECT_DOUBLE_EQ`), following `tests/unit/remote_identification_radar/rir_signal_detector_test.cpp:DeterministicWithSeed`.
+**确定性 (Determinism)** — 相同种子运行两次，结果 bit 级一致（`EXPECT_DOUBLE_EQ`），参见 `tests/unit/remote_identification_radar/rir_signal_detector_test.cpp:DeterministicWithSeed`。
 
-**Invariants** — the property-test payload: round-trips, monotonicity, conservation, symmetry, orthogonality, idempotence, and limits (`rmse→0 ⇒ score→1`, `rmse→∞ ⇒ score→0`, empty ⇒ neutral or invalid per spec).
+**不变量 (Invariants)** — 属性测试的核心内容：逆向复合（round-trip）、单调性、守恒性、对称性、正交性、幂等性，以及极值收敛（`rmse→0 ⇒ score→1`，`rmse→∞ ⇒ score→0`，空集合时返回规范约定的中性或无效值）。
 
-## Forbidden Assertions
+## 严禁使用的断言 (Forbidden Assertions)
 
-### A. Repository-specific — knowledge you cannot derive
+### A. 仓库专有禁忌（不可自行推导的规则）
 
-These encode *this* repository's contracts and history. Getting them wrong is not a judgment call.
+这些规则编码了本仓库的硬性契约与历史经验。违背它们不是见仁见智的风格问题，而是明确违规。
 
-| Forbidden | Why | Use instead |
+| 严禁项 | 原因 | 替代方案 |
 |---|---|---|
-| `EXPECT_THROW` / `ASSERT_THROW` / `EXPECT_DEATH` / `ASSERT_DEATH` | Zero occurrences repo-wide; `contract.md:294-299` forbids C++ exceptions as the project failure channel | Assert the returned error status / issue code / invalid flag |
-| `DISABLED_` prefix | Zero occurrences repo-wide; not a house convention | Remove the test, or report it in the gap list |
-| `known_limit` label to make a failing acceptance test pass | Relabelling to escape the gate is forbidden (`evidence-first-freeze-contract`) | Report as a finding; the label is not yours to apply |
-| `GTEST_SKIP()` for anything but a genuinely absent environment | Skips grow to hide failures; 强制规则 5 forbids "扩大 skip" | Fix the test, or report the gap |
-| Asserting on log text | `session_contract.md:454`: `PROJECT_LOG` is a human-readable bypass and **状态判断禁止解析日志文本（规则 3）**; acceptance logs are not a machine contract | Assert the returned DTO / report structure |
-| Shared helpers in `tests/fixtures/` or `tests/mocks/` | Those directories do not exist and `tests/contract/check_test_layout.cmake` rejects them at configure time | `tests/support/` |
+| `EXPECT_THROW` / `ASSERT_THROW` / `EXPECT_DEATH` / `ASSERT_DEATH` | 全库零出现；`contract.md:294-299` 严禁将 C++ 异常作为项目的失败通道 | 断言返回的错误状态 / 错误码 / 无效标记 |
+| `DISABLED_` 前缀 | 全库零出现；非本库工程惯例 | 移除该测试，或记录到未覆盖/缺陷清单中 |
+| 用 `known_limit` 标签掩盖失败的验收测试 | 严禁通过重新贴标签来逃避门禁拦截（`evidence-first-freeze-contract`） | 作为发现项上报；标签不可由测试作者私自添加 |
+| 为真实环境缺失之外的任何情况使用 `GTEST_SKIP()` | 跳过会演变成掩盖故障的手段；强制规则 5 严禁“扩大 skip” | 修复测试，或报告覆盖缺口 |
+| 对日志文本进行断言 | `session_contract.md:454`：`PROJECT_LOG` 仅供人眼阅读调试，**状态判断禁止解析日志文本（规则 3）**；验收日志不构成机器契约 | 对返回的 DTO 或报告结构体进行断言 |
+| 在 `tests/fixtures/` 或 `tests/mocks/` 下编写共享辅助类 | 这些目录不存在，且 `tests/contract/check_test_layout.cmake` 在配置期会直接拦截拒绝 | 统一使用 `tests/support/` |
 
-### B. Generic — one line each, because you already know them
+### B. 通用反模式禁忌（每条一行）
 
-An expectation derived from the implementation or from a shared helper rather than from the requirement; a tautology that holds for any implementation; `EXPECT_TRUE(ok)` as the whole assertion; a tolerance chosen so the test passes; an assertion inside a loop with no `SCOPED_TRACE`; assertions on private members or call order; happy-path-only coverage; a single sample point where a curve is the contract.
+从实现或共享辅助类（而非需求）反推断言；无论何种实现都能通过的恒真断言（Tautology）；把 `EXPECT_TRUE(ok)` 作为唯一断言；为了让测试通过而凑出来的容差；循环内部没有 `SCOPED_TRACE` 的断言；针对私有成员或调用顺序的白盒断言；只覆盖 Happy Path；在契约要求是一整条曲线的地方只取单一样本点。
 
-The common failure is the first one — an expectation copied from the code. Derive it from the requirement text, a physical relation, or a hand computation whose arithmetic you show above the assertion.
+最常见的败笔是第一条 — 直接从代码里抄期望值。期望必须从需求文本、物理关系或断言上方写明算术过程的手算推导中得出。
 
-## Property-Based Testing (RapidCheck)
+## 基于属性的测试 (RapidCheck)
 
-Property tests generate hundreds of inputs and **shrink** a failure to a minimal counterexample. They find the defect you did not think to write a case for. They do not replace targeted example tests — use both.
+属性测试生成数百组随机输入，并在失败时**收缩 (shrink)** 出最小反例。它们能发现你从未想过编写用例的隐蔽缺陷。属性测试不取代针对性的常量示例测试 — 两者并用。
 
-### Wiring
+### 接入方式 (Wiring)
 
-Test-only Conan dependency (`rapidcheck/cci.20231215`, gated by `enable_testing`), linked as `rapidcheck::rapidcheck`. The link is guarded by `if(TARGET rapidcheck::rapidcheck)`, so the no-Conan Windows preset still configures — but that path has no RapidCheck, so a test including the adapter header only builds on the Conan presets.
+仅用于测试的 Conan 依赖（`rapidcheck/cci.20231215`，由 `enable_testing` 控制），链接为 `rapidcheck::rapidcheck`。链接通过 `if(TARGET rapidcheck::rapidcheck)` 保护，因此无 Conan 的 Windows 预设仍能正常配置构建 — 但该路径下没有 RapidCheck，因此包含适配头的测试仅在 Conan 预设下构建。
 
-**Include `"support/rapidcheck_gtest.h"`, never `<rapidcheck/gtest.h>`.** The ConanCenter recipe installs only upstream `include/`; upstream's `install()` covers the library, `include/`, the export config and the `.pc` file, but not `extras/`, so `rapidcheck/gtest.h` is simply not there. The repo supplies its own adapter at `tests/support/rapidcheck_gtest.h`, built on the installed public API (`rc::detail::checkTestable`, `TestMetadata`, `printResultMessage`) and mirroring upstream's `checkGTest`. It defines `RC_GTEST_PROP`, which reports a property failure through gtest's `FAIL()` — an ordinary gtest failure that does not abort the binary. Two deliberate differences from upstream: there is **no** `RC_GTEST_FIXTURE_PROP` (construct what you need inside the property body), and the failure message additionally carries a ready-to-paste `RC_PARAMS='…'` reproduction string.
+**必须包含 `"support/rapidcheck_gtest.h"`，严禁包含 `<rapidcheck/gtest.h>`。** ConanCenter 的配方仅安装上游的 `include/`；上游的 `install()` 涵盖库文件、`include/`、导出配置和 `.pc` 文件，但不包含 `extras/`，因此头文件 `<rapidcheck/gtest.h>` 根本不存在。仓库在 `tests/support/rapidcheck_gtest.h` 提供了基于已安装公开 API（`rc::detail::checkTestable`、`TestMetadata`、`printResultMessage`）自研的适配层，结构与上游 `checkGTest` 对齐。它定义了 `RC_GTEST_PROP`，通过 GTest 的 `FAIL()` 报告属性失败 — 这属于普通的 GTest 失败，不会中止测试二进制进程。与上游的两处有意差异：**不提供** `RC_GTEST_FIXTURE_PROP`（在属性用例函数体内自行构造所需对象）；失败消息额外携带一段可直接复制粘贴的 `RC_PARAMS='…'` 复现命令串。
 
 ```cpp
 #include <gtest/gtest.h>
@@ -169,13 +169,13 @@ RC_GTEST_PROP(CoordinateAttitudePropertyTest, MatrixComposedWithInverseIsIdentit
 }  // namespace <module>
 ```
 
-`tests/unit/common/common_property_test.cpp` is the reference implementation in this repo.
+`tests/unit/common/common_property_test.cpp` 是仓库内的参考实现。
 
-### When to use it — and when not to
+### 适用场景与禁忌
 
-**Use for** pure functions, inverse/round-trip pairs, algebraic invariants, monotonicity, limit behaviour, numeric stability over a wide input range.
+**适用于**：纯函数、逆向/对称对、代数不变量、单调性、极值行为、宽输入范围内的数值稳定性。
 
-**Do not use for** session-level or integration flows, anything needing a full simulated scenario (→ `tests/integration/`, the replay partitions, or `tests/consumer/batch_validation`), or **process-form behaviour** — trajectory shape, convergence, drift, oscillation (→ the export-and-analyze lane in "Choosing the Verification Instrument"). A property test must be cheap enough to run hundreds of cases; if one case costs a simulated second, this is the wrong tool, and widening the input range will not rescue it.
+**不适用于**：会话级或集成级业务流、需要完整仿真场景的内容（→ `tests/integration/`、Replay 分区，或 `tests/consumer/batch_validation`）、以及**过程形态行为** — 轨迹形状、收敛过程、漂移、振荡（→ 见上文“验证仪器选型”中的逐帧导出分析通道）。属性测试必须轻量到足以执行数百次；如果单次用例需要消耗一秒仿真时间，就选错了工具，扩大输入范围也无济于事。
 
 ### 代数不变量双轨覆盖原则（Dual-Track Principle）
 
@@ -183,22 +183,22 @@ RC_GTEST_PROP(CoordinateAttitudePropertyTest, MatrixComposedWithInverseIsIdentit
 - **跨平台交付托底（Windows VS2015）**：Windows 交付预设（无 Conan 模式）下属性测试不参与构建。**严禁把核心代数不变量或边界条件完全押在 RapidCheck 上**。
 - **强制双轨规则**：每一个用属性测试表达的不变量（如旋转逆复合为单位阵、协方差正定、指标归一化范围），**必须在同模块测试中配有至少一组确定性的 GTest 常量用例（`TEST`）**，显式覆盖典型主轴、零点、边界点。确保在不支持 RapidCheck 的交付构建链上，不变量依然具备确定性的回归防护底线。
 
-### Generators
+### 生成器 (Generators)
 
 ```cpp
-rc::gen::inRange(lo, hi)        // [lo, hi) — upper bound EXCLUSIVE; shrinks toward lo
-rc::gen::elementOf(container)   // one element at random; empty container fails generation
-rc::gen::oneOf(g1, g2, ...)     // pick one of the given generators
-rc::gen::map(gen, fn)           // transform generated values
-rc::gen::suchThat(gen, pred)    // keep only matching values — fails generation after enough tries
-rc::gen::pair / rc::gen::tuple  // product of generators
-rc::gen::container<C>(gen)      // STL container; specify C explicitly
+rc::gen::inRange(lo, hi)        // [lo, hi) — 右开区间；向 lo 方向收缩
+rc::gen::elementOf(container)   // 随机抽取一个元素；空容器将导致生成失败
+rc::gen::oneOf(g1, g2, ...)     // 在给定生成器中挑选一个
+rc::gen::map(gen, fn)           // 对生成值执行变换
+rc::gen::suchThat(gen, pred)    // 仅保留满足条件的值 — 尝试过多失败后会中止生成
+rc::gen::pair / rc::gen::tuple  // 生成器的笛卡尔积
+rc::gen::container<C>(gen)      // STL 容器生成；显式指定容器类型 C
 rc::gen::just(value) / rc::gen::noShrink(gen)
 rc::gen::scale(factor, gen) / rc::gen::resize(size, gen)
-rc::gen::arbitrary<T>()         // via rc::Arbitrary<T>; also implicit for property arguments
+rc::gen::arbitrary<T>()         // 通过 rc::Arbitrary<T>；属性参数默认隐式支持
 ```
 
-**Special values are not covered by default.** Floating-point `arbitrary<double>` does **not** produce NaN, ±Inf, ±0.0, denormals, or exact boundary values — confirmed empirically here (300 seeds × 100 cases × 4 properties over `oneq::coordinate`, zero non-finite draws). `inRange<double>` additionally excludes its upper bound. A property over `arbitrary<double>()` therefore says **nothing** about special-value behaviour; generate them explicitly or the test passes vacuously:
+**特殊值默认未覆盖。** 浮点类型的 `arbitrary<double>` **不会**自动产生 NaN、±Inf、±0.0、非规格化数（denormals）或精确的极值边界 — 这一事实已在本仓库通过实测确认（300 随机种子 × 100 用例 × 4 组 `oneq::coordinate` 属性用例，未抽取到任何非有限数值）。此外 `inRange<double>` 排除其上边界。因此，建立在 `arbitrary<double>()` 上的属性测试对特殊值行为**没有任何说明力**；必须显式生成特殊值，否则测试将形同虚设：
 
 ```cpp
 const std::vector<double> kSpecials = {
@@ -213,44 +213,45 @@ auto GenSpecials() {
 }
 ```
 
-**Preconditions.** `RC_PRE(cond)` discards the case when false. Discards are bounded — RapidCheck gives up once the ratio exceeds `max_discard_ratio` (default 10 per success), reporting "Gave up after N tests" rather than passing. Prefer constructing the valid range directly (`gen::inRange`, a `fmod` mapping) over filtering a wide one; over-filtering is a generator defect, not a property failure.
+**前置条件。** `RC_PRE(cond)` 在条件为假时丢弃当前用例。丢弃次数是有上限的 — 当丢弃比例超过 `max_discard_ratio`（默认每次成功允许 10 次丢弃）时，RapidCheck 会放弃并报错“Gave up after N tests”，而不会视为通过。应优先直接构造合法范围（`gen::inRange`、`fmod` 映射），而非大范围随机后重度过滤；重度过滤是生成器缺陷，不是属性失败。
 
-**Size.** Default 100 successful cases, size growing to 100. Lower it only for genuinely expensive cases, with the reason in a comment: `RC_PARAMS="max_success=25"`.
+**样本规模。** 默认 100 次成功用例，规模递增至 100。仅对耗时确实沉重的用例调低规模，并在注释中写明理由：`RC_PARAMS="max_success=25"`。
 
-### Reproducing a failure
+### 重现失败用例 (Reproducing a failure)
 
-A failing run prints the counterexample plus a configuration line such as `Using configuration: seed=8482903616249937941`, and the adapter's failure message carries `RC_PARAMS='seed=…'` directly. To replay:
+失败运行会打印反例及类似 `Using configuration: seed=8482903616249937941` 的配置行，适配层的失败消息中会直接输出 `RC_PARAMS='seed=…'` 供重现：
 
 ```
 RC_PARAMS="seed=8482903616249937941"
-RC_PARAMS="reproduce=<opaque string from the failure output>"
+RC_PARAMS="reproduce=<失败输出中的不透明重现串>"
 ```
 
-Record it: paste the string into the test file as a comment next to the property, or into the finding row. A counterexample that cannot be replayed is worthless.
+记录该信息：将该字符串以注释形式贴入测试文件中该属性旁边，或填入发现清单行中。无法重现的反例毫无价值。
 
-### Exceptions in property bodies
+### 属性函数体内的异常处理
 
-`RC_ASSERT` signals failure by throwing `rc::detail::CaseResult`, which RapidCheck's runner catches and converts to a result value; the adapter then reports it with `FAIL()`. This is contained in the test layer: the project's exception ban (`contract.md:294-299`) scopes to `src/` and `include/`, and the build does not enable `-fno-exceptions` globally. **Do not add your own `try`/`catch` inside a property body** — it would swallow the failure signal.
+`RC_ASSERT` 通过抛出 `rc::detail::CaseResult` 异常传播失败，由 RapidCheck 内部捕获并转换为结果状态；适配层随后通过 `FAIL()` 上报。这完全封闭在测试层内：项目的禁异常契约（`contract.md:294-299`）范围限定在 `src/` 与 `include/`，构建也未在全局开启 `-fno-exceptions`。**严禁在属性函数体内自行添加 `try`/`catch`** — 这会吞掉 RapidCheck 的失败信号。
 
-## Does the suite have teeth? Break it and see.
+## 测试套件有杀伤力吗？故意破坏一次看看 (Break it and see)
 
-Nothing above proves the tests would **fail against a wrong implementation**. That is not a gap needing a tool — it is a habit, and for code you just wrote it is the cheapest check available:
+上述规则都不能证明编写的测试**在面对错误实现时真能报错**。这不需要复杂工具 — 只要养成习惯，对于刚写完的代码，这是成本最低的自检：
 
-> Pick the behaviour you are **least confident** about, deliberately break it in the implementation, run the partition, put it back. If the tests do not complain, they are not testing that behaviour.
+> 挑选一处你**最没把握**的行为，故意在实现代码里把它改错，运行对应测试分区，然后改回来。如果测试没有报错，说明它们根本没有在测这项行为。
 
-You know where your own implementation is fragile; a generic fault injector does not. Two or three hand-picked breakages on the parts you distrust beat a hundred mechanical ones.
+你自己最清楚实现的薄弱点在哪里，通用的故障注入工具做不到这一点。在你自己怀疑的要害处手选故意改错 2~3 处，胜过机械化生成 100 处改动。
 
-**If you do this at scale, read the result asymmetrically:**
+**若在大规模变异下观察结果，请非对称地解读结论：**
 
-| | |
+| 结果 | 含义 |
 |---|---|
-| **A caught fault is not evidence** | it only proves there is no blind spot *at the points you happened to break*; a high number says more about which faults you chose than about the tests |
-| **A missed fault is evidence** | it proves no test in the partition distinguishes it — the conclusion is closed |
+| **捕获到故障不构成证据** | 它只证明在*你刚好破坏的那些点*上没有盲区；很高的变异杀死率往往说明选取的破坏点过于浅显，而不代表测试足够强 |
+| **遗漏了故障是铁证** | 它确凿证明该测试分区中没有任何用例能识别该破坏 — 结论是确定闭环的 |
 
-State which faults you injected whenever you quote a result. Operator swaps (`<` → `<=`, `+` → `-`) are the worst possible choice at scale: they are exactly the dimension a test author covers first, while the defects this repository actually ships are wrong-variable, wrong-unit, wrong-sign and wrong-ordering faults that operators never produce.
-## Deliverable
+引用变异结果时，必须列明注入了哪些故障。算子替换（`<` → `<=`, `+` → `-`）在大规模测试中是价值最低的破坏：因为它们恰好是测试作者第一手就会覆盖的维度；而本仓库在工程实际中引入的缺陷，往往是算子替换永远无法产生的变量误用、单位混淆、正负号翻转以及顺序颠倒。
 
-The verdict column is replaced by findings — you do not decide pass/fail.
+## 交付规范 (Deliverable)
+
+测试报告中不再设置 Pass/Fail 裁定列 — 角色定位是提供发现项，不作终审裁决。
 
 ```markdown
 ## 对抗性测试报告 — <module / interface>
@@ -290,25 +291,26 @@ The verdict column is replaced by findings — you do not decide pass/fail.
 - <规格未定义/沉默的边界行为（转为 Class D / 待决议题 OQ 交付）；或需要真值数据、场景文件、用户裁定才能判定的条目>
 ```
 
-Severity: **高** = violates a requirement, contract rule, or invariant (including silent degradation and non-determinism). **中** = boundary behaviour undefined or inconsistent with the documentation. **低** = tolerance looser than justified, naming, readability.
+严重度分级：**高** = 违反需求文本、契约规则或不变量（包括静默降级与非确定性）。**中** = 边界行为未定义或与文档描述不一致。**低** = 容差超出合理放宽范围、命名、可读性。
 
-Report a finding for every assertion you could not justify, every spec line you could not test, and every place you had to guess. Do not pad the list, and do not drop a finding because it looks embarrassing for the implementation.
+对每一处你无法给出依据的断言、每一行无法测试的规格、每一处不得不靠猜测的地方，都要记录为发现项。严禁为了凑数而堆砌条目，也严禁因为觉得实现难堪而隐瞒发现。
 
-## Pre-Submit Self-Check
+## 提交前自检清单 (Pre-Submit Self-Check)
 
-- [ ] **The defect form was classified, and the instrument matches it** — a process-form defect (trajectory shape, convergence, drift) was not forced into point assertions.
+- [ ] **已对缺陷形态定级，且选用的验证仪器与之匹配** — 过程形态缺陷（轨迹形状、收敛、漂移）未被强行塞进单点断言。
 - [ ] 隔离级别已真实披露（物理子代理 / 单会话盲写 / 降级单元测试），未在已读代码的情况下伪装严格对抗。
-- [ ] Interface packet cited documents; in agile mode, self-sourcing cited specific sections and confirmed with user. Spec gaps were filed as findings, not filled from implementation.
-- [ ] Where the Tier 1 firewall applied, `git diff --stat src/ include/` is empty and no implementation file was read except under the named exception.
-- [ ] Any implementation-derived test is marked `// IMPL-DERIVED:` and listed separately.
+- [ ] 接口包明确引用了文档；在敏捷模式下，主动溯源已精确定位章节并向用户确认。规格未定义处已作为存疑项上报，未私自查阅实现脑补。
+- [ ] 在适用 Tier 1 防火墙处，`git diff --stat src/ include/` 为空，除具名例外情况外未读取任何实现代码。
+- [ ] 任何从实现派生的测试均已标记 `// IMPL-DERIVED:` 并在报告中单独列出。
 - [ ] 代数不变量遵循双轨原则：除 RapidCheck 属性测试外，具备确定性 GTest 常量用例（`TEST`）作为跨平台（Windows VS2015 无 Conan）基线托底。
-- [ ] Every assertion cites a requirement, doc section, issue code, or mathematical property.
-- [ ] Each exception-path category is covered or explained as not applicable.
-- [ ] No repository-specific forbidden assertion (Table A) appears.
-- [ ] Every randomized input is reproducible: literal seed, `RC_PARAMS` documented, or `reproduce=` recorded.
-- [ ] Every floating-point tolerance has a stated derivation.
-- [ ] Every post-failure edit to a test is disclosed with its reason.
-- [ ] **A fault was deliberately injected into the behaviour you are least confident about, and the tests were checked to notice it** — not left as an assumption that they would.
-- [ ] Any process-form judgement was written down **before** the data was produced, with its basis, and its promotion status is stated (observation-only vs promoted to a blocking assertion).
-- [ ] Files live at `tests/unit/<domain>/<domain>_<name>_test.cpp` (or the correct type/domain), named per `tests/README.md`; shared helpers in `tests/support/`.
-- [ ] `flight_dynamic` is the exception to glob discovery — a new file there must be added to `tests/cmake/FlightDynamicPartitions.cmake` explicitly.
+- [ ] 每一条断言均明确引用了需求条目、文档章节、错误码或数学性质。
+- [ ] 每一类异常路径均已覆盖或在报告中明确说明不适用理由。
+- [ ] 未出现任何仓库专有严禁断言（表 A）。
+- [ ] 每一个随机输入均可稳定重现：字面量种子、`RC_PARAMS` 记录或 `reproduce=` 串。
+- [ ] 每一个浮点容差均写明了理论依据或数学推导。
+- [ ] 测试失败后的每一次修改均如实披露并附带理由。
+- [ ] **已在最没把握的行为上故意破坏实现代码，并验证测试是否报错报警** — 未假定测试一定能测出问题。
+- [ ] 任何过程形态的判据均在**数据产出之前**写明依据，并明确其升格状态（仅观察不阻断 vs 已升格为阻断门禁）。
+- [ ] 测试文件位于 `tests/unit/<domain>/<domain>_<name>_test.cpp`（或对应的类型/域路径），命名遵循 `tests/README.md`；共享辅助类位于 `tests/support/`。
+- [ ] `flight_dynamic` 是通配检索的特例 — 该模块新增测试文件必须显式加入 `tests/cmake/FlightDynamicPartitions.cmake`。
+

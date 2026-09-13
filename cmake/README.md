@@ -60,6 +60,6 @@ dependency 和 schema。`src/CMakeLists.txt` 不维护 module source list、link
 
 - `cmake --preset llvm-ninja-debug`
 - `cmake --build --preset llvm-ninja-debug --target 1q_unit_tests`
-- `ctest --test-dir build/llvm-ninja-debug-local -L contract --output-on-failure`
+- `ctest --test-dir build/llvm-ninja-debug -L contract --output-on-failure`
 - `tests/contract/check_cmake_helper_parse.cmake`：两套 compiler helper 均可解析。
 - `tests/contract/check_preset_provider_contract.cmake`：public preset 与 bootstrap/provider 一致。

@@ -42,9 +42,8 @@
             "inherits": "macos-base",
             "displayName": "macOS LLVM Ninja Debug",
             "description": "Daily macOS debugging; JSBSim-linked tests run ~6x slower than release",
-            "binaryDir": "${sourceDir}/build/llvm-ninja-debug-local",
             "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/llvm-ninja-debug-local/build/Debug/generators/conan_toolchain.cmake",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/${presetName}/build/Debug/generators/conan_toolchain.cmake",
                 "CMAKE_BUILD_TYPE": "Debug",
                 "ENABLE_TESTING": "ON",
                 "ENABLE_INSTALL": "ON",

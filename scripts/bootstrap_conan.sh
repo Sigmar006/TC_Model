@@ -64,10 +64,11 @@ CPPSTD=17
 # --- preset → 参数映射 -------------------------------------------------------
 # 每个 preset 派生：binaryDir、build_type（单配置才有）、enable_testing、generator。
 # binaryDir 必须与 CMakePresets.json 中各 preset 的 binaryDir 完全一致，否则 cmake 找不到
-# 生成的 toolchain。注意 macOS preset 历史上把 binaryDir 覆写为带 -local 后缀。
+# 生成的 toolchain。macOS 两族 preset 均继承 base 的 ${sourceDir}/build/${presetName}；
+# 用户级 -local 变体（CMakeUserPresets.json）的目录才带 -local 后缀。
 case "${PRESET}" in
     llvm-ninja-debug)
-        BINARY_DIR="${SOURCE_DIR}/build/llvm-ninja-debug-local"
+        BINARY_DIR="${SOURCE_DIR}/build/llvm-ninja-debug"
         BUILD_TYPE="Debug"
         ENABLE_TESTING="True"
         GENERATOR=""            # 单配置 Ninja，无需告知 Conan 生成器

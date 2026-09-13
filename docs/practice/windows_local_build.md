@@ -1,7 +1,7 @@
 # Windows 本机构建注记（v141）
 
 Status: active
-Last-reviewed: 2026-08-27
+Last-reviewed: 2026-09-13
 Authority: local build environment, delivery tier runbook
 
 CLAUDE.md 只保留命令流；本文件承载 Windows 本机开发的环境说明、排障顺序、
@@ -25,10 +25,11 @@ macOS 是开发/CI 主线（完整 Conan 依赖集）；本机 Windows 使用 le
 | Logging | spdlog/fmt (Conan)；库调试日志默认关，排库时才 `-DONEQ_ENABLE_FILE_LOG=ON` | 库调试日志默认关（不要开 `ONEQ_ENABLE_FILE_LOG`）；`component_attachment` 示例层自带 std::ofstream 后端（`CA_LOG_BACKEND_SPDLOG=0`） |
 | HighFive / JSBSim | Conan 预装 | 均未装；FD=ON 时 JSBSim 需 third_party 源码或预编译树 |
 
-日常开发用 `*-local` 变体（机器本地 `CMakeUserPresets.json`，不进 git）；CI 用
-`CMakePresets.json` 基础 preset。Trap：repo preset `llvm-ninja-release` 的
-binaryDir 是 `build/llvm-ninja-release`（无 `-local` 后缀的历史遗留），而
-`llvm-ninja-debug` 指向 `build/llvm-ninja-debug-local`——安装路径以实际 binaryDir 为准。
+日常开发用 `*-local` 变体（机器本地 `CMakeUserPresets.json`，不进 git，目录同为
+`build/<presetName>`，故带 `-local` 后缀）；CI 用 `CMakePresets.json` 基础 preset。
+两族 preset 的目录相互独立（历史上 `llvm-ninja-debug` 曾覆写 binaryDir 与
+`llvm-ninja-debug-local` 共享目录，两族编译器不同会撕裂 CMake cache，已改回继承
+base 的 `${sourceDir}/build/${presetName}`）——安装路径以实际 binaryDir 为准。
 
 ## 一次性环境准备
 

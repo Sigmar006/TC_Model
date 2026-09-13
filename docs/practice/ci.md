@@ -1,7 +1,7 @@
 # CI 持续集成
 
 Status: active
-Last-reviewed: 2026-08-20
+Last-reviewed: 2026-09-13
 Authority: build & test infrastructure
 
 本仓库的持续集成（CI）由两个 GitHub Actions workflow 组成，按"快速门禁 vs 慢任务"分层。
@@ -38,24 +38,24 @@ CI 跑的每条命令都可在本地复现，便于调试失败：
 python3 scripts/utf8_bom.py check  # 编码守卫：C/C++ 源文件必须 UTF-8 with BOM
 bash scripts/bootstrap_conan.sh llvm-ninja-debug
 cmake --preset llvm-ninja-debug
-ctest --test-dir build/llvm-ninja-debug-local -L contract --output-on-failure -j 4
+ctest --test-dir build/llvm-ninja-debug -L contract --output-on-failure -j 4
 
 # === build-test job（绿色门禁）===
 bash scripts/bootstrap_conan.sh llvm-ninja-debug
 cmake --preset llvm-ninja-debug -D ENABLE_EXAMPLES=ON
 cmake --build --preset llvm-ninja-debug -j 4
-cmake --install build/llvm-ninja-debug-local
+cmake --install build/llvm-ninja-debug
 cmake -S tests/consumer -B build/consumer/llvm-ninja-debug -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_TOOLCHAIN_FILE="$PWD/build/llvm-ninja-debug-local/build/Debug/generators/conan_toolchain.cmake" \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/build/llvm-ninja-debug/build/Debug/generators/conan_toolchain.cmake" \
   -DCMAKE_PREFIX_PATH="$PWD/build/install/llvm-ninja-debug"
 cmake --build build/consumer/llvm-ninja-debug -j 4
 # 运行安装 consumer 可执行程序（CI 同款 find 逐个执行）
 find build/consumer/llvm-ninja-debug -maxdepth 1 -type f -perm -111 -exec {} \;
-ctest --test-dir build/llvm-ninja-debug-local -L ci_required --output-on-failure -j 4
+ctest --test-dir build/llvm-ninja-debug -L ci_required --output-on-failure -j 4
 
 # === build-test 的 unit 分区 ===
-ctest --test-dir build/llvm-ninja-debug-local -L unit --output-on-failure -j 4
+ctest --test-dir build/llvm-ninja-debug -L unit --output-on-failure -j 4
 
 # === nightly: performance ===
 bash scripts/bootstrap_conan.sh llvm-ninja-release
@@ -69,7 +69,7 @@ git clone --depth 1 https://github.com/JSBSim-Team/jsbsim.git third_party/jsbsim
 bash scripts/bootstrap_conan.sh llvm-ninja-debug
 cmake --preset llvm-ninja-debug -D ONEQ_ENABLE_FLIGHT_DYNAMIC=ON -D ENABLE_EXAMPLES=ON
 cmake --build --preset llvm-ninja-debug -j 4
-ctest --test-dir build/llvm-ninja-debug-local -R '^unit::flight_dynamic$' --output-on-failure -j 4
+ctest --test-dir build/llvm-ninja-debug -R '^unit::flight_dynamic$' --output-on-failure -j 4
 ```
 
 ## 手动触发 nightly

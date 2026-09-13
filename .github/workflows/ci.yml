@@ -16,9 +16,9 @@
 #   bash scripts/bootstrap_conan.sh llvm-ninja-debug
 #   cmake --preset llvm-ninja-debug -D ENABLE_EXAMPLES=ON
 #   cmake --build --preset llvm-ninja-debug
-#   ctest --test-dir build/llvm-ninja-debug-local -L contract --output-on-failure -j4
-#   ctest --test-dir build/llvm-ninja-debug-local -L ci_required --output-on-failure -j4
-#   ctest --test-dir build/llvm-ninja-debug-local -L unit --output-on-failure -j4
+#   ctest --test-dir build/llvm-ninja-debug -L contract --output-on-failure -j4
+#   ctest --test-dir build/llvm-ninja-debug -L ci_required --output-on-failure -j4
+#   ctest --test-dir build/llvm-ninja-debug -L unit --output-on-failure -j4
 
 name: CI
 
@@ -74,7 +74,7 @@ jobs:
         run: cmake --preset ${{ env.PRESET }}
 
       - name: Run contract guards
-        run: ctest --test-dir build/llvm-ninja-debug-local -L contract --output-on-failure -j 4
+        run: ctest --test-dir build/llvm-ninja-debug -L contract --output-on-failure -j 4
 
   # ─────────────────────────────────────────────────────────────────────
   # Job 2: build-test — Debug 库/第一方示例构建 + 测试门禁
@@ -109,10 +109,10 @@ jobs:
 
       - name: Verify installed package consumer
         run: |
-          cmake --install build/llvm-ninja-debug-local
+          cmake --install build/llvm-ninja-debug
           cmake -S tests/consumer -B build/consumer/llvm-ninja-debug -G Ninja \
                 -DCMAKE_BUILD_TYPE=Debug \
-                -DCMAKE_TOOLCHAIN_FILE=$PWD/build/llvm-ninja-debug-local/build/Debug/generators/conan_toolchain.cmake \
+                -DCMAKE_TOOLCHAIN_FILE=$PWD/build/llvm-ninja-debug/build/Debug/generators/conan_toolchain.cmake \
                 -DCMAKE_PREFIX_PATH=$PWD/build/install/llvm-ninja-debug
           cmake --build build/consumer/llvm-ninja-debug -j 4
           find build/consumer/llvm-ninja-debug -maxdepth 1 -type f -perm -111 \
@@ -121,13 +121,13 @@ jobs:
       # ── (a) 通用绿色硬门禁: 失败则整个 job 失败 ──
       - name: Run green-label tests (blocking)
         run: |
-          ctest --test-dir build/llvm-ninja-debug-local \
+          ctest --test-dir build/llvm-ninja-debug \
                 -L ci_required \
                 --output-on-failure -j 4
 
       # ── (b) 全量 unit 分区：稳定的细粒度回归门禁 ──
       - name: Run unit partitions (blocking)
         run: |
-          ctest --test-dir build/llvm-ninja-debug-local \
+          ctest --test-dir build/llvm-ninja-debug \
                 -L unit \
                 --output-on-failure -j 4

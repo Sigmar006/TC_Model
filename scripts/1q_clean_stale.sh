@@ -32,9 +32,9 @@ EOF
 PRESET="$1"
 MODULE="$2"
 
-# binaryDir 由 preset 自己决定（例：llvm-ninja-debug 指向 build/llvm-ninja-debug-local），
-# 权威解析器是 lib/1q_preset_query.py。**不要在这里维护第二份 preset→目录映射表**：
-# 1q.sh 的构建守卫已明确“不能假定 build/<preset>”，两份表迟早漂移。
+# binaryDir 由 preset 定义决定（两族 macOS preset 均继承 base 的
+# ${sourceDir}/build/${presetName}），权威解析器是 lib/1q_preset_query.py。
+# **不要在这里维护第二份 preset→目录映射表**，两份表迟早漂移。
 _resolve_binary_dir() {
   local preset="$1" py out
   py="$(command -v python3 || command -v python || true)"

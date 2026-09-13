@@ -116,7 +116,7 @@ jobs:
 
       - name: Run stable flight-dynamic partition
         run: |
-          ctest --test-dir build/llvm-ninja-debug-local \
+          ctest --test-dir build/llvm-ninja-debug \
                 -R '^unit::flight_dynamic$' \
                 --output-on-failure -j 4
 

@@ -16,7 +16,7 @@ mkdir -p /tmp/1q_trajectories
 echo "Running AircraftManeuverTest to generate trajectories..."
 export DUMP_MANEUVER_TRAJECTORY=1
 
-./build/llvm-ninja-debug-local/bin/1q_flight_dynamic_known_limit_tests \
+./build/llvm-ninja-debug/bin/1q_flight_dynamic_known_limit_tests \
   --gtest_filter="*AircraftManeuverTest.*"
 
 echo "Plotting trajectories..."

@@ -100,8 +100,8 @@ _oneq_resolve_ctest() {
   return 1
 }
 
-# 解析 preset 的 binaryDir：不能假定 build/<preset>——binaryDir 由 preset 自己
-# 决定（例：llvm-ninja-debug 指向 build/llvm-ninja-debug-local）。
+# 解析 preset 的 binaryDir：以 1q_preset_query.py 解析为准，勿硬编码——binaryDir
+# 由 preset 定义决定（两族 macOS preset 均继承 base 的 ${sourceDir}/build/${presetName}）。
 _oneq_binary_dir() {
   local preset="$1" py
   py="$(command -v python3 || command -v python || true)"

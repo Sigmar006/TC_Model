@@ -57,7 +57,7 @@
             "displayName": "macOS LLVM Ninja Release",
             "description": "macOS daily-dev default — preferred over debug (JSBSim ~6x faster)",
             "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/llvm-ninja-release/build/Release/generators/conan_toolchain.cmake",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/${presetName}/build/Release/generators/conan_toolchain.cmake",
                 "CMAKE_BUILD_TYPE": "Release",
                 "ENABLE_TESTING": "ON",
                 "ENABLE_INSTALL": "ON",

@@ -149,15 +149,12 @@ case "${cmd}" in
     [[ $# -ge 1 ]] || { usage; exit 2; }
     preset="$1"
     shift
-    extra=()
-    while [[ $# -gt 0 ]]; do
-      extra+=("$1")
-      shift
-    done
     # shellcheck source=lib/1q_build_guard.sh
     source "${SCRIPT_DIR}/lib/1q_build_guard.sh"
     _oneq_run_build_guard "${preset}" || exit 1
-    exec cmake --build --preset "${preset}" "${extra[@]}"
+    # shift 后 "$@" 即额外参数；macOS bash 3.2 下 set -u 对空数组
+    # "${extra[@]}" 报 unbound，故不经过中间数组。
+    exec cmake --build --preset "${preset}" "$@"
     ;;
   test)
     [[ $# -ge 1 ]] || { usage; exit 2; }

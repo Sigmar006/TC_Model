@@ -85,7 +85,9 @@ foreach(child ${_docs_children})
     if(_allowed_dir_idx EQUAL -1)
       list(APPEND VIOLATIONS "docs/${child}: unexpected docs directory")
     endif()
-  elseif(child MATCHES "\\.md$")
+  elseif(child MATCHES "\\.md$" AND NOT child STREQUAL "README.md")
+    # docs/README.md is the navigation entry pinned by CLAUDE.md; all other
+    # top-level Markdown stays disallowed.
     list(APPEND VIOLATIONS "docs/${child}: top-level Markdown files are not allowed; place content under docs/common or a module directory")
   endif()
 endforeach()

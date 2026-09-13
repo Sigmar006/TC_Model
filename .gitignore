@@ -66,6 +66,10 @@ GEMINI.md
 # 符号链接目录：实际文件在 .claude/skills/，以下目录仅为各 agent 发现用
 .agents/skills/
 .zcode/
+# 多 harness 本地配置目录：.claude 纳入版本控制，其余本地忽略
+.codex/
+.cursor/
+.gemini/
 # 忽略 .github/ 下除 workflows/ 外的本地配置
 .github/*
 !.github/workflows/

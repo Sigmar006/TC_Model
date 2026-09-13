@@ -52,21 +52,6 @@
             }
         },
         {
-            "name": "llvm-ninja-coverage",
-            "inherits": "macos-base",
-            "displayName": "macOS LLVM Ninja Coverage (source-based)",
-            "description": "Source-based coverage; drive tests via tools/coverage_report.sh only, never ctest by hand",
-            "binaryDir": "${sourceDir}/build/llvm-ninja-coverage-local",
-            "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/llvm-ninja-coverage-local/build/Debug/generators/conan_toolchain.cmake",
-                "CMAKE_BUILD_TYPE": "Debug",
-                "ENABLE_TESTING": "ON",
-                "ENABLE_INSTALL": "ON",
-                "BUILD_SHARED_LIBS": "OFF",
-                "ENABLE_COVERAGE": "ON"
-            }
-        },
-        {
             "name": "llvm-ninja-release",
             "inherits": "macos-base",
             "displayName": "macOS LLVM Ninja Release",
@@ -176,10 +161,6 @@
             "configurePreset": "llvm-ninja-debug"
         },
         {
-            "name": "llvm-ninja-coverage",
-            "configurePreset": "llvm-ninja-coverage"
-        },
-        {
             "name": "llvm-ninja-release",
             "configurePreset": "llvm-ninja-release"
         },
@@ -255,11 +236,6 @@
             "name": "llvm-ninja-debug",
             "inherits": "test-base",
             "configurePreset": "llvm-ninja-debug"
-        },
-        {
-            "name": "llvm-ninja-coverage",
-            "inherits": "test-base",
-            "configurePreset": "llvm-ninja-coverage"
         },
         {
             "name": "llvm-ninja-release",

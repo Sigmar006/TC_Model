@@ -30,10 +30,8 @@ else()
     set(ENABLE_PCH OFF CACHE INTERNAL "Precompiled headers require CMake 3.16+")
 endif()
 
-# 编译期告警 / 覆盖率 / 静态分析三项开关。
+# 编译期告警 / 静态分析两项开关。
 option(ENABLE_WARNINGS "Enable additional compiler warnings" ON)
-option(ENABLE_COVERAGE "Enable LLVM source-based coverage instrumentation (Clang only)" OFF)
-mark_as_advanced(ENABLE_COVERAGE)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" OFF)
 mark_as_advanced(ENABLE_CLANG_TIDY)
 

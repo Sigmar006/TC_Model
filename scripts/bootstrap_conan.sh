@@ -35,7 +35,7 @@ source "${SCRIPT_DIR}/lib/1q_env.sh"
 # --- 参数校验 ---
 if [[ $# -ne 1 ]]; then
     echo "用法: $0 <preset>" >&2
-    echo "支持的 preset: llvm-ninja-debug | llvm-ninja-coverage | llvm-ninja-release | VisualStudio.14.0-amd64 | VisualStudio.15.0-amd64" >&2
+    echo "支持的 preset: llvm-ninja-debug | llvm-ninja-release | VisualStudio.14.0-amd64 | VisualStudio.15.0-amd64" >&2
     exit 2
 fi
 
@@ -71,12 +71,6 @@ case "${PRESET}" in
         BUILD_TYPE="Debug"
         ENABLE_TESTING="True"
         GENERATOR=""            # 单配置 Ninja，无需告知 Conan 生成器
-        ;;
-    llvm-ninja-coverage)
-        BINARY_DIR="${SOURCE_DIR}/build/llvm-ninja-coverage-local"
-        BUILD_TYPE="Debug"
-        ENABLE_TESTING="True"
-        GENERATOR=""
         ;;
     llvm-ninja-release)
         BINARY_DIR="${SOURCE_DIR}/build/llvm-ninja-release"
@@ -122,7 +116,7 @@ case "${PRESET}" in
         ;;
     *)
         echo "错误: 不支持的 preset '${PRESET}'" >&2
-        echo "支持: llvm-ninja-debug | llvm-ninja-coverage | llvm-ninja-release | VisualStudio.14.0-amd64 | VisualStudio.15.0-amd64" >&2
+        echo "支持: llvm-ninja-debug | llvm-ninja-release | VisualStudio.14.0-amd64 | VisualStudio.15.0-amd64" >&2
         exit 2
         ;;
 esac

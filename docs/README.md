@@ -6,7 +6,7 @@ Documentation tree navigation. Project overview lives in the root `README.md`.
 
 - `<module>/` — one directory per module, holding its design-doc set (below)
 - `common/` — `contract.md`, the cross-module contract authority
-- `practice/` — build/test governance, coverage guide, Windows runbook, CI
+- `practice/` — build/test governance, Windows runbook, CI
 - `review/` — review documents; completed items close out as tables with `Status: final`
 - `explainers/` — background explainers for non-specialist readers
 

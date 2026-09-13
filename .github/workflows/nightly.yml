@@ -3,12 +3,10 @@
 # 承载 CI 快速门禁（ci.yml）放不下的高成本/低频任务:
 #   1. performance     — Release 构建 + 性能/cxx11 兼容 gate
 #   2. flight-dynamic  — FD 模块（默认 OFF）的 CI 子集
-#   3. coverage        — 覆盖率测量 + HTML 报告 artifact
 #
 # 为什么放 nightly 而非 PR:
 #   - performance 需 Release 构建（独立编译产物，~数分钟）
 #   - flight-dynamic 需 FD=ON + 额外 git clone JSBSim 数据（third_party 被 gitignore）
-#   - coverage 需插桩构建（llvm-ninja-coverage，独立编译产物）+ 全量测试 + 报告生成
 #   这些任务单次 10-20 分钟，放 PR 会拖慢反馈。nightly 跑足够频繁以捕捉回归。
 #
 # 手动触发: Actions 页 → nightly → Run workflow（便于随时验证修复）
@@ -122,51 +120,3 @@ jobs:
                 -R '^unit::flight_dynamic$' \
                 --output-on-failure -j 4
 
-  # ─────────────────────────────────────────────────────────────────────
-  # Job 3: coverage — LLVM source-based 覆盖率测量 + HTML 报告
-  # 用 llvm-ninja-coverage preset（ENABLE_COVERAGE=ON）+ tools/coverage_report.sh。
-  # 全量测试合并后生成 HTML 报告，作为 artifact 上传（保留 14 天）。
-  # 主指标: Branch 覆盖率（数值密集代码看重分支覆盖，见 docs/coverage.md）。
-  # ─────────────────────────────────────────────────────────────────────
-  coverage:
-    name: Coverage report
-    runs-on: macos-14
-    timeout-minutes: 40
-    # coverage 失败不应阻断 nightly 其它 job（performance/fd 独立判定）
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Conan 2.x
-        run: pip install conan
-
-      - name: Cache Conan
-        uses: actions/cache@v4
-        with:
-          path: ~/.conan2
-          key: conan-${{ runner.os }}-${{ env.CONAN_CACHE_KEY }}-coverage
-
-      - name: Bootstrap Conan (generate toolchain)
-        run: bash scripts/bootstrap_conan.sh llvm-ninja-coverage
-
-      - name: Configure (Coverage)
-        run: cmake --preset llvm-ninja-coverage
-
-      - name: Build
-        run: cmake --build --preset llvm-ninja-coverage -j 4
-
-      - name: Generate coverage report
-        # 脚本自动: ctest 全量 → profraw merge → llvm-cov 多二进制合并 → HTML + 摘要
-        # unit label 的 2 个已知失败不影响覆盖率数据完整性（脚本会 warn 但继续）
-        run: bash tools/coverage_report.sh
-
-      - name: Print coverage summary
-        # 把文本摘要打印到 GitHub Actions 日志，便于直接查看 Branch 覆盖率
-        run: cat build/llvm-ninja-coverage-local/coverage_report/summary.txt
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: build/llvm-ninja-coverage-local/coverage_report/
-          retention-days: 14

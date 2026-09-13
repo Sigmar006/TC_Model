@@ -32,7 +32,7 @@ The repository convention is to drive builds through CMake presets, running `boo
 
 ### macOS (development/CI mainline)
 
-- Presets defined in `CMakePresets.json`: `llvm-ninja-debug` / `llvm-ninja-release` / `llvm-ninja-coverage` (Ninja single-config, Darwin only).
+- Presets defined in `CMakePresets.json`: `llvm-ninja-debug` / `llvm-ninja-release` (Ninja single-config, Darwin only).
 - Daily development typically uses the local variants `llvm-ninja-debug-local` / `llvm-ninja-release-local` (`CMakeUserPresets.json`, not in git).
 - Conan provides the full dependency set (including spdlog/fmt, the prebuilt JSBSim package, and HighFive).
 
@@ -82,7 +82,7 @@ Validation and development-time tooling has moved out of examples (role separati
 - `CLAUDE.md`: engineering constraints, build/test rules, and refactoring strategy.
 - `docs/<module>/design.md`: current design per module (AR / ESR / SAR / EOS / Flight Dynamic / SBIRS / RIR / ECM / navigation / fusion / threat_assessment / target_inference / precision_evaluation).
 - `docs/common/`: cross-module contracts and open questions (`contract.md`, `open_questions.md`).
-- `docs/practice/`: engineering-practice and infrastructure design docs (coverage, the batch scene validation framework, etc.).
+- `docs/practice/`: engineering-practice and infrastructure design docs (the batch scene validation framework, etc.).
 - `docs/review/`: module reviews and migration plans.
 - `include/1q/README.md`: public header navigation and integration advice.
 - `tests/README.md`: test layering conventions and running advice.

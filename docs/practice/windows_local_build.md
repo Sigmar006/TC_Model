@@ -19,12 +19,11 @@ macOS 是开发/CI 主线（完整 Conan 依赖集）；本机 Windows 使用 le
 
 | Aspect | macOS (mainline) | Windows (local v141) |
 |---|---|---|
-| preset | `llvm-ninja-debug(-local)` / `llvm-ninja-release(-local)` / `llvm-ninja-coverage` | `VisualStudio.15.0-amd64` |
+| preset | `llvm-ninja-debug(-local)` / `llvm-ninja-release(-local)` | `VisualStudio.15.0-amd64` |
 | Generator | Ninja, single-config（build_type 随 preset 固定） | VS2026 generator + v141 (14.16) toolset, multi-config（`--config Debug/Release` 选档） |
 | conan install | 每 preset 一次，单一 build_type | bootstrap 一次装 Debug + Release |
 | Logging | spdlog/fmt (Conan)；库调试日志默认关，排库时才 `-DONEQ_ENABLE_FILE_LOG=ON` | 库调试日志默认关（不要开 `ONEQ_ENABLE_FILE_LOG`）；`component_attachment` 示例层自带 std::ofstream 后端（`CA_LOG_BACKEND_SPDLOG=0`） |
 | HighFive / JSBSim | Conan 预装 | 均未装；FD=ON 时 JSBSim 需 third_party 源码或预编译树 |
-| Coverage | `llvm-ninja-coverage` | 无 |
 
 日常开发用 `*-local` 变体（机器本地 `CMakeUserPresets.json`，不进 git）；CI 用
 `CMakePresets.json` 基础 preset。Trap：repo preset `llvm-ninja-release` 的

@@ -18,7 +18,7 @@
 # has been collapsed into this set, and common keeps contract.md (public
 # contract) and open_questions.md (non-normative cross-module open questions).
 # docs/review is the only approved draft/review holding area; docs/practice holds
-# active engineering-practice docs (build, test, coverage, examples, batch validation).
+# active engineering-practice docs (build, test, examples, batch validation).
 
 cmake_minimum_required(VERSION 3.16)
 

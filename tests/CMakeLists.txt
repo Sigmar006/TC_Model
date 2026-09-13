@@ -47,7 +47,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/TestTargets.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/FlightDynamicPartitions.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/ContractGuards.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/CompatibilityChecks.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/cmake/CoverageRunner.cmake)
 
 # 批量场景验证框架（consumer 分区，树内注册的独立可执行程序；非 GoogleTest
 # 分区，见 tests/README.md 注记）。依赖 examples 层共享便利层与配置 JSON，

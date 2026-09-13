@@ -19,7 +19,6 @@ file(READ "${BOOTSTRAP_FILE}" BOOTSTRAP_CONTENT)
 
 foreach(required_preset IN ITEMS
         llvm-ninja-debug
-        llvm-ninja-coverage
         llvm-ninja-release)
     if(NOT PRESETS_CONTENT MATCHES "\"name\"[ \t\r\n]*:[ \t\r\n]*\"${required_preset}\"")
         message(FATAL_ERROR "Required configure preset is missing: ${required_preset}")

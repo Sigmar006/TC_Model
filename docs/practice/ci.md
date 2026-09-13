@@ -14,7 +14,6 @@ Authority: build & test infrastructure
 | `ci.yml` | push / PR | **build-test** | Debug 库/第一方示例构建 + 安装 consumer + `ci_required` + 全量 `unit` 分区 | ✅ |
 | `nightly.yml` | cron 02:00 + 手动 | **performance** | Release 构建 + 性能/cxx11 兼容 gate | ❌ |
 | `nightly.yml` | cron + 手动 | **flight-dynamic** | FD=ON + JSBSim 数据 + `unit::flight_dynamic` | ❌ |
-| `nightly.yml` | cron + 手动 | **coverage** | 插桩构建 + 覆盖率报告 artifact | ❌ |
 
 设计原则：**CI 一上线就必须是绿的。** `ci_required` 覆盖跨层关键路径与架构守护；完整 `unit` 分区覆盖可重复的局部回归，二者均为 PR 阻断门禁。
 
@@ -71,12 +70,6 @@ bash scripts/bootstrap_conan.sh llvm-ninja-debug
 cmake --preset llvm-ninja-debug -D ONEQ_ENABLE_FLIGHT_DYNAMIC=ON -D ENABLE_EXAMPLES=ON
 cmake --build --preset llvm-ninja-debug -j 4
 ctest --test-dir build/llvm-ninja-debug-local -R '^unit::flight_dynamic$' --output-on-failure -j 4
-
-# === nightly: coverage ===
-bash scripts/bootstrap_conan.sh llvm-ninja-coverage
-cmake --preset llvm-ninja-coverage
-cmake --build --preset llvm-ninja-coverage -j 4
-bash tools/coverage_report.sh
 ```
 
 ## 手动触发 nightly
@@ -95,8 +88,6 @@ preset 仅属未验收脚手架，是否保留由全链证据决定。
 
 **新增 lint job**（clang-format/tidy）：在 `ci.yml` 加独立 job 跑 `cmake --build --target format-check`（需 runner 装 clang-format）。与功能测试解耦，格式问题不阻塞代码验证。
 
-**覆盖率门禁**：在 `nightly.yml` 的 coverage job 里，从 `summary.txt` 提取 Branch 覆盖率数字，与阈值比较（如 `< 60% 则失败`）。注意覆盖率下降常因新增未测代码而非删除测试，阈值门禁要谨慎。
-
 ## 故障排查
 
 **guard job 失败**：通常是某个 `check_*.cmake` 守护脚本发现架构违规（如 include 方向、命名规约、公共 API 边界）。看失败信息里的 `VIOLATIONS:` 清单，对应修源码。这类失败最快修——纯文本规则，无需理解编译。
@@ -106,5 +97,3 @@ preset 仅属未验收脚手架，是否保留由全链证据决定。
 **Conan 缓存导致依赖旧**：改了 `conanfile.py` 后 CI 应自动重建缓存（key 含文件哈希）。若仍用旧包，检查 `CONAN_CACHE_KEY` 是否正确更新。
 
 **JSBSim 数据 clone 失败**（flight-dynamic job）：网络问题或上游仓库变动。`git clone --depth 1` 应该很稳定；若失败重试即可。注意 JSBSim 源码库较大，浅克隆仍需数十秒。
-
-**Coverage 报告为空**：确认 `llvm-ninja-coverage` preset 确实启用了 `ENABLE_COVERAGE`（configure 输出应含 `Coverage: Enabled`），且 `llvm-profdata`/`llvm-cov` 可用（`macos-14` runner 自带，via `xcrun`）。

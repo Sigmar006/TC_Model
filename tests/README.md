@@ -58,7 +58,6 @@
 - `partitions/{Unit,Replay,Integration,Contract,Performance}.cmake`：常规 type × domain 分区。
 - `FlightDynamicPartitions.cmake`：FD stable unit 与 known-limit 分区，以及 JSBSim 接线。
 - `CompatibilityChecks.cmake` / `ContractGuards.cmake`：脚本兼容性检查与源码、文档、CMake 守护。
-- `CoverageRunner.cmake`：仅 coverage preset 使用的 mapping 可执行文件；CTest 默认禁用，避免重复执行测试。
 
 新增 CTest 入口应放入其拥有的 type × domain 分区；不得重新把专项 filter 或 guard 堆回根入口。
 

@@ -1,6 +1,6 @@
 # PrecompiledHeaders.cmake
 # 定义项目自有 target 的预编译头（PCH）策略函数。
-# 与 UnityBuild、Coverage 同属通用编译特性层，不绑定特定项目。
+# 与 UnityBuild 同属通用编译特性层，不绑定特定项目。
 #
 # 每个 target 用同一份头清单、各自的编译命令行编出自己的 PCH。刻意不做
 # REUSE_FROM 共享 anchor PCH：本仓库各 target 有大量私有 define（验收日志路径、

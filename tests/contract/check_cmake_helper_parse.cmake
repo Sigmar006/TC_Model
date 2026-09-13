@@ -10,7 +10,6 @@ endif()
 set(HELPER_MODULES
     "cmake/compilers/CompilerClangGCC.cmake"
     "cmake/compilers/CompilerMSVC.cmake"
-    "cmake/features/Coverage.cmake"
     "cmake/features/PrecompiledHeaders.cmake"
     "cmake/features/UnityBuild.cmake"
     "cmake/project/codegen/FlatBuffers.cmake"

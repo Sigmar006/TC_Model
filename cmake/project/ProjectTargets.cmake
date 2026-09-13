@@ -29,9 +29,6 @@ function(oneq_apply_target_configuration)
             ENABLE_WARNINGS ${ENABLE_WARNINGS}
             STACK_SIZE_OPTION ${STACK_SIZE_OPTION})
     endif()
-    apply_coverage_options(
-        TARGETS ${ARG_TARGETS}
-        LINK_TARGETS ${ARG_LINK_TARGETS})
     apply_precompiled_headers(TARGETS ${ARG_TARGETS})
 endfunction()
 

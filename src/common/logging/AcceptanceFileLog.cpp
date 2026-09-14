@@ -1,6 +1,6 @@
 ﻿/**
  * @file AcceptanceFileLog.cpp
- * @brief 五通道验收文件 sink（红外 / 雷达 / 融合 / 推演 / 精度）。
+ * @brief 七通道验收文件 sink（红外 / 雷达 / 融合 / 推演 / 精度 / 两类内部接口）。
  */
 
 #include "common/logging/AcceptanceFileLog.h"
@@ -36,6 +36,12 @@
 #endif
 #ifndef ONEQ_PRECISION_ACCEPTANCE_LOG_PATH
 #define ONEQ_PRECISION_ACCEPTANCE_LOG_PATH "log/precision_acceptance.log"
+#endif
+#ifndef ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH
+#define ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH "log/IRInternalInterface.log"
+#endif
+#ifndef ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH
+#define ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH "log/RadarInternalInterface.log"
 #endif
 
 namespace oneq {
@@ -90,6 +96,10 @@ const char* EnvName(AcceptanceChannel channel) {
       return "ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH";
     case AcceptanceChannel::kPrecision:
       return "ONEQ_PRECISION_ACCEPTANCE_LOG_PATH";
+    case AcceptanceChannel::kIrInternalInterface:
+      return "ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH";
+    case AcceptanceChannel::kRadarInternalInterface:
+      return "ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH";
   }
   return "ONEQ_OPIR_ACCEPTANCE_LOG_PATH";
 }
@@ -106,6 +116,10 @@ const char* CompileDefaultPath(AcceptanceChannel channel) {
       return ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH;
     case AcceptanceChannel::kPrecision:
       return ONEQ_PRECISION_ACCEPTANCE_LOG_PATH;
+    case AcceptanceChannel::kIrInternalInterface:
+      return ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH;
+    case AcceptanceChannel::kRadarInternalInterface:
+      return ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH;
   }
   return ONEQ_OPIR_ACCEPTANCE_LOG_PATH;
 }
@@ -122,6 +136,10 @@ const char* ChannelLabel(AcceptanceChannel channel) {
       return "inference";
     case AcceptanceChannel::kPrecision:
       return "precision";
+    case AcceptanceChannel::kIrInternalInterface:
+      return "ir-internal-interface";
+    case AcceptanceChannel::kRadarInternalInterface:
+      return "radar-internal-interface";
   }
   return "opir";
 }
@@ -241,6 +259,8 @@ ChannelSink& SinkOf(AcceptanceChannel channel) {
   static ChannelSink fusion(AcceptanceChannel::kFusion);
   static ChannelSink inference(AcceptanceChannel::kInference);
   static ChannelSink precision(AcceptanceChannel::kPrecision);
+  static ChannelSink ir_internal_interface(AcceptanceChannel::kIrInternalInterface);
+  static ChannelSink radar_internal_interface(AcceptanceChannel::kRadarInternalInterface);
   switch (channel) {
     case AcceptanceChannel::kRir:
       return rir;
@@ -250,6 +270,10 @@ ChannelSink& SinkOf(AcceptanceChannel channel) {
       return inference;
     case AcceptanceChannel::kPrecision:
       return precision;
+    case AcceptanceChannel::kIrInternalInterface:
+      return ir_internal_interface;
+    case AcceptanceChannel::kRadarInternalInterface:
+      return radar_internal_interface;
     case AcceptanceChannel::kOpir:
     default:
       return opir;

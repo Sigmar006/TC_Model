@@ -338,6 +338,52 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
              has_threshold ? FormatF(threshold, 6) : std::string());
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测结果=" + YesNo(input.detected));
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测概率=" + FormatF(input.pd, 5));
+
+  // 内部接口第70项：同一条目标检测快照中，回波/环境功率的生产值即为
+  // 信号处理入口消费值；仅有 detection cell 有效时输出，不伪造缺失分量。
+  if (input.has_cell) {
+    std::string interface_power = "雷达ID=" + std::to_string(input.radar_id) + " " + id;
+    interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m";
+    interface_power += " RCS=" + FormatF(input.rcs_m2, 3) + "m^2";
+    interface_power += " 波束离轴增益=" + FormatF(input.one_way_antenna_gain_dbi, 3) + "dBi";
+    interface_power += " 上游输出回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
+    interface_power += " 处理入口回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
+    interface_power += " 上游输出热噪声=" + FormatSci(thermal) + "W";
+    interface_power += " 处理入口热噪声=" + FormatSci(thermal) + "W";
+    interface_power += " 上游输出杂波=" + FormatSci(clutter) + "W";
+    interface_power += " 处理入口杂波=" + FormatSci(clutter) + "W";
+    interface_power += " 上游输出干扰=" + FormatSci(input.cell.interference_power_w) + "W";
+    interface_power += " 处理入口干扰=" + FormatSci(input.cell.interference_power_w) + "W";
+    interface_power += " 带宽=" + FormatF(input.bandwidth_hz, 3) + "Hz";
+    interface_power += " PRF=" + FormatF(input.prf_hz, 3) + "Hz";
+    interface_power += " 有效脉冲数=" + std::to_string(pulses);
+    RIR_INTERNAL_INTERFACE_ITEM(t, cycle, "雷达回波与环境功率交互接口测试", interface_power);
+  }
+
+  // 内部接口第71项：记录信号处理输出和 CFAR 实际消费的同源 SNR 快照。
+  const double detector_snr_db = input.has_cell
+                                     ? input.cell.processed_single_pulse_sinr_db
+                                     : static_cast<double>(input.snr_db);
+  const double accumulated_snr_db = detector_snr_db + 10.0 * std::log10(pulses);
+  const double total_noise_w = thermal + clutter +
+                               (input.has_cell ? input.cell.interference_power_w : 0.0);
+  std::string interface_detection = id + " 处理输出SNR=" +
+                                    FormatF(detector_snr_db, 3) + "dB";
+  interface_detection += " 检测器输入SNR=" + FormatF(detector_snr_db, 3) + "dB";
+  interface_detection += " 积累SNR=" + FormatF(accumulated_snr_db, 3) + "dB";
+  if (input.has_cell) {
+    interface_detection += " 总噪声功率=" + FormatSci(total_noise_w) + "W";
+  }
+  interface_detection += " 脉压/MTI/MTD增益=" + FormatF(pc_db, 3) + "/" +
+                         (has_bank ? FormatF(bank.mti_gain_db, 3) : std::string("无")) + "/" +
+                         (has_bank ? FormatF(bank.mtd_gain_db, 3) : std::string("无")) + "dB";
+  if (has_threshold) {
+    interface_detection += " 统计门限=" + FormatF(threshold, 6);
+  }
+  interface_detection += " Pd=" + FormatF(input.pd, 5);
+  interface_detection += " 检测标志=";
+  interface_detection += YesNo(input.detected);
+  RIR_INTERNAL_INTERFACE_ITEM(t, cycle, "雷达信号处理与检测判决交互接口测试", interface_detection);
 }
 
 void WriteRirInterferenceLinks(
@@ -401,6 +447,35 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
                    ? " 关联结果=航迹" + std::to_string(measurement.association_key)
                    : " 关联结果=未配到任何已有航迹";
     Emit(sim_time_sec, cycle, "航迹关联功能测试", content);
+
+    // 内部接口第72项：量测构造器产出的完整量测快照及关联器消费结果。
+    std::string interface_track = "源目标索引=" + std::to_string(measurement.source_index);
+    interface_track += " 目标ID=" + std::to_string(measurement.external_target_id);
+    interface_track += " 量测位置ENU=" +
+                       FormatVec3(measurement.position.x(), measurement.position.y(),
+                                  measurement.position.z(), 3) + "m";
+    interface_track += " 速度种子=" +
+                       FormatVec3(measurement.velocity.x(), measurement.velocity.y(),
+                                  measurement.velocity.z(), 3) + "m/s";
+    interface_track += " Pd=" + FormatF(measurement.detection_pd, 5);
+    interface_track += " RCS=" + FormatF(measurement.rcs, 3) + "m^2";
+    interface_track += " 量测协方差=[";
+    for (int row = 0; row < 3; ++row) {
+      if (row != 0) {
+        interface_track += ";";
+      }
+      for (int col = 0; col < 3; ++col) {
+        if (col != 0) {
+          interface_track += ",";
+        }
+        interface_track += FormatF(measurement.measurement_covariance(row, col), 6);
+      }
+    }
+    interface_track += "] 关联键=" + std::to_string(measurement.association_key);
+    interface_track += measurement.matched_existing_track ? " 消费结果=更新已有航迹"
+                                                          : " 消费结果=新建航迹";
+    RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle,
+                                "雷达检测量测与航迹处理交互接口测试", interface_track);
   }
 }
 
@@ -527,6 +602,33 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   const std::string track_id = "航迹=" + std::to_string(track.association_key);
   const std::string track_target_id =
       track_id + " 目标ID=" + std::to_string(track.external_target_id);
+
+  // 内部接口第73项：航迹后验与本周期特征快照按关联键对账。
+  std::string interface_recognition = track_target_id;
+  interface_recognition += " 航迹状态=" + std::string(TrackStatusText(track.status));
+  interface_recognition += " 位置ENU=" +
+                           FormatVec3(track.position.x(), track.position.y(), track.position.z(), 3) +
+                           "m 速度ENU=" +
+                           FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
+                           "m/s";
+  if (features != nullptr) {
+    interface_recognition += " SNR=" + FormatF(features->snr_db, 3) + "dB";
+    interface_recognition += " 特征有效掩码=" + std::to_string(features->valid_feature_mask);
+    interface_recognition += " 特征来源周期=" + std::to_string(features->cycle_index);
+    interface_recognition += " 特征批次=" + std::to_string(features->batch_id);
+  }
+  if (result != nullptr) {
+    interface_recognition += " 识别来源周期=" + std::to_string(result->source_cycle_index);
+    interface_recognition += " 识别批次=" + std::to_string(result->source_batch_id);
+    interface_recognition += " 类别=" + category_text;
+    interface_recognition += " 型号=" +
+                             (result->target_model.empty() ? std::string("未识别")
+                                                           : result->target_model);
+    interface_recognition += " 置信度=" + FormatF(result->confidence, 5);
+    interface_recognition += " 积累观测数=" + std::to_string(result->observation_count);
+  }
+  RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle,
+                              "雷达航迹与特征识别交互接口测试", interface_recognition);
 
   // 第38项 角度和距离测量：量测角距一行；目标量测误差统计=量测−真值（可计算口径，
   // 真值上下文缺失时省略误差行）。方位误差取最短角差。

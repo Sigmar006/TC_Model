@@ -63,6 +63,8 @@ struct RirDetectionAcceptInput {
   float peak_gain_dbi{0.0f};
   float bw_az_deg{0.0f};
   float bw_el_deg{0.0f};
+  double one_way_antenna_gain_dbi{0.0};
+  double bandwidth_hz{0.0};
   double echo_power_dbw{0.0};
   dwell::RirDetectionCellResult cell{};
   config::hardware::RirSignalProcessingConfig gains{};

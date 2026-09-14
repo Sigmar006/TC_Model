@@ -38,6 +38,11 @@ struct SbirsTrackingPredictionResult {
 
 /** @brief Result of one estimated-tracking measurement correction. */
 struct SbirsTrackingUpdateResult {
+  bool has_measurement{false};
+  float measurement_azimuth_deg{0.0f};
+  float measurement_elevation_deg{0.0f};
+  tracking::SbirsMeasurementCovariance measurement_covariance{
+      tracking::SbirsMeasurementCovariance::Zero()};
   float output_azimuth_deg{0.0f};
   float output_elevation_deg{0.0f};
   bool has_estimation_nis{false};

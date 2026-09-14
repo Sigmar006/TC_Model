@@ -22,6 +22,8 @@ enum class AcceptanceChannel {
   kFusion = 2,
   kInference = 3,
   kPrecision = 4,
+  kIrInternalInterface = 5,
+  kRadarInternalInterface = 6,
 };
 
 void OpenAcceptanceLog(AcceptanceChannel channel, const char* path);

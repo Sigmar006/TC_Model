@@ -121,6 +121,8 @@ function(oneq_add_component target)
     oneq_log_file(_oneq_fusion_accept_path "fusion_acceptance.log")
     oneq_log_file(_oneq_inference_accept_path "inference_acceptance.log")
     oneq_log_file(_oneq_precision_accept_path "precision_acceptance.log")
+    oneq_log_file(_oneq_ir_internal_interface_path "IRInternalInterface.log")
+    oneq_log_file(_oneq_radar_internal_interface_path "RadarInternalInterface.log")
     oneq_log_file(_oneq_rir_antenna_csv_path "rir_antenna_pattern.csv")
     oneq_log_file(_oneq_rir_scan_csv_path "rir_scan_pattern.csv")
     target_compile_definitions("${target}" PRIVATE
@@ -132,6 +134,8 @@ function(oneq_add_component target)
         ONEQ_FUSION_ACCEPTANCE_LOG_PATH=\"${_oneq_fusion_accept_path}\"
         ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH=\"${_oneq_inference_accept_path}\"
         ONEQ_PRECISION_ACCEPTANCE_LOG_PATH=\"${_oneq_precision_accept_path}\"
+        ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH=\"${_oneq_ir_internal_interface_path}\"
+        ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH=\"${_oneq_radar_internal_interface_path}\"
         ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH=\"${_oneq_rir_antenna_csv_path}\"
         ONEQ_RIR_SCAN_PATTERN_CSV_PATH=\"${_oneq_rir_scan_csv_path}\"
         ONEQ_HAVE_ZLIB=$<BOOL:${ONEQ_HAVE_ZLIB}>)

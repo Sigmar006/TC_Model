@@ -155,6 +155,10 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
   if (frame_count > 1) {
     measurement_covariance /= static_cast<float>(frame_count);
   }
+  result.has_measurement = true;
+  result.measurement_azimuth_deg = bearing.azimuth_deg;
+  result.measurement_elevation_deg = bearing.elevation_deg;
+  result.measurement_covariance = measurement_covariance;
 
   tracking::SbirsGaussianState combined;
   if (policy.tracking.estimated_backend == config::SbirsEstimatedTrackingBackend::kAngleCvKf) {

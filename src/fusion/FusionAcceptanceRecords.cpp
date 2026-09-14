@@ -20,11 +20,11 @@ namespace fusion {
 namespace {
 
 using oneq::logging::AppendField;
-using oneq::logging::CovarianceTrace6;
+using oneq::logging::FormatF;
 using oneq::logging::FormatCov6x6;
 using oneq::logging::FormatCovDiag6;
-using oneq::logging::FormatF;
 using oneq::logging::FormatVec3;
+using oneq::logging::CovarianceTrace6;
 
 struct LastVel {
   double vx{0.0};
@@ -45,13 +45,13 @@ std::map<std::uint64_t, LastVel>& LastVelocities() {
  *       库内无接力协议。
  */
 struct RelaySight {
-  double az_deg{0.0};                     /**< 最近一次方位角（deg，原始缠绕值）。 */
-  double el_deg{0.0};                     /**< 最近一次俯仰角（deg）。 */
-  std::uint64_t cycle{0U};                /**< 最近采样周期号。 */
-  double unwrapped_az_deg{0.0};           /**< 自首见累计解缠方位（deg，扫过角分子用）。 */
-  double first_el_deg{0.0};               /**< 首见俯仰角（扫过角俯仰分量锚点）。 */
+  double az_deg{0.0};        /**< 最近一次方位角（deg，原始缠绕值）。 */
+  double el_deg{0.0};        /**< 最近一次俯仰角（deg）。 */
+  std::uint64_t cycle{0U};   /**< 最近采样周期号。 */
+  double unwrapped_az_deg{0.0}; /**< 自首见累计解缠方位（deg，扫过角分子用）。 */
+  double first_el_deg{0.0};  /**< 首见俯仰角（扫过角俯仰分量锚点）。 */
   std::vector<RelayAngularSample> window; /**< 最近采样滑窗（最小二乘角速率用）。 */
-  bool valid{false};                      /**< 已收到首个方位样本。 */
+  bool valid{false};         /**< 已收到首个方位样本。 */
 };
 
 /** @brief 接力角速率滑窗长度（逐拍差分噪声均摊；方法常数见目录条目）。 */
@@ -80,7 +80,9 @@ std::set<std::uint32_t>& KnownSources() {
 }
 
 // 源句柄统一输出「实体<source_id>」（与融合通道 source_id 一致）。
-std::string SourceLabel(std::uint32_t source_id) { return "实体" + std::to_string(source_id); }
+std::string SourceLabel(std::uint32_t source_id) {
+  return "实体" + std::to_string(source_id);
+}
 
 std::string ChannelNames(const FusedTarget& track) {
   std::set<std::uint32_t> ids;
@@ -106,7 +108,8 @@ std::string ChannelBearings(const FusedTarget& track) {
     if (!text.empty()) {
       text += ";";
     }
-    text += SourceLabel(channel.source_id) + ":(" + FormatF(channel.bearing_az_deg, 6) + "," +
+    text += SourceLabel(channel.source_id) + ":(" +
+            FormatF(channel.bearing_az_deg, 6) + "," +
             FormatF(channel.bearing_el_deg, 6) + ")deg";
   }
   return text;
@@ -160,7 +163,8 @@ double LeastSquaresAngularSpeedDegPerSec(const std::vector<RelayAngularSample>& 
   return std::sqrt(slope_az * slope_az + slope_el * slope_el);
 }
 
-double RelayRemainingCoverageSec(double fov_width_deg, double swept_deg, double omega_deg_per_s) {
+double RelayRemainingCoverageSec(double fov_width_deg, double swept_deg,
+                                 double omega_deg_per_s) {
   if (fov_width_deg <= 0.0 || omega_deg_per_s <= 0.0 || swept_deg < 0.0) {
     return -1.0;
   }
@@ -193,14 +197,8 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     const bool have_ecef = track.has_kinematic_estimate &&
                            oneq::coordinate::TryLlaToEcef(track.kinematic_estimate.position, &ecef);
     std::string content = "航迹键=" + std::to_string(track.key);
-    const std::string source_names = ChannelNames(track);
-    if (!source_names.empty()) {
-      content += " 传感器信息源名称=[" + source_names + "]";
-    }
-    const std::string source_bearings = ChannelBearings(track);
-    if (!source_bearings.empty()) {
-      content += " 信息源测角数据=[" + source_bearings + "]";
-    }
+    content += " 传感器信息源名称=[" + ChannelNames(track) + "]";
+    content += " 信息源测角数据=[" + ChannelBearings(track) + "]";
     if (have_ecef) {
       content += " ECEF位置m=" + FormatVec3(ecef.x_m, ecef.y_m, ecef.z_m, 1);
     }
@@ -248,7 +246,8 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
 
     // 接力三项（2026-08-22 甲方批注）：逐方位源以「(视场宽度 − 自首见累计扫过角)
     // ÷ 滑窗最小二乘角速率」外推剩余覆盖；取最早离开的源为接力对象。
-    const double t_sec = static_cast<double>(cycle_u64) * config.track_cycle_period_sec;
+    const double t_sec =
+        static_cast<double>(cycle_u64) * config.track_cycle_period_sec;
     std::uint32_t exit_source = 0U;
     double min_remaining_sec = -1.0;
     for (const ChannelMeasurement& channel : track.channels) {
@@ -259,7 +258,8 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
       double remaining = -1.0;
       if (sight.valid && cycle_u64 > sight.cycle) {
         // 自首见累计解缠扫过角：方位逐差分归一（跨 ±180 不假跳 360°），俯仰直线差。
-        sight.unwrapped_az_deg += WrappedAzimuthDeltaDeg(sight.az_deg, channel.bearing_az_deg);
+        sight.unwrapped_az_deg +=
+            WrappedAzimuthDeltaDeg(sight.az_deg, channel.bearing_az_deg);
         const double swept_el_deg = channel.bearing_el_deg - sight.first_el_deg;
         const double swept_deg = std::sqrt(sight.unwrapped_az_deg * sight.unwrapped_az_deg +
                                            swept_el_deg * swept_el_deg);
@@ -317,15 +317,15 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     }
 
     if (exit_source != 0U) {
-      relay += " 剩余覆盖时间=" + FormatF(min_remaining_sec, 1) +
-               "s(卫星ID=" + std::to_string(exit_source) + ")";
+      relay += " 剩余覆盖时间=" + FormatF(min_remaining_sec, 1) + "s(卫星ID=" +
+               std::to_string(exit_source) + ")";
       relay += " 接力计划=卫星ID=" + std::to_string(exit_source) + "预计" +
                FormatF(min_remaining_sec, 1) + "s离开视场";
       if (takeover_source != 0U) {
         relay += " 接力卫星ID=" + std::to_string(takeover_source);
         relay += " 交接指令=卫星ID=" + std::to_string(exit_source) + "(剩余" +
-                 FormatF(min_remaining_sec, 1) +
-                 "s离场)→卫星ID=" + std::to_string(takeover_source) + "接管";
+                 FormatF(min_remaining_sec, 1) + "s离场)→卫星ID=" +
+                 std::to_string(takeover_source) + "接管";
       }
     }
     FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "多传感器接力跟踪功能测试", relay);
@@ -353,8 +353,8 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     std::string collab = "目标键=" + std::to_string(track.key);
     AppendField(collab, "参与通道", ChannelNames(track));
     if (track.has_kinematic_estimate) {
-      collab += " 定位LLA=(" + FormatF(track.kinematic_estimate.position.latitude_deg, 6) + "," +
-                FormatF(track.kinematic_estimate.position.longitude_deg, 6) + "," +
+      collab += " 定位LLA=(" + FormatF(track.kinematic_estimate.position.latitude_deg, 6) +
+                "," + FormatF(track.kinematic_estimate.position.longitude_deg, 6) + "," +
                 FormatF(track.kinematic_estimate.position.altitude_m, 1) + ")";
     }
     std::string bearings;
@@ -365,8 +365,9 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
       if (!bearings.empty()) {
         bearings += ";";
       }
-      bearings += SourceLabel(channel.source_id) + "(方位" + FormatF(channel.bearing_az_deg, 3) +
-                  "°/俯仰" + FormatF(channel.bearing_el_deg, 3) + "°)";
+      bearings += SourceLabel(channel.source_id) + "(方位" +
+                  FormatF(channel.bearing_az_deg, 3) + "°/俯仰" +
+                  FormatF(channel.bearing_el_deg, 3) + "°)";
     }
     if (!bearings.empty()) {
       collab += " 测向信息=[" + bearings + "]";

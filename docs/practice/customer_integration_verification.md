@@ -66,8 +66,8 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 
 | CMake 开关（编译库时） | 控制文件 |
 | --- | --- |
-| `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` | `opir_acceptance.log` |
-| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | `rir_acceptance.log`（+ 两份雷达 CSV） |
+| `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` | `opir_acceptance.log` + `IRInternalInterface.log` |
+| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | `rir_acceptance.log` + `RadarInternalInterface.log`（+ 两份雷达 CSV） |
 | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` | `fusion_acceptance.log` |
 | `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` | `inference_acceptance.log` |
 | `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` | `precision_acceptance.log` |
@@ -77,6 +77,7 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 
 ```
 ONEQ_OPIR_ACCEPTANCE_LOG_PATH / ONEQ_RIR_ACCEPTANCE_LOG_PATH /
+ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH / ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH /
 ONEQ_FUSION_ACCEPTANCE_LOG_PATH / ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH /
 ONEQ_PRECISION_ACCEPTANCE_LOG_PATH = <目录>/<文件名>
 ```

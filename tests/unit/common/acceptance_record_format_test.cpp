@@ -18,7 +18,13 @@ class AcceptanceRecordFormatTest : public ::testing::Test {
  protected:
   void TearDown() override {
     oneq::logging::CloseAcceptanceLog(oneq::logging::AcceptanceChannel::kOpir);
+    oneq::logging::CloseAcceptanceLog(
+        oneq::logging::AcceptanceChannel::kIrInternalInterface);
+    oneq::logging::CloseAcceptanceLog(
+        oneq::logging::AcceptanceChannel::kRadarInternalInterface);
     std::remove(kTestPath);
+    std::remove("oneq_ir_internal_interface_test.log");
+    std::remove("oneq_radar_internal_interface_test.log");
   }
 };
 
@@ -91,6 +97,44 @@ TEST_F(AcceptanceRecordFormatTest, FirstOpenTruncatesThenReopenAppends) {
   EXPECT_NE(after_reopen.find("[重开行]"), std::string::npos);
 #endif
   std::remove(rerun_path);
+}
+
+TEST_F(AcceptanceRecordFormatTest, InternalInterfaceChannelsWriteSeparateFiles) {
+  const char* ir_path = "oneq_ir_internal_interface_test.log";
+  const char* radar_path = "oneq_radar_internal_interface_test.log";
+  const oneq::logging::AcceptanceChannel ir_channel =
+      oneq::logging::AcceptanceChannel::kIrInternalInterface;
+  const oneq::logging::AcceptanceChannel radar_channel =
+      oneq::logging::AcceptanceChannel::kRadarInternalInterface;
+
+  oneq::logging::OpenAcceptanceLog(ir_channel, ir_path);
+  oneq::logging::OpenAcceptanceLog(radar_channel, radar_path);
+  oneq::logging::WriteAcceptanceLog(
+      ir_channel, oneq::logging::FormatAcceptanceLine(
+                      1.0f, 1U, "红外内部接口", "目标ID=1001"));
+  oneq::logging::WriteAcceptanceLog(
+      radar_channel, oneq::logging::FormatAcceptanceLine(
+                         1.0f, 1U, "雷达内部接口", "目标ID=2001"));
+  oneq::logging::CloseAcceptanceLog(ir_channel);
+  oneq::logging::CloseAcceptanceLog(radar_channel);
+
+  std::ifstream ir_stream(ir_path, std::ios::binary);
+  std::ifstream radar_stream(radar_path, std::ios::binary);
+  const std::string ir_text((std::istreambuf_iterator<char>(ir_stream)),
+                            std::istreambuf_iterator<char>());
+  const std::string radar_text((std::istreambuf_iterator<char>(radar_stream)),
+                               std::istreambuf_iterator<char>());
+#if defined(_MSC_VER)
+  EXPECT_NE(ir_text.find(u8"[红外内部接口]"), std::string::npos);
+  EXPECT_EQ(ir_text.find(u8"[雷达内部接口]"), std::string::npos);
+  EXPECT_NE(radar_text.find(u8"[雷达内部接口]"), std::string::npos);
+  EXPECT_EQ(radar_text.find(u8"[红外内部接口]"), std::string::npos);
+#else
+  EXPECT_NE(ir_text.find("[红外内部接口]"), std::string::npos);
+  EXPECT_EQ(ir_text.find("[雷达内部接口]"), std::string::npos);
+  EXPECT_NE(radar_text.find("[雷达内部接口]"), std::string::npos);
+  EXPECT_EQ(radar_text.find("[红外内部接口]"), std::string::npos);
+#endif
 }
 
 }  // namespace

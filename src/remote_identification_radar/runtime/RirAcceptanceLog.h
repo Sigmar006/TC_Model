@@ -19,12 +19,17 @@
   ::oneq::logging::WriteAcceptanceLog(::oneq::logging::AcceptanceChannel::kRir, (text))
 #define RIR_ACCEPTANCE_ITEM(sim_time, cycle, item, content) \
   RIR_ACCEPTANCE_RECORD(::oneq::logging::FormatAcceptanceLine((sim_time), (cycle), (item), (content)))
+#define RIR_INTERNAL_INTERFACE_ITEM(sim_time, cycle, item, content)                   \
+  ::oneq::logging::WriteAcceptanceLog(                                               \
+      ::oneq::logging::AcceptanceChannel::kRadarInternalInterface,                  \
+      ::oneq::logging::FormatAcceptanceLine((sim_time), (cycle), (item), (content)))
 
 #else
 
 #define RIR_ACCEPTANCE_LOG_ENABLED() false
 #define RIR_ACCEPTANCE_RECORD(text) ((void)0)
 #define RIR_ACCEPTANCE_ITEM(sim_time, cycle, item, content) ((void)0)
+#define RIR_INTERNAL_INTERFACE_ITEM(sim_time, cycle, item, content) ((void)0)
 
 #endif
 

@@ -33,14 +33,15 @@ void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::u
                           double measured_az_deg, double measured_el_deg);
 
 // 验收判定标准 第7项（修改）：目标可探测性与动态参数——双星定位时同一目标单行
-// （位置 LLA 只在该情况下写出，两颗相对卫星ID/斜距/量测角同行）；单星候选行待
+//（位置 LLA 只在该情况下写出，两颗相对卫星ID/斜距/量测角同行）；单星候选行待
 // 同周期无第二星时顺延到下一周期首次写出时落盘。会话结束须调 Flush补齐尾拍。
 void WriteSbirsTargetDetectability(std::uint32_t satellite_entity_id, float sim_time_sec,
                                    std::uint32_t cycle, std::uint64_t target_id,
                                    double slant_range_m, double measured_az_rad,
                                    double measured_el_rad, bool narrow_field,
-                                   double satellite_ecef_x_m, double satellite_ecef_y_m,
-                                   double satellite_ecef_z_m, double gmst_rad);
+                                   double satellite_ecef_x_m,
+                                   double satellite_ecef_y_m, double satellite_ecef_z_m,
+                                   double gmst_rad);
 
 // 落盘所有待定可探测性行（会话结束时调用，补最后一拍的顺延行）。
 void FlushSbirsDetectabilityPending();
@@ -50,7 +51,8 @@ void WriteSbirsAngleStateEstimate(float sim_time_sec, std::uint32_t cycle, std::
                                   double azimuth_deg, double elevation_deg,
                                   double azimuth_rate_deg_per_s, double elevation_rate_deg_per_s);
 
-void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
+void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,
+                               std::uint32_t cycle,
                                const std::vector<session::SbirsDetectionLifecycleEvent>& events,
                                const session::SbirsCycleInput& input);
 

@@ -714,6 +714,10 @@ bool RirController::TryBuildMeasurement(
     snap.peak_gain_dbi = hardware_.antenna.main_beam_gain_db;
     snap.bw_az_deg = beam_state.effective_beamwidth_deg.az_beamwidth_deg;
     snap.bw_el_deg = beam_state.effective_beamwidth_deg.el_beamwidth_deg;
+    snap.one_way_antenna_gain_dbi = beam_state.one_way_antenna_gain_db;
+    snap.bandwidth_hz = resolved_cell
+                            ? rf_cycle.own_transmit_waveform.occupied_bandwidth_hz
+                            : static_cast<double>(hardware_.transmitter.bandwidth_hz);
     snap.echo_power_dbw = detection.echo_power_dbw;
     snap.cell = cell;
     snap.gains = hardware_.signal_processing;

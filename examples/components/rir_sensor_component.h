@@ -7,6 +7,7 @@
 #define EXAMPLES_COMPONENT_ATTACHMENT_COMPONENTS_RIR_SENSOR_COMPONENT_H_
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -82,6 +83,18 @@ class RirSensorComponent : public Component {
    *       供可视化落盘区分 mission.max_range_m 径向粗筛门与实际探测距离。
    */
   float LastMaxDetectedSlantRangeM() const { return last_max_detected_slant_range_m_; }
+
+  /**
+   * @brief 记录“红外卫星测角 → LRDR 实际探测”的跨模型验收证据。
+   *
+   * 该记录由场景编排层在确认先收到真实 SBIRS 帧、后取得本组件真实探测结果时调用；
+   * RIR 组件只负责把双方原始量写入本模型的 rir_acceptance.log。
+   */
+  void WriteSbirsCueDetectionAcceptance(
+      std::uint32_t cycle, double sim_time_sec, const std::string& source_name,
+      std::uint64_t target_id, double bearing_time_sec, double cue_az_deg,
+      double cue_el_deg, double radar_range_m, double radar_az_deg,
+      double radar_height_m) const;
 
  private:
   /// 视图行三模式落盘（密度由编译期宏门控；纯观测）。

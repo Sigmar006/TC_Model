@@ -1,0 +1,212 @@
+{
+  "name": "lrdr_multi_sbirs_acceptance",
+  "cycles": 80,
+  "dt_sec": 1.0,
+  "log_dir": "lrdr_multi_sbirs_acceptance",
+  "utc_julian_day": 2451544.2230698913,
+  "inference_horizon_sec": 1200.0,
+  "fusion": {
+    "track_bearing_init_range_m": 36000000.0,
+    "track_bearing_init_range_std_m": 8000000.0,
+    "relay_fov_width_deg": 24.0
+  },
+  "precision": { "dual_sat_pair_window_cycles": 1 },
+  "platform": {
+    "origin_lat_deg": 15.0, "origin_lon_deg": -85.0, "origin_alt_m": 0.0,
+    "initial_heading_deg": 0.0, "cruise_altitude_m": 0.0, "cruise_speed_mps": 0.0
+  },
+  "satellites": [
+    {
+      "id": "A", "source_id": 4, "cross_cue": true,
+      "position_lla_deg_m": [0.0, -25.212457, 35778820.868343],
+      "velocity_ecef_mps": [0.0, 0.0, 0.0],
+      "scan_azimuth_reference": "kNadirRelative",
+      "scan_start_az_deg": 0.0, "scan_center_el_deg": 0.0,
+      "scan_span_deg": 0.0, "scan_rate_deg_per_sec": 0.0,
+      "wide_field_fov_az_deg": 20.0, "wide_field_fov_el_deg": 20.0,
+      "narrow_field_fov_az_deg": 8.0, "narrow_field_fov_el_deg": 8.0,
+      "wide_min_snr_linear": 0.001, "narrow_min_snr_linear": 0.001,
+      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 1.0,
+      "frame_rate_hz": 10.0, "fov_sigma_deg": 0.0001
+    },
+    {
+      "id": "B", "source_id": 104, "cross_cue": true,
+      "position_lla_deg_m": [0.0, -145.212457, 35778821.14648],
+      "velocity_ecef_mps": [0.0, 0.0, 0.0],
+      "mount_angles_deg": [-0.6, 0.4, 0.8],
+      "scan_azimuth_reference": "kNadirRelative",
+      "scan_start_az_deg": 0.0, "scan_center_el_deg": 0.0,
+      "scan_span_deg": 0.0, "scan_rate_deg_per_sec": 0.0,
+      "wide_field_fov_az_deg": 20.0, "wide_field_fov_el_deg": 20.0,
+      "narrow_field_fov_az_deg": 8.0, "narrow_field_fov_el_deg": 8.0,
+      "wide_min_snr_linear": 0.001, "narrow_min_snr_linear": 0.001,
+      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 1.0,
+      "frame_rate_hz": 10.0, "fov_sigma_deg": 0.0001
+    },
+    {
+      "id": "C", "source_id": 204, "cross_cue": true,
+      "position_lla_deg_m": [0.0, 94.787543, 35778821.00379],
+      "velocity_ecef_mps": [0.0, 0.0, 0.0],
+      "mount_angles_deg": [0.4, -0.7, 0.3],
+      "scan_azimuth_reference": "kNadirRelative",
+      "scan_start_az_deg": 0.0, "scan_center_el_deg": 0.0,
+      "scan_span_deg": 0.0, "scan_rate_deg_per_sec": 0.0,
+      "wide_field_fov_az_deg": 20.0, "wide_field_fov_el_deg": 20.0,
+      "narrow_field_fov_az_deg": 8.0, "narrow_field_fov_el_deg": 8.0,
+      "wide_min_snr_linear": 0.001, "narrow_min_snr_linear": 0.001,
+      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 1.0,
+      "frame_rate_hz": 10.0, "fov_sigma_deg": 0.0001
+    }
+  ],
+  "targets": [
+    {
+      "key": 1001, "id": 1001, "type": "air",
+      "azimuth_deg": 90.0, "range_m": 850000.0, "altitude_m": 420000.0,
+      "position_lla_deg_m": [15.0, -77.0, 420000.0],
+      "velocity_enu_mps": [180.0, 20.0, -10.0],
+      "v_east_mps": 180.0, "v_north_mps": 20.0,
+      "rcs_m2": 10.0, "projected_area_m2": 2.0, "temperature_k": 900.0,
+      "radiant_intensity_w_per_sr": 10000.0, "emitter_center_frequency_hz": 3000000000.0,
+      "rir": {
+        "rcs_dbsm": 10.0, "truth_model": "BALLISTIC_EXAMPLE_B", "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 10.0, "hh_amp": -3.0, "hh_phase": 5.0, "hv_amp": -12.0, "hv_phase": 20.0, "vh_amp": -11.0, "vh_phase": 18.0, "vv_amp": -5.0, "vv_phase": 8.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -2.0, "hh_phase": 8.0, "hv_amp": -10.0, "hv_phase": 22.0, "vh_amp": -9.0, "vh_phase": 19.0, "vv_amp": -4.0, "vv_phase": 10.0},
+          {"az": 0.0, "el": 20.0, "hh_amp": -1.0, "hh_phase": 12.0, "hv_amp": -9.0, "hv_phase": 25.0, "vh_amp": -8.0, "vh_phase": 23.0, "vv_amp": -3.0, "vv_phase": 14.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -8.0}, {"offset_m": 6.0, "rcs_dbsm": -12.0},
+          {"offset_m": 12.0, "rcs_dbsm": -16.0}
+        ]
+      }
+    },
+    {
+      "key": 1002, "id": 1002, "type": "air",
+      "azimuth_deg": 90.0, "range_m": 1050000.0, "altitude_m": 520000.0,
+      "position_lla_deg_m": [15.0, -75.0, 520000.0],
+      "velocity_enu_mps": [150.0, -15.0, -15.0],
+      "v_east_mps": 150.0, "v_north_mps": -15.0,
+      "rcs_m2": 8.0, "projected_area_m2": 1.8, "temperature_k": 850.0,
+      "radiant_intensity_w_per_sr": 9500.0, "emitter_center_frequency_hz": 0.0,
+      "rir": {
+        "rcs_dbsm": 9.0, "truth_model": "BALLISTIC_EXAMPLE_B", "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 10.0, "hh_amp": -4.0, "hh_phase": 4.0, "hv_amp": -13.0, "hv_phase": 17.0, "vh_amp": -12.0, "vh_phase": 16.0, "vv_amp": -6.0, "vv_phase": 7.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -3.0, "hh_phase": 7.0, "hv_amp": -11.0, "hv_phase": 21.0, "vh_amp": -10.0, "vh_phase": 18.0, "vv_amp": -5.0, "vv_phase": 9.0},
+          {"az": 0.0, "el": 20.0, "hh_amp": -2.0, "hh_phase": 11.0, "hv_amp": -10.0, "hv_phase": 24.0, "vh_amp": -9.0, "vh_phase": 22.0, "vv_amp": -4.0, "vv_phase": 13.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -9.0}, {"offset_m": 5.0, "rcs_dbsm": -13.0},
+          {"offset_m": 11.0, "rcs_dbsm": -17.0}
+        ]
+      }
+    },
+    {
+      "key": 1003, "id": 1003, "type": "air",
+      "azimuth_deg": 90.0, "range_m": 1250000.0, "altitude_m": 620000.0,
+      "position_lla_deg_m": [15.0, -73.0, 620000.0],
+      "velocity_enu_mps": [120.0, 10.0, -20.0],
+      "v_east_mps": 120.0, "v_north_mps": 10.0,
+      "rcs_m2": 6.0, "projected_area_m2": 1.5, "temperature_k": 800.0,
+      "radiant_intensity_w_per_sr": 9000.0, "emitter_center_frequency_hz": 0.0,
+      "rir": {
+        "rcs_dbsm": 8.0, "truth_model": "BALLISTIC_EXAMPLE_B", "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 10.0, "hh_amp": -5.0, "hh_phase": 3.0, "hv_amp": -14.0, "hv_phase": 15.0, "vh_amp": -13.0, "vh_phase": 14.0, "vv_amp": -7.0, "vv_phase": 6.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -4.0, "hh_phase": 6.0, "hv_amp": -12.0, "hv_phase": 19.0, "vh_amp": -11.0, "vh_phase": 17.0, "vv_amp": -6.0, "vv_phase": 8.0},
+          {"az": 0.0, "el": 20.0, "hh_amp": -3.0, "hh_phase": 10.0, "hv_amp": -11.0, "hv_phase": 23.0, "vh_amp": -10.0, "vh_phase": 21.0, "vv_amp": -5.0, "vv_phase": 12.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -10.0}, {"offset_m": 7.0, "rcs_dbsm": -14.0},
+          {"offset_m": 14.0, "rcs_dbsm": -18.0}
+        ]
+      }
+    }
+  ],
+  "esr": {
+    "peak_gain_dbi": 10.0, "bandwidth_hz": 1000000.0, "peak_power_w": 100.0,
+    "pulse_width_s": 0.000001, "pri_s": 0.001, "pulse_count": 20, "timing_seed": 42
+  },
+  "sensors": { "ar": false, "esr": false, "eos": false, "sbirs": false, "sar": false },
+  "rir": {
+    "enabled": true, "site": { "lat_deg": 15.0, "lon_deg": -85.0, "alt_m": 0.0 }
+  },
+  "device_ids": { "rir": 5 },
+  "smoke": {
+    "min_key_events": 1, "min_sbirs_events": 1, "min_sar_products": 0,
+    "min_fused_targets": 1, "min_rir_recognition_outputs": 1
+  },
+  "session_config": {
+    "rir": {
+      "hardware": {
+        "transmitter": {
+          "peak_power_w": 582000.0, "frequency_hz": 3000000000.0,
+          "bandwidth_hz": 4500000.0, "pulse_width_s": 0.016,
+          "prf_hz": 10.0, "transmit_loss_db": 3.5
+        },
+        "antenna": {
+          "main_beam_gain_db": 52.0, "nominal_az_beamwidth_deg": 0.4,
+          "nominal_el_beamwidth_deg": 0.4, "antenna_length_m": 17.5,
+          "antenna_width_m": 17.5, "model_type": "kGaussianMainLobe",
+          "max_sidelobe_level_db": -20.0, "backlobe_level_db": -35.0,
+          "scan_loss_coeff_db_per_deg2": 0.0, "max_scan_loss_db": 6.0,
+          "boresight_offset_deg": { "az_deg": 0.0, "el_deg": 0.0 }
+        },
+        "receiver": {
+          "noise_figure_db": 4.0, "receive_loss_db": 2.0,
+          "cross_polarization_isolation_db": 30.0,
+          "maximum_linear_input_power_w": 0.001, "scene_polarization": "kHorizontal"
+        },
+        "signal_processing": {
+          "target_processing_gain_db": 3.0, "noise_processing_gain_db": 1.0,
+          "clutter_suppression_gain_db": 10.0, "jamming_suppression_gain_db": 8.0
+        }
+      },
+      "orientation": {
+        "az_min_deg": -110.0, "az_max_deg": 110.0, "el_min_deg": 2.0, "el_max_deg": 90.0
+      },
+      "mission": {
+        "work_mode": "kIdentify", "scan_center_deg": { "az_deg": 0.0, "el_deg": 20.0 },
+        "max_range_m": 9000000.0, "recognition_dwell_sec": 0.05,
+        "scan_start_position": "kLeftBottom", "scan_sequence": "kAzimuthFirst",
+        "step_scale": 2.0,
+        "scan_window_deg": {
+          "az_min_deg": -100.0, "az_max_deg": 100.0, "el_min_deg": 2.0, "el_max_deg": 60.0
+        }
+      },
+      "policy": {
+        "detection": {
+          "cfar_pfa": 0.000001, "min_snr_db": -10.0,
+          "min_detection_margin_db": -2.0, "pulse_count": 1,
+          "random_seed": 42, "gate_mode": "kSnrFallback"
+        },
+        "association": { "distance_gate_sigma": 6.0 },
+        "tracking": { "kalman_noise_diff_coeff": 30.0 },
+        "lifecycle": {
+          "confirm_hits": 1, "max_miss_before_lost": 4, "max_lost_cycles": 5,
+          "enable_imm_lifecycle": true, "model_count_hint": 2
+        },
+        "recognition": {
+          "enabled": true, "min_confirmed_hits": 1,
+          "accumulation_window_sec": 10.0, "min_observation_count": 1,
+          "acceptance_score": 0.4, "minimum_margin": 0.0, "result_hold_sec": 30.0,
+          "feature_weights": {
+            "rcs_weight": 0.25, "motion_weight": 0.25,
+            "polarization_weight": 0.25, "range_profile_weight": 0.25
+          },
+          "database_path": "remote_identification_radar/target_feature_database_v1.1.db"
+        }
+      },
+      "environment": {
+        "weather_attenuation_db": 0.0, "vegetation_cover_profile": "kDisabled",
+        "atmospheric_physics": {
+          "enable_physical_model": false, "pressure_hpa": 1013.25,
+          "temperature_k": 288.15, "relative_humidity": 0.5
+        }
+      },
+      "sensor_enabled": true
+    },
+    "fusion": {},
+    "threat": {}
+  }
+}

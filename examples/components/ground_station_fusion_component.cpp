@@ -411,6 +411,11 @@ void GroundStationFusionComponent::Step(World& world, double dt_sec) {
             record.source_id =
                 (inbox_cycle_ % 2 == 0) ? best_fix.obs_a.source_id : best_fix.obs_b.source_id;
           }
+          const SbirsFrameSubmittedEvent* source_frame =
+              FindFrameBySource(sbirs_inbox_, record.source_id);
+          if (source_frame != nullptr) {
+            record.source_name = source_frame->source_name;
+          }
           record.has_position = true;
           record.position = fix_lla;
           record.has_timestamp = true;

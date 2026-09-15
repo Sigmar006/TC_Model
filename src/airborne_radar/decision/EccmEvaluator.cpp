@@ -1,6 +1,7 @@
 ﻿#include "airborne_radar/decision/EccmEvaluator.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace airborne_radar {

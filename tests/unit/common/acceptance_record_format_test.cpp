@@ -22,9 +22,11 @@ class AcceptanceRecordFormatTest : public ::testing::Test {
         oneq::logging::AcceptanceChannel::kIrInternalInterface);
     oneq::logging::CloseAcceptanceLog(
         oneq::logging::AcceptanceChannel::kRadarInternalInterface);
+    oneq::logging::CloseAcceptanceLog(oneq::logging::AcceptanceChannel::kRadarInterface);
     std::remove(kTestPath);
     std::remove("oneq_ir_internal_interface_test.log");
     std::remove("oneq_radar_internal_interface_test.log");
+    std::remove("oneq_radar_interface_test.log");
   }
 };
 
@@ -135,6 +137,27 @@ TEST_F(AcceptanceRecordFormatTest, InternalInterfaceChannelsWriteSeparateFiles) 
   EXPECT_NE(radar_text.find("[雷达内部接口]"), std::string::npos);
   EXPECT_EQ(radar_text.find("[红外内部接口]"), std::string::npos);
 #endif
+}
+
+TEST_F(AcceptanceRecordFormatTest, RadarExternalInterfaceUsesDedicatedFile) {
+  const char* path = "oneq_radar_interface_test.log";
+  const oneq::logging::AcceptanceChannel channel =
+      oneq::logging::AcceptanceChannel::kRadarInterface;
+  oneq::logging::OpenAcceptanceLog(channel, path);
+  oneq::logging::WriteAcceptanceLog(
+      channel, oneq::logging::FormatAcceptanceLine(
+                   2.0f, 2U, "雷达检测与量测输出接口测试", "量测数量=1"));
+  oneq::logging::CloseAcceptanceLog(channel);
+
+  std::ifstream stream(path, std::ios::binary);
+  const std::string content((std::istreambuf_iterator<char>(stream)),
+                            std::istreambuf_iterator<char>());
+#if defined(_MSC_VER)
+  EXPECT_NE(content.find(u8"[雷达检测与量测输出接口测试]"), std::string::npos);
+#else
+  EXPECT_NE(content.find("[雷达检测与量测输出接口测试]"), std::string::npos);
+#endif
+  EXPECT_NE(content.find("量测数量=1"), std::string::npos);
 }
 
 }  // namespace

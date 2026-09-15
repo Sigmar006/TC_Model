@@ -67,17 +67,18 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 | CMake 开关（编译库时） | 控制文件 |
 | --- | --- |
 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` | `opir_acceptance.log` + `IRInternalInterface.log` |
-| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | `rir_acceptance.log` + `RadarInternalInterface.log`（+ 两份雷达 CSV） |
+| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | `rir_acceptance.log` + `RadarInterface.log` + `RadarInternalInterface.log`（+ 两份雷达 CSV） |
 | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` | `fusion_acceptance.log` |
 | `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` | `inference_acceptance.log` |
 | `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` | `precision_acceptance.log` |
 
-**运行时路径**：默认落在进程当前目录 `log/` 下；集成方可用五个同名环境变量把
+**运行时路径**：默认落在进程当前目录 `log/` 下；集成方可用以下环境变量把
 单文件钉到自己的输出目录（示例的 `InitIntegrationLog` 就是这么做的）：
 
 ```
 ONEQ_OPIR_ACCEPTANCE_LOG_PATH / ONEQ_RIR_ACCEPTANCE_LOG_PATH /
 ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH / ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH /
+ONEQ_RADAR_INTERFACE_LOG_PATH /
 ONEQ_FUSION_ACCEPTANCE_LOG_PATH / ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH /
 ONEQ_PRECISION_ACCEPTANCE_LOG_PATH = <目录>/<文件名>
 ```

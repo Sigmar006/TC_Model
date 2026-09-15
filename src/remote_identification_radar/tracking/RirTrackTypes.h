@@ -66,6 +66,8 @@ struct RirTrackMeasurement {
   Eigen::Vector3f position{Eigen::Vector3f::Zero()}; /**< 量测位置（m）。 */
   Eigen::Vector3f velocity{Eigen::Vector3f::Zero()}; /**< 速度种子（m/s）。 */
   float detection_pd{0.0f};   /**< 本量测的检测概率 Pd（检测链透传；验收旁路用，不进关联方程）。 */
+  float detection_snr_db{0.0f}; /**< 本量测对应的检测 SNR（dB，外部验收投影用）。 */
+  float radial_velocity_m_per_s{0.0f}; /**< 检测链使用的径向速度（m/s，外部验收投影用）。 */
   float rcs{0.0f};                                   /**< 目标估计 RCS（m²）。 */
   RirMeasurementCovariance measurement_covariance{
       RirMeasurementCovariance::Zero()}; /**< 笛卡尔量测噪声协方差 R（m²）。 */

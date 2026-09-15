@@ -85,6 +85,20 @@ TEST(FusionAssociationTest, IdentifiedDetectionCreatesTrack) {
   EXPECT_EQ(targets[0].channels[0].sample_count, 1U);
 }
 
+TEST(FusionAssociationTest, SensorNamePropagatesToOutputChannel) {
+  DetectionRecord detection = MakePositionDetection(
+      10U, 4U, MakeLla(30.0, 120.0, 0.0));
+  detection.source_name = "红外预警卫星A";
+  FusionEngine engine(FusionConfig{});
+
+  const auto targets = engine.Update({detection}, 1U);
+
+  ASSERT_EQ(targets.size(), 1U);
+  ASSERT_EQ(targets[0].channels.size(), 1U);
+  EXPECT_EQ(targets[0].channels[0].source_id, 4U);
+  EXPECT_EQ(targets[0].channels[0].source_name, "红外预警卫星A");
+}
+
 TEST(FusionAssociationTest, UnidentifiedJoinsTrackWithinRadius) {
   const LlaPositionDegM a = MakeLla(30.0, 120.0, 0.0);
   const LlaPositionDegM b = OffsetLla(a, 0.0, 100.0);  // 100 m 北

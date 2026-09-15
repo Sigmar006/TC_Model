@@ -9,6 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "1q/api.hpp"
@@ -21,6 +22,7 @@ namespace fusion {
  */
 struct ONEQ_API ChannelMeasurement {
   std::uint32_t source_id{0U};                 /**< 源通道标识 */
+  std::string source_name{};                   /**< 传感器信息源名称（空 = 未提供） */
   std::size_t sample_count{0U};                /**< 滑窗内该源量测数 */
   double latest_verdict{0.0};                  /**< 最近一次判决值 */
   double latest_quality{0.0};                  /**< 最近一次质量归一化值 */

@@ -7,6 +7,7 @@
 #define ONEQ_FUSION_DETECTION_RECORD_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "1q/api.hpp"
@@ -27,6 +28,7 @@ namespace fusion {
 struct ONEQ_API DetectionRecord {
   std::uint64_t key{0U};                 /**< 库内身份键（调用方提供并保证跨源一致；0 = 无身份） */
   std::uint32_t source_id{0U};           /**< 源通道标识（由调用方映射） */
+  std::string source_name{};             /**< 传感器信息源名称（调用方提供；空 = 仅使用 source_id） */
   bool has_position{false};              /**< 是否携带位置量测 */
   oneq::coordinate::LlaPositionDegM position{}; /**< 位置量测（度制 LLA） */
   bool has_bearing{false};              /**< 是否携带方位量测 */

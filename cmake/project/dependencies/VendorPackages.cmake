@@ -41,22 +41,51 @@ endif()
 # eigen 3.4.0（header-only）：仓库根目录即 Eigen/ 父目录。
 # ---------------------------------------------------------------------------
 if(NOT TARGET Eigen3::Eigen)
+    set(_oneq_eigen_include_dir "${ONEQ_THIRD_PARTY_DIR}/eigen")
+    if(NOT EXISTS "${_oneq_eigen_include_dir}/Eigen/Core"
+       AND EXISTS "${ONEQ_THIRD_PARTY_DIR}/eigen/Core")
+        # 某些离线包把 Eigen/ 目录内容直接铺在根下。生成仅供构建消费的标准
+        # Eigen/<header> + Eigen/src 布局，避免修改 third_party 原始依赖。
+        set(_oneq_eigen_flat_root "${ONEQ_THIRD_PARTY_DIR}/eigen")
+        set(_oneq_eigen_include_dir "${CMAKE_BINARY_DIR}/third_party/eigen_compat_layout")
+        set(_oneq_eigen_compat_root "${_oneq_eigen_include_dir}/Eigen")
+        file(MAKE_DIRECTORY "${_oneq_eigen_compat_root}")
+        file(GLOB _oneq_eigen_root_headers LIST_DIRECTORIES false
+            "${_oneq_eigen_flat_root}/*")
+        foreach(_oneq_eigen_header IN LISTS _oneq_eigen_root_headers)
+            file(COPY "${_oneq_eigen_header}" DESTINATION "${_oneq_eigen_compat_root}")
+        endforeach()
+        file(COPY "${_oneq_eigen_flat_root}/src"
+            DESTINATION "${_oneq_eigen_compat_root}")
+        unset(_oneq_eigen_header)
+        unset(_oneq_eigen_root_headers)
+        unset(_oneq_eigen_compat_root)
+        unset(_oneq_eigen_flat_root)
+    endif()
     add_library(eigen_vendor INTERFACE IMPORTED)
     set_target_properties(eigen_vendor PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${ONEQ_THIRD_PARTY_DIR}/eigen")
+        INTERFACE_INCLUDE_DIRECTORIES "${_oneq_eigen_include_dir}")
     add_library(Eigen3::Eigen ALIAS eigen_vendor)
-    message(STATUS "eigen 3.4.0: vendored header-only @ ${ONEQ_THIRD_PARTY_DIR}/eigen")
+    message(STATUS "eigen 3.4.0: vendored header-only @ ${_oneq_eigen_include_dir}")
+    unset(_oneq_eigen_include_dir)
 endif()
 
 # ---------------------------------------------------------------------------
 # nanoflann v1.3.2（header-only）：单头 include/nanoflann.hpp。
 # ---------------------------------------------------------------------------
 if(NOT TARGET nanoflann::nanoflann)
+    set(_oneq_nanoflann_include_dir "${ONEQ_THIRD_PARTY_DIR}/nanoflann/include")
+    if(NOT EXISTS "${_oneq_nanoflann_include_dir}/nanoflann.hpp"
+       AND EXISTS "${ONEQ_THIRD_PARTY_DIR}/nanoflann/nanoflann.hpp")
+        # 兼容仅分发单头文件、未保留上游 include/ 目录的离线依赖包。
+        set(_oneq_nanoflann_include_dir "${ONEQ_THIRD_PARTY_DIR}/nanoflann")
+    endif()
     add_library(nanoflann_vendor INTERFACE IMPORTED)
     set_target_properties(nanoflann_vendor PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${ONEQ_THIRD_PARTY_DIR}/nanoflann/include")
+        INTERFACE_INCLUDE_DIRECTORIES "${_oneq_nanoflann_include_dir}")
     add_library(nanoflann::nanoflann ALIAS nanoflann_vendor)
-    message(STATUS "nanoflann v1.3.2: vendored header-only @ ${ONEQ_THIRD_PARTY_DIR}/nanoflann/include")
+    message(STATUS "nanoflann v1.3.2: vendored header-only @ ${_oneq_nanoflann_include_dir}")
+    unset(_oneq_nanoflann_include_dir)
 endif()
 
 # ---------------------------------------------------------------------------

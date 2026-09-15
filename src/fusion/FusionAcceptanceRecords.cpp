@@ -79,22 +79,25 @@ std::set<std::uint32_t>& KnownSources() {
   return values;
 }
 
-// 源句柄统一输出「实体<source_id>」（与融合通道 source_id 一致）。
-std::string SourceLabel(std::uint32_t source_id) {
+// 优先输出输入携带的业务名称；空名称兼容输出「实体<source_id>」。
+std::string SourceLabel(std::uint32_t source_id, const std::string& source_name) {
+  if (!source_name.empty()) {
+    return source_name;
+  }
   return "实体" + std::to_string(source_id);
 }
 
 std::string ChannelNames(const FusedTarget& track) {
-  std::set<std::uint32_t> ids;
+  std::set<std::pair<std::uint32_t, std::string>> sources;
   for (const ChannelMeasurement& channel : track.channels) {
-    ids.insert(channel.source_id);
+    sources.insert(std::make_pair(channel.source_id, channel.source_name));
   }
   std::string text;
-  for (std::uint32_t id : ids) {
+  for (const auto& source : sources) {
     if (!text.empty()) {
       text += "+";
     }
-    text += SourceLabel(id);
+    text += SourceLabel(source.first, source.second);
   }
   return text;
 }
@@ -108,7 +111,7 @@ std::string ChannelBearings(const FusedTarget& track) {
     if (!text.empty()) {
       text += ";";
     }
-    text += SourceLabel(channel.source_id) + ":(" +
+    text += SourceLabel(channel.source_id, channel.source_name) + ":(" +
             FormatF(channel.bearing_az_deg, 6) + "," +
             FormatF(channel.bearing_el_deg, 6) + ")deg";
   }
@@ -365,7 +368,7 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
       if (!bearings.empty()) {
         bearings += ";";
       }
-      bearings += SourceLabel(channel.source_id) + "(方位" +
+      bearings += SourceLabel(channel.source_id, channel.source_name) + "(方位" +
                   FormatF(channel.bearing_az_deg, 3) + "°/俯仰" +
                   FormatF(channel.bearing_el_deg, 3) + "°)";
     }
@@ -410,7 +413,7 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
         kf.state = updater.Update(predicted, measurement, noise).posterior;
       }
       std::string std_kf = "目标键=" + std::to_string(track.key);
-      std_kf += " 源=" + SourceLabel(channel.source_id);
+      std_kf += " 源=" + SourceLabel(channel.source_id, channel.source_name);
       std_kf += " 滤波方位/俯仰=(" + FormatF(kf.state.mean(0), 6) + "," +
                 FormatF(kf.state.mean(2), 6) + ")rad";
       std_kf += " 方位变化率=" + FormatF(kf.state.mean(1), 8) + "rad/s";

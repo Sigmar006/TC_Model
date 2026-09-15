@@ -616,6 +616,12 @@ bool RirController::TryBuildMeasurement(
   target_return.rcs_m2 = target.rcs;
   target_return.range_m = slant_range_m;
   target_return.swerling_type = ToInternalSwerling(target.target_swerling_type);
+  const Eigen::Vector3f radial_position = PositionOf(target);
+  const float radial_range_norm = std::max(radial_position.norm(), 1.0f);
+  const float radial_velocity =
+      (radial_position.x() * target.velocity_x + radial_position.y() * target.velocity_y +
+       radial_position.z() * target.velocity_z) /
+      radial_range_norm;
 
   dwell::RirDetectionResult detection;
   dwell::RirDetectionCellResult cell;
@@ -642,12 +648,6 @@ bool RirController::TryBuildMeasurement(
 
     dwell::RirDetectionCellTarget cell_target;
     cell_target.range_m = static_cast<double>(slant_range_m);
-    const Eigen::Vector3f position = PositionOf(target);
-    const float range_norm = std::max(position.norm(), 1.0f);
-    const float radial_velocity =
-        (position.x() * target.velocity_x + position.y() * target.velocity_y +
-         position.z() * target.velocity_z) /
-        range_norm;
     cell_target.closing_radial_velocity_mps = static_cast<double>(-radial_velocity);
     dwell::RirTargetLookAngles look_angles;
     look_angles.look_az_deg = look_az_deg;
@@ -787,6 +787,8 @@ bool RirController::TryBuildMeasurement(
   built.velocity = Eigen::Vector3f::Zero();
   // 评审 2026-08-26 条15：检测概率透传进关联量测（验收旁路字段，不进关联方程）。
   built.detection_pd = detection.detection_prob;
+  built.detection_snr_db = detection.snr_db;
+  built.radial_velocity_m_per_s = radial_velocity;
   built.rcs = target.rcs;
   built.measurement_covariance = MakeCartesianMeasurementCovariance(
       target, measurement_error.range_error_std_m, measurement_error.angle_error_std_rad);
@@ -1177,6 +1179,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       const float gate_sigma = std::max(0.0f, policy_.association.distance_gate_sigma);
       WriteRirAssociation(input.sim_time_sec, input.input_cycle_index, association, platform_lla,
                           static_cast<double>(gate_sigma * gate_sigma));
+      WriteRirExternalMeasurements(input.sim_time_sec, input.input_cycle_index, association);
     }
 
     track_snapshots = lifecycle_->BuildTrackSnapshots();
@@ -1394,6 +1397,8 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     last_track_attributions_.push_back(attribution);
   }
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {
+    WriteRirExternalTracks(input.sim_time_sec, input.input_cycle_index, track_snapshots,
+                           *output_frame);
     // 验收判定标准 第40项：本周期航迹数汇总行（逐航迹定位/运动行在
     // WriteRirTrackAndId 内按项名写出）。
     RIR_ACCEPTANCE_ITEM(input.sim_time_sec, input.input_cycle_index, "多目标跟踪功能测试",

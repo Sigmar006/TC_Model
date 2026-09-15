@@ -14,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -155,6 +156,7 @@ class EnuBearingMeasurementModel final : public estimation::IMeasurementModel<6,
 // 单次量测样本（滑窗元素）。
 struct MeasurementSample {
   std::uint32_t source_id{0U};
+  std::string source_name{};
   bool has_position{false};
   LlaPositionDegM position{};
   bool has_bearing{false};
@@ -350,6 +352,7 @@ class FusionEngine::Impl {
   void AppendSample(Track* track, const DetectionRecord& detection, std::uint64_t cycle) {
     MeasurementSample sample;
     sample.source_id = detection.source_id;
+    sample.source_name = detection.source_name;
     sample.has_position = detection.has_position;
     sample.position = detection.position;
     sample.has_bearing = detection.has_bearing;
@@ -799,6 +802,7 @@ class FusionEngine::Impl {
         measurement.sample_count = samples.size();
         if (!samples.empty()) {
           const MeasurementSample& latest = samples.back();
+          measurement.source_name = latest.source_name;
           measurement.latest_verdict = latest.verdict;
           measurement.latest_quality = latest.quality;
           measurement.has_position = latest.has_position;

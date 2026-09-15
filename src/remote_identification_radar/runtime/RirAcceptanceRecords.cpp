@@ -16,6 +16,7 @@
 #include "1q/coordinate/velocity_transform.h"
 #include "1q/remote_identification_radar/session/RirFeatureMeasurementTypes.h"
 #include "1q/remote_identification_radar/session/RirRecognitionResult.h"
+#include "1q/remote_identification_radar/session/RirOutputTypes.h"
 #include "common/logging/AcceptanceText.h"
 #include "common/logging/LogDirectory.h"
 #include "common/numerics/Constants.h"
@@ -479,6 +480,49 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
   }
 }
 
+void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
+                                  const tracking::RirAssociationResult& association) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "雷达检测与量测输出接口测试",
+                              "量测数量=" + std::to_string(association.measurements.size()));
+  for (const tracking::RirTrackMeasurement& measurement : association.measurements) {
+    float range_m = 0.0f;
+    float az_deg = 0.0f;
+    float el_deg = 0.0f;
+    const bool has_polar = TryLookPolarFromEnuM(
+        measurement.position.x(), measurement.position.y(), measurement.position.z(), &range_m,
+        &az_deg, &el_deg);
+    std::string content = "目标ID=" + std::to_string(measurement.external_target_id);
+    content += " 点迹ID=" + std::to_string(measurement.association_key);
+    content += " 检测标志=是";
+    if (has_polar) {
+      content += " 距离=" + FormatF(range_m, 3) + "m";
+      content += " 方位=" + FormatF(az_deg, 6) + "deg";
+      content += " 俯仰=" + FormatF(el_deg, 6) + "deg";
+    }
+    content += " 径向速度(远离为正)=" +
+               FormatF(measurement.radial_velocity_m_per_s, 3) + "m/s";
+    content += " SNR=" + FormatF(measurement.detection_snr_db, 3) + "dB";
+    content += " 检测概率=" + FormatF(measurement.detection_pd, 5);
+    content += " 量测协方差ENU_m2[x,y,z]=[";
+    for (int row = 0; row < 3; ++row) {
+      if (row != 0) {
+        content += ";";
+      }
+      for (int col = 0; col < 3; ++col) {
+        if (col != 0) {
+          content += ",";
+        }
+        content += FormatF(measurement.measurement_covariance(row, col), 6);
+      }
+    }
+    content += "]";
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "雷达检测与量测输出接口测试", content);
+  }
+}
+
 void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
                           const std::vector<tracking::RirTrackState>& tracks) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
@@ -629,6 +673,18 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   }
   RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle,
                               "雷达航迹与特征识别交互接口测试", interface_recognition);
+
+  // 外部导入项：综合特征识别是独立验收用例，与第47项宽带一维像分别记录。
+  if (result != nullptr) {
+    std::string comprehensive = track_target_id;
+    comprehensive += " 目标类别=" + category_text;
+    comprehensive += " 目标型号=" +
+                     (result->target_model.empty() ? std::string("未识别")
+                                                   : result->target_model);
+    comprehensive += " 置信度=" + FormatF(result->confidence, 5);
+    comprehensive += " 特征有效掩码=" + std::to_string(result->valid_feature_mask);
+    Emit(sim_time_sec, cycle, "综合特征识别功能测试", comprehensive);
+  }
 
   // 第38项 角度和距离测量：量测角距一行；目标量测误差统计=量测−真值（可计算口径，
   // 真值上下文缺失时省略误差行）。方位误差取最短角差。
@@ -810,6 +866,122 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
 
 // 评审 2026-08-26 条21：调度只应有搜索/跟踪两类事件（「识别」不是独立驻留模式，
 // 识别在 kIdentify 模式内顺带执行），识别计数与列表段删除。
+void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
+                            const std::vector<tracking::RirTrackState>& tracks,
+                            const session::RirOutputFrame& output_frame) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  std::size_t confirmed_count = 0U;
+  for (const tracking::RirTrackState& track : tracks) {
+    if (track.status == tracking::RirTrackStatus::kConfirmed) {
+      ++confirmed_count;
+    }
+  }
+  std::string summary = "航迹数量=" + std::to_string(tracks.size());
+  summary += " 集群目标数量=" + std::to_string(confirmed_count);
+  summary += " 批次=" + std::to_string(output_frame.batch_id);
+  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "航迹与目标识别输出接口测试", summary);
+
+  for (const tracking::RirTrackState& track : tracks) {
+    const session::RirRecognitionResult* recognition = nullptr;
+    for (const session::RirTrackRecognitionOutput& output : output_frame.recognition_outputs) {
+      if (output.association_key == track.association_key) {
+        recognition = &output.result;
+        break;
+      }
+    }
+    const session::RirFeatureMeasurementRecord* feature_record = nullptr;
+    for (const session::RirFeatureMeasurementRecord& record : output_frame.feature_measurements) {
+      if (record.association_key == track.association_key) {
+        feature_record = &record;
+        break;
+      }
+    }
+
+    std::string content = "航迹ID=" + std::to_string(track.association_key);
+    content += " 目标ID=" + std::to_string(track.external_target_id);
+    content += " 生命周期状态=" + std::string(TrackStatusText(track.status));
+    content += " 目标状态ENU_位置=" +
+               FormatVec3(track.position.x(), track.position.y(), track.position.z(), 3) + "m";
+    content += " 速度=" +
+               FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
+               "m/s";
+    content += " 加速度=" +
+               FormatVec3(track.acceleration.x(), track.acceleration.y(), track.acceleration.z(),
+                          3) +
+               "m/s^2";
+    content += " 状态协方差ENU[x,vx,y,vy,z,vz]=[";
+    for (int row = 0; row < 6; ++row) {
+      if (row != 0) {
+        content += ";";
+      }
+      for (int col = 0; col < 6; ++col) {
+        if (col != 0) {
+          content += ",";
+        }
+        content += FormatF(track.gaussian_state.covariance(row, col), 6);
+      }
+    }
+    content += "]";
+
+    if (recognition != nullptr) {
+      content += " 目标类别=" +
+                 std::string(CategoryName(static_cast<int>(recognition->target_category)));
+      content += " 目标型号=" +
+                 (recognition->target_model.empty() ? std::string("未识别")
+                                                     : recognition->target_model);
+      content += " 置信度=" + FormatF(recognition->confidence, 5);
+    } else {
+      content += " 目标类别=未知 目标型号=未识别 置信度=0.00000";
+    }
+
+    if (feature_record != nullptr) {
+      const session::RirFeatureObservations& features = feature_record->features;
+      content += " RCS特征摘要=";
+      if (features.rcs.valid) {
+        content += "均值" + FormatF(features.rcs.mean_dbsm, 3) + "dBsm/标准差" +
+                   FormatF(features.rcs.std_db, 3) + "dB/质量" +
+                   FormatF(features.rcs.quality, 4);
+      } else {
+        content += "不可用";
+      }
+      content += " 极化特征摘要=";
+      bool has_polarization_summary = false;
+      if (features.polarization.valid) {
+        content += "能量差" + FormatF(features.polarization.energy_difference_db, 3) +
+                   "dB/相对差" + FormatF(features.polarization.relative_difference_db, 3) +
+                   "dB/质量" + FormatF(features.polarization.quality, 4);
+        has_polarization_summary = true;
+      }
+      if (features.polarization_stats.valid) {
+        if (has_polarization_summary) {
+          content += "/";
+        }
+        content += "Span均值" + FormatF(features.polarization_stats.span_mean, 3) +
+                   "/Span标准差" + FormatF(features.polarization_stats.span_std, 3);
+        has_polarization_summary = true;
+      }
+      if (!has_polarization_summary) {
+        content += "不可用";
+      }
+      content += " HRRP特征摘要=";
+      if (features.range_profile.valid) {
+        content += "长度" + FormatF(features.range_profile.length_m, 3) + "m/峰数" +
+                   std::to_string(features.range_profile.peak_count) + "/能量集中率" +
+                   FormatF(features.range_profile.peak_energy_concentration, 4) + "/分辨率" +
+                   FormatF(features.range_profile.resolution_m, 3) + "m/质量" +
+                   FormatF(features.range_profile.quality, 4);
+      } else {
+        content += "不可用";
+      }
+    } else {
+      content += " RCS特征摘要=不可用 极化特征摘要=不可用 HRRP特征摘要=不可用";
+    }
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "航迹与目标识别输出接口测试", content);
+  }
+}
+
 void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
                       std::uint32_t designate_count, std::uint32_t track_count,

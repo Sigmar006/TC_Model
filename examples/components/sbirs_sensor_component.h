@@ -7,6 +7,7 @@
 #define EXAMPLES_COMPONENT_ATTACHMENT_COMPONENTS_SBIRS_SENSOR_COMPONENT_H_
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -108,6 +109,8 @@ class SbirsSensorComponent : public Component {
    * @note 默认关；场景 JSON cross_cue 键经 main 装配时调用。
    */
   void SetCrossCueEnabled(bool enabled) { cross_cue_enabled_ = enabled; }
+  /** @brief 设置验收记录使用的传感器信息源名称。 */
+  void SetSensorName(const std::string& name) { sensor_name_ = name; }
   /** @return cross-cue 是否开启。 */
   bool cross_cue_enabled() const { return cross_cue_enabled_; }
 
@@ -133,6 +136,7 @@ class SbirsSensorComponent : public Component {
   bool step_timing_logged_{false}; /**< 单步执行时间是否已写入示例日志（只写首个周期） */
   std::uint32_t device_id_{fusion::kSbirsSourceId}; /**< 单站传感器设备实体 ID（融合源通道 ID） */
   std::uint32_t ground_station_source_id_{0U}; /**< 非 0：探测帧投递地面站，不写探测池 */
+  std::string sensor_name_{"红外预警卫星"}; /**< 传感器信息源名称（消息与融合日志透传） */
   SbirsGroundDeliveryMode ground_delivery_{SbirsGroundDeliveryMode::kSharedBlackboard};
   DetectionDeliveryMode detection_delivery_{DetectionDeliveryMode::kSharedBlackboard};
   bool use_own_satellite_pose_{false}; /**< 真：用本实体星历，不要求同实体 Flight */

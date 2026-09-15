@@ -28,6 +28,7 @@ namespace session {
 struct RirRecognitionResult;
 struct RirRecognitionCycleSummary;
 struct RirFeatureMeasurementRecord;
+struct RirOutputFrame;
 }  // namespace session
 
 namespace runtime {
@@ -99,6 +100,10 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
                          const oneq::coordinate::LlaPositionDegM& platform_lla,
                          double gate_threshold);
 
+/** @brief 第64项：将同周期检测量测聚合写入 RadarInterface.log。 */
+void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
+                                  const tracking::RirAssociationResult& association);
+
 void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
                           const std::vector<tracking::RirTrackState>& tracks);
 
@@ -128,6 +133,11 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const std::vector<float>* imm_weights,
                         const oneq::coordinate::EcefPositionM& platform_ecef,
                         const RirTrackTruthContext* truth);
+
+/** @brief 第65项：将同周期航迹、协方差、识别和特征聚合写入 RadarInterface.log。 */
+void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
+                            const std::vector<tracking::RirTrackState>& tracks,
+                            const session::RirOutputFrame& output_frame);
 
 /**
  * @brief 验收判定标准 第37项·其二：扫描调度信息行（搜索/指定/跟踪分项计数 +

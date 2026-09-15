@@ -1,6 +1,6 @@
 ﻿/**
  * @file AcceptanceFileLog.cpp
- * @brief 七通道验收文件 sink（红外 / 雷达 / 融合 / 推演 / 精度 / 两类内部接口）。
+ * @brief 八通道验收文件 sink（五类验收、两类内部接口及雷达外部接口）。
  */
 
 #include "common/logging/AcceptanceFileLog.h"
@@ -42,6 +42,9 @@
 #endif
 #ifndef ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH
 #define ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH "log/RadarInternalInterface.log"
+#endif
+#ifndef ONEQ_RADAR_INTERFACE_LOG_PATH
+#define ONEQ_RADAR_INTERFACE_LOG_PATH "log/RadarInterface.log"
 #endif
 
 namespace oneq {
@@ -100,6 +103,8 @@ const char* EnvName(AcceptanceChannel channel) {
       return "ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH";
     case AcceptanceChannel::kRadarInternalInterface:
       return "ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH";
+    case AcceptanceChannel::kRadarInterface:
+      return "ONEQ_RADAR_INTERFACE_LOG_PATH";
   }
   return "ONEQ_OPIR_ACCEPTANCE_LOG_PATH";
 }
@@ -120,6 +125,8 @@ const char* CompileDefaultPath(AcceptanceChannel channel) {
       return ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH;
     case AcceptanceChannel::kRadarInternalInterface:
       return ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH;
+    case AcceptanceChannel::kRadarInterface:
+      return ONEQ_RADAR_INTERFACE_LOG_PATH;
   }
   return ONEQ_OPIR_ACCEPTANCE_LOG_PATH;
 }
@@ -140,6 +147,8 @@ const char* ChannelLabel(AcceptanceChannel channel) {
       return "ir-internal-interface";
     case AcceptanceChannel::kRadarInternalInterface:
       return "radar-internal-interface";
+    case AcceptanceChannel::kRadarInterface:
+      return "radar-interface";
   }
   return "opir";
 }
@@ -261,6 +270,7 @@ ChannelSink& SinkOf(AcceptanceChannel channel) {
   static ChannelSink precision(AcceptanceChannel::kPrecision);
   static ChannelSink ir_internal_interface(AcceptanceChannel::kIrInternalInterface);
   static ChannelSink radar_internal_interface(AcceptanceChannel::kRadarInternalInterface);
+  static ChannelSink radar_interface(AcceptanceChannel::kRadarInterface);
   switch (channel) {
     case AcceptanceChannel::kRir:
       return rir;
@@ -274,6 +284,8 @@ ChannelSink& SinkOf(AcceptanceChannel channel) {
       return ir_internal_interface;
     case AcceptanceChannel::kRadarInternalInterface:
       return radar_internal_interface;
+    case AcceptanceChannel::kRadarInterface:
+      return radar_interface;
     case AcceptanceChannel::kOpir:
     default:
       return opir;

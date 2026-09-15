@@ -15,6 +15,7 @@ inline FusionDetectionSample ToFusionDetectionSample(const fusion::DetectionReco
   FusionDetectionSample sample;
   sample.key = record.key;
   sample.source_id = record.source_id;
+  sample.source_name = record.source_name;
   sample.has_position = record.has_position;
   if (record.has_position) {
     sample.latitude_deg = record.position.latitude_deg;
@@ -41,6 +42,7 @@ inline fusion::DetectionRecord ToDetectionRecord(const FusionDetectionSample& sa
   fusion::DetectionRecord record;
   record.key = sample.key;
   record.source_id = sample.source_id;
+  record.source_name = sample.source_name;
   record.has_position = sample.has_position;
   if (sample.has_position) {
     record.position = oneq::coordinate::LlaPositionDegM(

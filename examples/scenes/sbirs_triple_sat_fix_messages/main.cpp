@@ -11,6 +11,7 @@
  * 每星逐目标视线状态（检测/被地球遮挡）、融合航迹与双星交会误差。
  */
 
+#include <algorithm>
 #include <cmath>
 #include <chrono>
 #include <cstdint>
@@ -39,12 +40,16 @@
 #include "csv_writer.h"
 #include "app/output_dir.h"
 #include "components/ground_station_fusion_component.h"
+#include "components/rir_sensor_component.h"
 #include "components/sbirs_sensor_component.h"
+#include "core/rf_world_broker.h"
 #include "core/scene_types.h"
 #include "core/world.h"
 #include "logger/logger.h"
 #include "logger/acceptance_paths.h"
 #include "logger/acceptance_timing.h"
+#include "scenes/scene_data.h"
+#include "scenes/scene_script.h"
 
 namespace pe = precision_evaluation;
 
@@ -79,6 +84,16 @@ struct LoadedScene {
   pe::DualSatEphemerisInput ephemeris{};
   std::vector<LoadedSatellite> satellites{};
   std::vector<pe::EvaluationTruthTarget> truth{};
+  bool lrdr_enabled{false};
+};
+
+struct PendingRirCue {
+  bool active{false};
+  std::string source_name{};
+  std::uint64_t target_id{0U};
+  double bearing_time_s{0.0};
+  double cue_az_deg{0.0};
+  double cue_el_deg{0.0};
 };
 
 bool ReadVec3(const examples::JsonValue& value, double* x, double* y, double* z,
@@ -265,6 +280,10 @@ bool LoadScene(const char* path, LoadedScene* scene, std::string* error) {
     scene->config.inference.prediction_horizon_sec = root["inference_horizon_sec"].AsDouble();
   } else {
     scene->config.inference.prediction_horizon_sec = 1200.0;
+  }
+  if (root.Has("rir") && root["rir"].type() == examples::JsonValue::kObject &&
+      root["rir"].Has("enabled")) {
+    scene->lrdr_enabled = root["rir"]["enabled"].AsBool();
   }
   if (root.Has("fusion")) {
     const examples::JsonValue& fusion = root["fusion"];
@@ -560,6 +579,30 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  component_attachment::app::SceneData lrdr_scene;
+  component_attachment::app::SceneSessionConfigs lrdr_configs;
+  std::vector<component_attachment::app::TargetEcefState> lrdr_target_states;
+  if (scene.lrdr_enabled) {
+    std::string lrdr_error;
+    if (!component_attachment::app::LoadSceneData(
+            scene_path.c_str(), &lrdr_scene, &lrdr_configs, &lrdr_error)) {
+      std::cerr << "Failed to load LRDR portion of scene: " << scene_path
+                << ": " << lrdr_error << "\n";
+      return 1;
+    }
+    lrdr_target_states = component_attachment::app::MakeTargetStates(
+        lrdr_scene.targets, lrdr_scene.platform_origin);
+    for (component_attachment::app::TargetEcefState& state : lrdr_target_states) {
+      for (const pe::EvaluationTruthTarget& truth : scene.truth) {
+        if (truth.key == state.id) {
+          state.position = truth.position_ecef_m;
+          state.velocity = truth.velocity_ecef_m_per_s;
+          break;
+        }
+      }
+    }
+  }
+
   if (!output_dir_overridden) {
     output_dir = std::string(PE_DEFAULT_OUTPUT_DIR) + "/" + scene.log_dir;
   }
@@ -591,6 +634,19 @@ int main(int argc, char* argv[]) {
   component_attachment::AppSceneState app_scene;
   app_scene.sbirs_utc_julian_day = scene.utc_julian_day;
   component_attachment::World world(app_scene);
+
+  component_attachment::RirSensorComponent* rir_component = nullptr;
+  if (scene.lrdr_enabled) {
+    component_attachment::Entity& lrdr =
+        world.CreateEntity(component_attachment::kRirSiteEntityName);
+    lrdr.Attach(std::unique_ptr<component_attachment::RirSensorComponent>(
+        new component_attachment::RirSensorComponent(
+            remote_identification_radar::session::RirSession::Create(lrdr_configs.rir),
+            lrdr_scene.rir_site_origin, lrdr_configs.rir.mission.recognition_dwell_sec,
+            lrdr_scene.device_ids.rir,
+            component_attachment::DetectionDeliveryMode::kSharedBlackboard)));
+    rir_component = lrdr.Find<component_attachment::RirSensorComponent>();
+  }
 
   // 3D 可视化 CSV 落盘：与验收日志同目录，查看器 sbirs_orbit_viewer.py 消费。
   // gmst_rad 为 ECI↔ECEF 旋转角（场景儒略日固定 → 全程不变，随 sats.csv 导出
@@ -682,6 +738,7 @@ int main(int argc, char* argv[]) {
             sbirs_sensor::session::SbirsSession::Create(sat.config), sat.source_id, pose, vel, att,
             component_attachment::SbirsGroundDeliveryMode::kMessage)));
     sbirs_components.push_back(entity.Find<component_attachment::SbirsSensorComponent>());
+    sbirs_components.back()->SetSensorName("红外预警卫星" + sat.id);
     if (sat.cross_cue) {
       sbirs_components.back()->SetCrossCueEnabled(true);  // cross-cue 常开（JSON cross_cue）
     }
@@ -740,6 +797,8 @@ int main(int argc, char* argv[]) {
               << sat.position_ecef_m.z_m << ")\n";
   }
   std::uint32_t dual_sat_cycles = 0U;
+  PendingRirCue pending_rir_cue;
+  std::vector<std::uint64_t> cued_target_ids;
   for (std::uint32_t cycle = 1U; cycle <= scene.cycles; ++cycle) {
     // 真值弹道由调用方推进（评估会话不拥有真值；同单测约定 p += v·dt）。
     for (std::size_t i = 0U; i < scene.truth.size(); ++i) {
@@ -754,10 +813,84 @@ int main(int argc, char* argv[]) {
     app_scene.cycle = cycle;
     app_scene.t_sec = static_cast<double>(cycle) * static_cast<double>(scene.dt_sec);
     app_scene.sbirs_targets = MakeSbirsTargets(scene.truth);
+    if (scene.lrdr_enabled) {
+      for (component_attachment::app::TargetEcefState& state : lrdr_target_states) {
+        for (const pe::EvaluationTruthTarget& truth : scene.truth) {
+          if (truth.key == state.id) {
+            state.position = truth.position_ecef_m;
+            state.velocity = truth.velocity_ecef_m_per_s;
+            break;
+          }
+        }
+      }
+      app_scene.rir_targets = component_attachment::app::MakeRirSceneTargets(
+          lrdr_target_states, lrdr_scene.rir_site_origin);
+      app_scene.emitters = component_attachment::app::MakeEmitterTruths(
+          lrdr_target_states, lrdr_scene.esr, app_scene.t_sec);
+      component_attachment::BeginRfWorldCycle(&app_scene, scene.dt_sec);
+    }
     fusion->BeginCycle(world, cycle);
     fusion->SetEvaluationInputs(scene.ephemeris, scene.truth);
     component_attachment::app::BeginViewLogCycle(cycle);
     world.Step(static_cast<double>(scene.dt_sec));
+    if (rir_component != nullptr && pending_rir_cue.active) {
+      const remote_identification_radar::session::RirOutputDebugView& rir_view =
+          rir_component->LastDebugView();
+      for (const remote_identification_radar::session::RirDebugTargetState& radar_target :
+           rir_view.targets) {
+        if (radar_target.external_target_id != pending_rir_cue.target_id ||
+            !radar_target.has_track || !radar_target.has_cycle_detection_snr ||
+            app_scene.t_sec <= pending_rir_cue.bearing_time_s) {
+          continue;
+        }
+        rir_component->WriteSbirsCueDetectionAcceptance(
+            cycle, app_scene.t_sec, pending_rir_cue.source_name,
+            pending_rir_cue.target_id, pending_rir_cue.bearing_time_s,
+            pending_rir_cue.cue_az_deg, pending_rir_cue.cue_el_deg,
+            radar_target.slant_range_m, radar_target.look_az_deg,
+            radar_target.position_enu_z_m);
+        pending_rir_cue.active = false;
+        break;
+      }
+    }
+    if (rir_component != nullptr && !pending_rir_cue.active) {
+      const std::vector<component_attachment::SbirsFrameSubmittedEvent>& frames =
+          fusion->last_sbirs_frames();
+      bool cue_applied = false;
+      for (const component_attachment::SbirsFrameSubmittedEvent& frame : frames) {
+        for (const component_attachment::SbirsBearingSample& detection : frame.detections) {
+          if (detection.target_id == 0U ||
+              std::find(cued_target_ids.begin(), cued_target_ids.end(),
+                        detection.target_id) != cued_target_ids.end()) {
+            continue;
+          }
+          remote_identification_radar::config::RirRuntimeConfigPatch patch;
+          patch.has_designated_target_id = true;
+          patch.designated_external_target_id = detection.target_id;
+          patch.has_designation_duration_cycles = true;
+          patch.designation_duration_cycles = 20U;
+          if (!rir_component->TryApplyRuntimeConfig(patch)) {
+            continue;
+          }
+          pending_rir_cue.active = true;
+          pending_rir_cue.source_name = frame.source_name;
+          pending_rir_cue.target_id = detection.target_id;
+          pending_rir_cue.bearing_time_s = detection.measurement_time_s;
+          pending_rir_cue.cue_az_deg =
+              static_cast<double>(detection.azimuth_rad) * 180.0 /
+              3.14159265358979323846;
+          pending_rir_cue.cue_el_deg =
+              static_cast<double>(detection.elevation_rad) * 180.0 /
+              3.14159265358979323846;
+          cued_target_ids.push_back(detection.target_id);
+          cue_applied = true;
+          break;
+        }
+        if (cue_applied) {
+          break;
+        }
+      }
+    }
     const pe::PrecisionEvaluationCycleResult& result = fusion->last_evaluation();
     if (!result.dual_sat.empty()) {
       ++dual_sat_cycles;

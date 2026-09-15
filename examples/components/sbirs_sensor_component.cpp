@@ -648,15 +648,20 @@ void SbirsSensorComponent::AdaptDetections(
       if (!record.detected) {
         continue;
       }
-      event.records.push_back(ToFusionDetectionSample(record));
+      FusionDetectionSample sample = ToFusionDetectionSample(record);
+      sample.source_name = sensor_name_;
+      event.records.push_back(sample);
     }
     world.signals().on_detection_batch_submitted(event);
     return;
   }
   // 黑板路径：库内适配器 → 共享探测池（FusionComponent 聚合读；集成方对应
   // 把记录消息推给融合组件）。
-  const std::vector<fusion::DetectionRecord> adapted =
+  std::vector<fusion::DetectionRecord> adapted =
       fusion::AdaptSbirsDetectionsToDetectionRecords(device_id_, records);
+  for (fusion::DetectionRecord& record : adapted) {
+    record.source_name = sensor_name_;
+  }
   scene.detection_pool.insert(scene.detection_pool.end(), adapted.begin(), adapted.end());
 }
 
@@ -667,6 +672,7 @@ void SbirsSensorComponent::PublishToGroundStation(
     SbirsFrameSubmittedEvent event;
     event.cycle = scene.cycle;
     event.source_id = ground_station_source_id_;
+    event.source_name = sensor_name_;
     event.satellite_ecef_x_m = own_position_ecef_m_.x;
     event.satellite_ecef_y_m = own_position_ecef_m_.y;
     event.satellite_ecef_z_m = own_position_ecef_m_.z;

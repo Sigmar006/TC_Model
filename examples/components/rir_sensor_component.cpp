@@ -32,6 +32,8 @@
 #include "core/rf_world_broker.h"
 #include "core/scene_types.h"
 #include "components/sensor_utils.h"
+#include "common/logging/AcceptanceText.h"
+#include "remote_identification_radar/runtime/RirAcceptanceLog.h"
 
 namespace component_attachment {
 
@@ -181,6 +183,24 @@ bool RirSensorComponent::TryApplyRuntimeConfig(
     powered_on_ = patch.sensor_enabled;  // 电源状态由补丁唯一维护（组件层电源门控）
   }
   return applied;
+}
+
+void RirSensorComponent::WriteSbirsCueDetectionAcceptance(
+    std::uint32_t cycle, double sim_time_sec, const std::string& source_name,
+    std::uint64_t target_id, double bearing_time_sec, double cue_az_deg,
+    double cue_el_deg, double radar_range_m, double radar_az_deg,
+    double radar_height_m) const {
+  std::string content = "目标ID=" + std::to_string(static_cast<unsigned long long>(target_id));
+  content += " 传感器信息源名称=" + source_name;
+  content += " 卫星测角时刻=" + oneq::logging::FormatF(bearing_time_sec, 3) + "s";
+  content += " 卫星引导方位/俯仰=" +
+             oneq::logging::FormatPairDeg(cue_az_deg, cue_el_deg, 4) + "°";
+  content += " 雷达探测时刻=" + oneq::logging::FormatF(sim_time_sec, 3) + "s";
+  content += " 雷达距离=" + oneq::logging::FormatF(radar_range_m, 3) + "m";
+  content += " 雷达方位=" + oneq::logging::FormatF(radar_az_deg, 4) + "°";
+  content += " 雷达高度=" + oneq::logging::FormatF(radar_height_m, 3) + "m";
+  content += " 时序=卫星测角后";
+  RIR_ACCEPTANCE_ITEM(static_cast<float>(sim_time_sec), cycle, "落点预测功能测试", content);
 }
 
 rir::RirCycleInput RirSensorComponent::BuildCycleInput(const AppSceneState& scene,

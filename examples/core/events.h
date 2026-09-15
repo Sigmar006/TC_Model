@@ -294,6 +294,7 @@ struct CommandIssuedEvent {
 struct FusionDetectionSample {
   std::uint64_t key{0U};                 /**< 库内身份键（0 = 无身份） */
   std::uint32_t source_id{0U};           /**< 融合源通道 */
+  std::string source_name{};             /**< 传感器信息源名称（验收日志显示用） */
   bool has_position{false};              /**< 是否携带位置量测 */
   double latitude_deg{0.0};              /**< 位置纬度（deg） */
   double longitude_deg{0.0};             /**< 位置经度（deg） */
@@ -346,6 +347,7 @@ struct SbirsBearingSample {
 struct SbirsFrameSubmittedEvent {
   std::uint64_t cycle{0U};           /**< 世界周期号 */
   std::uint32_t source_id{0U};       /**< 融合源通道（每星互异） */
+  std::string source_name{};         /**< 红外卫星传感器名称 */
   double satellite_ecef_x_m{0.0};    /**< 该星 ECEF X（m） */
   double satellite_ecef_y_m{0.0};    /**< 该星 ECEF Y（m） */
   double satellite_ecef_z_m{0.0};    /**< 该星 ECEF Z（m） */

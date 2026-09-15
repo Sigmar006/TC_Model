@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import re
 import shutil
@@ -44,6 +45,17 @@ def source_files_under(paths: list[Path]) -> set[Path]:
             for path in absolute.rglob(pattern):
                 files.add(path.relative_to(ROOT))
     return files
+
+
+def snapshot_files_under(category: str) -> set[Path]:
+    category_root = OUTPUT / category
+    if not category_root.is_dir():
+        return set()
+    return {
+        path.relative_to(category_root)
+        for path in category_root.rglob("*")
+        if path.is_file() and path.suffix in {".h", ".cpp"}
+    }
 
 
 def resolve_include(include_name: str) -> Path | None:
@@ -154,22 +166,38 @@ def write_reports(categories: dict[str, set[Path]]) -> None:
 
 
 def main() -> int:
-    if OUTPUT.exists():
+    global OUTPUT
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    parser.add_argument("--reports-only", action="store_true")
+    args = parser.parse_args()
+    OUTPUT = args.output.resolve()
+
+    if OUTPUT.exists() and not args.reports_only:
         raise SystemExit(f"output already exists: {OUTPUT}")
+    if args.reports_only and not OUTPUT.is_dir():
+        raise SystemExit(f"output does not exist: {OUTPUT}")
 
-    infrared = source_files_under(INFRARED_DIRS)
-    lrdr = source_files_under(LRDR_DIRS)
-    shared = add_companions(direct_shared_includes(infrared) & direct_shared_includes(lrdr))
+    if args.reports_only:
+        categories = {
+            category: snapshot_files_under(category)
+            for category in ("infrared_sensor", "lrdr_radar", "shared")
+        }
+    else:
+        infrared = source_files_under(INFRARED_DIRS)
+        lrdr = source_files_under(LRDR_DIRS)
+        shared = add_companions(direct_shared_includes(infrared) & direct_shared_includes(lrdr))
+        categories = {
+            "infrared_sensor": infrared,
+            "lrdr_radar": lrdr,
+            "shared": shared,
+        }
 
-    categories = {
-        "infrared_sensor": infrared,
-        "lrdr_radar": lrdr,
-        "shared": shared,
-    }
-
-    OUTPUT.mkdir()
-    for category, files in categories.items():
-        copy_files(category, files)
+    if not args.reports_only:
+        OUTPUT.mkdir()
+        for category, files in categories.items():
+            copy_files(category, files)
     write_reports(categories)
 
     for category, files in categories.items():

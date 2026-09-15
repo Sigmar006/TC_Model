@@ -1389,9 +1389,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     }
 
     const bool in_wfov = InRectangularFov(sensor_azimuth_deg, sensor_elevation_deg,
-                                          actual_scan_azimuth_sensor_deg,
-                                          actual_scan_elevation_sensor_deg, mission.wide_field_fov_az_deg,
-                                          mission.wide_field_fov_el_deg);
+                                           actual_scan_azimuth_sensor_deg,
+                                           actual_scan_elevation_sensor_deg, mission.wide_field_fov_az_deg,
+                                           mission.wide_field_fov_el_deg);
+    const bool wfov_snr_gate_passed = snr >= policy.detection.wide_min_snr_linear;
     if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
       std::string geometry = "卫星ID=" + std::to_string(satellite_entity_id_);
       geometry += " 目标ID=" + std::to_string(target.target_id);
@@ -1423,13 +1424,17 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                              oneq::logging::FormatSci(noise_statistics.thermal_noise_w) + "J";
       detection_interface += " 读出噪声=" +
                              oneq::logging::FormatSci(noise_statistics.readout_noise_w) + "J";
-      detection_interface += " 有效噪声=" + oneq::logging::FormatSci(effective_noise_w) + "W";
+      detection_interface +=
+          " 有效噪声能量=" + oneq::logging::FormatSci(effective_noise_w) + "J";
       detection_interface += " 辐射噪声模块输出SNR=" + oneq::logging::FormatF(snr, 6);
       detection_interface += " 判决模块输入SNR=" + oneq::logging::FormatF(snr, 6);
       detection_interface += " 门限=" +
                              oneq::logging::FormatF(policy.detection.wide_min_snr_linear, 6);
-      detection_interface += std::string(" 检测标志=") +
-                             (in_wfov && snr >= policy.detection.wide_min_snr_linear ? "是" : "否");
+      detection_interface +=
+          std::string(" SNR门结果=") + (wfov_snr_gate_passed ? "通过" : "拒绝");
+      detection_interface += std::string(" 视场门结果=") + (in_wfov ? "通过" : "拒绝");
+      detection_interface += std::string(" 综合准入结果=") +
+                             (in_wfov && wfov_snr_gate_passed ? "通过" : "拒绝");
       SBIRS_INTERNAL_INTERFACE_ITEM(
           sim_time_sec, input.cycle_index, "红外辐射噪声与检测判决交互接口测试",
           detection_interface);
@@ -1478,7 +1483,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       tracking_coordinator_.ReleaseTarget(target.target_id);
       continue;
     }
-    if (snr < policy.detection.wide_min_snr_linear) {
+    if (!wfov_snr_gate_passed) {
       // cross-cue 旁路（2026-09-01）：自星宽场 SNR 门外但有外部引导 → 构造外部候选。
       // （外部路径的 SNR 语义：候选优先级仍用物理真值链 SNR；捕获门在 NFOV 段另判。）
       if (external_cue_by_target.count(target.target_id) != 0U) {
@@ -2172,14 +2177,22 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                              oneq::logging::FormatSci(noise_statistics.thermal_noise_w) + "J";
       detection_interface += " 读出噪声=" +
                              oneq::logging::FormatSci(noise_statistics.readout_noise_w) + "J";
-      detection_interface += " 有效噪声=" + oneq::logging::FormatSci(effective_noise_w) + "W";
+      detection_interface +=
+          " 有效噪声能量=" + oneq::logging::FormatSci(effective_noise_w) + "J";
       detection_interface += " 辐射噪声模块输出SNR=" +
                              oneq::logging::FormatF(context.snr, 6);
       detection_interface += " 判决模块输入SNR=" +
                              oneq::logging::FormatF(context.snr, 6);
       detection_interface += " 门限=" +
                              oneq::logging::FormatF(policy.detection.narrow_min_snr_linear, 6);
-      detection_interface += std::string(" 检测标志=") + (tracking_gate_passed ? "是" : "否");
+      detection_interface +=
+          std::string(" SNR门结果=") + (snr_gate_passed ? "通过" : "拒绝");
+      detection_interface +=
+          std::string(" 视场门结果=") + (geometry_gate_passed ? "通过" : "拒绝");
+      detection_interface += std::string(" 稳定帧门结果=") +
+                             (settled_frames >= 1 ? "通过" : "拒绝");
+      detection_interface +=
+          std::string(" 综合准入结果=") + (tracking_gate_passed ? "通过" : "拒绝");
       SBIRS_INTERNAL_INTERFACE_ITEM(
           sim_time_sec, input.cycle_index, "红外辐射噪声与检测判决交互接口测试",
           detection_interface);

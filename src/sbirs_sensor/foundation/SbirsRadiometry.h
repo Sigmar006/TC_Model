@@ -47,7 +47,8 @@ double ComputeInfraredSnrLinear(double received_power_w,
  * @param[in] path_transmittance 当前周期路径透过率（含气象修正）
  * @param[in] detector_quantum_efficiency 探测器量子效率
  * @param[in] integration_time_sec 积分时间，单位 s
- * @param[in] effective_noise_w 当前周期有效噪声功率 N_eff，单位 W（噪声模型在调用方解析）
+ * @param[in] effective_noise_w 当前周期有效噪声能量 N_eff，单位 J；参数名为兼容既有内部
+ *                              调用保留 `_w` 后缀
  * @param[in] min_snr_linear 检测门限（线性 SNR）
  * @return 当前时刻最大探测距离，单位 m；任一输入非正时返回 0
  */

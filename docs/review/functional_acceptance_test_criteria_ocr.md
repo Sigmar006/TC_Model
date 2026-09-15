@@ -71,8 +71,9 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 唯一计算出的系统级事实，才归入外部仿真系统补充的数据。
 
 本节不纳入第 56–69 项外部接口验收。第 70–77 项内部接口仍纳入日志责任：内部生产模块向
-内部消费模块传递的关键中间量必须由模型自身记录，RIR 写入 `log/rir_acceptance.log`，SBIRS
-写入 `log/opir_acceptance.log`；该记录是内部链路验收证据，不构成对外公开接口。
+内部消费模块传递的关键中间量必须由模型自身记录，RIR 写入
+`log/RadarInternalInterface.log`，SBIRS 写入 `log/IRInternalInterface.log`；该记录是内部链路
+验收证据，不构成对外公开接口。
 
 ### 0B.1 传感器或业务模型能够获得并输出的数据
 
@@ -1162,8 +1163,8 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 | 模型 | 接口测试项数 | 测试编号 | 覆盖主链 | 验收日志 |
 |---|---:|---|---|---|
-| RIR 雷达 | 4 | 70–73 | 回波计算 → 信号处理/检测 → 关联/滤波 → 特征提取/识别 | `log/rir_acceptance.log` |
-| SBIRS 红外卫星 | 4 | 74–77 | 场景几何/视场 → 辐射噪声/检测 → 宽窄场调度 → 跟踪滤波 | `log/opir_acceptance.log` |
+| RIR 雷达 | 4 | 70–73 | 回波计算 → 信号处理/检测 → 关联/滤波 → 特征提取/识别 | `log/RadarInternalInterface.log` |
+| SBIRS 红外卫星 | 4 | 74–77 | 场景几何/视场 → 辐射噪声/检测 → 宽窄场调度 → 跟踪滤波 | `log/IRInternalInterface.log` |
 | **合计** | **8** | **70–77** | 两个模型的探测、跟踪和识别内部主链 | 分模型记录 |
 
 接口数量按相邻功能阶段之间的验收边界统计，不按 C++ 函数调用次数或结构体字段数重复计数。
@@ -1176,7 +1177,7 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 | 72 | 雷达检测量测 | 关联、航迹生命周期和 CV/IMM 滤波 | ENU 位置、速度种子、量测协方差、关联键、匹配/新建结果、未匹配集合 |
 | 73 | 雷达航迹滤波 | 特征提取和目标识别 | 位置/速度/加速度、状态不确定度、RCS/运动/极化/HRRP 特征、类别、型号、置信度 |
 | 74 | 红外场景几何和坐标变换 | 遮挡、距离及 WFOV/NFOV 视场门控 | LOS、斜距、方位/俯仰、扫描中心、观测阶段、门控结果及排除码 |
-| 75 | 红外辐射与背景噪声计算 | WFOV/NFOV 检测判决 | 接收功率、信号能量、噪声分量、有效噪声、SNR、门限及检测标志 |
+| 75 | 红外辐射与背景噪声计算 | WFOV/NFOV 检测判决 | 接收功率、信号能量、噪声分量、有效噪声能量、SNR、门限、分项门结果及综合准入结果 |
 | 76 | 红外 WFOV 候选和目标状态机 | NFOV 调度、引导预测和 ATP 指向 | 候选测角/时刻/SNR、连续命中、引导来源、调度结果、指令角及捕获状态 |
 | 77 | 红外 NFOV 量测和误差模型 | EKF/IMM/角度 CV-KF 与输出构造 | 方位/俯仰、2×2 协方差、预测/后验角、角速度、NIS 门结果及跟踪状态 |
 
@@ -1239,11 +1240,14 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 - **内部边界**：SBIRS 辐射/大气透过率模块与背景噪声模块 → WFOV/NFOV SNR 及检测判决模块。
 - **交换数据**：目标辐射强度、斜距、接收孔径、光学透过率、大气透过率、量子效率、积分时间、
-  背景辐射、光子/热/读出噪声、有效噪声、接收功率、信号能量、SNR、检测门限和检测标志。
+  背景辐射、光子/热/读出噪声、有效噪声能量（J）、接收功率、信号能量、SNR、检测门限、
+  SNR 门结果、视场门结果、稳定帧门结果和综合准入结果。
 - **验收判据**：SNR 判决必须消费同周期同目标、同观测阶段的辐射与噪声快照；WFOV/NFOV 使用
-  各自门限；非法或非有限能量不得形成检测记录，检测标志必须与门限结果一致。
+  各自门限；非法或非有限能量不得形成检测记录；SNR 门结果必须与门限比较一致，综合准入结果
+  必须同时反映视场、SNR，以及 NFOV 稳定帧条件。
 - **当前输出能力**：**可观测**。第 75 项按 WFOV/NFOV 阶段输出辐射/能量、光子/热/读出
-  噪声分量、有效噪声、辐射噪声模块输出 SNR、判决入口消费 SNR、门限和检测标志。
+  噪声分量、有效噪声能量、辐射噪声模块输出 SNR、判决入口消费 SNR、门限、分项门结果和
+  综合准入结果。
 
 
 ### 76. 红外宽场候选与窄场调度交互接口测试
@@ -1287,9 +1291,11 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 | 日志文件（OCR） | 仓库路径 | 涉及测试项 |
 |---|---|---|
-| `Opir_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | 5–10, 11–14, 24, 54–55、74–77（1–4 不输出；内部项为分项证据） |
+| `Opir_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | 5–10, 11–14, 24, 54–55（1–4 不输出） |
 | `Fusion_acceptance.log` | `log/fusion_acceptance.log` | 11–18（第 11–14 项与 OPIR 文件重复写出、分别判定） |
-| `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | 19, 28–47、47A、49、54、70–73（内部项为分项证据） |
+| `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | 19, 28–47、47A、49、54 |
+| `IRInternalInterface.log` | `log/IRInternalInterface.log` | 74–77（SBIRS 内部接口分项证据） |
+| `RadarInternalInterface.log` | `log/RadarInternalInterface.log` | 70–73（RIR 内部接口分项证据） |
 | `inference_acceptance.log` | `log/inference_acceptance.log` | 20–25, 24（轨迹突变） |
 | `Precision_acceptance.log` | `log/precision_acceptance.log` | 26–27；38/42 误差统计 |
 | `Rir_scan_pattern.csv` | `log/rir_scan_pattern.csv` | 48 |

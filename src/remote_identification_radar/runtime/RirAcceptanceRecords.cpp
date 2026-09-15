@@ -340,25 +340,26 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测结果=" + YesNo(input.detected));
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测概率=" + FormatF(input.pd, 5));
 
-  // 内部接口第70项：同一条目标检测快照中，回波/环境功率的生产值即为
-  // 信号处理入口消费值；仅有 detection cell 有效时输出，不伪造缺失分量。
+  // 内部接口第70项：同一条目标检测快照中，回波计算结果即为信号处理入口消费值。
+  // 仅有 detection cell 有效时输出，不伪造缺失分量。
   if (input.has_cell) {
     std::string interface_power = "雷达ID=" + std::to_string(input.radar_id) + " " + id;
     interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m";
     interface_power += " RCS=" + FormatF(input.rcs_m2, 3) + "m^2";
     interface_power += " 波束离轴增益=" + FormatF(input.one_way_antenna_gain_dbi, 3) + "dBi";
-    interface_power += " 上游输出回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
+    interface_power += " 回波计算输出功率=" + FormatSci(input.cell.echo_power_w) + "W";
     interface_power += " 处理入口回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
-    interface_power += " 上游输出热噪声=" + FormatSci(thermal) + "W";
-    interface_power += " 处理入口热噪声=" + FormatSci(thermal) + "W";
-    interface_power += " 上游输出杂波=" + FormatSci(clutter) + "W";
-    interface_power += " 处理入口杂波=" + FormatSci(clutter) + "W";
-    interface_power += " 上游输出干扰=" + FormatSci(input.cell.interference_power_w) + "W";
-    interface_power += " 处理入口干扰=" + FormatSci(input.cell.interference_power_w) + "W";
+    interface_power += " 回波计算输出时延=" + FormatSci(input.cell.echo_delay_s) + "s";
+    interface_power += " 处理入口回波时延=" + FormatSci(input.cell.echo_delay_s) + "s";
+    interface_power += " 回波计算输出双程多普勒=" +
+                       FormatF(input.cell.two_way_doppler_shift_hz, 3) + "Hz";
+    interface_power += " 处理入口双程多普勒=" +
+                       FormatF(input.cell.two_way_doppler_shift_hz, 3) + "Hz";
+    interface_power += " 脉压增益=" + FormatF(pc_db, 3) + "dB";
     interface_power += " 带宽=" + FormatF(input.bandwidth_hz, 3) + "Hz";
     interface_power += " PRF=" + FormatF(input.prf_hz, 3) + "Hz";
     interface_power += " 有效脉冲数=" + std::to_string(pulses);
-    RIR_INTERNAL_INTERFACE_ITEM(t, cycle, "雷达回波与环境功率交互接口测试", interface_power);
+    RIR_INTERNAL_INTERFACE_ITEM(t, cycle, "雷达回波与信号处理交互接口测试", interface_power);
   }
 
   // 内部接口第71项：记录信号处理输出和 CFAR 实际消费的同源 SNR 快照。

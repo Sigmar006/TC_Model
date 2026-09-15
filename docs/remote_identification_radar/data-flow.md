@@ -58,6 +58,137 @@ flowchart TB
   Result --> Replay
 ```
 
+## 主链内部接口清单（自上而下）
+
+本文将需求中的“回拨计算”统一按雷达领域语义记为“回波计算”。主处理顺序固定为：
+
+```text
+外部数据
+  -> 驻留计划与 RF 周期状态
+  -> 回波、干扰、杂波、噪声计算
+  -> 目标检测与量测形成
+  -> 点迹关联、滤波与航迹生命周期
+  -> 特征提取
+  -> 目标识别与结果装配
+```
+
+以下只登记生产链实际调用的接口。验收日志、DebugView、recorder 和 replay 属于观测或
+持久化旁路，不参与探测、特征或识别判决。
+
+### 1. 外部数据进入内部链
+
+| 顺序 | 接口/数据契约 | 调用方 -> 被调用方 | 输入 | 输出或状态 | 实现位置 |
+|---:|---|---|---|---|---|
+| 1.1 | `RirSession::StepWithResult` | 集成方 -> `RirSession` | `RirCycleInput` | `RirCycleResult` | `include/1q/remote_identification_radar/session/RirSession.h` |
+| 1.2 | `ValidateRirCycleInput` | `RirSession::Impl::RunCycle` -> 输入校验 | 周期号、时间、平台 ECEF、场景目标、外部 `rf_scene` | `RirIssueList`；失败时整周期拒绝 | `include/1q/remote_identification_radar/session/RirInputValidation.h`、`src/remote_identification_radar/session/RirInputValidation.cpp` |
+| 1.3 | `RirController::UpdateRuntime` / `UpdateEnvironment` | `RirSession` -> `RirController` | mission、policy、environment 及已提交运行期补丁 | 更新探测、跟踪、识别与环境内部配置 | `src/remote_identification_radar/runtime/RirController.h/.cpp` |
+| 1.4 | `BuildAbsoluteScanWaves` | `RirSession::Impl::RunCycle` -> common 扫描核 | 扫描子窗、可扫描体积、scan center、波束宽度 | 绝对 ENU 波位序列 | `src/remote_identification_radar/session/RirSession.cpp` |
+| 1.5 | `RirController::RunCycle` | `RirSession` -> `RirController` | `RirCycleInput`、batch、驻留计划、扫描边界、指定目标 | 填充 `RirOutputFrame` 并刷新控制器周期状态 | `src/remote_identification_radar/runtime/RirController.h/.cpp` |
+
+外部周期数据的核心载体是 `RirCycleInput`：`scene_targets` 提供目标 ENU 位置、速度、
+探测 RCS、Swerling 类型及可选识别特征事实；`platform_position` 提供 ENU 锚点；
+`rf_scene` 提供外部发射与干扰事实。硬件、任务、策略和环境来自 `RirSessionConfig` 或
+运行期补丁，不经周期输入重复注入。
+
+### 2. 回波计算与 RF 链
+
+| 顺序 | 内部接口 | 上游输入 | 下游输出 | 实现位置 |
+|---:|---|---|---|---|
+| 2.1 | `RirController::ResolveEnvironment` | `RirEnvironmentConfig` | 会话级传播损耗 | `src/remote_identification_radar/runtime/RirController.cpp` |
+| 2.2 | `RirEmissionFactory::ResolveCarrierHz` | 发射机配置、周期号 | 本周期载频 | `src/remote_identification_radar/dwell/RirEmissionFactory.h/.cpp` |
+| 2.3 | `RirEmissionFactory::TryBuildEmission` | `RirRfCycleInput`、硬件、载频 | 本机 `RfEmission` | `src/remote_identification_radar/dwell/RirEmissionFactory.h/.cpp` |
+| 2.4 | `RirReceiverStateBuilder::Build` | RF 周期输入、本机发射、硬件、载频 | `RirReceiverOperatingState` | `src/remote_identification_radar/dwell/RirReceiverStateBuilder.h/.cpp` |
+| 2.5 | `TryResolveRirRfFrontEnd` | 外部 `RfSceneFrame`、本机发射与接收状态 | incident links、总入射功率、饱和状态 | `src/remote_identification_radar/dwell/RirRfFrontEndResolver.h/.cpp` |
+| 2.6 | `RirController::ComputeLookAngles` | `RirSceneTarget` 的 ENU 位置 | 方位、俯仰、斜距 | `src/remote_identification_radar/runtime/RirController.cpp` |
+| 2.7 | `RirResolveBeamStateForPointing` | 波束中心、目标视线角、天线与波长 | 有效波束宽度、单程方向图增益 | `src/remote_identification_radar/dwell/RirBeamControl.h` |
+| 2.8 | `ComputeEffectiveTargetRcsM2` | 目标 RCS 物理配置、视线角、载频 | 探测链有效 RCS（m2） | `src/remote_identification_radar/dwell/RirEffectiveRcs.h/.cpp` |
+| 2.9 | `ComputeTargetAtmosphericLossDb` | 载频、平台高度、目标高度与斜距 | 逐目标大气附加损耗 | `src/remote_identification_radar/runtime/RirController.cpp` |
+| 2.10 | `ResolveTargetClutterPowerW` -> `RirSurfaceClutterModel::EvaluateClutterNoiseW` | 俯仰、斜距、传播损耗、硬件、植被档 | 主瓣地杂波等效功率（W） | `src/remote_identification_radar/runtime/RirController.cpp`、`src/remote_identification_radar/internal/RirSurfaceClutterModel.h/.cpp` |
+| 2.11 | `RirRadarEquations::ComputeEchoPowerWithGain_dBW` | 发射机、单程增益、RCS、斜距、传播损耗 | 回波功率（dBW） | `src/remote_identification_radar/internal/RirRadarEquations.h/.cpp` |
+| 2.12 | `RirRadarEquations::ComputeThermalNoisePower_W` | 带宽、接收机噪声系数 | 热噪声功率（W） | `src/remote_identification_radar/internal/RirRadarEquations.h/.cpp` |
+
+`RirController::ResolveRfCycle` 是 2.2 到 2.5 的编排边界，产出
+`RirResolvedRfCycle`。主 RF 链解析成功时，回波事实继续进入 detection cell；解析失败时，
+`RirSignalDetector::Detect` 使用 2.11/2.12 的简化回退链，且不注入外部干扰。
+
+### 3. 目标检测、量测与内部航迹
+
+| 顺序 | 内部接口 | 上游输入 | 下游输出 | 实现位置 |
+|---:|---|---|---|---|
+| 3.1 | `RirController::TryBuildMeasurement` | 单目标、驻留中心、RF 周期、传播/杂波事实 | `RirTrackMeasurement`、SNR；未通过门控时返回 false | `src/remote_identification_radar/runtime/RirController.h/.cpp` |
+| 3.2 | `TryResolveRirDetectionCell` | 冻结波形/接收参数、目标回波事实、incident links、杂波 | `RirDetectionCellResult` 分项 SINR 账本 | `src/remote_identification_radar/dwell/RirDetectionCellResolver.h/.cpp` |
+| 3.3 | `RirSignalDetector::DetectResolvedCell` | 目标起伏模型、已求解 detection cell | 回波功率、SNR、Pd、`detected` | `src/remote_identification_radar/dwell/RirSignalDetector.h/.cpp` |
+| 3.4 | `RirSignalDetector::Detect` | 目标、环境噪声、天线增益、脉冲数 | RF 失败时的回退探测结果 | `src/remote_identification_radar/dwell/RirSignalDetector.h/.cpp` |
+| 3.5 | `RirMeasurementErrorModel::Compute` | 有效 SNR、带宽、波束宽度 | 距离/角度 bias 与标准差 | `src/remote_identification_radar/dwell/RirMeasurementErrorModel.h` |
+| 3.6 | `MakeCartesianMeasurementCovariance` / `SampleMeasurementPosition` | 球坐标误差、目标位置、随机源 | 笛卡尔量测协方差及检测位置 | `src/remote_identification_radar/runtime/RirController.cpp` |
+| 3.7 | `RirTrackAssociator::Associate` | 本周期量测、`BuildAssociationSeeds()`、dt | 已分配 association key 的量测、命中对、漏检键 | `src/remote_identification_radar/tracking/RirTrackAssociator.h/.cpp` |
+| 3.8 | `RirTrackLifecycle::Update` | 关联后量测、周期上下文 | 推进 CV KF/IMM 和 tentative/confirmed/lost/回收状态 | `src/remote_identification_radar/tracking/RirTrackLifecycle.h/.cpp` |
+| 3.9 | `RirTrackLifecycle::BuildTrackSnapshots` | 生命周期内部状态 | 按 association key 排序的 `RirTrackState` | `src/remote_identification_radar/tracking/RirTrackLifecycle.h/.cpp` |
+
+3.7 到 3.9 是检测点迹进入识别链前的必要桥接。检测量测只在模块内部消费，不通过
+public API 输出；后续特征提取消费的是滤波后的内部航迹快照。
+
+### 4. 特征提取
+
+| 顺序 | 内部接口 | 输入 | 输出 | 实现位置 |
+|---:|---|---|---|---|
+| 4.1 | `RirController::MakeObservationContext` | 场景目标、航迹、SNR、带宽、驻留与平台高度 | `RirObservationContext` | `src/remote_identification_radar/runtime/RirController.cpp` |
+| 4.2 | `RirObservationBuilder::Build` | 场景目标、`RirTrackState`、观测上下文 | `RirFeatureSet` 与有效维掩码 | `src/remote_identification_radar/recognition/RecognitionObservationBuilder.h/.cpp` |
+| 4.3 | `RirRcsFeatureExtractor::Extract` | 视角 RCS 样本、视线角、SNR、覆盖要求 | `RirRcsObservation` | `src/remote_identification_radar/recognition/RcsFeatureExtractor.h/.cpp` |
+| 4.4 | `RirMotionFeatureExtractor::Extract` | confirmed 航迹、平台高度、估计不确定度 | `RirMotionObservation` | `src/remote_identification_radar/recognition/MotionFeatureExtractor.h/.cpp` |
+| 4.5 | `RirPolarizationFeatureExtractor::Extract` | 极化散射样本、视线角、SNR、斜距 | `RirPolarizationObservation` | `src/remote_identification_radar/recognition/PolarizationFeatureExtractor.h/.cpp` |
+| 4.6 | `RirRangeProfileFeatureExtractor::Extract` | 距离向散射中心、带宽、SNR、分辨率要求 | `RirRangeProfileObservation` | `src/remote_identification_radar/recognition/RangeProfileFeatureExtractor.h/.cpp` |
+
+4.3 到 4.6 由 4.2 统一编排。任一维度不满足 SNR、覆盖、航迹状态或分辨率要求时，
+只将该维标为无效；全部维度无效时，本周期不进入识别积累。
+
+### 5. 目标识别与产品装配
+
+| 顺序 | 内部接口 | 输入 | 输出或状态 | 实现位置 |
+|---:|---|---|---|---|
+| 5.1 | `RirFeatureDatabase::Load` | SQLite 特征库路径 | 只读内存 `RirFeatureDatabase` | `src/remote_identification_radar/recognition/RecognitionFeatureDatabase.h/.cpp` |
+| 5.2 | `RirTracker::UpdateCycle` | 航迹快照、目标回联上下文、数据库、权重、周期信息 | 更新逐航迹积累状态；可返回本周期有效特征观测 | `src/remote_identification_radar/recognition/RecognitionTracker.h/.cpp` |
+| 5.3 | `RirMatcher::QueryBestMatch` | 聚合特征、观测上下文、数据库、权重 | 最优型号、类别、得分、margin 和分项相似度 | `src/remote_identification_radar/recognition/RecognitionMatcher.h/.cpp` |
+| 5.4 | `RirTracker::FindResult` | association key | `RirRecognitionResult` | `src/remote_identification_radar/recognition/RecognitionTracker.h/.cpp` |
+| 5.5 | `RirTracker::BuildSummary` | 本周期航迹快照 | `RirRecognitionCycleSummary` | `src/remote_identification_radar/recognition/RecognitionTracker.h/.cpp` |
+| 5.6 | `RirController::RunCycle` 输出装配段 | 识别结果、有效特征观测、航迹快照、发射帧 | `recognition_outputs`、`feature_measurements`、归属与摘要 | `src/remote_identification_radar/runtime/RirController.cpp` |
+
+`RirTracker::UpdateCycle` 内部先调用 `RirObservationBuilder::Build`，通过质量门后再调用
+`RirMatcher::QueryBestMatch`，最后推进识别状态机。特征量测在积累质量门之前采集，因此
+“可对外形成特征量测”不等于“本周期可用于型号确认”。
+
+### 主调用栈速查
+
+```text
+RirSession::StepWithResult
+  -> RirSession::Impl::RunCycle
+     -> ValidateRirCycleInput
+     -> BuildAbsoluteScanWaves / 生成 RirDwellPlan
+     -> RirController::RunCycle
+        -> ResolveRfCycle
+           -> RirEmissionFactory::TryBuildEmission
+           -> RirReceiverStateBuilder::Build
+           -> TryResolveRirRfFrontEnd
+        -> TryBuildMeasurement                         [逐驻留、逐目标]
+           -> RirResolveBeamStateForPointing
+           -> ComputeEffectiveTargetRcsM2
+           -> TryResolveRirDetectionCell
+           -> RirSignalDetector::DetectResolvedCell
+           -> RirMeasurementErrorModel::Compute
+        -> RirTrackAssociator::Associate
+        -> RirTrackLifecycle::Update
+        -> RirTrackLifecycle::BuildTrackSnapshots
+        -> RirTracker::UpdateCycle
+           -> RirObservationBuilder::Build
+              -> RirRcsFeatureExtractor::Extract
+              -> RirMotionFeatureExtractor::Extract
+              -> RirPolarizationFeatureExtractor::Extract
+              -> RirRangeProfileFeatureExtractor::Extract
+           -> RirMatcher::QueryBestMatch
+        -> RirTracker::BuildSummary / FindResult
+        -> 组装 RirOutputFrame 与 RirCycleResult
+```
+
 ## 单周期时序（StepWithResult）
 
 1. **关机检查**：`sensor_enabled == false` → `kPoweredOff` 三写（`abort_reason` +

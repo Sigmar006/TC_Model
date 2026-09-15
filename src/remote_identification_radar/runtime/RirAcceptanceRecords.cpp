@@ -108,6 +108,22 @@ const char* TrackStatusText(tracking::RirTrackStatus status) {
   }
 }
 
+const char* RfWaveformKindText(oneq::electromagnetics::RfSceneWaveformKind kind) {
+  using oneq::electromagnetics::RfSceneWaveformKind;
+  switch (kind) {
+    case RfSceneWaveformKind::kContinuous:
+      return "连续波";
+    case RfSceneWaveformKind::kPulseTrain:
+      return "脉冲列";
+    case RfSceneWaveformKind::kLinearSweep:
+      return "线性扫频";
+    case RfSceneWaveformKind::kBandLimitedNoise:
+      return "带限噪声";
+    default:
+      return "未知";
+  }
+}
+
 double HeadingDeg(double ve, double vn) {
   return oneq::common::numerics::RadToDeg(std::atan2(vn, ve));
 }
@@ -406,6 +422,42 @@ void WriteRirInterferenceLinks(
   }
 }
 
+void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
+                                       const oneq::electromagnetics::RfSceneFrame& rf_scene) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  const char* item = "外部干扰输入雷达接口测试";
+  std::string summary = "干扰数量=" + std::to_string(rf_scene.emissions.size());
+  summary += " 世界周期=" + std::to_string(rf_scene.world_cycle_index);
+  summary += " 接收时间窗=" + FormatF(rf_scene.window_start_time_s, 6) + "/" +
+             FormatF(rf_scene.window_duration_s, 6) + "s";
+  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, summary);
+
+  for (const oneq::electromagnetics::RfSceneEmission& emission : rf_scene.emissions) {
+    const oneq::electromagnetics::RfWaveformSchedule& waveform = emission.waveform;
+    std::string content = "干扰源ID=" + std::to_string(emission.identity.sensor_entity_id);
+    content += " 发射ID=" + std::to_string(emission.identity.emission_id);
+    content += " 位置ECEF=" +
+               FormatVec3(emission.position_ecef_m.x_m, emission.position_ecef_m.y_m,
+                          emission.position_ecef_m.z_m, 3) +
+               "m";
+    content += " 速度ECEF=" +
+               FormatVec3(emission.velocity_ecef_mps.x_mps, emission.velocity_ecef_mps.y_mps,
+                          emission.velocity_ecef_mps.z_mps, 3) +
+               "m/s";
+    content += " 波形=" + std::string(RfWaveformKindText(waveform.kind));
+    content += " 活动起点/持续时间=" + FormatF(waveform.activity_start_time_s, 6) + "/" +
+               FormatF(waveform.activity_duration_s, 6) + "s";
+    content += " 中心频率=" + FormatF(waveform.center_frequency_hz, 3) + "Hz";
+    content += " 带宽=" + FormatF(waveform.occupied_bandwidth_hz, 3) + "Hz";
+    content += " 发射功率=" + FormatSci(waveform.transmit_power_w) + "W";
+    content += " 峰值增益=" + FormatF(emission.antenna.peak_gain_dbi, 3) + "dBi";
+    content += " 极化=" + std::to_string(static_cast<int>(emission.polarization));
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, content);
+  }
+}
+
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
                               const std::string& found_targets) {
@@ -486,8 +538,10 @@ void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
-  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "雷达检测与量测输出接口测试",
-                              "量测数量=" + std::to_string(association.measurements.size()));
+  const char* item = "雷达对外目标信息输出接口测试-点迹量测";
+  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item,
+                              "数据层级=点迹量测 量测数量=" +
+                                  std::to_string(association.measurements.size()));
   for (const tracking::RirTrackMeasurement& measurement : association.measurements) {
     float range_m = 0.0f;
     float az_deg = 0.0f;
@@ -520,7 +574,7 @@ void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
       }
     }
     content += "]";
-    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "雷达检测与量测输出接口测试", content);
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, "数据层级=点迹量测 " + content);
   }
 }
 
@@ -882,7 +936,8 @@ void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
   std::string summary = "航迹数量=" + std::to_string(tracks.size());
   summary += " 集群目标数量=" + std::to_string(confirmed_count);
   summary += " 批次=" + std::to_string(output_frame.batch_id);
-  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "航迹与目标识别输出接口测试", summary);
+  const char* item = "雷达对外目标信息输出接口测试-航迹识别";
+  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, "数据层级=航迹识别 " + summary);
 
   for (const tracking::RirTrackState& track : tracks) {
     const session::RirRecognitionResult* recognition = nullptr;
@@ -979,7 +1034,7 @@ void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
     } else {
       content += " RCS特征摘要=不可用 极化特征摘要=不可用 HRRP特征摘要=不可用";
     }
-    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "航迹与目标识别输出接口测试", content);
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, "数据层级=航迹识别 " + content);
   }
 }
 

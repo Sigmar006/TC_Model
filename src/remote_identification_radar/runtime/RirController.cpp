@@ -936,6 +936,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     // 总量见 detection_cell 事件 interference_w 字段）。
     if (RIR_ACCEPTANCE_LOG_ENABLED()) {
       g_acceptance_found_targets.clear();
+      WriteRirExternalInterferenceInput(input.sim_time_sec, input.input_cycle_index, input.rf_scene);
       WriteRirInterferenceLinks(input.sim_time_sec, input.input_cycle_index, rf_cycle.incident_links);
     }
 

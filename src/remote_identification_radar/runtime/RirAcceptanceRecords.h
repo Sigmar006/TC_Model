@@ -87,6 +87,10 @@ void WriteRirInterferenceLinks(
     float sim_time_sec, std::uint32_t cycle,
     const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links);
 
+/** @brief 第63项：将外部 RF 场景中的干扰发射输入摘要写入 RadarInterface.log。 */
+void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
+                                       const oneq::electromagnetics::RfSceneFrame& rf_scene);
+
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
                               const std::string& found_targets);
@@ -100,7 +104,7 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
                          const oneq::coordinate::LlaPositionDegM& platform_lla,
                          double gate_threshold);
 
-/** @brief 第64项：将同周期检测量测聚合写入 RadarInterface.log。 */
+/** @brief 第64项：将对外目标信息的点迹量测层写入 RadarInterface.log。 */
 void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
                                   const tracking::RirAssociationResult& association);
 
@@ -134,7 +138,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const oneq::coordinate::EcefPositionM& platform_ecef,
                         const RirTrackTruthContext* truth);
 
-/** @brief 第65项：将同周期航迹、协方差、识别和特征聚合写入 RadarInterface.log。 */
+/** @brief 第65项：将对外目标信息的航迹识别层写入 RadarInterface.log。 */
 void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
                             const std::vector<tracking::RirTrackState>& tracks,
                             const session::RirOutputFrame& output_frame);

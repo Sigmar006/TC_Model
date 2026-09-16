@@ -41,6 +41,10 @@ Vec3 Cross(const Vec3& a, const Vec3& b) {
 
 double Norm(const Vec3& a) { return std::sqrt(Dot(a, a)); }
 
+double Clamp(double value, double lower, double upper) {
+  return std::max(lower, std::min(value, upper));
+}
+
 Vec3 Scaled(const Vec3& a, double s) { return {a.x * s, a.y * s, a.z * s}; }
 
 Vec3 Normalized(const Vec3& a) {
@@ -125,7 +129,7 @@ bool SolveBallisticTrajectory(const oneq::coordinate::LlaPositionDegM& start_lla
   // 大圆角 D（发射→落点）；重合/对跖点无唯一轨道面。判定在余弦域做——
   // acos 在 ±1 附近把 1e-16 级点积误差放大为 ~1e-8 rad，角域阈值会漏放
   // 数值噪声下的对跖点（D = π − 1.4e-8 会被误判为有效弧线）。
-  const double cos_d = std::clamp(Dot(u0, u1), -1.0, 1.0);
+  const double cos_d = Clamp(Dot(u0, u1), -1.0, 1.0);
   if (cos_d > 1.0 - kDegenerateCosineMargin ||
       cos_d < -(1.0 - kDegenerateCosineMargin)) {
     return false;
@@ -233,7 +237,7 @@ void PropagateBallistic(const BallisticTrajectory& trajectory, double t_sec,
     // 助推段占位：保持发射点，速度幅值 0→v_bo 线性爬升（RIR 不可见段）。
     const double ramp =
         trajectory.burnout_time_s > 0.0
-            ? std::clamp(t_sec / trajectory.burnout_time_s, 0.0, 1.0)
+            ? Clamp(t_sec / trajectory.burnout_time_s, 0.0, 1.0)
             : 0.0;
     const double speed = trajectory.burnout_velocity_mps * ramp;
     if (position_ecef_m != nullptr) {

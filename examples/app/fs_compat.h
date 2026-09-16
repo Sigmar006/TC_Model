@@ -12,6 +12,10 @@
 #if defined(_MSC_VER) && _MSC_VER < 1910
 #include <filesystem>
 namespace app_fs = std::experimental::filesystem;
+#elif (defined(_MSVC_LANG) && _MSVC_LANG < 201703L) || \
+    (!defined(_MSVC_LANG) && __cplusplus < 201703L)
+#include <experimental/filesystem>
+namespace app_fs = std::experimental::filesystem;
 #else
 #include <filesystem>
 namespace app_fs = std::filesystem;

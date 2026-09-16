@@ -15,7 +15,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 | OCR / 规范文件名 | 仓库实际路径 | 编译开关 |
 |---|---|---|
-| `Opir_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
+| `Opir_acceptance.log` / `Sbirs_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 11–14 项） | `log/opir_acceptance.log` 与 `log/fusion_acceptance.log` 各写一份、分别判定 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 15–18 项） | `log/fusion_acceptance.log` | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
@@ -1291,7 +1291,7 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 | 日志文件（OCR） | 仓库路径 | 涉及测试项 |
 |---|---|---|
-| `Opir_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | 5–10, 11–14, 24, 54–55（1–4 不输出） |
+| `Opir_acceptance.log` / `Sbirs_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | 5–10, 11–14, 24, 54–55（1–4 不输出） |
 | `Fusion_acceptance.log` | `log/fusion_acceptance.log` | 11–18（第 11–14 项与 OPIR 文件重复写出、分别判定） |
 | `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | 19, 28–47、47A、49、54 |
 | `IRInternalInterface.log` | `log/IRInternalInterface.log` | 74–77（SBIRS 内部接口分项证据） |

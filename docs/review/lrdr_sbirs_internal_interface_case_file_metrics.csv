@@ -1,6 +1,6 @@
-"用例名称","涉及的文件","文件中的指标项"
+"用例名称","涉及的实现/数据文件（非日志输出文件）","文件中的指标项"
 "1. 实时计算卫星当前轨道位置功能测试","include/1q/sbirs_sensor/session/SbirsCycleInput.h","卫星ECEF位置；卫星ECEF速度；UTC儒略日（外部周期输入）"
-"1. 实时计算卫星当前轨道位置功能测试","docs/review/functional_acceptance_test_criteria_ocr.md","当前登记为不输出独立验收日志；轨道状态由外部仿真主链提供"
+"1. 实时计算卫星当前轨道位置功能测试","docs/review/functional_acceptance_test_criteria_ocr.md","验收日志输出=无；轨道状态由外部仿真主链提供"
 "2. 坐标系转换功能测试","src/common/coordinate/InertialTransform.cpp","ECEF与ECI位置/速度转换；GMST地球自转角"
 "2. 坐标系转换功能测试","src/common/coordinate/PositionTransform.cpp","ECEF与WGS-84经纬高转换"
 "2. 坐标系转换功能测试","src/sbirs_sensor/pipeline/SbirsEciScene.cpp","卫星和目标ECEF状态转换为ECI场景状态"

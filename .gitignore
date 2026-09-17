@@ -13,8 +13,8 @@ rir_acceptance.log
 fusion_acceptance.log
 inference_acceptance.log
 precision_acceptance.log
-rir_antenna_pattern.csv
-rir_scan_pattern.csv
+RadarAntennaGainPatterndata.csv
+Rir_scan_pattern.csv
 
 # Build outputs
 build/

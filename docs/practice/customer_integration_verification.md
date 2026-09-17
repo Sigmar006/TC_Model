@@ -53,7 +53,7 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 | 被测 | RIR 地基站点识别链（RCS+运动真值四维特征）+ 运行期指令指定任务 + 特征量测进五源融合 + 推演 + 威胁 | 三星 GEO 红外交会 + 消息投递地面站融合 + 推演 + **精度评估（五项误差 + AHP）** |
 | 周期 | 400 × 1 s（场景 JSON 里改） | 80 × 1 s |
 | 集成形态 | 挂 5 类组件（§4） | 三卫星实体挂 SBIRS（`kMessage` 投递）；地面站挂 `GroundStationFusionComponent`（内含 `FusionEngine` + `PrecisionEvaluationSession`）（§6） |
-| 验收文件 | `RadarOutput.log` + `rir_acceptance.log`（性能）+ `rir_antenna_pattern.csv` + `rir_scan_pattern.csv` + `fusion/inference_acceptance.log` | `SatelliteTarget.log` + `precision/opir/fusion/inference_acceptance.log` |
+| 验收文件 | `RadarOutput.log` + `rir_acceptance.log`（性能）+ `RadarAntennaGainPatterndata.csv` + `Rir_scan_pattern.csv` + `fusion/inference_acceptance.log` | `SatelliteTarget.log` + `precision/opir/fusion/inference_acceptance.log` |
 | 集成端日志 | `integration_events.log` + `integration_views.log`（rir/inference/threat 视图行） | `integration_events.log` / `integration_views.log`（消息投递与回执事件） |
 | 冒烟判据 | demo 退出码 0（航迹≥2、融合≥1、视图/CSV 行数达标） | demo 退出码 0（五指标有样本、AHP 合法、`dual_sat_cycles>0`） |
 
@@ -214,7 +214,7 @@ dual_sat_cycles > 0`（精度评估交会只用前两颗星——库 API 双视�
 - [ ] `RadarOutput.log` 存在且包含普通功能与外部接口验收行；`rir_acceptance.log` 仅包含性能项
 - [ ] `[验收项：目标测量角度与距离]` 有行，**无一行 `斜距=无`**
 - [ ] `[验收项：IMM模型权重]`、`[验收项：独立目标识别器结论]`、`[验收项：极化特征解算]`、`[验收项：散射中心和轮廓特征]` 均有行
-- [ ] `rir_antenna_pattern.csv`、`rir_scan_pattern.csv` 存在
+- [ ] `RadarAntennaGainPatterndata.csv`、`Rir_scan_pattern.csv` 存在
 - [ ] `integration_events.log` 含三行计时：`初始化时间`/`单步执行时间`/`单个模型加载时间`（模块=RIR）
 - [ ] `integration_views.log`：`[视图:rir]`≈400 行量级、`[视图:inference]`/`[视图:threat]` 同步
 - [ ] `platform_track.csv` 行数 = 周期数；`target_truth/route_plan/zones.csv` 存在

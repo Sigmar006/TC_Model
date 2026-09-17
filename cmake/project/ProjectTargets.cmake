@@ -125,8 +125,8 @@ function(oneq_add_component target)
     oneq_log_file(_oneq_radar_internal_interface_path "RadarInternalInterface.log")
     oneq_log_file(_oneq_radar_output_path "RadarOutput.log")
     oneq_log_file(_oneq_satellite_target_path "SatelliteTarget.log")
-    oneq_log_file(_oneq_rir_antenna_csv_path "rir_antenna_pattern.csv")
-    oneq_log_file(_oneq_rir_scan_csv_path "rir_scan_pattern.csv")
+    oneq_log_file(_oneq_rir_antenna_csv_path "RadarAntennaGainPatterndata.csv")
+    oneq_log_file(_oneq_rir_scan_csv_path "Rir_scan_pattern.csv")
     target_compile_definitions("${target}" PRIVATE
         PROJECT_LOG_BACKEND_SPDLOG=$<AND:$<BOOL:${PROJECT_ENABLE_SPDLOG}>,$<BOOL:${ONEQ_ENABLE_FILE_LOG}>>
         PROJECT_LOG_BACKEND_FILE=$<AND:$<BOOL:${ONEQ_ENABLE_FILE_LOG}>,$<NOT:$<BOOL:${PROJECT_ENABLE_SPDLOG}>>>

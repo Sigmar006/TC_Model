@@ -29,10 +29,10 @@
 #include "remote_identification_radar/tracking/RirTrackTypes.h"
 
 #ifndef ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH
-#define ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH "log/rir_antenna_pattern.csv"
+#define ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH "log/RadarAntennaGainPatterndata.csv"
 #endif
 #ifndef ONEQ_RIR_SCAN_PATTERN_CSV_PATH
-#define ONEQ_RIR_SCAN_PATTERN_CSV_PATH "log/rir_scan_pattern.csv"
+#define ONEQ_RIR_SCAN_PATTERN_CSV_PATH "log/Rir_scan_pattern.csv"
 #endif
 
 namespace remote_identification_radar {
@@ -269,7 +269,7 @@ void WriteRirAntennaPatternSummary(std::uint64_t radar_id, float sim_time_sec, s
     return;
   }
   // 验收判定标准 第28项：天线方向图——日志只写峰值增益与波束宽度（2D 增益明细
-  // 在 rir_antenna_pattern.csv，路径行不写）。
+  // 在 RadarAntennaGainPatterndata.csv，路径行不写）。
   std::string content = "雷达ID=" + std::to_string(radar_id);
   content += " 峰值增益=" + FormatF(static_cast<double>(peak_gain_dbi), 2) + "dBi";
   content += " 波束宽度az/el=" + FormatPairDeg(bw_az_deg, bw_el_deg, 3) + "°";
@@ -1262,7 +1262,7 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
     return;
   }
   // 验收判定标准 第48项：逐驻留扫描轨迹序号（2026-08-29 TAS：一周期多驻留）。
-  // 波位排列表/扫描轨迹全量在 rir_scan_pattern.csv（index,az_deg,el_deg）；日志不再
+  // 波位排列表/扫描轨迹全量在 Rir_scan_pattern.csv（index,az_deg,el_deg）；日志不再
   // 重复当前波束指向，搜索驻留只写本周期序号（=波位表游标，可索引 CSV）。
   // 指定/跟踪驻留带种类与目标 ID 标记。
   const std::string scan_csv_path = ResolveRirScanPatternCsvPath();

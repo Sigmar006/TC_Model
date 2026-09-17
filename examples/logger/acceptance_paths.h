@@ -41,8 +41,8 @@ inline void BindAcceptanceLogPaths(const std::string& output_dir) {
   SetProcessEnv("ONEQ_RADAR_OUTPUT_LOG_PATH", output_dir + "/RadarOutput.log");
   SetProcessEnv("ONEQ_SATELLITE_TARGET_LOG_PATH", output_dir + "/SatelliteTarget.log");
   SetProcessEnv("ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH",
-                output_dir + "/rir_antenna_pattern.csv");
-  SetProcessEnv("ONEQ_RIR_SCAN_PATTERN_CSV_PATH", output_dir + "/rir_scan_pattern.csv");
+                output_dir + "/RadarAntennaGainPatterndata.csv");
+  SetProcessEnv("ONEQ_RIR_SCAN_PATTERN_CSV_PATH", output_dir + "/Rir_scan_pattern.csv");
 }
 
 }  // namespace app

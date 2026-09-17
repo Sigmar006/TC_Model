@@ -23,7 +23,8 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 | `Rir_acceptance.log`（雷达性能项） | `log/rir_acceptance.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
 | `inference_acceptance.log` / `Inference_acceptance.log` | `log/inference_acceptance.log` | `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` |
 | `Precision_acceptance.log` | `log/precision_acceptance.log` | `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` |
-| `Rir_scan_pattern.csv` | `log/rir_scan_pattern.csv` | 随 RIR 开关 |
+| `RadarAntennaGainPatterndata.csv` | `log/RadarAntennaGainPatterndata.csv` | 随 RIR 开关 |
+| `Rir_scan_pattern.csv` | `log/Rir_scan_pattern.csv` | 随 RIR 开关 |
 | `integration_events.log` | 示例场景 `log_dir` 下 | 跑 examples 即写，无需库开关 |
 
 **行格式**（各 `*_acceptance.log` 统一；方括号内为规范测试项名称，**不写「验收项」三字，方括号后不写「验收内容：」**）：
@@ -603,7 +604,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 > 原文日志文件名拼写为 `RadarSingalProcessingDateFlow.log`；普通功能项统一写入 `log/RadarOutput.log`，
 > 性能项仍写入 `log/rir_acceptance.log`（开关 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`）。天线方向图明细另写
-> `log/rir_antenna_pattern.csv`。**第 28–55 项示例遵循 §0 写作规则（禁止派生量、无则省略）。**
+> `log/RadarAntennaGainPatterndata.csv`。**第 28–55 项示例遵循 §0 写作规则（禁止派生量、无则省略）。**
 
 ### 28. 天线方向图仿真功能测试
 - 能够记录**天线增益方向图**数据视为通过，否则视为不通过。
@@ -617,6 +618,8 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
     ```text
     仿真时间=0.000s 仿真周期=0 [天线方向图仿真功能测试] 雷达ID=1 峰值增益=52.00dBi 波束宽度az/el=(4.000,4.000)°
     ```
+- **方向图文件**：`log/RadarAntennaGainPatterndata.csv`，字段为
+  `az_off_deg,el_off_deg,gain_dbi`，分别表示方位离轴角、俯仰离轴角和天线增益。
 
 ### 29. 回波功率计算功能测试
 - 能够记录**目标回波功率信息**视为通过，否则视为不通过。
@@ -930,14 +933,15 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ---
 
-## 七、波束扫描（`log/rir_scan_pattern.csv`）
+## 七、波束扫描（`log/Rir_scan_pattern.csv`）
 
 ### 48. 波束扫描功能测试
 - `Rir_scan_pattern.csv` 文件中能够记录**波位排列表、扫描轨迹序列**视为通过，否则视为不通过。
+- 文件字段为 `index,az_deg,el_deg`，分别表示波位序号、方位角和俯仰角。
 
 - **实现**（CSV 存表；日志只写序号与 CSV 指引）：
     ```text
-    仿真时间=1.000s 仿真周期=1 [波束扫描功能测试] 雷达ID=1 本周期序号=0 波位排列表已输出至log/rir_scan_pattern.csv
+    仿真时间=1.000s 仿真周期=1 [波束扫描功能测试] 雷达ID=1 本周期序号=0 波位排列表已输出至log/Rir_scan_pattern.csv
     仿真时间=1.000s 仿真周期=1 [波束扫描功能测试] 雷达ID=1 驻留种类=跟踪驻留 目标ID=1001
     ```
 
@@ -1306,7 +1310,8 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 | `RadarInternalInterface.log` | `log/RadarInternalInterface.log` | 70–73（RIR 内部接口分项证据） |
 | `inference_acceptance.log` | `log/inference_acceptance.log` | 20–25, 24（轨迹突变） |
 | `Precision_acceptance.log` | `log/precision_acceptance.log` | 26–27；38/42 误差统计 |
-| `Rir_scan_pattern.csv` | `log/rir_scan_pattern.csv` | 48 |
+| `RadarAntennaGainPatterndata.csv` | `log/RadarAntennaGainPatterndata.csv` | 28 |
+| `Rir_scan_pattern.csv` | `log/Rir_scan_pattern.csv` | 48 |
 | `integration_events.log` | 场景 `log_dir` | 50–53 |
 | `parameterClock.log` / `parameterClock.csv` | **由外部仿真控制返回系统提供，模型不得补写** | 56、60 |
 | `SatelliteTarget.log`（外部接口项） | `log/SatelliteTarget.log` | 57–58、67–68（未实现项仍无对应记录） |

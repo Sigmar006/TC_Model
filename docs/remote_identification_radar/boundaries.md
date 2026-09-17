@@ -296,7 +296,7 @@ RIR 全面废止平台号字段与设备号字段，统一以 `SetSensorEntityId
 
 CMake 开关 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`（默认 OFF）门控。开启后按验收项写入
 `RadarOutput.log`（四段同一行），性能项单独写入 `rir_acceptance.log`，三维方向图另写
-`rir_antenna_pattern.csv`。
+`RadarAntennaGainPatterndata.csv`。
 不进 `1q_library.log`，也不把融合/推演/精度抄进本文件。关闭时宏与派生计算一并
 编译剪除，零开销、行为逐位不变。项表与「不能输出」字段见
 `docs/review/acceptance_item_catalog_2026-08-22.md`。边界：仅人读验收材料，

@@ -13,6 +13,8 @@
 #include "1q/electromagnetics/RfScene.h"
 #include "1q/coordinate/types.h"
 #include "1q/remote_identification_radar/config/RirHardwareConfig.h"
+#include "1q/remote_identification_radar/config/RirMissionConfig.h"
+#include "1q/remote_identification_radar/session/RirOutputTypes.h"
 #include "1q/remote_identification_radar/session/RirSceneTypes.h"
 #include "common/radar/AntennaPatternRuntime.h"
 #include "remote_identification_radar/dwell/RirDetectionCellResolver.h"
@@ -91,6 +93,10 @@ void WriteRirInterferenceLinks(
 void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
                                        const oneq::electromagnetics::RfSceneFrame& rf_scene);
 
+/** @brief 第62项：将目标运动状态与电磁特征输入写入 RadarInterface.log。 */
+void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
+                                  const session::RirSceneTargetList& targets);
+
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
                               const std::string& found_targets);
@@ -142,6 +148,13 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
 void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
                             const std::vector<tracking::RirTrackState>& tracks,
                             const session::RirOutputFrame& output_frame);
+
+/** @brief 第66项：将工作模式、航迹容量、驻留队列和告警写入 RadarInterface.log。 */
+void WriteRirExternalResourceStatus(
+    std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
+    config::RirWorkMode work_mode, const std::vector<RirDwellPlan>& dwell_plan,
+    const std::vector<tracking::RirTrackState>& tracks, std::size_t track_pool_capacity,
+    std::size_t track_pool_free_count, const session::RirIssueList& issues);
 
 /**
  * @brief 验收判定标准 第37项·其二：扫描调度信息行（搜索/指定/跟踪分项计数 +

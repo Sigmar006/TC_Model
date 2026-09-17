@@ -124,6 +124,22 @@ const char* RfWaveformKindText(oneq::electromagnetics::RfSceneWaveformKind kind)
   }
 }
 
+const char* WorkModeText(config::RirWorkMode mode) {
+  return mode == config::RirWorkMode::kIdentify ? "识别" : "待机";
+}
+
+const char* DwellKindText(RirDwellKind kind) {
+  switch (kind) {
+    case RirDwellKind::kDesignate:
+      return "指定";
+    case RirDwellKind::kTrack:
+      return "跟踪";
+    case RirDwellKind::kSearch:
+    default:
+      return "搜索";
+  }
+}
+
 double HeadingDeg(double ve, double vn) {
   return oneq::common::numerics::RadToDeg(std::atan2(vn, ve));
 }
@@ -454,6 +470,72 @@ void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
     content += " 发射功率=" + FormatSci(waveform.transmit_power_w) + "W";
     content += " 峰值增益=" + FormatF(emission.antenna.peak_gain_dbi, 3) + "dBi";
     content += " 极化=" + std::to_string(static_cast<int>(emission.polarization));
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, content);
+  }
+}
+
+void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
+                                  const session::RirSceneTargetList& targets) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  const char* item = "目标与电磁环境场景接口测试";
+  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item,
+                              "目标数量=" + std::to_string(targets.size()));
+  for (std::size_t target_index = 0U; target_index < targets.size(); ++target_index) {
+    const session::RirSceneTarget& target = targets[target_index];
+    std::string content = "目标序号=" + std::to_string(target_index);
+    content += " 目标ID=" + std::to_string(target.external_target_id);
+    content += " 目标名称=" + (target.target_name.empty() ? std::string("未提供")
+                                                           : target.target_name);
+    content += " 位置ENU=" + FormatVec3(target.position_x, target.position_y, target.position_z, 3) +
+               "m";
+    content += " 速度ENU=" + FormatVec3(target.velocity_x, target.velocity_y, target.velocity_z, 3) +
+               "m/s";
+    content += " RCS=" + FormatF(target.rcs, 6) + "m^2";
+    content += " Swerling=" +
+               std::to_string(static_cast<int>(target.target_swerling_type));
+
+    content += " 视角RCS=[";
+    for (std::size_t i = 0U; i < target.aspect_rcs_samples.size(); ++i) {
+      if (i != 0U) {
+        content += ";";
+      }
+      const session::RirAspectRcsSample& sample = target.aspect_rcs_samples[i];
+      content += "(" + FormatF(sample.aspect_az_deg, 3) + "," +
+                 FormatF(sample.aspect_el_deg, 3) + "," + FormatF(sample.rcs_dbsm, 3) + ")";
+    }
+    content += "]deg/deg/dBsm";
+
+    content += " 极化数据=[";
+    for (std::size_t i = 0U; i < target.polarization_samples.size(); ++i) {
+      if (i != 0U) {
+        content += ";";
+      }
+      const session::RirPolSMatrixSample& sample = target.polarization_samples[i];
+      content += "(" + FormatF(sample.aspect_az_deg, 3) + "," +
+                 FormatF(sample.aspect_el_deg, 3) + ",HH=" + FormatF(sample.hh_amp_db, 3) + "/" +
+                 FormatF(sample.hh_phase_deg, 3) + ",HV=" + FormatF(sample.hv_amp_db, 3) + "/" +
+                 FormatF(sample.hv_phase_deg, 3) + ",VH=" + FormatF(sample.vh_amp_db, 3) + "/" +
+                 FormatF(sample.vh_phase_deg, 3) + ",VV=" + FormatF(sample.vv_amp_db, 3) + "/" +
+                 FormatF(sample.vv_phase_deg, 3) + ")";
+    }
+    content += "]deg/deg/dB/deg";
+
+    content += " HRRP散射中心=[";
+    for (std::size_t i = 0U; i < target.range_rcs_scatterers.size(); ++i) {
+      if (i != 0U) {
+        content += ";";
+      }
+      const session::RirRangeRcsScatterer& scatterer = target.range_rcs_scatterers[i];
+      content += "(" + FormatF(scatterer.range_offset_m, 3) + "m," +
+                 FormatF(scatterer.rcs_dbsm, 3) + "dBsm,ch1=" +
+                 FormatF(scatterer.channel_1_rcs_dbsm, 3) + ",ch2=" +
+                 FormatF(scatterer.channel_2_rcs_dbsm, 3) + ",phase=" +
+                 FormatF(scatterer.phase_deg, 3) + "deg,fluct=" +
+                 FormatF(scatterer.fluctuation_std_db, 3) + "dB)";
+    }
+    content += "]";
     RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, content);
   }
 }
@@ -1035,6 +1117,91 @@ void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
       content += " RCS特征摘要=不可用 极化特征摘要=不可用 HRRP特征摘要=不可用";
     }
     RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, "数据层级=航迹识别 " + content);
+  }
+}
+
+void WriteRirExternalResourceStatus(
+    std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
+    config::RirWorkMode work_mode, const std::vector<RirDwellPlan>& dwell_plan,
+    const std::vector<tracking::RirTrackState>& tracks, std::size_t track_pool_capacity,
+    std::size_t track_pool_free_count, const session::RirIssueList& issues) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  const char* item = "雷达资源状态与日志接口测试";
+  std::size_t tentative_count = 0U;
+  std::size_t confirmed_count = 0U;
+  std::size_t lost_count = 0U;
+  std::string target_list = "[";
+  for (std::size_t i = 0U; i < tracks.size(); ++i) {
+    const tracking::RirTrackState& track = tracks[i];
+    if (track.status == tracking::RirTrackStatus::kConfirmed) {
+      ++confirmed_count;
+    } else if (track.status == tracking::RirTrackStatus::kLost) {
+      ++lost_count;
+    } else {
+      ++tentative_count;
+    }
+    if (i != 0U) {
+      target_list += ";";
+    }
+    target_list += "航迹" + std::to_string(track.association_key) + "->目标" +
+                   std::to_string(track.external_target_id) + "(" + TrackStatusText(track.status) +
+                   ")";
+  }
+  target_list += "]";
+
+  std::size_t search_count = 0U;
+  std::size_t designate_count = 0U;
+  std::size_t track_count = 0U;
+  std::string dwell_queue = "[";
+  for (std::size_t i = 0U; i < dwell_plan.size(); ++i) {
+    const RirDwellPlan& dwell = dwell_plan[i];
+    if (dwell.kind == RirDwellKind::kSearch) {
+      ++search_count;
+    } else if (dwell.kind == RirDwellKind::kDesignate) {
+      ++designate_count;
+    } else {
+      ++track_count;
+    }
+    if (i != 0U) {
+      dwell_queue += ";";
+    }
+    dwell_queue += std::to_string(i) + ":" + DwellKindText(dwell.kind) + "@(" +
+                   FormatF(dwell.pointing_deg.az_deg, 3) + "," +
+                   FormatF(dwell.pointing_deg.el_deg, 3) + ")deg";
+    if (dwell.external_target_id != 0U) {
+      dwell_queue += "/目标" + std::to_string(dwell.external_target_id);
+    }
+  }
+  dwell_queue += "]";
+
+  const std::size_t in_use = track_pool_capacity >= track_pool_free_count
+                                 ? track_pool_capacity - track_pool_free_count
+                                 : tracks.size();
+  std::string summary = "雷达ID=" + std::to_string(radar_id);
+  summary += " 生命周期状态=运行";
+  summary += " 工作模式=" + std::string(WorkModeText(work_mode));
+  summary += " 已用跟踪容量=" + std::to_string(in_use);
+  summary += " 可用跟踪容量=" + std::to_string(track_pool_free_count);
+  summary += " 航迹状态候选/确认/丢失=" + std::to_string(tentative_count) + "/" +
+             std::to_string(confirmed_count) + "/" + std::to_string(lost_count);
+  summary += " 波束任务数=" + std::to_string(dwell_plan.size());
+  summary += " 搜索/指定/跟踪任务=" + std::to_string(search_count) + "/" +
+             std::to_string(designate_count) + "/" + std::to_string(track_count);
+  summary += " 波束任务队列=" + dwell_queue;
+  summary += " 当前目标数量=" + std::to_string(tracks.size());
+  summary += " 当前目标列表=" + target_list;
+  summary += " 告警数量=" + std::to_string(issues.size());
+  RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, summary);
+
+  for (const session::RirIssue& issue : issues) {
+    std::string content = "雷达ID=" + std::to_string(radar_id);
+    content += " 告警码=" + issue.code;
+    content += " 严重度=" + std::to_string(static_cast<int>(issue.severity));
+    content += " 阶段=" + std::to_string(static_cast<int>(issue.phase));
+    content += " 日志内容=" + issue.message;
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, content);
   }
 }
 

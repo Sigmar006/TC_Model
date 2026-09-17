@@ -915,6 +915,11 @@ void RirController::RunCycle(const session::RirCycleInput& input,
   last_max_detected_slant_range_m_ = 0.0f;
   last_cycle_snr_by_target_id_.clear();
 
+  if (RIR_ACCEPTANCE_LOG_ENABLED()) {
+    WriteRirExternalSceneTargets(input.sim_time_sec, input.input_cycle_index,
+                                 input.scene_targets);
+  }
+
   std::vector<tracking::RirTrackState> track_snapshots;
   if (in_identify) {
     float propagation_loss_db = 0.0f;
@@ -1400,6 +1405,10 @@ void RirController::RunCycle(const session::RirCycleInput& input,
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {
     WriteRirExternalTracks(input.sim_time_sec, input.input_cycle_index, track_snapshots,
                            *output_frame);
+    WriteRirExternalResourceStatus(
+        EffectiveSensorEntityId(), input.sim_time_sec, input.input_cycle_index, work_mode_, plan,
+        track_snapshots, lifecycle_->TrackPoolCapacity(), lifecycle_->TrackPoolFreeCount(),
+        last_execution_issues_);
     // 验收判定标准 第40项：本周期航迹数汇总行（逐航迹定位/运动行在
     // WriteRirTrackAndId 内按项名写出）。
     RIR_ACCEPTANCE_ITEM(input.sim_time_sec, input.input_cycle_index, "多目标跟踪功能测试",

@@ -106,6 +106,12 @@ class RirTrackLifecycle {
   /** @brief 当前未回收航迹数量。 */
   std::size_t ActiveTrackCount() const { return tracks_.size(); }
 
+  /** @brief 航迹对象池当前总槽位数（在用 + 空闲）。 */
+  std::size_t TrackPoolCapacity() const { return pool_.Capacity(); }
+
+  /** @brief 航迹对象池当前空闲槽位数。 */
+  std::size_t TrackPoolFreeCount() const { return pool_.FreeCount(); }
+
   /** @brief IMM 是否启用（enable_imm_lifecycle 且模型集可构建）。 */
   bool IsImmEnabled() const { return imm_enabled_; }
 

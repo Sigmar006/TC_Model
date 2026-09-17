@@ -27,7 +27,18 @@
       "emitter_center_frequency_hz": 0.0,
       "rir": {
         "rcs_dbsm": -10.0,
-        "truth_model": "BALLISTIC_EXAMPLE_B"
+        "truth_model": "BALLISTIC_EXAMPLE_B",
+        "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 5.0, "hh_amp": -5.0, "hh_phase": 3.0, "hv_amp": -14.0, "hv_phase": 15.0, "vh_amp": -13.0, "vh_phase": 14.0, "vv_amp": -7.0, "vv_phase": 6.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -4.0, "hh_phase": 6.0, "hv_amp": -12.0, "hv_phase": 19.0, "vh_amp": -11.0, "vh_phase": 17.0, "vv_amp": -6.0, "vv_phase": 8.0},
+          {"az": 0.0, "el": 25.0, "hh_amp": -3.0, "hh_phase": 10.0, "hv_amp": -11.0, "hv_phase": 23.0, "vh_amp": -10.0, "vh_phase": 21.0, "vv_amp": -5.0, "vv_phase": 12.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -8.0},
+          {"offset_m": 6.0, "rcs_dbsm": -12.0},
+          {"offset_m": 12.0, "rcs_dbsm": -16.0}
+        ]
       }
     },
     {
@@ -44,7 +55,18 @@
       "emitter_center_frequency_hz": 0.0,
       "rir": {
         "rcs_dbsm": -10.0,
-        "truth_model": "BALLISTIC_EXAMPLE_B"
+        "truth_model": "BALLISTIC_EXAMPLE_B",
+        "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 5.0, "hh_amp": -5.0, "hh_phase": 3.0, "hv_amp": -14.0, "hv_phase": 15.0, "vh_amp": -13.0, "vh_phase": 14.0, "vv_amp": -7.0, "vv_phase": 6.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -4.0, "hh_phase": 6.0, "hv_amp": -12.0, "hv_phase": 19.0, "vh_amp": -11.0, "vh_phase": 17.0, "vv_amp": -6.0, "vv_phase": 8.0},
+          {"az": 0.0, "el": 25.0, "hh_amp": -3.0, "hh_phase": 10.0, "hv_amp": -11.0, "hv_phase": 23.0, "vh_amp": -10.0, "vh_phase": 21.0, "vv_amp": -5.0, "vv_phase": 12.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -8.0},
+          {"offset_m": 6.0, "rcs_dbsm": -12.0},
+          {"offset_m": 12.0, "rcs_dbsm": -16.0}
+        ]
       }
     },
     {
@@ -61,7 +83,18 @@
       "emitter_center_frequency_hz": 0.0,
       "rir": {
         "rcs_dbsm": -10.0,
-        "truth_model": "BALLISTIC_EXAMPLE_B"
+        "truth_model": "BALLISTIC_EXAMPLE_B",
+        "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 5.0, "hh_amp": -5.0, "hh_phase": 3.0, "hv_amp": -14.0, "hv_phase": 15.0, "vh_amp": -13.0, "vh_phase": 14.0, "vv_amp": -7.0, "vv_phase": 6.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -4.0, "hh_phase": 6.0, "hv_amp": -12.0, "hv_phase": 19.0, "vh_amp": -11.0, "vh_phase": 17.0, "vv_amp": -6.0, "vv_phase": 8.0},
+          {"az": 0.0, "el": 25.0, "hh_amp": -3.0, "hh_phase": 10.0, "hv_amp": -11.0, "hv_phase": 23.0, "vh_amp": -10.0, "vh_phase": 21.0, "vv_amp": -5.0, "vv_phase": 12.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -8.0},
+          {"offset_m": 6.0, "rcs_dbsm": -12.0},
+          {"offset_m": 12.0, "rcs_dbsm": -16.0}
+        ]
       }
     },
     {
@@ -78,7 +111,18 @@
       "emitter_center_frequency_hz": 0.0,
       "rir": {
         "rcs_dbsm": -10.0,
-        "truth_model": "BALLISTIC_EXAMPLE_B"
+        "truth_model": "BALLISTIC_EXAMPLE_B",
+        "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 5.0, "hh_amp": -5.0, "hh_phase": 3.0, "hv_amp": -14.0, "hv_phase": 15.0, "vh_amp": -13.0, "vh_phase": 14.0, "vv_amp": -7.0, "vv_phase": 6.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -4.0, "hh_phase": 6.0, "hv_amp": -12.0, "hv_phase": 19.0, "vh_amp": -11.0, "vh_phase": 17.0, "vv_amp": -6.0, "vv_phase": 8.0},
+          {"az": 0.0, "el": 25.0, "hh_amp": -3.0, "hh_phase": 10.0, "hv_amp": -11.0, "hv_phase": 23.0, "vh_amp": -10.0, "vh_phase": 21.0, "vv_amp": -5.0, "vv_phase": 12.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -8.0},
+          {"offset_m": 6.0, "rcs_dbsm": -12.0},
+          {"offset_m": 12.0, "rcs_dbsm": -16.0}
+        ]
       }
     },
     {
@@ -95,7 +139,18 @@
       "emitter_center_frequency_hz": 0.0,
       "rir": {
         "rcs_dbsm": -10.0,
-        "truth_model": "BALLISTIC_EXAMPLE_B"
+        "truth_model": "BALLISTIC_EXAMPLE_B",
+        "pol_window_deg": 180.0,
+        "polarization_dictionary": [
+          {"az": 0.0, "el": 5.0, "hh_amp": -5.0, "hh_phase": 3.0, "hv_amp": -14.0, "hv_phase": 15.0, "vh_amp": -13.0, "vh_phase": 14.0, "vv_amp": -7.0, "vv_phase": 6.0},
+          {"az": 0.0, "el": 15.0, "hh_amp": -4.0, "hh_phase": 6.0, "hv_amp": -12.0, "hv_phase": 19.0, "vh_amp": -11.0, "vh_phase": 17.0, "vv_amp": -6.0, "vv_phase": 8.0},
+          {"az": 0.0, "el": 25.0, "hh_amp": -3.0, "hh_phase": 10.0, "hv_amp": -11.0, "hv_phase": 23.0, "vh_amp": -10.0, "vh_phase": 21.0, "vv_amp": -5.0, "vv_phase": 12.0}
+        ],
+        "scatterers": [
+          {"offset_m": 0.0, "rcs_dbsm": -8.0},
+          {"offset_m": 6.0, "rcs_dbsm": -12.0},
+          {"offset_m": 12.0, "rcs_dbsm": -16.0}
+        ]
       }
     }
   ],

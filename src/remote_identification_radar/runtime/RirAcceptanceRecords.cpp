@@ -479,7 +479,7 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
-  const char* item = "目标与电磁环境场景接口测试";
+  const char* item = "目标场景接口测试";
   RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item,
                               "目标数量=" + std::to_string(targets.size()));
   for (std::size_t target_index = 0U; target_index < targets.size(); ++target_index) {

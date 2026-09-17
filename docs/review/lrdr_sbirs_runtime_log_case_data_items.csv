@@ -26,7 +26,7 @@
 "LRDR雷达","48. 波束扫描功能测试","RadarOutput.log","本周期序号；雷达ID；目标ID；驻留种类","31200","正常（格式可解析；数值有限）","examples/log/rir_ground_site_recognition/RadarOutput.log"
 "LRDR雷达","48. 波束扫描功能测试","Rir_scan_pattern.csv","波位序号index；方位角az_deg；俯仰角el_deg","1386","正常（表头正确；三列可解析；数值有限）","examples/log/rir_ground_site_recognition/Rir_scan_pattern.csv"
 "LRDR雷达","49. 调度策略功能测试","RadarOutput.log","雷达ID","1560","正常（格式可解析；数值有限）","examples/log/rir_ground_site_recognition/RadarOutput.log"
-"LRDR雷达","62. 目标与电磁环境场景接口测试","RadarOutput.log","HRRP散射中心；RCS；Swerling；极化数据；目标ID；目标名称；目标数量；目标序号；视角RCS；速度ENU；位置ENU","9360","正常（格式可解析；数值有限）","examples/log/rir_ground_site_recognition/RadarOutput.log"
+"LRDR雷达","62. 目标场景接口测试","RadarOutput.log","HRRP散射中心；RCS；Swerling；极化数据；目标ID；目标名称；目标数量；目标序号；视角RCS；速度ENU；位置ENU","9360","正常（格式可解析；数值有限）","examples/log/rir_ground_site_recognition/RadarOutput.log"
 "LRDR雷达","63. 外部干扰输入雷达接口测试","RadarOutput.log","干扰数量；接收时间窗；世界周期","1560","正常（格式可解析；数值有限）","examples/log/rir_ground_site_recognition/RadarOutput.log"
 "LRDR雷达","64. 雷达对外目标信息输出接口测试（点迹量测）","RadarOutput.log","SNR；点迹ID；方位；俯仰；检测标志；检测概率；径向速度(远离为正)；距离；量测数量；量测协方差ENU_m2[x,y,z]；目标ID；数据层级","7354","正常（格式可解析；数值有限）","examples/log/rir_ground_site_recognition/RadarOutput.log"
 "LRDR雷达","65. 雷达对外目标信息输出接口测试（航迹识别）","RadarOutput.log","HRRP特征摘要；RCS特征摘要；航迹ID；航迹数量；极化特征摘要；集群目标数量；加速度；目标ID；目标类别；目标型号；目标状态ENU_位置；批次；生命周期状态；数据层级；速度；置信度；状态协方差ENU[x,vx,y,vy,z,vz]","7379","正常（格式可解析；数值有限）","examples/log/rir_ground_site_recognition/RadarOutput.log"

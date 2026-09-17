@@ -91,9 +91,10 @@ SBIRS 所有中止路径遵守 `session_contract.md` 规则 9 的三写模式与
 recorder 只遍历当前周期 `input.scene`，目标从输入消失时其排除状态条目保留（不会被 A4 清除，
 与既有 `SbirsDetectionLifecycleRecorder` 的"消失目标状态保留"行为一致）；重现为 A3 而非 A2。
 
-**验收信息日志（`opir_acceptance.log`，2026-08-22）**：CMake 开关
+**验收信息日志（`SatelliteTarget.log`，2026-08-22）**：CMake 开关
 `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`（默认 OFF）门控。开启后按验收项写入运行目录
-`opir_acceptance.log`（四段同一行：仿真时间 / 仿真周期 / 验收项 / 验收内容），
+`SatelliteTarget.log`（四段同一行：仿真时间 / 仿真周期 / 验收项 / 验收内容），
+性能项写入 `opir_acceptance.log`，
 不进 `1q_library.log`，也不把融合/推演/精度抄进本文件。关闭时宏与派生计算一并
 编译剪除，零开销、行为逐位不变。项表与派生公式见
 `docs/review/acceptance_item_catalog_2026-08-22.md`。边界：仅人读验收材料，
@@ -199,7 +200,7 @@ session 等价；这些性质只能由对应的 unit/integration/replay 测试�
 | 简化整星姿态动力学与执行机构约束 | defer | 必须先给出当前角度域模型无法满足的可复现失败和误差预算，再冻结共享平台姿态与逐通道光轴所有权 |
 | 多通道机械耦合与共享姿态资源 | implemented（单镜筒化，2026-09-02） | 独立 LOS 假设的可复现错误已坐实（三星场景分离 17.2° 双目标被同星双锁，几何+日志双探针；冻结契约已删档、见 git 历史）后收口：窄场收敛为单执行器分时轮转 + 同帧免费多跟，`max_concurrent_nfov_locks` 删除，可保持精跟条数由跟踪门物理涌现；确定性轮转/失败归属/snapshot/replay 均有测试证据 |
 | 探测器像元、背景杂波与图像帧 | defer outside current product boundary | 仅在产品目标转为图像检测/TBD/NCC 且具备 PSF/MTF、焦距、像元几何、背景和独立物理真值时重开；归属独立 imaging 子系统 |
-| 验收信息日志（`opir_acceptance.log`） | implemented（编译期门控） | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` 默认 OFF 零开销；开启后写四段中文验收行，不进 `1q_library.log` |
+| 验收信息日志（`SatelliteTarget.log`；性能项为 `opir_acceptance.log`） | implemented（编译期门控） | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` 默认 OFF 零开销；开启后写四段中文验收行，不进 `1q_library.log` |
 | WGS84 椭球地面投影 | reject（保持圆球单口径） | 覆盖区投影与遮挡判定共用 `kEarthRadiusM` 圆球；引入椭球须先给出双地球模型口径分叉的可复现验收失败 |
 | 覆盖区交集多边形 | reject（范围框口径，2026-09-06 裁剪包络化） | 覆盖区输出为视场∩地球盘交集的经纬度范围框，映射西北/东北/东南/西南 4 角；不做交集多边形顶点序列（盘缘弧线区域被范围框放大为已知失真）；重开须给出按多边形消费该字段的外部判据 |
 | 反子午线经度环绕处理 | reject | 覆盖区跨 ±180° 时范围框经度取大圈方向（三星场景 104 星 118/480 行显现，数值偏大失真）；按字段消费 4 角数值的现行验收判据可读但须知此失真；重开须给出按最短弧口径消费经度的外部判据 |
@@ -230,7 +231,7 @@ session 等价；这些性质只能由对应的 unit/integration/replay 测试�
 8. 不把 debug view、lifecycle 或 replay 当作 1q 仿真传感器主输出。
 9. 不为测试 mock 便利新增 public 扩展点。
 10. **验收量不进公开输出**：地面覆盖区/驻留时间/焦平面脱靶量/信号能量/连续命中计数只走
-    `opir_acceptance.log`（人读验收材料），不扩展 `SbirsOutputFrame`、attribution 或
+    `SatelliteTarget.log`（人读验收材料；性能项写 `opir_acceptance.log`），不扩展 `SbirsOutputFrame`、attribution 或
     DebugView 字段；公开输出结构变化须走输出边界评审。
 
 ## 设计变更规则

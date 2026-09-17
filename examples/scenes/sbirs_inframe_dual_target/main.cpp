@@ -728,7 +728,7 @@ int main(int argc, char* argv[]) {
             << " cycles x " << scene.dt_sec << " s, satellites=" << scene.satellites.size()
             << " GEO (ground-station message delivery)\n"
             << "acceptance logs -> " << output_dir
-            << " (precision/opir/fusion/inference_acceptance.log)\n";
+            << " (SatelliteTarget.log + precision/opir/fusion/inference_acceptance.log)\n";
   for (std::size_t i = 0U; i < scene.satellites.size(); ++i) {
     const LoadedSatellite& sat = scene.satellites[i];
     std::cout << "  sat " << sat.id << " source_id=" << sat.source_id << " ecef=("

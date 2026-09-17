@@ -490,7 +490,7 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
             << "\n"
             << "log output -> " << output_dir
             << " (integration_events.log / integration_views.log / "
-               "*_acceptance.log / rir_antenna_pattern.csv / rir_scan_pattern.csv / "
+               "SatelliteTarget.log / *_acceptance.log / rir_antenna_pattern.csv / rir_scan_pattern.csv / "
                "platform_track.csv / target_truth.csv / route_plan.csv / zones.csv"
             << (rir_viz_src != nullptr ? " / rir_site.csv / rir_targets.csv" : "") << ")\n";
 

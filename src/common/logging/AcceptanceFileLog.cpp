@@ -1,6 +1,6 @@
 ﻿/**
  * @file AcceptanceFileLog.cpp
- * @brief 八通道验收文件 sink（五类验收、两类内部接口及雷达外部接口）。
+ * @brief 九通道验收文件 sink（功能/性能验收、内部接口及雷达外部接口）。
  */
 
 #include "common/logging/AcceptanceFileLog.h"
@@ -45,6 +45,9 @@
 #endif
 #ifndef ONEQ_RADAR_INTERFACE_LOG_PATH
 #define ONEQ_RADAR_INTERFACE_LOG_PATH "log/RadarInterface.log"
+#endif
+#ifndef ONEQ_SATELLITE_TARGET_LOG_PATH
+#define ONEQ_SATELLITE_TARGET_LOG_PATH "log/SatelliteTarget.log"
 #endif
 
 namespace oneq {
@@ -105,6 +108,8 @@ const char* EnvName(AcceptanceChannel channel) {
       return "ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH";
     case AcceptanceChannel::kRadarInterface:
       return "ONEQ_RADAR_INTERFACE_LOG_PATH";
+    case AcceptanceChannel::kSatelliteTarget:
+      return "ONEQ_SATELLITE_TARGET_LOG_PATH";
   }
   return "ONEQ_OPIR_ACCEPTANCE_LOG_PATH";
 }
@@ -127,6 +132,8 @@ const char* CompileDefaultPath(AcceptanceChannel channel) {
       return ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH;
     case AcceptanceChannel::kRadarInterface:
       return ONEQ_RADAR_INTERFACE_LOG_PATH;
+    case AcceptanceChannel::kSatelliteTarget:
+      return ONEQ_SATELLITE_TARGET_LOG_PATH;
   }
   return ONEQ_OPIR_ACCEPTANCE_LOG_PATH;
 }
@@ -149,6 +156,8 @@ const char* ChannelLabel(AcceptanceChannel channel) {
       return "radar-internal-interface";
     case AcceptanceChannel::kRadarInterface:
       return "radar-interface";
+    case AcceptanceChannel::kSatelliteTarget:
+      return "satellite-target";
   }
   return "opir";
 }
@@ -271,6 +280,7 @@ ChannelSink& SinkOf(AcceptanceChannel channel) {
   static ChannelSink ir_internal_interface(AcceptanceChannel::kIrInternalInterface);
   static ChannelSink radar_internal_interface(AcceptanceChannel::kRadarInternalInterface);
   static ChannelSink radar_interface(AcceptanceChannel::kRadarInterface);
+  static ChannelSink satellite_target(AcceptanceChannel::kSatelliteTarget);
   switch (channel) {
     case AcceptanceChannel::kRir:
       return rir;
@@ -286,6 +296,8 @@ ChannelSink& SinkOf(AcceptanceChannel channel) {
       return radar_internal_interface;
     case AcceptanceChannel::kRadarInterface:
       return radar_interface;
+    case AcceptanceChannel::kSatelliteTarget:
+      return satellite_target;
     case AcceptanceChannel::kOpir:
     default:
       return opir;

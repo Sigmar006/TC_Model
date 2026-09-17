@@ -296,7 +296,8 @@ SBIRS 模拟天基红外监视卫星的宽视场（WFOV）扫描探测、星下�
 
 ## 6. 验收派生量（OPIR 验收日志）
 
-当启用 `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`（CMake 开关，**默认 OFF**）时，逐周期向 `opir_acceptance.log` 写入：
+当启用 `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`（CMake 开关，**默认 OFF**）时，普通功能项逐周期向
+`SatelliteTarget.log` 写入，性能项写入 `opir_acceptance.log`：
 1. **WFOV 地面覆盖区投影**（2026-09-06 裁剪包络化）：实际扫描中心（传感器系，含共模扰动与限位钳制）的视场矩形 4 边缘在传感器系采样，地平圈（Limb）圆弧在 ECI 绕星-地心方向按角半径 $0.999\rho$（$\rho=\arcsin(R_{\oplus}/r_{\text{sat}})$，收缩因子避免切线掠射求交失败）采样，经 boresight 链双向变换后取落盘（视场∩地球盘）交集采样点，与地球圆球求交（`kEarthRadiusM`，与遮挡门控同口径）旋回 ECEF 提取地心经纬度，输出交集的经纬度包络 [lat_min, lat_max]×[lon_min, lon_max] 映射为规范 4 角（西北、东北、东南、西南）；视场完全脱靶记 `miss`。圆球地球模型（椭球为已登记非目标，见 boundaries.md）。
 2. **驻留时间**：$T_{\text{dwell}} = \text{FOV}_{\text{az}} / \omega_{\text{scan}}$（rate=0 退化配置记 0）。
 3. **焦平面脱靶量**：逐轴小角投影 $\Delta x = f \cdot \tan(\Delta\text{az}), \Delta y = f \cdot \tan(\Delta\text{el})$（非畸变光学模型）。

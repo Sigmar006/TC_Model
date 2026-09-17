@@ -91,9 +91,9 @@ endif()
 # 分层验收文件日志（默认关闭；宏与派生计算一并剪除）。开启后按验收用例指定文件
 # 分别写入（四段同一行），不进 1q_library.log；同一指标被多个文件要求时允许重复写出。
 option(ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG
-    "Write opir_acceptance.log and IRInternalInterface.log" OFF)
+    "Write SatelliteTarget.log, opir_acceptance.log, and IRInternalInterface.log" OFF)
 if(ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG)
-    message(STATUS "opir logs: ENABLED (opir_acceptance.log, IRInternalInterface.log)")
+    message(STATUS "opir logs: ENABLED (SatelliteTarget.log, opir_acceptance.log, IRInternalInterface.log)")
 else()
     message(STATUS "opir acceptance log: disabled (set -DONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=ON to enable)")
 endif()

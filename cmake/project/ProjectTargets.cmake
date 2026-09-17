@@ -124,6 +124,7 @@ function(oneq_add_component target)
     oneq_log_file(_oneq_ir_internal_interface_path "IRInternalInterface.log")
     oneq_log_file(_oneq_radar_internal_interface_path "RadarInternalInterface.log")
     oneq_log_file(_oneq_radar_interface_path "RadarInterface.log")
+    oneq_log_file(_oneq_satellite_target_path "SatelliteTarget.log")
     oneq_log_file(_oneq_rir_antenna_csv_path "rir_antenna_pattern.csv")
     oneq_log_file(_oneq_rir_scan_csv_path "rir_scan_pattern.csv")
     target_compile_definitions("${target}" PRIVATE
@@ -138,6 +139,7 @@ function(oneq_add_component target)
         ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH=\"${_oneq_ir_internal_interface_path}\"
         ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH=\"${_oneq_radar_internal_interface_path}\"
         ONEQ_RADAR_INTERFACE_LOG_PATH=\"${_oneq_radar_interface_path}\"
+        ONEQ_SATELLITE_TARGET_LOG_PATH=\"${_oneq_satellite_target_path}\"
         ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH=\"${_oneq_rir_antenna_csv_path}\"
         ONEQ_RIR_SCAN_PATTERN_CSV_PATH=\"${_oneq_rir_scan_csv_path}\"
         ONEQ_HAVE_ZLIB=$<BOOL:${ONEQ_HAVE_ZLIB}>)

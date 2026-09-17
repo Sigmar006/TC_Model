@@ -20,9 +20,9 @@ SBIRS 的心智模型是**状态机驱动的双视场传感器**：
 管理每个目标的 WFOV 发现 → NFOV 首次捕获 → 持续跟踪全过程。
 
 验收信息（需求映射 3.2.1.3 章节的覆盖区/驻留时间/焦平面脱靶量/信号能量/连续命中计数，
-以及 3.2.1.6.3 的角定位误差）走独立文件 `opir_acceptance.log`（CMake 开关
+以及 3.2.1.6.3 的角定位误差）走独立文件 `SatelliteTarget.log`（CMake 开关
 `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`，默认 OFF；四段同一行），不进公开输出结构、
-也不进 `1q_library.log`；见 [boundaries.md](boundaries.md) 与
+也不进 `1q_library.log`；性能项单独写入 `opir_acceptance.log`。见 [boundaries.md](boundaries.md) 与
 [algorithms.md](algorithms.md) 的验收派生量节。项表见
 `docs/review/acceptance_item_catalog_2026-08-22.md`。
 

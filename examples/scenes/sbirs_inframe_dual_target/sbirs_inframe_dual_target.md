@@ -15,7 +15,7 @@
 | `帧数=0` 滑行行 | 无 | 同帧目标不再轮空（对比 `sbirs_triple_sat_fix_messages` 的分离对：约半数周期滑行 0 帧） |
 | 首捕 | 周期 1-2 内两目标先后捕获 | 第一窗口捕获其一，另一目标同帧免转动捕获（同周期或次周期） |
 | `dual_sat_cycles` | =80 | A（实体 4）与 B（实体 104）全程同周期双视角，两目标双星定位行恢复 |
-| 确定性 | 同种子重跑逐位一致 | `opir_acceptance.log` 两次运行 diff 为空 |
+| 确定性 | 同种子重跑逐位一致 | `SatelliteTarget.log` 两次运行 diff 为空 |
 
 运行：`build/<examples-preset>/bin/sbirs_inframe_dual_target`（自
 `examples/` 目录起跑，日志落 `examples/log/sbirs_inframe_dual_target/`）。

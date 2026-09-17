@@ -106,7 +106,7 @@ class SbirsPipeline {
                    const runtime::SbirsRuntimeConfigImpact& impact);
   /**
    * @brief 标注本管线实例的卫星实体/融合源 ID（仅进验收日志行的 卫星ID=/相对卫星ID= 字段）。
-   * @note 双星同文件写 opir_acceptance.log 时靠该 ID 区分行归属哪颗卫星；默认 0 表示
+   * @note 双星同文件写 SatelliteTarget.log 时靠该 ID 区分行归属哪颗卫星；默认 0 表示
    *       调用方未标注，行内如实写 0。不影响任何计算路径。
    */
   void SetSatelliteEntityId(std::uint32_t satellite_entity_id) {

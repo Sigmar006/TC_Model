@@ -15,8 +15,9 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 | OCR / 规范文件名 | 仓库实际路径 | 编译开关 |
 |---|---|---|
-| `Opir_acceptance.log` / `Sbirs_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
-| `Fusion_acceptance.log`（第 11–14 项） | `log/opir_acceptance.log` 与 `log/fusion_acceptance.log` 各写一份、分别判定 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
+| `SatelliteTarget.log`（红外普通功能项） | `log/SatelliteTarget.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
+| `Opir_acceptance.log`（红外性能项） | `log/opir_acceptance.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
+| `Fusion_acceptance.log`（第 11–14 项） | `log/SatelliteTarget.log` 与 `log/fusion_acceptance.log` 各写一份、分别判定 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 15–18 项） | `log/fusion_acceptance.log` | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
 | `inference_acceptance.log` / `Inference_acceptance.log` | `log/inference_acceptance.log` | `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` |
@@ -175,48 +176,48 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ---
 
-## 一、卫星轨道与探测基础（`Sbirs_acceptance.log`）
+## 一、卫星轨道与探测基础（`SatelliteTarget.log`）
 
-> **本节登记（2026-08-27）**：第 **1–4** 项**不需要**进行验收日志输出；第 **5** 项仍须按下列判定标准写入 `Sbirs_acceptance.log`。
+> **本节登记（2026-08-27）**：第 **1–4** 项**不需要**进行验收日志输出；第 **5** 项仍须按下列判定标准写入 `SatelliteTarget.log`。
 
 ### 1. 实时计算卫星当前轨道位置功能测试
 
 - **验收日志输出**：不需要。
-- 原规范判定（不执行）：`Sbirs_acceptance.log` 文件中能够记录卫星轨道位置信息视为通过，否则视为不通过。
+- 原规范判定（不执行）：`SatelliteTarget.log` 文件中能够记录卫星轨道位置信息视为通过，否则视为不通过。
 - **当前输出**：不输出验收日志（2026-08-27 登记）。轨道解算在仿真主链内运行，无对应 `[验收项：…]` 行。
 
 ### 2. 坐标系转换功能测试
 
 - **验收日志输出**：不需要。
 - 原规范判定（不执行）：
-  - `Sbirs_acceptance.log` 文件中能够记录卫星 **ECI** 坐标系坐标视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星 **ECEF** 坐标系坐标视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星 **WGS-84** 坐标系坐标视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星 **ECI** 坐标系坐标视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星 **ECEF** 坐标系坐标视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星 **WGS-84** 坐标系坐标视为通过，否则视为不通过。
 - **当前输出**：不输出验收日志（2026-08-27 登记）。无 ECI/ECEF/WGS-84 独立验收项。
 
 ### 3. 卫星轨道动力学计算功能测试
 
 - **验收日志输出**：不需要。
 - 原规范判定（不执行）：
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**经纬度**坐标视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**轨道高度**视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**地心坐标系**坐标视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**速度**视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**经纬度**坐标视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**轨道高度**视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**地心坐标系**坐标视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**速度**视为通过，否则视为不通过。
 - **当前输出**：不输出验收日志（2026-08-27 登记）。
 
 ### 4. 龙格库塔积分功能测试
 
 - **验收日志输出**：不需要。
 - 原规范判定（不执行）：
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**经纬度**坐标视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**轨道高度**视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**地心坐标系**坐标视为通过，否则视为不通过。
-  - `Sbirs_acceptance.log` 文件中能够记录卫星的**速度**视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**经纬度**坐标视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**轨道高度**视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**地心坐标系**坐标视为通过，否则视为不通过。
+  - `SatelliteTarget.log` 文件中能够记录卫星的**速度**视为通过，否则视为不通过。
 - **当前输出**：不输出验收日志（2026-08-27 登记）。
 
 ### 5. 探测角度计算功能测试
 
-- `Sbirs_acceptance.log` 文件中能够记录实体相对卫星的**方位角和俯仰角**（**ECI 坐标、弧度制**）信息视为通过，否则视为不通过。
+- `SatelliteTarget.log` 文件中能够记录实体相对卫星的**方位角和俯仰角**（**ECI 坐标、弧度制**）信息视为通过，否则视为不通过。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
   - **时机**：`SbirsPipeline.cpp` WFOV 候选过距离/视场/SNR 门后，与现有 `目标可探测性与动态参数` 同循环，**逐目标**写一行。
@@ -231,7 +232,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ---
 
-## 二、卫星目标探测（OCR：`SatelliteTarget.log` → `log/opir_acceptance.log`）
+## 二、卫星目标探测（`log/SatelliteTarget.log`）
 
 ### 6. 最大探测距离计算功能测试
 
@@ -322,10 +323,10 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 ## 三、融合与跟踪
 
 > 第 **11–14** 项由红外宽窄视场层产生，但按文件独立判定规则同时写入
-> **`log/opir_acceptance.log`** 和 **`log/fusion_acceptance.log`**；第 **15–18** 项写入
+> **`log/SatelliteTarget.log`** 和 **`log/fusion_acceptance.log`**；第 **15–18** 项写入
 > **`log/fusion_acceptance.log`**。两个文件中的重复数据均为正式验收证据，不相互替代。
 
-### 11. 红外预警卫星大幅面扫描与探测（`log/opir_acceptance.log`、`log/fusion_acceptance.log`）
+### 11. 红外预警卫星大幅面扫描与探测（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
 - `Fusion_acceptance.log` 文件中能够记录红外预警卫星的**扫描幅宽**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录红外预警卫星的**目标辐射**视为通过，否则视为不通过。
@@ -333,7 +334,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 - `Fusion_acceptance.log` 文件中能够记录红外预警卫星的**探测 SNR** 视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录红外预警卫星的**探测概率**视为通过，否则视为不通过。
 - **外部导入合并判据**：同一卫星、同一目标相邻有效探测的仿真时间间隔须 `≥1 s`。
-  `log/opir_acceptance.log` 和 `log/fusion_acceptance.log` 均须写本项原始探测记录与时间戳，
+  `log/SatelliteTarget.log` 和 `log/fusion_acceptance.log` 均须写本项原始探测记录与时间戳，
   两个文件独立验收；相邻间隔由各文件的验证程序计算，不另写间隔或通过标志。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -344,12 +345,12 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
     仿真时间=1.000s 仿真周期=1 [红外预警卫星大幅面扫描与探测功能测试] 卫星ID=4 扫描幅宽az/el(ECI)=(0.349,0.349)rad 目标ID=1001 接收功率=1.2e-14W 信号能量=1.2e-16J SNR=8.210 探测概率=0.8520 检测标志=是
     ```
 
-### 12. 宽视场扫描探测功能测试（`log/opir_acceptance.log`、`log/fusion_acceptance.log`）
+### 12. 宽视场扫描探测功能测试（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
 - `Fusion_acceptance.log` 文件中能够记录各扫描周期的**地面覆盖范围的区域坐标**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录各覆盖区域的**驻留时间**视为通过，否则视为不通过。
 - **外部导入合并判据**：驻留时间须满足 `0.5 s<驻留时间<1 s`；还须记录 WFOV 目标视线
-  角度，测角误差约束为 `±360 arcsec`。`log/opir_acceptance.log` 与
+  角度，测角误差约束为 `±360 arcsec`。`log/SatelliteTarget.log` 与
   `log/fusion_acceptance.log` 各自输出本项驻留时间和原始视线角，误差由验证程序计算。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -360,16 +361,16 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
     仿真时间=1.000s 仿真周期=1 [宽视场扫描探测功能测试] 卫星ID=4 覆盖四角经纬=[31.20,120.10;31.20,121.40;30.10,121.40;30.10,120.10] 中心=(30.65,120.75) 驻留=2.000s
     仿真时间=1.000s 仿真周期=1 [宽视场扫描探测功能测试] 卫星ID=4 目标ID=1001 宽视场目标视线方位/俯仰(ECI)=(0.21500000,0.32300000)rad
     ```
-  - 上述两行分别写入 `log/opir_acceptance.log` 和 `log/fusion_acceptance.log`。
+  - 上述两行分别写入 `log/SatelliteTarget.log` 和 `log/fusion_acceptance.log`。
 
-### 13. 窄视场跟踪探测功能测试（`log/opir_acceptance.log`、`log/fusion_acceptance.log`）
+### 13. 窄视场跟踪探测功能测试（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
 - `Fusion_acceptance.log` 文件中能够记录各采样时刻目标在焦平面上的**脱靶量**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录各采样时刻**跟踪状态**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录各采样时刻**目标信号能量**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录各采样时刻**信噪比**视为通过，否则视为不通过。
 - **外部导入合并判据**：焦平面脱靶量须 `<50 m`；还须记录 NFOV 目标视线角度，测角误差
-  约束为 `±10 arcsec`。`log/opir_acceptance.log` 与 `log/fusion_acceptance.log` 各自输出
+  约束为 `±10 arcsec`。`log/SatelliteTarget.log` 与 `log/fusion_acceptance.log` 各自输出
   本项脱靶量和原始视线角，误差由验证程序计算，不写误差比较结果。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -379,7 +380,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
     ```text
     仿真时间=8.000s 仿真周期=8 [窄视场跟踪探测功能测试] 卫星ID=4 目标ID=1001 脱靶量m=(0.0012,-0.0008) 窄视场目标视线方位/俯仰(ECI)=(0.21500000,0.32300000)rad 跟踪状态=跟踪 信号能量=2.1e-16J SNR=9.100 帧数=10 单帧σ=1.500e-04deg 融合σ=4.743e-05deg
     ```
-  - 上述行分别写入 `log/opir_acceptance.log` 和 `log/fusion_acceptance.log`。
+  - 上述行分别写入 `log/SatelliteTarget.log` 和 `log/fusion_acceptance.log`。
 
 - **高刷新率建模（2026-08-31 用户裁定）**：窄场跟踪每周期 `frame_rate_hz×dt` 帧独立
   量测融合为单周期输出（随机 1-σ 按 1/√N 衰减）；行尾新增 `帧数=`/`单帧σ=`/`融合σ=`
@@ -387,14 +388,14 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
   双星定位同日裁定**仅基于窄场数据**（宽场粗测角只承担引导，在精度评估会话聚合处
   剔除宽场阶段记录）。
 
-### 14. 宽窄视场联合探测功能测试（`log/opir_acceptance.log`、`log/fusion_acceptance.log`）
+### 14. 宽窄视场联合探测功能测试（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
 - `Fusion_acceptance.log` 文件中能够记录**宽视场扫描覆盖区域**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录**疑似目标列表**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录**窄视场跟踪目标的精确状态序列**视为通过，否则视为不通过。精确状态序列」要体现的是：同一个目标 ID，在窄场阶段每个周期状态怎么变。例如：
 - **外部导入合并判据**：`log/fusion_acceptance.log` 的本项记录还须包含传感器信息源名称、
   各源测角数据、测角融合卫星地面站名称、目标 ECEF 三维位置和误差协方差矩阵。本项不能以
-  第 15 项或 `log/opir_acceptance.log` 中已有同名字段代替；模型不可见的地面站名称由外部
+  第 15 项或 `log/SatelliteTarget.log` 中已有同名字段代替；模型不可见的地面站名称由外部
   仿真编排层写入本文件，其余可用字段由相应模型写入。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -513,7 +514,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 - `inference_acceptance.log` 文件中能够记录 **DD 目标**的**初步落点位置**视为通过，否则视为不通过。
 - **外部导入合并判据**：
   - `log/rir_acceptance.log` 须在卫星测角数据时刻之后记录卫星探测引导信息，以及 RIR 对 DD 目标得到的
-    距离、方位和高度；不能用 `log/opir_acceptance.log` 或推演日志中的重复字段替代。
+    距离、方位和高度；不能用 `log/SatelliteTarget.log` 或推演日志中的重复字段替代。
   - `log/inference_acceptance.log` 须记录 DD 初步预测落点；预测落点误差须不超过 DD 实际射程
     的 `5%`。误差由验证程序计算，不写入日志。
 
@@ -549,7 +550,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ### 24. 特殊事件监测与提示功能测试
 
-- `Sbirs_acceptance.log` 文件中能够记录**首次探测、跟踪中断、轨迹突变**等关键事件信息（含**事件等级、目标 ID、时间、位置**）视为通过，否则视为不通过。
+- `SatelliteTarget.log` 文件中能够记录**首次探测、跟踪中断、轨迹突变**等关键事件信息（含**事件等级、目标 ID、时间、位置**）视为通过，否则视为不通过。
 
 - **实现**（示例；方括号后**首字段为 `事件=`**）：
     ```text
@@ -983,7 +984,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
     ```
 
 ### 55. 红外系统测角误差性能测试（`log/opir_acceptance.log`）
-- `Sbirs_acceptance.log` 文件中能够记录红外系统**测量角度值**，并能够计算测量值与真实值得到**偏差**视为通过，否则视为不通过。
+- `Opir_acceptance.log` 文件中能够记录红外系统**测量角度值**，并能够计算测量值与真实值得到**偏差**视为通过，否则视为不通过。
 
 - **实现**（示例；只写测量与偏差，不写真值/RMSE/σ）：
     ```text
@@ -1293,7 +1294,8 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 | 日志文件（OCR） | 仓库路径 | 涉及测试项 |
 |---|---|---|
-| `Opir_acceptance.log` / `Sbirs_acceptance.log` / `SatelliteTarget.log` | `log/opir_acceptance.log` | 5–10, 11–14, 24, 54–55（1–4 不输出） |
+| `SatelliteTarget.log` | `log/SatelliteTarget.log` | 5–10、11–14、24（1–4 不输出） |
+| `Opir_acceptance.log` | `log/opir_acceptance.log` | 50、54–55（红外性能项） |
 | `Fusion_acceptance.log` | `log/fusion_acceptance.log` | 11–18（第 11–14 项与 OPIR 文件重复写出、分别判定） |
 | `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | 19, 28–47、47A、49、54 |
 | `IRInternalInterface.log` | `log/IRInternalInterface.log` | 74–77（SBIRS 内部接口分项证据） |

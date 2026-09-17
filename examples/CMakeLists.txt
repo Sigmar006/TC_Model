@@ -142,10 +142,10 @@ endif()
 # ---------------------------------------------------------------------------
 # 通用 runner（对外 target 名保持不变）：--scene 跑任意场景 JSON；装配与执行
 # 与场景可执行共用 examples_core 内的 RunScene。
-# 验收日志通道提示：OPIR 宽窄视场验收量写入 opir_acceptance.log，开关为库编译期选项。
+# 验收日志通道提示：OPIR 普通功能验收量写入 SatelliteTarget.log，开关为库编译期选项。
 if(NOT ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG)
     message(STATUS "examples: ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=OFF -> no "
-        "opir_acceptance.log; reconfigure with -DONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=ON")
+        "SatelliteTarget.log; reconfigure with -DONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=ON")
 endif()
 
 add_executable(component_attachment_demo app/main.cpp)

@@ -250,7 +250,7 @@ void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::u
   perf += " 目标ID=" + std::to_string(target_id);
   perf += " 测量方位/俯仰=" + FormatPairDeg(measured_az_deg, measured_el_deg, 3) + "°";
   perf += " 偏差az/el=" + FormatPairDeg(az_error_deg, el_error_deg, 6) + "°";
-  SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "红外系统测角误差性能测试", perf);
+  SBIRS_PERFORMANCE_ITEM(sim_time_sec, cycle, "红外系统测角误差性能测试", perf);
 }
 
 namespace {
@@ -464,8 +464,8 @@ void WriteSbirsOncePerSession(float sim_time_sec, std::uint32_t cycle) {
   // 评审 2026-08-26 条22（方案B）：库内不做墙钟计时，真实初始化耗时在示例层
   // integration_events.log 的同名验收项（模块=OPIR）。场景数/总仿真周期由示例层
   // 结束时回写（第54项），库内不再写占位行。
-  SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "初始化时间性能测试",
-                        "见integration_events.log（模块=OPIR）");
+  SBIRS_PERFORMANCE_ITEM(sim_time_sec, cycle, "初始化时间性能测试",
+                         "见integration_events.log（模块=OPIR）");
 }
 
 void WriteSbirsCycleRunCount(float sim_time_sec, std::uint32_t cycle) {
@@ -474,7 +474,7 @@ void WriteSbirsCycleRunCount(float sim_time_sec, std::uint32_t cycle) {
   }
   // 验收判定标准 第54项：运行次数与运行状态。
   std::string content = "本会话已运行周期=" + std::to_string(cycle) + " 状态=正常";
-  SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "可支持连续运行次数性能测试", content);
+  SBIRS_PERFORMANCE_ITEM(sim_time_sec, cycle, "可支持连续运行次数性能测试", content);
 }
 
 }  // namespace pipeline

@@ -99,9 +99,9 @@ else()
 endif()
 
 option(ONEQ_ENABLE_RIR_ACCEPTANCE_LOG
-    "Write rir_acceptance.log, RadarInterface.log, RadarInternalInterface.log, and RIR CSV evidence" OFF)
+    "Write RadarOutput.log, rir_acceptance.log, RadarInternalInterface.log, and RIR CSV evidence" OFF)
 if(ONEQ_ENABLE_RIR_ACCEPTANCE_LOG)
-    message(STATUS "rir logs: ENABLED (rir_acceptance.log, RadarInterface.log, RadarInternalInterface.log)")
+    message(STATUS "rir logs: ENABLED (RadarOutput.log, rir_acceptance.log, RadarInternalInterface.log)")
 else()
     message(STATUS "rir acceptance log: disabled (set -DONEQ_ENABLE_RIR_ACCEPTANCE_LOG=ON to enable)")
 endif()

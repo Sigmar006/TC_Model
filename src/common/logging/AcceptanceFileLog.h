@@ -24,7 +24,7 @@ enum class AcceptanceChannel {
   kPrecision = 4,
   kIrInternalInterface = 5,
   kRadarInternalInterface = 6,
-  kRadarInterface = 7,
+  kRadarOutput = 7,
   kSatelliteTarget = 8,
 };
 

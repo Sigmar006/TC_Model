@@ -88,7 +88,7 @@ class RirSensorComponent : public Component {
    * @brief 记录“红外卫星测角 → LRDR 实际探测”的跨模型验收证据。
    *
    * 该记录由场景编排层在确认先收到真实 SBIRS 帧、后取得本组件真实探测结果时调用；
-   * RIR 组件只负责把双方原始量写入本模型的 rir_acceptance.log。
+   * RIR 组件只负责把双方原始量写入本模型的 RadarOutput.log。
    */
   void WriteSbirsCueDetectionAcceptance(
       std::uint32_t cycle, double sim_time_sec, const std::string& source_name,

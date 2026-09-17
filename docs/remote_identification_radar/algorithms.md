@@ -324,7 +324,7 @@ RIR 识别积累全量挂接于自持雷达链路（自发射 $\to$ 入射 $\to$
 - **证据**：[evidence: tests/unit/common/common_mti_mtd_acceptance_bank_test.cpp]
 
 ### A.6 验收旁路输出物组装 (RirAcceptanceRecords)
-- **意图**：验收旁路产物落盘，共三个：`log/rir_acceptance.log`（MTI/MTD 8 路派生、极化 L2 派生、运动特征/RCS 统计等列）、`log/rir_antenna_pattern.csv`（全向网格方向图导出，体积随波束宽变化）、`log/rir_scan_pattern.csv`（本周期波位序列）。
+- **意图**：验收旁路产物落盘：`log/RadarOutput.log`（普通功能与外部接口，含 MTI/MTD 8 路派生、极化 L2 派生、运动特征/RCS 统计等列）、`log/rir_acceptance.log`（性能项）、`log/rir_antenna_pattern.csv`（全向网格方向图导出，体积随波束宽变化）、`log/rir_scan_pattern.csv`（本周期波位序列）。
 - **规则**：CMake 验收开关门控，逐周期追加。
 - **边界与反直觉**：全部产物纯旁路——不进指向、不进识别、不进 SINR；`rir_scan_pattern.csv` 是调度结果导出而非指向输入。
 - **证据**：[evidence: tests/unit/remote_identification_radar/rir_acceptance_look_polar_test.cpp]

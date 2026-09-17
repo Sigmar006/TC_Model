@@ -22,11 +22,11 @@ class AcceptanceRecordFormatTest : public ::testing::Test {
         oneq::logging::AcceptanceChannel::kIrInternalInterface);
     oneq::logging::CloseAcceptanceLog(
         oneq::logging::AcceptanceChannel::kRadarInternalInterface);
-    oneq::logging::CloseAcceptanceLog(oneq::logging::AcceptanceChannel::kRadarInterface);
+    oneq::logging::CloseAcceptanceLog(oneq::logging::AcceptanceChannel::kRadarOutput);
     std::remove(kTestPath);
     std::remove("oneq_ir_internal_interface_test.log");
     std::remove("oneq_radar_internal_interface_test.log");
-    std::remove("oneq_radar_interface_test.log");
+    std::remove("oneq_radar_output_test.log");
   }
 };
 
@@ -139,10 +139,10 @@ TEST_F(AcceptanceRecordFormatTest, InternalInterfaceChannelsWriteSeparateFiles) 
 #endif
 }
 
-TEST_F(AcceptanceRecordFormatTest, RadarExternalInterfaceUsesDedicatedFile) {
-  const char* path = "oneq_radar_interface_test.log";
+TEST_F(AcceptanceRecordFormatTest, RadarOutputUsesDedicatedFile) {
+  const char* path = "oneq_radar_output_test.log";
   const oneq::logging::AcceptanceChannel channel =
-      oneq::logging::AcceptanceChannel::kRadarInterface;
+      oneq::logging::AcceptanceChannel::kRadarOutput;
   oneq::logging::OpenAcceptanceLog(channel, path);
   oneq::logging::WriteAcceptanceLog(
       channel, oneq::logging::FormatAcceptanceLine(

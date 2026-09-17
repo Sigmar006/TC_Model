@@ -53,7 +53,7 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 | 被测 | RIR 地基站点识别链（RCS+运动真值四维特征）+ 运行期指令指定任务 + 特征量测进五源融合 + 推演 + 威胁 | 三星 GEO 红外交会 + 消息投递地面站融合 + 推演 + **精度评估（五项误差 + AHP）** |
 | 周期 | 400 × 1 s（场景 JSON 里改） | 80 × 1 s |
 | 集成形态 | 挂 5 类组件（§4） | 三卫星实体挂 SBIRS（`kMessage` 投递）；地面站挂 `GroundStationFusionComponent`（内含 `FusionEngine` + `PrecisionEvaluationSession`）（§6） |
-| 验收文件 | `rir_acceptance.log` + `rir_antenna_pattern.csv` + `rir_scan_pattern.csv` + `fusion/inference_acceptance.log` | `precision/opir/fusion/inference_acceptance.log` 四份 |
+| 验收文件 | `RadarOutput.log` + `rir_acceptance.log`（性能）+ `rir_antenna_pattern.csv` + `rir_scan_pattern.csv` + `fusion/inference_acceptance.log` | `SatelliteTarget.log` + `precision/opir/fusion/inference_acceptance.log` |
 | 集成端日志 | `integration_events.log` + `integration_views.log`（rir/inference/threat 视图行） | `integration_events.log` / `integration_views.log`（消息投递与回执事件） |
 | 冒烟判据 | demo 退出码 0（航迹≥2、融合≥1、视图/CSV 行数达标） | demo 退出码 0（五指标有样本、AHP 合法、`dual_sat_cycles>0`） |
 
@@ -67,7 +67,7 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 | CMake 开关（编译库时） | 控制文件 |
 | --- | --- |
 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` | `SatelliteTarget.log` + `opir_acceptance.log`（性能）+ `IRInternalInterface.log` |
-| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | `rir_acceptance.log` + `RadarInterface.log` + `RadarInternalInterface.log`（+ 两份雷达 CSV） |
+| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | `RadarOutput.log` + `rir_acceptance.log`（性能）+ `RadarInternalInterface.log`（+ 两份雷达 CSV） |
 | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` | `fusion_acceptance.log` |
 | `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` | `inference_acceptance.log` |
 | `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` | `precision_acceptance.log` |
@@ -78,7 +78,7 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 ```
 ONEQ_OPIR_ACCEPTANCE_LOG_PATH / ONEQ_RIR_ACCEPTANCE_LOG_PATH /
 ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH / ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH /
-ONEQ_RADAR_INTERFACE_LOG_PATH /
+ONEQ_RADAR_OUTPUT_LOG_PATH /
 ONEQ_FUSION_ACCEPTANCE_LOG_PATH / ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH /
 ONEQ_PRECISION_ACCEPTANCE_LOG_PATH = <目录>/<文件名>
 ```
@@ -92,7 +92,7 @@ ONEQ_PRECISION_ACCEPTANCE_LOG_PATH = <目录>/<文件名>
 
 | # | 实体 | 组件 | 封装的库对象 | 每周期输入 | 产出 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `rir_ground_site`（**独立地基实体，先于平台创建**） | `RirSensorComponent` | `RirSession::Create(configs.rir)` | 站点局部 ENU 场景目标（`RirSceneTarget`，含识别特征真值）+ 站点 ECEF | `RirOutputFrame`（航迹/识别/量测）；量测经库适配器 `AdaptRirFeatureMeasurementsToDetectionRecords`（源通道 `kRirSourceId=5`）供融合；写 `rir_acceptance.log` |
+| 1 | `rir_ground_site`（**独立地基实体，先于平台创建**） | `RirSensorComponent` | `RirSession::Create(configs.rir)` | 站点局部 ENU 场景目标（`RirSceneTarget`，含识别特征真值）+ 站点 ECEF | `RirOutputFrame`（航迹/识别/量测）；量测经库适配器 `AdaptRirFeatureMeasurementsToDetectionRecords`（源通道 `kRirSourceId=5`）供融合；普通功能与外部接口写 `RadarOutput.log` |
 | 2 | `platform` | `FlightComponent` | flight_dynamic（FD 门控；Windows 走运动学回退） | 场景航路（LLA 航点） | 平台位姿推进；发布 `on_platform_state` / `on_waypoint_reached` |
 | 3 | `platform` | `FusionComponent` | `fusion::FusionEngine(scene_data.fusion)` | 本周期各源 `DetectionRecord`（含 RIR 源 5） | `FusedTarget` 态势（含逐航迹 UKF 运动学估计，库默认开）；发布 `on_fusion_updated`；写 `fusion_acceptance.log` |
 | 4 | `platform` | `InferenceComponent` | `target_inference::TargetInferenceEngine`（纯函数式） | 融合目标的运动学估计 | 轨迹预报/发射点/落点/类型概率；写 `inference_acceptance.log`；`[视图:inference]` 输出发射/落点 LLA |
@@ -211,7 +211,7 @@ dual_sat_cycles > 0`（精度评估交会只用前两颗星——库 API 双视�
 数值待重跑后更新）：
 
 - [ ] demo 退出码 0
-- [ ] `rir_acceptance.log` 存在且全为 `[验收项：` 行（含 `[规模目标识别功能测试]` 等改名后项名）
+- [ ] `RadarOutput.log` 存在且包含普通功能与外部接口验收行；`rir_acceptance.log` 仅包含性能项
 - [ ] `[验收项：目标测量角度与距离]` 有行，**无一行 `斜距=无`**
 - [ ] `[验收项：IMM模型权重]`、`[验收项：独立目标识别器结论]`、`[验收项：极化特征解算]`、`[验收项：散射中心和轮廓特征]` 均有行
 - [ ] `rir_antenna_pattern.csv`、`rir_scan_pattern.csv` 存在

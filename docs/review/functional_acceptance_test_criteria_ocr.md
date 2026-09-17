@@ -19,7 +19,8 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 | `Opir_acceptance.log`（红外性能项） | `log/opir_acceptance.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 11–14 项） | `log/SatelliteTarget.log` 与 `log/fusion_acceptance.log` 各写一份、分别判定 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 15–18 项） | `log/fusion_acceptance.log` | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
-| `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
+| `RadarOutput.log`（雷达普通功能与外部接口项） | `log/RadarOutput.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
+| `Rir_acceptance.log`（雷达性能项） | `log/rir_acceptance.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
 | `inference_acceptance.log` / `Inference_acceptance.log` | `log/inference_acceptance.log` | `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` |
 | `Precision_acceptance.log` | `log/precision_acceptance.log` | `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` |
 | `Rir_scan_pattern.csv` | `log/rir_scan_pattern.csv` | 随 RIR 开关 |
@@ -480,9 +481,9 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ## 四、识别与推演
 
-### 19. 规模目标识别功能测试（`log/rir_acceptance.log`）
+### 19. 规模目标识别功能测试（`log/RadarOutput.log`）
 
-- `Rir_acceptance.log` 文件中能够记录集群目标的**具体规模数量**视为通过，否则视为不通过。
+- `RadarOutput.log` 文件中能够记录集群目标的**具体规模数量**视为通过，否则视为不通过。
 - **外部导入合并判据**：预估数量相对同周期输入场景有效目标数量的误差须 `≤30%`。
   模型日志只写预估规模；实际数量和误差比例由验证程序从输入快照计算。实际数量为零时须先
   冻结绝对数量误差口径。
@@ -513,7 +514,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 - `inference_acceptance.log` 文件中能够记录 **DD 目标**的**初步落点位置**视为通过，否则视为不通过。
 - **外部导入合并判据**：
-  - `log/rir_acceptance.log` 须在卫星测角数据时刻之后记录卫星探测引导信息，以及 RIR 对 DD 目标得到的
+  - `log/RadarOutput.log` 须在卫星测角数据时刻之后记录卫星探测引导信息，以及 RIR 对 DD 目标得到的
     距离、方位和高度；不能用 `log/SatelliteTarget.log` 或推演日志中的重复字段替代。
   - `log/inference_acceptance.log` 须记录 DD 初步预测落点；预测落点误差须不超过 DD 实际射程
     的 `5%`。误差由验证程序计算，不写入日志。
@@ -598,16 +599,18 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ---
 
-## 六、雷达信号处理（OCR：`RadarSingalProcessingDateFlow.log` → `log/rir_acceptance.log`）
+## 六、雷达信号处理（统一输出至 `log/RadarOutput.log`）
 
-> 原文日志文件名拼写为 `RadarSingalProcessingDateFlow.log`；仓库统一写入 `log/rir_acceptance.log`（开关 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`）。天线方向图明细另写 `log/rir_antenna_pattern.csv`。**第 28–55 项示例遵循 §0 写作规则（禁止派生量、无则省略）。**
+> 原文日志文件名拼写为 `RadarSingalProcessingDateFlow.log`；普通功能项统一写入 `log/RadarOutput.log`，
+> 性能项仍写入 `log/rir_acceptance.log`（开关 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`）。天线方向图明细另写
+> `log/rir_antenna_pattern.csv`。**第 28–55 项示例遵循 §0 写作规则（禁止派生量、无则省略）。**
 
 ### 28. 天线方向图仿真功能测试
 - 能够记录**天线增益方向图**数据视为通过，否则视为不通过。
 - 能够记录**扫描波束宽度**视为通过，否则视为不通过。
 - 能够记录**峰值增益值**视为通过，否则视为不通过。
 - **外部导入合并判据**：本项按“高斯主瓣天线方向图仿真功能测试”补充验收，
-  `log/rir_acceptance.log` 中的峰值增益须为 `52 dB`。日志只写模型计算的峰值增益，验证程序
+  `log/RadarOutput.log` 中的峰值增益须为 `52 dB`。日志只写模型计算的峰值增益，验证程序
   负责比较冻结期望值；数值显示精度或允许容差须在验收前冻结。
 
 - **实现**（会话首周期一行；2D 明细在 CSV，日志只写峰值与波束宽度）：
@@ -769,7 +772,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 - 能够记录**目标量测误差统计**视为通过，否则视为不通过。缺失。可计算。
 - **外部导入合并判据**：角度误差须在 `[-5°, +5°]`，距离误差绝对值不得超过目标与雷达
   真值距离的 `5%`。本项原 OCR 已要求误差统计，故已有误差字段继续写入
-  `log/rir_acceptance.log`；新增的误差比例和通过标志不写入日志。距离采用 ECEF 三维直线、
+  `log/RadarOutput.log`；新增的误差比例和通过标志不写入日志。距离采用 ECEF 三维直线、
   地表大圆还是其它装备口径须在验收前冻结。
 
 - **实现**（角距一行；量测误差=量测−真值）：
@@ -828,7 +831,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 - 能够记录当前时刻的**目标状态协方差**视为通过，否则视为不通过。
 - 能够记录当前时刻的**估计误差指标**视为通过，否则视为不通过。缺失。可计算。
 - **外部导入合并判据**：ECEF 位置、速度和加速度估计分别须处于对应真值的 `±5%` 范围。
-  本项原 OCR 已要求估计误差指标，故已有误差字段继续写入 `log/rir_acceptance.log`；新增的
+  本项原 OCR 已要求估计误差指标，故已有误差字段继续写入 `log/RadarOutput.log`；新增的
   相对误差百分比和通过标志不写入日志。真值分量为零或接近零时须使用验收前冻结的绝对阈值。
 
 - **实现**（当前估计 + 协方差 + 估计−真值）：
@@ -906,9 +909,9 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
     仿真时间=2.000s 仿真周期=2 [宽带一维像特征解算功能测试] 航迹=1 目标ID=1001 散射中心=[(0.0m,-16.0dBsm);(6.0m,-16.0dBsm);(12.0m,-16.0dBsm)] 长度=12.000m 峰数=3 识别类型=弹道导弹
     ```
 
-### 47A. 综合特征识别功能测试（`log/rir_acceptance.log`）
+### 47A. 综合特征识别功能测试（`log/RadarOutput.log`）
 
-- `RadarSingalProcessingDateFlow.log`（仓库映射为 `log/rir_acceptance.log`）中能够独立记录
+- `RadarOutput.log` 中能够独立记录
   **运动、RCS、极化和宽带一维像特征综合得到的目标类别**。
 - 以带真值标签的有效样本统计，识别正确率须 `>60%`；真值标签、样本计数、正确率和通过标志
   由外部验证程序保留，不写入模型日志。有效样本集合以及按目标还是按周期计数须在验收前冻结。
@@ -1000,8 +1003,8 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 `测试2.md` 中没有与前 55 项同名的接口测试。导入项沿用第 56–69 项编号，其中第 59、69 项
 已删除，当前保留 12 项；重复出现的
 “仿真控制与时钟-雷达接口测试”合并为第 60 项，同时保留其 `.csv` / `.log` 两种
-源文件表述。`parameterClock.*`、`SatelliteInterface.log`、`RadarInterface.log`
-目前都不是仓库既有落盘文件名，不能仅因公开 DTO 中存在部分字段就判定整项通过。
+源文件表述。`SatelliteTarget.log` 和 `RadarOutput.log` 是模型统一验收输出文件；
+`parameterClock.*` 仍由外部仿真控制返回系统提供。不能仅因公开 DTO 中存在部分字段就判定整项通过。
 各字段由模型还是外部系统提供、误差是否需要写日志，统一以 §0B 为准。
 
 ### 56. 仿真控制与时钟接口测试
@@ -1020,17 +1023,17 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 - **接口分类**：外部；卫星平台/配置模型 → SBIRS 模型。
 - **模型能否输出**：**输入能力存在，验收要求不完整**。`SbirsSessionConfig` 已接收硬件、
   任务、安装指向、策略、环境五域配置，`SbirsCycleInput` 每周期接收卫星 ECEF 位置、速度、
-  姿态和 UTC 儒略日；当前没有完整配置回显接口或 `SatelliteInterface.log`。须先冻结必测字段、
+  姿态和 UTC 儒略日；当前没有完整配置回显接口或 `SatelliteTarget.log` 对应记录。须先冻结必测字段、
   单位、方向和应答规则，才能判定通过。
 
 ### 58. 目标与红外环境场景接口测试
 
-- **导入要求**：`SatelliteInterface.log` 记录目标数量、目标状态数组、红外辐射特征、
+- **导入要求**：`SatelliteTarget.log` 记录目标数量、目标状态数组、红外辐射特征、
   背景辐射和大气透过率。场景有效期字段已删除。
 - **接口分类**：外部；目标/红外环境场景模型 → SBIRS 模型。
 - **模型能否输出**：**可以提供保留字段，但尚无统一日志**。公开输入已有目标列表、目标 ID/名称、ECEF 位置/速度、
   有效标志和辐射强度，环境配置已有气象与基础大气透过率；背景噪声由载荷硬件和环境在
-  模型内部计算。当前缺少的只是 `SatelliteInterface.log` 统一场景投影。
+  模型内部计算。当前缺少的只是 `SatelliteTarget.log` 统一场景投影。
 
 ### 60. 仿真控制与时钟-雷达接口测试
 
@@ -1053,19 +1056,19 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ### 62. 目标与电磁环境场景接口测试
 
-- **导入要求**：`RadarInterface.log` 记录目标数量、目标状态数组、目标 RCS、极化数据和
+- **导入要求**：`RadarOutput.log` 记录目标数量、目标状态数组、目标 RCS、极化数据和
   HRRP 数据。背景噪声、大气损耗和干扰状态字段已删除。源文中的“红外探测器模型”与文件名和字段语义
   冲突，本项按 RIR 雷达模型解释。
 - **接口分类**：外部；目标/电磁环境场景模型 → RIR 雷达模型。
 - **模型能否输出**：**可以**。`RirCycleInput` 接收目标列表，目标记录包含运动状态、RCS、
   极化散射矩阵和距离向散射中心（HRRP 输入）。开启 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` 后，模型在
-  `RadarInterface.log` 先写本周期目标数量，再逐目标写目标 ID、名称、ENU 位置/速度、RCS、
+  `RadarOutput.log` 先写本周期目标数量，再逐目标写目标 ID、名称、ENU 位置/速度、RCS、
   Swerling 类型、完整视角 RCS、极化散射矩阵和 HRRP 散射中心；删减后本项不再验收环境功率或干扰状态。
 
 ### 63. 外部干扰输入雷达接口测试
 
 - **导入要求**：外部干扰机或 RF 场景系统向 RIR 雷达模型提交可识别、可定时且可计算链路的
-  干扰发射事实；`RadarInterface.log` 记录本周期收到的干扰数量及逐干扰发射输入。
+  干扰发射事实；`RadarOutput.log` 记录本周期收到的干扰数量及逐干扰发射输入。
 - **接口分类**：外部输入；干扰机/电子对抗模型或 RF 场景系统 → RIR 雷达模型内部接收前端。
 - **输入字段**：世界周期号、接收时间窗、干扰源 ID、发射 ID、干扰机 ECEF 位置/速度、波形类型、
   活动起点和持续时间、中心频率、占用带宽、发射功率、天线指向/增益及极化方式。
@@ -1075,7 +1078,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
   `sensor_entity_id + emission_id` 唯一；外部干扰不得冒充本机发射。非法输入必须原子拒绝，
   合法输入应能按干扰身份追溯到第 30 项到达雷达功率及后续检测结果。
 - **模型能否输出**：**可以**。`RirCycleInput.rf_scene` 已接收外部 `RfSceneFrame`，开启
-  `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` 后，模型将输入摘要写入 `RadarInterface.log` 作为验收旁证。
+  `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` 后，模型将输入摘要写入 `RadarOutput.log` 作为验收旁证。
 
 第 64、65 项统一归入**雷达对外目标信息输出接口**。雷达按同一周期分别输出点迹量测层和
 航迹识别层数据，外部消费者可按需要用于态势界面显示、数据融合以及形成打击决策参考；
@@ -1083,59 +1086,59 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ### 64. 雷达对外目标信息输出接口测试（点迹量测）
 
-- **导入要求**：`RadarInterface.log` 记录量测数量、目标/点迹标识、检测标志、距离、方位、
+- **导入要求**：`RadarOutput.log` 记录量测数量、目标/点迹标识、检测标志、距离、方位、
   俯仰、径向速度、SNR、检测概率和量测协方差。
 - **接口分类**：外部输出；RIR 雷达模型 → 外部系统（态势显示、数据融合、打击决策支持）。
 - **主要用途**：提供低时延的当周期探测点迹，用于态势界面即时显示、融合系统量测更新，
   并作为目标指示和打击决策的观测参考。
 - **模型能否输出**：**可以**。开启 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` 后，模型在
-  `RadarInterface.log` 先写本周期量测数量，再逐点迹写目标/点迹标识、检测标志、量测距离、
+  `RadarOutput.log` 先写本周期量测数量，再逐点迹写目标/点迹标识、检测标志、量测距离、
   方位、俯仰、检测链径向速度（远离为正）、SNR、检测概率及完整 3×3 ENU `[x,y,z]`
   量测协方差。该日志是验收旁路，
   不改变正式 `RirOutputFrame` 只公开识别结论与特征量测的边界。
 
 ### 65. 雷达对外目标信息输出接口测试（航迹识别）
 
-- **导入要求**：`RadarInterface.log` 记录航迹数量、航迹标识、目标状态、状态协方差、集群
+- **导入要求**：`RadarOutput.log` 记录航迹数量、航迹标识、目标状态、状态协方差、集群
   目标数量、目标类别以及 RCS、极化、HRRP 特征摘要。
 - **接口分类**：外部输出；RIR 雷达模型 → 外部系统（态势显示、数据融合、打击决策支持）。
 - **主要用途**：提供经过关联、滤波和识别后的稳定目标产品，用于持续态势展示、融合航迹维护、
   目标优先级研判，并作为打击对象选择和火力规划的参考信息。
 - **模型能否输出**：**可以**。开启 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` 后，模型在
-  `RadarInterface.log` 先写航迹数量、按确认航迹计数的集群目标数量和批次，再逐航迹按关联键
+  `RadarOutput.log` 先写航迹数量、按确认航迹计数的集群目标数量和批次，再逐航迹按关联键
   聚合生命周期、ENU 位置/速度/加速度、完整 6×6 `[x,vx,y,vy,z,vz]` 状态协方差、类别、型号、置信度以及
   RCS、极化和 HRRP 特征摘要。该投影直接使用同周期航迹和识别快照，不要求外部跨文件拼接。
 
 ### 66. 雷达资源状态与日志接口测试
 
-- **导入要求**：`RadarInterface.log` 记录生命周期状态、雷达工作模式、已用/可用跟踪容量、
+- **导入要求**：`RadarOutput.log` 记录生命周期状态、雷达工作模式、已用/可用跟踪容量、
   波束任务队列、当前目标列表、告警码和日志内容。任务完成率字段已删除。
 - **接口分类**：外部；RIR 雷达模型 → 资源监控/运维模型。
 - **模型能否输出**：**可以**。开启 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` 后，模型按周期在
-  `RadarInterface.log` 输出运行状态、工作模式、已用/可用跟踪容量，候选/确认/丢失航迹计数，
+  `RadarOutput.log` 输出运行状态、工作模式、已用/可用跟踪容量，候选/确认/丢失航迹计数，
   搜索/指定/跟踪波束任务数量及完整任务队列、当前航迹到外部目标的映射，并逐条输出结构化
   `issues` 的告警码、严重度、阶段和日志内容。
 
 
 ### 67. 红外观测与航迹输出接口测试
 
-- **导入要求**：`SatelliteInterface.log` 记录观测数量、目标/航迹标识、检测标志、方位、俯仰、
+- **导入要求**：`SatelliteTarget.log` 记录观测数量、目标/航迹标识、检测标志、方位、俯仰、
   IR SNR、状态估计、状态协方差和目标数量；可附带归属/引导诊断距离，但必须明确标注其不是
   被动红外载荷的直接测距结果。SCR 和目标类别字段已删除。
 - **接口分类**：外部；SBIRS 模型 → 融合/显示模型。
 - **模型能否输出**：**保留字段可以从原始输出和内部跟踪状态形成专用投影**。
   `SbirsOutputFrame` 有检测记录数量、检测 ID、角度、IR SNR、阶段和检测标志；归属层可给目标 ID
-  和诊断距离，内部跟踪器持有状态估计与协方差。实现 `SatelliteInterface.log` 时必须保持
+  和诊断距离，内部跟踪器持有状态估计与协方差。实现 `SatelliteTarget.log` 对应记录时必须保持
   原始观测、归属诊断和跟踪状态分层，不能把真值/诊断距离伪装成传感器直接测距。
 
 ### 68. 预警预测与精度评估接口测试
 
-- **导入要求**：`SatelliteInterface.log` 记录事件类型、目标标识、事件时刻、发射点、关机点
+- **导入要求**：`SatelliteTarget.log` 记录事件类型、目标标识、事件时刻、发射点、关机点
   状态、预测落点、精度指标和预警等级。
 - **接口分类**：外部；SBIRS/融合模型 → 推演模型 → 精度评估/预警消费模型。
 - **模型能否输出**：**分布式能力存在，统一接口不存在**。第 20–27 项及公开 inference、
   precision 类型可提供轨迹、发射点、关机点、落点和精度指标，事件与威胁等级由事件/威胁链
-  提供；但这些字段跨多个模型和日志，没有单一 `SatelliteInterface.log` 聚合记录。外部编排层
+  提供；但这些字段跨多个模型和日志，没有单一 `SatelliteTarget.log` 聚合记录。外部编排层
   可按目标键和周期聚合，或新增稳定的预警消息 DTO 后验收。
 
 
@@ -1145,12 +1148,12 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 |---|---|---|---|
 | 仿真控制/时钟 → SBIRS、RIR 会话 | 周期号、仿真时间/UTC、`dt_sec`；结果状态与 issues | 56、60 | 模型提供基础周期数据；控制命令与应答由外部返回系统记录到 `parameterClock.*` |
 | 平台/配置 → SBIRS、RIR | `SbirsSessionConfig` / `RirSessionConfig`、运行期补丁、每周期平台状态 | 57、61 | 配置输入可用，缺全量回显和统一任务应答 |
-| 目标/环境场景 → SBIRS、RIR | `SbirsCycleInput` / `RirCycleInput` | 58、62 | 删减后的目标、红外环境及目标电磁特征字段可用，缺统一接口日志 |
-| 干扰机/电子对抗或 RF 场景 → RIR | `RirCycleInput.rf_scene` 中的外部 `RfSceneFrame` | 63 | 输入能力和 `RadarInterface.log` 验收投影可用，内部计算到达功率、接收机饱和及 SINR 影响 |
-| RIR → 外部态势/融合/打击决策支持 | 点迹量测层、航迹识别层 | 64、65 | `RadarInterface.log` 分层输出，供外部显示、融合及打击参考 |
+| 目标/环境场景 → SBIRS、RIR | `SbirsCycleInput` / `RirCycleInput` | 58、62 | RIR 第 62 项已投影到 `RadarOutput.log`；SBIRS 第 58 项字段可用但尚缺统一记录 |
+| 干扰机/电子对抗或 RF 场景 → RIR | `RirCycleInput.rf_scene` 中的外部 `RfSceneFrame` | 63 | 输入能力和 `RadarOutput.log` 验收投影可用，内部计算到达功率、接收机饱和及 SINR 影响 |
+| RIR → 外部态势/融合/打击决策支持 | 点迹量测层、航迹识别层 | 64、65 | `RadarOutput.log` 分层输出，供外部显示、融合及打击参考 |
 | SBIRS → Fusion/显示 | SBIRS 检测记录和航迹投影 | 67 | 既有业务链可运行，但不等同于测试项要求的全字段接口 |
 | Fusion → Inference → Precision/Threat | 融合航迹、推演结果、精度结果、威胁结果 | 68 | 分模块输出可用，缺统一预警消息封装 |
-| RIR → 监控/运维 | 航迹生命周期、工作模式、容量、调度状态、目标和 issues | 66 | 保留字段可从内部取得，缺统一资源状态投影 |
+| RIR → 监控/运维 | 航迹生命周期、工作模式、容量、调度状态、目标和 issues | 66 | 已统一投影到 `RadarOutput.log` |
 
 ---
 
@@ -1278,7 +1281,7 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 | 模型内部链路 | 内部交换内容 | 当前是否可形成外部证据 | 边界判断 |
 |---|---|---|---|
-| RIR 场景几何 → 回波功率计算 → 噪声/杂波/干扰 → 信号处理增益/CFAR | 目标角距、RCS、方向图增益、回波功率、环境噪声、处理增益、SNR、Pd、检测判决 | **可以分项输出**：第 28–36 项写入 `log/rir_acceptance.log`，方向图和扫描另有 CSV | 属模型内部信号链；对外只发布稳定结果或验收旁路，不暴露内部计算对象 |
+| RIR 场景几何 → 回波功率计算 → 噪声/杂波/干扰 → 信号处理增益/CFAR | 目标角距、RCS、方向图增益、回波功率、环境噪声、处理增益、SNR、Pd、检测判决 | **可以分项输出**：第 28–36 项写入 `log/RadarOutput.log`，方向图和扫描另有 CSV | 属模型内部信号链；对外只发布稳定结果或验收旁路，不暴露内部计算对象 |
 | RIR 检测量测 → 关联 → 生命周期 → CV/IMM 滤波 | 量测、关联键、状态/协方差、命中/失配与航迹状态 | **部分可以**：第 37–42 项及归属记录可观测；完整点迹/滤波工作单元不属于 public API | 属模型内部跟踪链；外部模型通过正式输出/适配器消费，不直接调用关联器或滤波器 |
 | RIR 航迹 → RCS/运动/极化/HRRP 特征 → 特征匹配与识别积累 | 航迹观测、四维特征、质量/相似度、类别/型号、识别摘要 | **可以输出主要产品**：`RirOutputFrame`、识别摘要及第 44–47、47A 项；内部数据库匹配状态不直接输出 | 属模型内部识别链；第 65 项需要的是对外聚合投影，不是开放内部 tracker/matcher |
 | SBIRS 场景几何 → 地球遮挡/视场 → 辐射/大气 → 背景噪声/SNR → 检测 | 目标 LOS、辐射强度、透过率、噪声统计、SNR、检测标志 | **可以输出主要观测**：原始角度、SNR、检测标志及第 5–11 项；内部噪声分解不全进 public API | 属模型内部红外探测链，对应第 58、67 项的部分字段来源 |
@@ -1297,7 +1300,8 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 | `SatelliteTarget.log` | `log/SatelliteTarget.log` | 5–10、11–14、24（1–4 不输出） |
 | `Opir_acceptance.log` | `log/opir_acceptance.log` | 50、54–55（红外性能项） |
 | `Fusion_acceptance.log` | `log/fusion_acceptance.log` | 11–18（第 11–14 项与 OPIR 文件重复写出、分别判定） |
-| `Rir_acceptance.log` / `RadarSingalProcessingDateFlow.log` | `log/rir_acceptance.log` | 19, 28–47、47A、49、54 |
+| `RadarOutput.log` | `log/RadarOutput.log` | 19、28–47、47A、49、62–66 |
+| `Rir_acceptance.log` | `log/rir_acceptance.log` | 50、52–54（雷达性能项） |
 | `IRInternalInterface.log` | `log/IRInternalInterface.log` | 74–77（SBIRS 内部接口分项证据） |
 | `RadarInternalInterface.log` | `log/RadarInternalInterface.log` | 70–73（RIR 内部接口分项证据） |
 | `inference_acceptance.log` | `log/inference_acceptance.log` | 20–25, 24（轨迹突变） |
@@ -1305,8 +1309,7 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 | `Rir_scan_pattern.csv` | `log/rir_scan_pattern.csv` | 48 |
 | `integration_events.log` | 场景 `log_dir` | 50–53 |
 | `parameterClock.log` / `parameterClock.csv` | **由外部仿真控制返回系统提供，模型不得补写** | 56、60 |
-| `SatelliteInterface.log` | **当前无对应统一文件** | 57–58、67–68（现有数据分散在公开 DTO 与各层日志） |
-| `RadarInterface.log` | `log/RadarInterface.log` | 63–65（第 61–62、66 项尚未实现该文件投影） |
+| `SatelliteTarget.log`（外部接口项） | `log/SatelliteTarget.log` | 57–58、67–68（未实现项仍无对应记录） |
 
 **合计：56 项功能/性能验收测试 + 12 项外部接口验收测试 + 8 项内部接口测试，
 共 76 项；为保持已有文档、代码和日志关联稳定，新增综合特征识别项编号为 47A，其余原编号不变。**

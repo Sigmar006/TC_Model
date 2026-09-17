@@ -48,7 +48,8 @@ oneq_add_component(rir_engine SOURCES ${RIR_ENGINE_SOURCES})
 oneq_add_component(rir_core SOURCES ${RIR_CORE_SOURCES})
 # RIR 验收信息日志（[RirAccept] 事件流）：检测链/跟踪/识别接线点在 rir_engine，
 # 会话/波位/驻留统计接线点在 rir_core，两侧共用 RirAcceptanceLog.h。
-# 同一开关启用 RIR 验收日志与 RadarInternalInterface.log 内部接口证据。
+# 同一开关启用 RadarOutput.log 普通功能/外部接口、rir_acceptance.log 性能验收，
+# 以及 RadarInternalInterface.log 内部接口证据。
 if(ONEQ_ENABLE_RIR_ACCEPTANCE_LOG)
     target_compile_definitions(rir_engine PRIVATE ONEQ_ENABLE_RIR_ACCEPTANCE_LOG=1)
     target_compile_definitions(rir_core PRIVATE ONEQ_ENABLE_RIR_ACCEPTANCE_LOG=1)

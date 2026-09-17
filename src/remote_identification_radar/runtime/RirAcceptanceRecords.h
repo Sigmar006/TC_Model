@@ -89,11 +89,11 @@ void WriteRirInterferenceLinks(
     float sim_time_sec, std::uint32_t cycle,
     const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links);
 
-/** @brief 第63项：将外部 RF 场景中的干扰发射输入摘要写入 RadarInterface.log。 */
+/** @brief 第63项：将外部 RF 场景中的干扰发射输入摘要写入 RadarOutput.log。 */
 void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
                                        const oneq::electromagnetics::RfSceneFrame& rf_scene);
 
-/** @brief 第62项：将目标运动状态与电磁特征输入写入 RadarInterface.log。 */
+/** @brief 第62项：将目标运动状态与电磁特征输入写入 RadarOutput.log。 */
 void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
                                   const session::RirSceneTargetList& targets);
 
@@ -110,7 +110,7 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
                          const oneq::coordinate::LlaPositionDegM& platform_lla,
                          double gate_threshold);
 
-/** @brief 第64项：将对外目标信息的点迹量测层写入 RadarInterface.log。 */
+/** @brief 第64项：将对外目标信息的点迹量测层写入 RadarOutput.log。 */
 void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
                                   const tracking::RirAssociationResult& association);
 
@@ -144,12 +144,12 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const oneq::coordinate::EcefPositionM& platform_ecef,
                         const RirTrackTruthContext* truth);
 
-/** @brief 第65项：将对外目标信息的航迹识别层写入 RadarInterface.log。 */
+/** @brief 第65项：将对外目标信息的航迹识别层写入 RadarOutput.log。 */
 void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
                             const std::vector<tracking::RirTrackState>& tracks,
                             const session::RirOutputFrame& output_frame);
 
-/** @brief 第66项：将工作模式、航迹容量、驻留队列和告警写入 RadarInterface.log。 */
+/** @brief 第66项：将工作模式、航迹容量、驻留队列和告警写入 RadarOutput.log。 */
 void WriteRirExternalResourceStatus(
     std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
     config::RirWorkMode work_mode, const std::vector<RirDwellPlan>& dwell_plan,

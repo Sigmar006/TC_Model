@@ -32,7 +32,11 @@ struct ONEQ_API RirSessionConfig {
   RirPolicyConfig policy{};
   RirEnvironmentConfig environment{};
   bool sensor_enabled{true}; /**< 传感器初始电源状态 */
-  bool acceptance_log_enabled{true}; /**< 是否打印 LRDR 功能及接口验收日志 */
+  /**
+   * 外部运行时日志开关：true 打印 LRDR 功能、接口验收日志及验收 CSV，false 全部禁止。
+   * 仅在编译期开关 ONEQ_ENABLE_RIR_ACCEPTANCE_LOG 已启用时生效，默认 true。
+   */
+  bool acceptance_log_enabled{true};
 };
 
 }  // namespace config

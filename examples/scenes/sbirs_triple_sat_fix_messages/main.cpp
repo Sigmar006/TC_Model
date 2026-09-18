@@ -318,6 +318,7 @@ bool LoadScene(const char* path, LoadedScene* scene, std::string* error) {
   }
   scene->satellites.clear();
   scene->satellites.reserve(satellites.Size());
+  // 顶层外部输入开关统一作用于本场景创建的全部红外卫星会话。
   const bool acceptance_log_enabled =
       !root.Has("acceptance_log_enabled") || root["acceptance_log_enabled"].AsBool();
   for (std::size_t i = 0U; i < satellites.Size(); ++i) {

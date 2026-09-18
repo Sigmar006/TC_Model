@@ -24,6 +24,8 @@ inline void LoadRirSessionConfig(const examples::JsonValue& root,
   if (root.Has("acceptance_log_enabled")) {
     config->acceptance_log_enabled = root["acceptance_log_enabled"].AsBool();
   }
+  // acceptance_log_enabled 是外部 JSON 运行时开关：false 禁止本会话的 LRDR
+  // 验收日志和验收 CSV；该参数不能绕过编译期总开关。
 }
 
 /// Load a config::RirSessionConfig from a JSON file.

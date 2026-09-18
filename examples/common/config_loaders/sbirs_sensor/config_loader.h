@@ -25,6 +25,8 @@ inline void LoadSbirsSessionConfig(
   if (root.Has("acceptance_log_enabled")) {
     config->acceptance_log_enabled = root["acceptance_log_enabled"].AsBool();
   }
+  // acceptance_log_enabled 是外部 JSON 运行时开关：false 禁止本会话的红外
+  // 验收日志和融合副本；该参数不能绕过对应的编译期总开关。
 }
 
 /// Load a config::SbirsSessionConfig from a JSON file.

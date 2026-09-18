@@ -27,7 +27,11 @@ struct ONEQ_API SbirsSessionConfig {
   SbirsPolicyConfig policy{};           /**< 检测/误差/调度策略 */
   SbirsEnvironmentConfig environment{}; /**< 环境与气象衰减参数 */
   bool sensor_enabled{true};            /**< 传感器初始电源状态（COMMON-OQ-4 字段提升） */
-  bool acceptance_log_enabled{true};    /**< 是否打印红外功能及接口验收日志 */
+  /**
+   * 外部运行时日志开关：true 打印红外功能、接口及融合副本验收日志，false 全部禁止。
+   * 仅在对应 OPIR/Fusion 编译期日志开关已启用时生效，默认 true。
+   */
+  bool acceptance_log_enabled{true};
 };
 
 }  // namespace config

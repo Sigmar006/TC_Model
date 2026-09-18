@@ -1379,6 +1379,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
         truth_context.scatterers = &truth_target->range_rcs_scatterers;
       }
       WriteRirTrackAndId(input.sim_time_sec, input.input_cycle_index, track, result, features,
+                         policy_.recognition.feature_weights,
                          latest_summary_.has_ground_truth,
                          static_cast<double>(latest_summary_.category_accuracy), &imm_weights,
                          input.platform_position,

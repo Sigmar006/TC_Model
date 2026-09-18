@@ -96,6 +96,54 @@ double ToDb(double linear) {
 
 double FromDb(double db) { return std::pow(10.0, db / 10.0); }
 
+/** @brief dB 域高斯标准差对应的线性域变异系数。 */
+double RcsFluctuationCoefficient(double std_db) {
+  const double log_std = std::max(0.0, std_db) * kLn10 / 10.0;
+  return std::sqrt(std::expm1(log_std * log_std));
+}
+
+/** @brief 最佳候选综合得分中单个特征维度的归一化加权贡献。 */
+bool TryRecognitionContribution(
+    const session::RirRecognitionResult* result,
+    const config::RirRecognitionFeatureWeights& weights,
+    session::RirRecognitionFeatureDimension dimension, double* contribution) {
+  if (result == nullptr || contribution == nullptr || result->best_score <= 0.0f) {
+    return false;
+  }
+  const session::RirRecognitionFeatureScores& scores = result->feature_scores;
+  const double base_weights[] = {weights.rcs_weight, weights.motion_weight,
+                                 weights.polarization_weight, weights.range_profile_weight};
+  const double qualities[] = {scores.rcs_quality, scores.motion_quality,
+                              scores.polarization_quality, scores.range_profile_quality};
+  const double similarities[] = {scores.rcs_similarity, scores.motion_similarity,
+                                  scores.polarization_similarity,
+                                  scores.range_profile_similarity};
+  const std::uint8_t bits[] = {
+      static_cast<std::uint8_t>(session::RirRecognitionFeatureDimension::kRcs),
+      static_cast<std::uint8_t>(session::RirRecognitionFeatureDimension::kMotion),
+      static_cast<std::uint8_t>(session::RirRecognitionFeatureDimension::kPolarization),
+      static_cast<std::uint8_t>(session::RirRecognitionFeatureDimension::kRangeProfile)};
+  const std::uint8_t requested_bit = static_cast<std::uint8_t>(dimension);
+  double denominator = 0.0;
+  int requested_index = -1;
+  for (int i = 0; i < 4; ++i) {
+    if ((result->valid_feature_mask & bits[i]) != 0U && qualities[i] > 0.0) {
+      denominator += base_weights[i] * qualities[i];
+    }
+    if (bits[i] == requested_bit) {
+      requested_index = i;
+    }
+  }
+  if (requested_index < 0 || denominator <= 0.0 ||
+      (result->valid_feature_mask & requested_bit) == 0U ||
+      qualities[requested_index] <= 0.0) {
+    return false;
+  }
+  *contribution = base_weights[requested_index] * qualities[requested_index] *
+                  similarities[requested_index] / denominator;
+  return std::isfinite(*contribution);
+}
+
 const char* TrackStatusText(tracking::RirTrackStatus status) {
   switch (status) {
     case tracking::RirTrackStatus::kConfirmed:
@@ -739,6 +787,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const tracking::RirTrackState& track,
                         const session::RirRecognitionResult* result,
                         const session::RirFeatureMeasurementRecord* features,
+                        const config::RirRecognitionFeatureWeights& feature_weights,
                         bool has_truth, double category_accuracy,
                         const std::vector<float>* imm_weights,
                         const oneq::coordinate::EcefPositionM& platform_ecef,
@@ -922,7 +971,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       motion_text += " 高度=" + FormatF(motion_feature.altitude_m, 1) + "m";
       motion_text += " 加速度=" + FormatF(motion_feature.acceleration_m_per_s2, 3) + "m/s^2";
       motion_text += std::string(" 近似直线=") + YesNo(motion_feature.is_straight);
-      motion_text += " 目标类别=" + category_text;
+      motion_text += " 识别类别=" + category_text;
       Emit(sim_time_sec, cycle, "运动特征处理功能测试", motion_text);
     }
 
@@ -932,7 +981,15 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       std::string rcs_text = track_target_id;
       rcs_text += " RCS均值/标准差=" + FormatF(rcs.mean_dbsm, 3) + "/" + FormatF(rcs.std_db, 3) +
                   "dBsm";
-      rcs_text += " 目标类别=" + category_text;
+      rcs_text += " 平均RCS归一化值=" + FormatF(FromDb(rcs.mean_dbsm), 6);
+      rcs_text += " RCS波动系数=" + FormatF(RcsFluctuationCoefficient(rcs.std_db), 6);
+      double contribution = 0.0;
+      if (TryRecognitionContribution(result, feature_weights,
+                                     session::RirRecognitionFeatureDimension::kRcs,
+                                     &contribution)) {
+        rcs_text += " 综合识别加权贡献=" + FormatF(contribution, 6);
+      }
+      rcs_text += " 识别类别=" + category_text;
       Emit(sim_time_sec, cycle, "RCS统计特征处理功能测试", rcs_text);
     }
 
@@ -972,12 +1029,20 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       subclass_text = " 细分类型=" + BallisticSubclassName(
                               static_cast<int>(result->ballistic_subclass));
     }
-    Emit(sim_time_sec, cycle, "极化特征解算功能测试",
-         track_target_id + " 目标类型=" + category_text + subclass_text);
+    std::string polarization_result =
+        track_target_id + " 目标类型=" + category_text + subclass_text;
+    double polarization_contribution = 0.0;
+    if (TryRecognitionContribution(result, feature_weights,
+                                   session::RirRecognitionFeatureDimension::kPolarization,
+                                   &polarization_contribution)) {
+      polarization_result +=
+          " 综合识别加权贡献=" + FormatF(polarization_contribution, 6);
+    }
+    Emit(sim_time_sec, cycle, "极化特征解算功能测试", polarization_result);
 
     // 第47项 宽带一维像特征解算：散射中心（场景距离像真值输入——库内特征提取只
-    // 出长度/峰数等统计量，无逐中心量测输出）+ 轮廓（长度/峰数）+ 识别类别；
-    // 能量集中/分辨率/置信度不写。距离像维度无效时省略（§0 规则3）。
+    // 出长度/峰数等统计量，无逐中心量测输出）+ 轮廓（长度/峰数）+ 识别类别 +
+    // 综合识别加权贡献；能量集中/分辨率/置信度不写。距离像维度无效时省略（§0 规则3）。
     const auto& rp = features->features.range_profile;
     if (rp.valid) {
       std::string rp_text = track_target_id;
@@ -995,6 +1060,12 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       }
       rp_text += " 长度=" + FormatF(rp.length_m, 3) + "m";
       rp_text += " 峰数=" + std::to_string(rp.peak_count);
+      double contribution = 0.0;
+      if (TryRecognitionContribution(result, feature_weights,
+                                     session::RirRecognitionFeatureDimension::kRangeProfile,
+                                     &contribution)) {
+        rp_text += " 综合识别加权贡献=" + FormatF(contribution, 6);
+      }
       rp_text += " 识别类型=" + category_text;
       Emit(sim_time_sec, cycle, "宽带一维像特征解算功能测试", rp_text);
     }

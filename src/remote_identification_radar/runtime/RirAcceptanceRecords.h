@@ -14,6 +14,7 @@
 #include "1q/coordinate/types.h"
 #include "1q/remote_identification_radar/config/RirHardwareConfig.h"
 #include "1q/remote_identification_radar/config/RirMissionConfig.h"
+#include "1q/remote_identification_radar/config/RirPolicyConfig.h"
 #include "1q/remote_identification_radar/session/RirOutputTypes.h"
 #include "1q/remote_identification_radar/session/RirSceneTypes.h"
 #include "common/radar/AntennaPatternRuntime.h"
@@ -139,6 +140,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const tracking::RirTrackState& track,
                         const session::RirRecognitionResult* result,
                         const session::RirFeatureMeasurementRecord* features,
+                        const config::RirRecognitionFeatureWeights& feature_weights,
                         bool has_truth, double category_accuracy,
                         const std::vector<float>* imm_weights,
                         const oneq::coordinate::EcefPositionM& platform_ecef,

@@ -425,13 +425,11 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
                                            input.input_cycle_index,
                                            config.hardware.antenna.main_beam_gain_db,
                                            beamwidth.az_beamwidth_deg, beamwidth.el_beamwidth_deg);
-    runtime::WriteRirOncePerSession(input.sim_time_sec, input.input_cycle_index);
     acceptance_scan_pattern_logged = true;
   }
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {
     runtime::WriteRirDwellScan(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                input.input_cycle_index, dwell_plan);
-    runtime::WriteRirCycleRunCount(input.sim_time_sec, input.input_cycle_index);
   }
 
   // 搜索角域随驻留计划一并下发：硬件体积 + 转台朝向 + 任务扫描子窗 + 指定目标 ID；

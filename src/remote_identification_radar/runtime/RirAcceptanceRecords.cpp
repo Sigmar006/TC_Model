@@ -1298,35 +1298,6 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
            ",确认航迹×" + std::to_string(confirmed_tracks) + "]");
 }
 
-void WriteRirOncePerSession(float sim_time_sec, std::uint32_t cycle) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
-    return;
-  }
-  static bool written = false;
-  if (written) {
-    return;
-  }
-  written = true;
-  // 评审 2026-08-26 条22（方案B）：库内不做墙钟计时，真实初始化/加载耗时在示例层
-  // integration_events.log 的同名验收项（模块=RIR）。场景数/总仿真周期由示例层
-  // 结束时回写（第54项），库内不再写占位行。
-  RIR_PERFORMANCE_ITEM(sim_time_sec, cycle, "初始化时间性能测试",
-                       "见integration_events.log（模块=RIR）");
-  RIR_PERFORMANCE_ITEM(sim_time_sec, cycle, "单个模型加载时间性能测试",
-                       "见integration_events.log（模块=RIR）");
-  RIR_PERFORMANCE_ITEM(sim_time_sec, cycle, "多个模型并行加载性能测试",
-                       "见integration_events.log（模块=RIR）");
-}
-
-void WriteRirCycleRunCount(float sim_time_sec, std::uint32_t cycle) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
-    return;
-  }
-  // 验收判定标准 第54项：运行次数与运行状态。
-  RIR_PERFORMANCE_ITEM(sim_time_sec, cycle, "可支持连续运行次数性能测试",
-                       "本会话已运行周期=" + std::to_string(cycle) + " 状态=正常");
-}
-
 void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                        const std::vector<RirDwellPlan>& dwell_plan) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {

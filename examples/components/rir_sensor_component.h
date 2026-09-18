@@ -147,7 +147,6 @@ class RirSensorComponent : public Component {
   bool powered_on_{true};  /**< 电源状态（由 sensor_enabled 补丁唯一维护） */
   std::uint32_t device_id_{fusion::kRirSourceId};
   DetectionDeliveryMode detection_delivery_{DetectionDeliveryMode::kSharedBlackboard};
-  bool step_timing_logged_{false};  /**< 单步执行时间是否已写入示例日志（只写首个周期） */
   std::uint32_t confirmed_recognition_outputs_{0U};  /**< 有确认结论的周期数（冒烟下限断言用） */
 };
 

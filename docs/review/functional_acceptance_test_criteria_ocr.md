@@ -10,22 +10,29 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 # 功能验收测试判定标准
 
 > **通用判定规则**：各测试项以指定日志文件中**能否记录**对应数据为准——能记录视为**通过**，否则视为**不通过**。
+> **例外**：第 50–55 项性能测试不生成验收日志，由独立性能测试夹具采样并在测试报告中判定；
+> 第 56、60 项仿真控制与时钟外部接口不要求生成 `.log` 或 `.csv`，由接口调用结果和测试断言判定。
 
 ## 0. OCR 文件名 ↔ 仓库落盘
 
 | OCR / 规范文件名 | 仓库实际路径 | 编译开关 |
 |---|---|---|
 | `SatelliteTarget.log`（红外普通功能项） | `log/SatelliteTarget.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
-| `Opir_acceptance.log`（红外性能项） | `log/opir_acceptance.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 11–14 项） | `log/SatelliteTarget.log` 与 `log/fusion_acceptance.log` 各写一份、分别判定 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 15–18 项） | `log/fusion_acceptance.log` | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `RadarOutput.log`（雷达普通功能与外部接口项） | `log/RadarOutput.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
-| `Rir_acceptance.log`（雷达性能项） | `log/rir_acceptance.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
 | `inference_acceptance.log` / `Inference_acceptance.log` | `log/inference_acceptance.log` | `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` |
 | `Precision_acceptance.log` | `log/precision_acceptance.log` | `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` |
 | `RadarAntennaGainPatterndata.csv` | `log/RadarAntennaGainPatterndata.csv` | 随 RIR 开关 |
 | `Rir_scan_pattern.csv` | `log/Rir_scan_pattern.csv` | 随 RIR 开关 |
 | `integration_events.log` | 示例场景 `log_dir` 下 | 跑 examples 即写，无需库开关 |
+
+**验收日志开关结论**：当前不存在一个覆盖全部验收日志的统一运行时开关。工程按域提供
+`ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`、
+`ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG`、`ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` 和
+`ONEQ_ENABLE_PRECISION_EVALUATION_LOG` 五个 CMake 编译期开关，默认均为 `OFF`；
+`acceptance` preset 会同时开启这五项。OPIR/RIR 开关只控制对应普通功能、内外部接口日志及雷达 CSV，
+不恢复第 50–55 项性能日志，也不为第 56、60 项生成日志。
 
 **行格式**（各 `*_acceptance.log` 统一；方括号内为规范测试项名称，**不写「验收项」三字，方括号后不写「验收内容：」**）：
 
@@ -137,9 +144,9 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 | 23 关机点预测 | **实际关机时刻、实际关机点和冻结的关机事件语义** | 外部场景夹具/验证器 | 当前输入没有显式的引擎关机真值事件。 |
 | 25 落点预报与分发 | **实际落点/实际射程、标准化消息封装版本与完整报文、外部实际投递结果及接收方回执** | 场景夹具、消息总线和接收方 | 模型可配置分发通道及来源/对象 ID，但不能自证外部送达或回执。 |
 | 47A 综合特征识别 | **验收有效样本集的冻结规则、样本总数、外部真值判定结果和最终识别正确率** | 外部验证器 | 场景目标名称/特征标签可作真值输入，但验收统计样本集和汇总结论不属模型状态。 |
-| 50–53 初始化/单步/加载性能 | **进程墙钟时间、多模型并行调度时间和外部加载边界** | 集成程序/性能测试夹具 | 业务模型内部不应用自身仿真时间代替真实墙钟测量。 |
-| 54 连续运行次数 | **模型可支持的最大连续运行次数和长时稳定性结论** | 压力/稳定性测试夹具 | 模型只能累计当前会话已运行周期，不能在单次运行内证明能力上限。 |
-| 56、60 仿真控制与时钟接口 | **控制命令、命令 ID、期望执行时刻、命令级应答状态和应答关联键** | 仿真控制器/时钟模型及其返回系统 | 这些字段属于外部控制协议；传感器只接收周期、步长和时间。`parameterClock.*` 由外部返回系统记录，不要求也不允许传感器模型补写。 |
+| 50–53 初始化/单步/加载性能 | **进程墙钟时间、多模型并行调度时间和外部加载边界** | 集成程序/性能测试夹具 | 业务模型不输出性能日志；夹具采样后写入独立测试报告。 |
+| 54 连续运行次数 | **模型可支持的最大连续运行次数和长时稳定性结论** | 压力/稳定性测试夹具 | 不输出性能日志；由夹具统计运行次数、异常退出和最终状态。 |
+| 56、60 仿真控制与时钟接口 | **控制命令、命令 ID、期望执行时刻、命令级应答状态和应答关联键** | 仿真控制器/时钟模型及其返回系统 | 不要求模型或外部控制器生成验收日志；通过结构化接口调用结果和测试断言核对。 |
 | 68 预警预测与精度评估接口 | **实际发射/关机/落点事件真值及外部预警消息的统一业务封装/路由元数据** | 场景夹具和预警编排层 | 预测、精度与威胁数值分布在多个模型；单个模型无法获得外部真值与总线封装属性。 |
 | 所有需误差/正确率/通过判定的项 | **验收容差版本、有效样本筛选、跨周期汇总和最终通过/失败结论** | 外部验证器 | 模型只输出原始量、已有协方差/不确定度；不在业务日志中自行裁决验收结论。 |
 
@@ -603,7 +610,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 ## 六、雷达信号处理（统一输出至 `log/RadarOutput.log`）
 
 > 原文日志文件名拼写为 `RadarSingalProcessingDateFlow.log`；普通功能项统一写入 `log/RadarOutput.log`，
-> 性能项仍写入 `log/rir_acceptance.log`（开关 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`）。天线方向图明细另写
+> 性能项不输出验收日志。天线方向图明细另写
 > `log/RadarAntennaGainPatterndata.csv`。**第 28–55 项示例遵循 §0 写作规则（禁止派生量、无则省略）。**
 
 ### 28. 天线方向图仿真功能测试
@@ -975,54 +982,34 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ## 八、性能测试
 
-### 50. 初始化时间性能测试（`integration_events.log`）
-- `integration_events.log` 文件中能够记录**初始化时间**视为通过，否则视为不通过。
+> **统一输出规则**：第 50–55 项不写入 `integration_events.log`、`opir_acceptance.log`、
+> `rir_acceptance.log` 或其他验收日志。性能测试由独立夹具采集墙钟、运行次数和误差样本，
+> 结果写入性能测试报告；模型只保留正常业务输出。
 
-- **实现**（示例层，周期 0 一行/模块）：
-    ```text
-    仿真时间=0.000s 仿真周期=0 [初始化时间性能测试] 12.345ms 模块=RIR
-    ```
+### 50. 初始化时间性能测试
+- 由性能测试夹具测量进程或指定模型从开始初始化到可用的墙钟时间，并按合同阈值判定。
+- **日志要求**：不输出验收日志。
 
-### 51. 单步执行时间性能测试（`integration_events.log`）
-- `integration_events.log` 文件中能够记录**单步实例仿真模型单步执行时间**视为通过，否则视为不通过。
+### 51. 单步执行时间性能测试
+- 由性能测试夹具在预热后统计模型单步执行墙钟时间，并按合同规定的样本数和统计口径判定。
+- **日志要求**：不输出验收日志。
 
-- **实现**（示例层，首周期一行/模块）：
-    ```text
-    仿真时间=1.000s 仿真周期=1 [单步执行时间性能测试] 3.210ms 模块=RIR
-    ```
+### 52. 单个模型加载时间性能测试
+- 由性能测试夹具测量指定模型及其资源加载完成的墙钟时间，并按合同阈值判定。
+- **日志要求**：不输出验收日志。
 
-### 52. 单个模型加载时间性能测试（`integration_events.log`）
-- `integration_events.log` 文件中能够记录**单个模型加载时间**视为通过，否则视为不通过。
-
-- **实现**（示例）：
-    ```text
-    仿真时间=0.000s 仿真周期=0 [单个模型加载时间性能测试] 8.100ms 模块=RIR
-    ```
-
-### 53. 多个模型并行加载性能测试（`integration_events.log`）
-- `integration_events.log` 文件中能够记录**加载状态**视为通过，否则视为不通过。
-
-- **实现**（示例，会话首周期一行；只写加载状态）：
-    ```text
-    仿真时间=0.000s 仿真周期=0 [多个模型并行加载性能测试] 动态库加载完毕 模块数=8 模块=[ESR,AR,EOS,SBIRS,SAR,Fusion,Inference,Threat]
-    ```
+### 53. 多个模型并行加载性能测试
+- 由性能测试夹具测量多个模型并行加载耗时并核对各模型加载结果，不以业务日志中的模块清单代替测量。
+- **日志要求**：不输出验收日志。
 
 ### 54. 可支持连续运行次数性能测试
-- `integration_events.log` 文件中能够记录**模型运行次数及运行状态**视为通过，否则视为不通过。
+- 由压力/稳定性测试夹具统计实际完成次数、异常退出和最终运行状态，并按合同规定的持续时间或次数判定。
+- **日志要求**：不输出验收日志。
 
-- **实现**（示例，两条规范点各一行）：
-    ```text
-    仿真时间=10.000s 仿真周期=10 [可支持连续运行次数性能测试] 本会话已运行周期=10 状态=正常
-    仿真时间=0.000s 仿真周期=0 [可支持连续运行次数性能测试] 场景数=1 总仿真周期=10
-    ```
-
-### 55. 红外系统测角误差性能测试（`log/opir_acceptance.log`）
-- `Opir_acceptance.log` 文件中能够记录红外系统**测量角度值**，并能够计算测量值与真实值得到**偏差**视为通过，否则视为不通过。
-
-- **实现**（示例；只写测量与偏差，不写真值/RMSE/σ）：
-    ```text
-    仿真时间=1.000s 仿真周期=1 [红外系统测角误差性能测试] 相对卫星ID=4 目标ID=1001 测量方位/俯仰=(12.312,18.491)° 偏差az/el=(0.012,-0.009)°
-    ```
+### 55. 红外系统测角误差性能测试
+- 由性能测试夹具从红外结构化量测和同周期目标真值计算方位/俯仰偏差，并按合同误差阈值判定。
+- 第 9 项 `SatelliteTarget.log` 中的红外载荷角误差功能记录仍保留，但不作为本性能项专用日志。
+- **日志要求**：不输出性能验收日志。
 
 ---
 
@@ -1032,20 +1019,19 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 包括仿真控制器、场景/环境模型、传感器模型、融合、推演和精度评估之间的交互。
 `测试2.md` 中没有与前 55 项同名的接口测试。导入项沿用第 56–69 项编号，其中第 59、69 项
 已删除，当前保留 12 项；重复出现的
-“仿真控制与时钟-雷达接口测试”合并为第 60 项，同时保留其 `.csv` / `.log` 两种
-源文件表述。`SatelliteTarget.log` 和 `RadarOutput.log` 是模型统一验收输出文件；
-`parameterClock.*` 仍由外部仿真控制返回系统提供。不能仅因公开 DTO 中存在部分字段就判定整项通过。
+“仿真控制与时钟-雷达接口测试”合并为第 60 项。第 56、60 项不要求生成 `.csv` / `.log`；
+`SatelliteTarget.log` 和 `RadarOutput.log` 是其余模型验收项的统一输出文件。
+不能仅因公开 DTO 中存在部分字段就判定整项通过。
 各字段由模型还是外部系统提供、误差是否需要写日志，统一以 §0B 为准。
 
 ### 56. 仿真控制与时钟接口测试
 
-- **导入要求**：`parameterClock.log` 记录控制命令、期望执行时刻、仿真步长、应答状态、
-  错误码和错误描述；字段齐全视为通过，否则视为不通过。
+- **验收要求**：测试夹具下发控制命令和时钟参数，并从结构化调用结果核对期望执行时刻、
+  仿真步长、应答状态、错误码和错误描述。
 - **接口分类**：外部；仿真控制/时钟模型 → 各模型会话。
-- **数据责任**：控制命令、期望执行时刻、命令级应答和关联信息属于外部控制协议，
-  `parameterClock.log` 必须由外部仿真控制返回系统记录，并作为本项唯一验收依据；模型不得补写该文件。
+- **日志要求**：不要求模型或外部仿真控制返回系统输出验收 `.log`；测试断言和测试报告为验收依据。
 - **模型配合能力**：各传感器周期输入已有周期号、`dt_sec` 和仿真时间，周期结果已有状态、
-  结构化问题码和描述，可供外部返回系统采集；不要求模型自身形成完整控制命令或应答日志。
+  结构化问题码和描述，可供测试夹具直接核对。
 
 ### 57. 卫星平台与载荷配置接口测试
 
@@ -1067,14 +1053,13 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 
 ### 60. 仿真控制与时钟-雷达接口测试
 
-- **导入要求**：`parameterClock.csv` 或 `parameterClock.log` 记录控制命令、期望执行时刻、
+- **验收要求**：测试夹具下发雷达控制命令和时钟参数，并从结构化调用结果核对期望执行时刻、
   仿真步长、应答状态、错误码和错误描述。
 - **接口分类**：外部；仿真控制/时钟模型 → RIR 雷达模型。
-- **数据责任**：控制命令、期望执行时刻、命令级应答和关联信息属于外部控制协议，
-  `parameterClock.csv` 或 `parameterClock.log` 必须由外部仿真控制返回系统记录，并作为本项
-  唯一验收依据；RIR 模型不得补写这两个文件。
+- **日志要求**：不要求 RIR 模型或外部仿真控制返回系统输出验收 `.log` / `.csv`；
+  测试断言和测试报告为验收依据。
 - **模型配合能力**：`RirCycleInput` 已有周期号、`dt_sec`、`sim_time_sec`，`RirCycleResult`
-  已有执行状态、`abort_reason` 和 `issues`，可供外部返回系统采集。
+  已有执行状态、`abort_reason` 和 `issues`，可供测试夹具直接核对。
 
 ### 61. 雷达平台与工作参数配置接口测试
 
@@ -1329,19 +1314,18 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 | 日志文件（OCR） | 仓库路径 | 涉及测试项 |
 |---|---|---|
 | `SatelliteTarget.log` | `log/SatelliteTarget.log` | 5–10、11–14、24（1–4 不输出） |
-| `Opir_acceptance.log` | `log/opir_acceptance.log` | 50、54–55（红外性能项） |
 | `Fusion_acceptance.log` | `log/fusion_acceptance.log` | 11–18（第 11–14 项与 OPIR 文件重复写出、分别判定） |
 | `RadarOutput.log` | `log/RadarOutput.log` | 19、28–47、47A、49、62–66 |
-| `Rir_acceptance.log` | `log/rir_acceptance.log` | 50、52–54（雷达性能项） |
 | `IRInternalInterface.log` | `log/IRInternalInterface.log` | 74–77（SBIRS 内部接口分项证据） |
 | `RadarInternalInterface.log` | `log/RadarInternalInterface.log` | 70–73（RIR 内部接口分项证据） |
 | `inference_acceptance.log` | `log/inference_acceptance.log` | 20–25, 24（轨迹突变） |
 | `Precision_acceptance.log` | `log/precision_acceptance.log` | 26–27；38/42 误差统计 |
 | `RadarAntennaGainPatterndata.csv` | `log/RadarAntennaGainPatterndata.csv` | 28 |
 | `Rir_scan_pattern.csv` | `log/Rir_scan_pattern.csv` | 48 |
-| `integration_events.log` | 场景 `log_dir` | 50–53 |
-| `parameterClock.log` / `parameterClock.csv` | **由外部仿真控制返回系统提供，模型不得补写** | 56、60 |
 | `SatelliteTarget.log`（外部接口项） | `log/SatelliteTarget.log` | 57–58、67–68（未实现项仍无对应记录） |
+
+第 50–55 项性能测试以及第 56、60 项仿真控制与时钟接口测试均不生成验收日志，
+由独立测试夹具的测试断言和测试报告判定。
 
 **合计：56 项功能/性能验收测试 + 12 项外部接口验收测试 + 8 项内部接口测试，
 共 76 项；为保持已有文档、代码和日志关联稳定，新增综合特征识别项编号为 47A，其余原编号不变。**

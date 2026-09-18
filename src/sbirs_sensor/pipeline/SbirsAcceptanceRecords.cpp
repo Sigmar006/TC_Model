@@ -231,8 +231,7 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
 }
 
 void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
-                          std::uint64_t target_id, double az_error_deg, double el_error_deg,
-                          double measured_az_deg, double measured_el_deg) {
+                          std::uint64_t target_id, double az_error_deg, double el_error_deg) {
   if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -244,13 +243,6 @@ void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::u
   content += " 测角残差方位/俯仰(ECI)=(" + FormatF(az_error_deg * kDegToRad, 8) + "," +
              FormatF(el_error_deg * kDegToRad, 8) + ")rad";
   SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "红外载荷角误差功能测试", content);
-  // 规范口径（验收判定标准 第55项）：只写测量方位/俯仰与偏差（测量−真值），
-  // 不写真值、会话 RMSE、σ 来源。
-  std::string perf = "相对卫星ID=" + std::to_string(satellite_id);
-  perf += " 目标ID=" + std::to_string(target_id);
-  perf += " 测量方位/俯仰=" + FormatPairDeg(measured_az_deg, measured_el_deg, 3) + "°";
-  perf += " 偏差az/el=" + FormatPairDeg(az_error_deg, el_error_deg, 6) + "°";
-  SBIRS_PERFORMANCE_ITEM(sim_time_sec, cycle, "红外系统测角误差性能测试", perf);
 }
 
 namespace {
@@ -450,31 +442,6 @@ void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,
     }
     SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "特殊事件监测与提示功能测试", content);
   }
-}
-
-void WriteSbirsOncePerSession(float sim_time_sec, std::uint32_t cycle) {
-  if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
-    return;
-  }
-  static bool written = false;
-  if (written) {
-    return;
-  }
-  written = true;
-  // 评审 2026-08-26 条22（方案B）：库内不做墙钟计时，真实初始化耗时在示例层
-  // integration_events.log 的同名验收项（模块=OPIR）。场景数/总仿真周期由示例层
-  // 结束时回写（第54项），库内不再写占位行。
-  SBIRS_PERFORMANCE_ITEM(sim_time_sec, cycle, "初始化时间性能测试",
-                         "见integration_events.log（模块=OPIR）");
-}
-
-void WriteSbirsCycleRunCount(float sim_time_sec, std::uint32_t cycle) {
-  if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
-    return;
-  }
-  // 验收判定标准 第54项：运行次数与运行状态。
-  std::string content = "本会话已运行周期=" + std::to_string(cycle) + " 状态=正常";
-  SBIRS_PERFORMANCE_ITEM(sim_time_sec, cycle, "可支持连续运行次数性能测试", content);
 }
 
 }  // namespace pipeline

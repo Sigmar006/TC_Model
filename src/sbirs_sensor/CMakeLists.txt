@@ -42,8 +42,8 @@ set(SBIRS_CORE_SOURCES
 
 oneq_add_component(sbirs_engine SOURCES ${SBIRS_ENGINE_SOURCES})
 oneq_add_component(sbirs_core SOURCES ${SBIRS_CORE_SOURCES})
-# OPIR 普通功能验收写入 SatelliteTarget.log，性能验收写入 opir_acceptance.log，
-# 内部接口证据写入 IRInternalInterface.log。engine 出周期物理量，core 出生命周期事件。
+# OPIR 普通功能验收写入 SatelliteTarget.log，内部接口证据写入
+# IRInternalInterface.log；性能测试不写验收日志。engine 出周期物理量，core 出生命周期事件。
 if(ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG)
     target_compile_definitions(sbirs_engine PRIVATE ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=1)
     target_compile_definitions(sbirs_core PRIVATE ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=1)

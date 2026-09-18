@@ -11,10 +11,7 @@
 
 #include "sbirs_sensor_component.h"
 
-#include <chrono>
-
 #include "1q/fusion/SensorAdapters.h"
-#include "logger/acceptance_timing.h"
 #include "core/events.h"
 #include "core/world.h"
 #include "logger/logger.h"
@@ -410,13 +407,7 @@ void SbirsSensorComponent::Step(World& world, double dt_sec) {
   }
   const sbirs_sensor::session::SbirsCycleInput input = BuildCycleInput(scene, dt_sec);
 
-  const std::chrono::steady_clock::time_point step_begin = std::chrono::steady_clock::now();
   const sbirs_sensor::session::SbirsCycleResult result = session_.StepWithResult(input);
-  if (!step_timing_logged_) {
-    app::LogAcceptanceMs(scene.cycle, scene.t_sec, "单步执行时间性能测试", "OPIR",
-                          app::SteadyElapsedMs(step_begin));
-    step_timing_logged_ = true;
-  }
   // 扫描方位随周期结果刷新（拒绝周期为空帧 → 0）；库内为 ECI 弧度，组件转度显示。
   scan_azimuth_deg_ = result.output_frame.scan_azimuth_rad * kRadToDeg;
   // 调试视图快照每周期都要构建：它是下方视图行的数据源（日志写多少由三密度

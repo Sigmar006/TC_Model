@@ -133,7 +133,6 @@ class SbirsSensorComponent : public Component {
 #endif
 
   bool powered_on_{true}; /**< 电源状态（由 sensor_enabled 补丁唯一维护；关机时不驱动会话） */
-  bool step_timing_logged_{false}; /**< 单步执行时间是否已写入示例日志（只写首个周期） */
   std::uint32_t device_id_{fusion::kSbirsSourceId}; /**< 单站传感器设备实体 ID（融合源通道 ID） */
   std::uint32_t ground_station_source_id_{0U}; /**< 非 0：探测帧投递地面站，不写探测池 */
   std::string sensor_name_{"红外预警卫星"}; /**< 传感器信息源名称（消息与融合日志透传） */

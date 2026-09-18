@@ -14,7 +14,6 @@
 
 #include "rir_sensor_component.h"
 
-#include <chrono>
 #include <cstdio>
 #include <cstdint>
 #include <string>
@@ -25,7 +24,6 @@
 #include "core/events.h"
 #include "core/fusion_detection_bridge.h"
 #include "1q/remote_identification_radar/session/RirCycleInput.h"
-#include "logger/acceptance_timing.h"
 #include "core/world.h"
 #include "logger/logger.h"
 #include "logger/logger_i18n.h"
@@ -236,13 +234,7 @@ void RirSensorComponent::Step(World& world, double dt_sec) {
 
   const rir::RirCycleInput input = BuildCycleInput(scene, dt_sec);
 
-  const std::chrono::steady_clock::time_point step_begin = std::chrono::steady_clock::now();
   const rir::RirCycleResult result = session_.StepWithResult(input);
-  if (!step_timing_logged_) {
-    app::LogAcceptanceMs(scene.cycle, scene.t_sec, "单步执行时间性能测试", "RIR",
-                          app::SteadyElapsedMs(step_begin));
-    step_timing_logged_ = true;
-  }
   // 调试视图快照每周期都要构建：它是下方视图行的数据源（日志写多少由三密度
   // 模式宏门控，与快照构建无关；被拒绝周期为 kCycleNotCompleted 行）。
   last_debug_view_ = rir::RirOutputDebugViewBuilder::Build(input, result);

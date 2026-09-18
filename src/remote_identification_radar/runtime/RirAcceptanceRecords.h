@@ -167,9 +167,6 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
                       std::uint32_t designate_count, std::uint32_t track_count,
                       std::uint32_t confirmed_tracks);
 
-void WriteRirOncePerSession(float sim_time_sec, std::uint32_t cycle);
-void WriteRirCycleRunCount(float sim_time_sec, std::uint32_t cycle);
-
 /**
  * @brief 验收判定标准 第48项：逐驻留波束指向行（2026-08-29 TAS：一周期多驻留）。
  * @note 搜索驻留每条一行（保"本周期序号/波位"既有字段语义）；指定/跟踪驻留

@@ -1095,8 +1095,6 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                           policy.error_model.orbit_sigma_deg, sat_range,
                           policy.error_model.nav_position_sigma_m,
                           input.satellite_position_ecef_m);
-    WriteSbirsOncePerSession(sim_time_sec, input.cycle_index);
-    WriteSbirsCycleRunCount(sim_time_sec, input.cycle_index);
   }
 
   // 门内归因目标无关量（仅依赖硬件/门限配置，循环外计算一次）：有效噪声与达标所需签名 =
@@ -1627,8 +1625,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       SBIRS_DUAL_ACCEPTANCE_ITEM(
           sim_time_sec, input.cycle_index, "红外预警卫星大幅面扫描与探测功能测试", energy);
       WriteSbirsAngleError(satellite_entity_id_, sim_time_sec, input.cycle_index,
-                           target.target_id, az_err, el_err, candidate.measured_azimuth_deg,
-                           candidate.measured_elevation_deg);
+                           target.target_id, az_err, el_err);
     }
     if (target_states_[target.target_id] != SbirsTargetState::kAwaitingNfovAcquisition) {
       target_states_[target.target_id] = SbirsTargetState::kWideCandidate;
@@ -2308,9 +2305,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
                                  "宽窄视场联合探测功能测试", joint_track);
       WriteSbirsAngleError(satellite_entity_id_, sim_time_sec, input.cycle_index,
-                           engaged_id, az_err, el_err,
-                           detection.record.azimuth_rad * 57.29577951308232,
-                           detection.record.elevation_rad * 57.29577951308232);
+                           engaged_id, az_err, el_err);
       if (tracking_result.has_angle_rate) {
         // 中译：角度域 KF 后验（滤波方位/俯仰及其变化率）；不进公开检测记录。
         // 标识：实验后端 kAngleCvKf 的用例 16 状态估计验收行。

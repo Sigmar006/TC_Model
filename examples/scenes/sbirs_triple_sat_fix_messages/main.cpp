@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -47,7 +46,6 @@
 #include "core/world.h"
 #include "logger/logger.h"
 #include "logger/acceptance_paths.h"
-#include "logger/acceptance_timing.h"
 #include "scenes/scene_data.h"
 #include "scenes/scene_script.h"
 
@@ -754,21 +752,10 @@ int main(int argc, char* argv[]) {
   scene.config.inference.impact_distribution_source_id = ground_station.id();
   scene.config.inference.impact_distribution_target_id = impact_receiver.id();
 
-  // 评审 2026-08-26 条22（方案B）：融合/精度会话初始化墙钟写 integration_events.log
-  // （库内验收文件的「初始化时间」行指引到此处）。
-  const auto fusion_create_begin = std::chrono::steady_clock::now();
   std::unique_ptr<fusion::FusionEngine> fusion_engine(
       new fusion::FusionEngine(scene.config.fusion));
-  const double fusion_create_ms =
-      component_attachment::app::SteadyElapsedMs(fusion_create_begin);
-  component_attachment::app::LogAcceptanceMs(0U, 0.0, "初始化时间性能测试", "Fusion", fusion_create_ms);
-  const auto precision_create_begin = std::chrono::steady_clock::now();
   std::unique_ptr<pe::PrecisionEvaluationSession> precision_session(
       new pe::PrecisionEvaluationSession(scene.config));
-  const double precision_create_ms =
-      component_attachment::app::SteadyElapsedMs(precision_create_begin);
-  component_attachment::app::LogAcceptanceMs(0U, 0.0, "初始化时间性能测试", "Precision",
-                                             precision_create_ms);
 
   ground_station.Attach(
       std::unique_ptr<component_attachment::GroundStationFusionComponent>(
@@ -789,7 +776,7 @@ int main(int argc, char* argv[]) {
             << " cycles x " << scene.dt_sec << " s, satellites=" << scene.satellites.size()
             << " GEO (ground-station message delivery)\n"
             << "acceptance logs -> " << output_dir
-            << " (SatelliteTarget.log + precision/opir/fusion/inference_acceptance.log)\n";
+            << " (SatelliteTarget.log + precision/fusion/inference_acceptance.log)\n";
   for (std::size_t i = 0U; i < scene.satellites.size(); ++i) {
     const LoadedSatellite& sat = scene.satellites[i];
     std::cout << "  sat " << sat.id << " source_id=" << sat.source_id << " ecef=("
@@ -1006,10 +993,6 @@ int main(int argc, char* argv[]) {
   const pe::PrecisionEvaluationReport report = fusion->SummarizeEvaluation();
   PrintReport(report);
   std::cout << "dual_sat_cycles=" << dual_sat_cycles << "/" << scene.cycles << "\n";
-  // 验收判定标准 第54项：场景数/总仿真周期由示例层结束时回写。
-  component_attachment::app::LogAcceptanceText(
-      0U, 0.0, "可支持连续运行次数性能测试",
-      std::string("场景数=1 总仿真周期=") + std::to_string(scene.cycles));
   component_attachment::app::FlushIntegrationLog();
   // 3D 可视化 CSV 刷盘在析构前显式完成（CsvWriter 析构亦会关闭，双保险）。
   sats_csv.Flush();

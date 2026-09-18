@@ -29,8 +29,7 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
                            const session::SbirsVector3M& satellite_ecef);
 
 void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
-                          std::uint64_t target_id, double az_error_deg, double el_error_deg,
-                          double measured_az_deg, double measured_el_deg);
+                          std::uint64_t target_id, double az_error_deg, double el_error_deg);
 
 // 验收判定标准 第7项（修改）：目标可探测性与动态参数——双星定位时同一目标单行
 //（位置 LLA 只在该情况下写出，两颗相对卫星ID/斜距/量测角同行）；单星候选行待
@@ -55,9 +54,6 @@ void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,
                                std::uint32_t cycle,
                                const std::vector<session::SbirsDetectionLifecycleEvent>& events,
                                const session::SbirsCycleInput& input);
-
-void WriteSbirsOncePerSession(float sim_time_sec, std::uint32_t cycle);
-void WriteSbirsCycleRunCount(float sim_time_sec, std::uint32_t cycle);
 
 }  // namespace pipeline
 }  // namespace sbirs_sensor

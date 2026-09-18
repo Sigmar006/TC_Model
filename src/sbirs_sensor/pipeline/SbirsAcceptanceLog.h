@@ -20,10 +20,6 @@
 #define SBIRS_ACCEPTANCE_ITEM(sim_time, cycle, item, content) \
   SBIRS_ACCEPTANCE_RECORD(                                    \
       ::oneq::logging::FormatAcceptanceLine((sim_time), (cycle), (item), (content)))
-#define SBIRS_PERFORMANCE_ITEM(sim_time, cycle, item, content)                       \
-  ::oneq::logging::WriteAcceptanceLog(                                               \
-      ::oneq::logging::AcceptanceChannel::kOpir,                                    \
-      ::oneq::logging::FormatAcceptanceLine((sim_time), (cycle), (item), (content)))
 #define SBIRS_INTERNAL_INTERFACE_ITEM(sim_time, cycle, item, content)                \
   ::oneq::logging::WriteAcceptanceLog(                                               \
       ::oneq::logging::AcceptanceChannel::kIrInternalInterface,                     \
@@ -34,7 +30,6 @@
 #define SBIRS_ACCEPTANCE_LOG_ENABLED() false
 #define SBIRS_ACCEPTANCE_RECORD(text) ((void)0)
 #define SBIRS_ACCEPTANCE_ITEM(sim_time, cycle, item, content) ((void)0)
-#define SBIRS_PERFORMANCE_ITEM(sim_time, cycle, item, content) ((void)0)
 #define SBIRS_INTERNAL_INTERFACE_ITEM(sim_time, cycle, item, content) ((void)0)
 
 #endif

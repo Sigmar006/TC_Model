@@ -22,6 +22,9 @@ inline void LoadSbirsSessionConfig(
   if (root.Has("sensor_enabled")) {
     config->sensor_enabled = root["sensor_enabled"].AsBool();
   }
+  if (root.Has("acceptance_log_enabled")) {
+    config->acceptance_log_enabled = root["acceptance_log_enabled"].AsBool();
+  }
 }
 
 /// Load a config::SbirsSessionConfig from a JSON file.

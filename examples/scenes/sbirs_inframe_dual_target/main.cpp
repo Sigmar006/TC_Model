@@ -296,6 +296,8 @@ bool LoadScene(const char* path, LoadedScene* scene, std::string* error) {
   }
   scene->satellites.clear();
   scene->satellites.reserve(satellites.Size());
+  const bool acceptance_log_enabled =
+      !root.Has("acceptance_log_enabled") || root["acceptance_log_enabled"].AsBool();
   for (std::size_t i = 0U; i < satellites.Size(); ++i) {
     const examples::JsonValue& block = satellites[i];
     LoadedSatellite sat;
@@ -304,6 +306,7 @@ bool LoadScene(const char* path, LoadedScene* scene, std::string* error) {
                         ? static_cast<std::uint32_t>(block["source_id"].AsInt())
                         : (4U + static_cast<std::uint32_t>(i) * 100U);
     sat.config = LoadSatelliteConfig(block);
+    sat.config.acceptance_log_enabled = acceptance_log_enabled;
     if (block.Has("max_concurrent_nfov_locks")) {
       // 已删除的"窄场镜筒数"配置（2026-09-02 单镜筒化）：显式拒绝而非静默忽略——
       // 该键在本场景家族曾以 2 写入，静默跳过会让读者误以为多镜筒行为仍受控。

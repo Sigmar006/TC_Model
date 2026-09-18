@@ -31,7 +31,10 @@ SbirsSession::SbirsSession(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) 
 SbirsSession::~SbirsSession() noexcept {
   // 会话结束补齐第7项顺延落盘的可探测性行（单星候选待定条目；双星齐备行已即时
   // 写出。会话析构后不再有新候选注册，首个析构会话刷全部待定条目是安全的）。
-  pipeline::FlushSbirsDetectabilityPending();
+  if (impl_ != nullptr && impl_->config.acceptance_log_enabled) {
+    pipeline::SbirsScopedAcceptanceLogEnable acceptance_log_scope(true);
+    pipeline::FlushSbirsDetectabilityPending();
+  }
 }
 SbirsSession::SbirsSession(SbirsSession&&) noexcept = default;
 SbirsSession& SbirsSession::operator=(SbirsSession&&) noexcept = default;
@@ -41,6 +44,8 @@ SbirsOutputFrame SbirsSession::Step(const SbirsCycleInput& input) {
 }
 
 SbirsCycleResult SbirsSession::StepWithResult(const SbirsCycleInput& input) {
+  pipeline::SbirsScopedAcceptanceLogEnable acceptance_log_scope(
+      impl_->config.acceptance_log_enabled);
   SbirsCycleResult result = impl_->controller->RunOnce(input);
   if (impl_->lifecycle_recorder != nullptr) {
     const std::vector<SbirsDetectionLifecycleEvent> events =

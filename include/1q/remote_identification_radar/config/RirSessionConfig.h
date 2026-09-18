@@ -32,6 +32,7 @@ struct ONEQ_API RirSessionConfig {
   RirPolicyConfig policy{};
   RirEnvironmentConfig environment{};
   bool sensor_enabled{true}; /**< 传感器初始电源状态 */
+  bool acceptance_log_enabled{true}; /**< 是否打印 LRDR 功能及接口验收日志 */
 };
 
 }  // namespace config

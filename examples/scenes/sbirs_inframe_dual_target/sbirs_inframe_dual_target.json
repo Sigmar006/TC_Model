@@ -2,6 +2,7 @@
   "name": "sbirs_inframe_dual_target",
   "cycles": 80,
   "dt_sec": 1.0,
+  "acceptance_log_enabled": true,
   "log_dir": "sbirs_inframe_dual_target",
   "utc_julian_day": 2451544.2230698913,
   "inference_horizon_sec": 1200.0,

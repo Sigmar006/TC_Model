@@ -34,6 +34,14 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 `acceptance` preset 会同时开启这五项。OPIR/RIR 开关只控制对应普通功能、内外部接口日志及雷达 CSV，
 不恢复第 50–55 项性能日志，也不为第 56、60 项生成日志。
 
+LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_log_enabled`、
+`SbirsSessionConfig::acceptance_log_enabled`，默认均为 `true`。示例 JSON 对应位置为
+`session_config.rir.acceptance_log_enabled`、`session_config.sbirs.acceptance_log_enabled`；
+多星红外独立场景使用顶层 `acceptance_log_enabled` 并应用到各卫星会话。实际打印条件为
+“对应 CMake 编译期开关为 `ON` 且会话参数为 `true`”。参数为 `false` 时，LRDR 不打印
+`RadarOutput.log`、`RadarInternalInterface.log` 及两份雷达验收 CSV，红外不打印
+`SatelliteTarget.log`、`IRInternalInterface.log` 及由红外链路产生的融合验收副本。
+
 **行格式**（各 `*_acceptance.log` 统一；方括号内为规范测试项名称，**不写「验收项」三字，方括号后不写「验收内容：」**）：
 
 ```text

@@ -627,7 +627,8 @@ std::string EncodeSbirsSessionConfig(const config::SbirsSessionConfig& value) {
   fbb.Finish(sbirs::replay::CreateSbirsSessionConfig(
                   fbb, EncodeHardwareConfig(fbb, value.hardware), EncodeMissionConfig(fbb, value.mission),
                   EncodeOrientationConfig(fbb, value.orientation), EncodePolicyConfig(fbb, value.policy),
-                  EncodeSessionEnvironmentConfig(fbb, value.environment), value.sensor_enabled),
+                  EncodeSessionEnvironmentConfig(fbb, value.environment), value.sensor_enabled,
+                  value.acceptance_log_enabled),
              kSbirsReplayFileIdentifier);
   return oneq::common::replay::CopyFinishedFlatbuffer(fbb);
 }
@@ -653,6 +654,7 @@ bool DecodeSbirsSessionConfig(const std::string& bytes, config::SbirsSessionConf
   }
   decoded.environment = DecodeSessionEnvironmentConfig(fb->environment());
   decoded.sensor_enabled = fb->sensor_enabled();
+  decoded.acceptance_log_enabled = fb->acceptance_log_enabled();
   *out = decoded;
   return true;
 }

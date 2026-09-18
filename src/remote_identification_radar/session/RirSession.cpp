@@ -226,6 +226,8 @@ RirOutputFrame RirSession::Step(const RirCycleInput& input) {
 }
 
 RirCycleResult RirSession::StepWithResult(const RirCycleInput& input) {
+  runtime::RirScopedAcceptanceLogEnable acceptance_log_scope(
+      impl_->config.acceptance_log_enabled);
   // 规则 10：recorder 注册后在 Step/StepWithResult 内部自动驱动（含早退路径，
   // 非执行周期由 recorder 自身空转——空事件、不推进状态）。
   RirCycleResult result = impl_->RunCycle(input);

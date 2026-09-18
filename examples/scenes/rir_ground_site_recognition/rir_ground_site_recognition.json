@@ -402,7 +402,8 @@
           "relative_humidity": 0.5
         }
       },
-      "sensor_enabled": true
+      "sensor_enabled": true,
+      "acceptance_log_enabled": true
     },
     "fusion": {
       "position_radius_m": 1000.0,

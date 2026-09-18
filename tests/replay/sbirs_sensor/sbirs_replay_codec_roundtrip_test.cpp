@@ -338,6 +338,7 @@ TEST(SbirsReplayCodecRoundtripTest, SessionConfigPreservesAllDomains) {
   config.hardware.detector_pixel_pitch_m = 25.0e-6f;  // 焦平面几何：非默认值防 decode 漏读
   config.mission.work_mode = SbirsWorkMode::kWideSearch;
   config.sensor_enabled = false;  // 非默认值防 decode 漏读（COMMON-OQ-4 字段提升）
+  config.acceptance_log_enabled = false;
   config.mission.scan_start_az_deg = 170.0f;
   config.mission.scan_span_deg = 45.0f;
   config.mission.scan_direction = SbirsScanDirection::kDecreasingAzimuth;
@@ -400,6 +401,7 @@ TEST(SbirsReplayCodecRoundtripTest, SessionConfigPreservesAllDomains) {
   EXPECT_FLOAT_EQ(decoded.hardware.noise_equivalent_power_w, 2.0e-12f);
   EXPECT_EQ(decoded.mission.work_mode, SbirsWorkMode::kWideSearch);
   EXPECT_FALSE(decoded.sensor_enabled);
+  EXPECT_FALSE(decoded.acceptance_log_enabled);
   EXPECT_FLOAT_EQ(decoded.mission.scan_start_az_deg, 170.0f);
   EXPECT_FLOAT_EQ(decoded.mission.scan_span_deg, 45.0f);
   EXPECT_EQ(decoded.mission.scan_direction, SbirsScanDirection::kDecreasingAzimuth);

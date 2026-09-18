@@ -21,6 +21,9 @@ inline void LoadRirSessionConfig(const examples::JsonValue& root,
   if (root.Has("sensor_enabled")) {
     config->sensor_enabled = root["sensor_enabled"].AsBool();
   }
+  if (root.Has("acceptance_log_enabled")) {
+    config->acceptance_log_enabled = root["acceptance_log_enabled"].AsBool();
+  }
 }
 
 /// Load a config::RirSessionConfig from a JSON file.

@@ -182,6 +182,7 @@ table RirSessionConfig {
   policy:RirPolicyConfig;
   environment:RirEnvironmentConfig;
   sensor_enabled:bool;
+  acceptance_log_enabled:bool = true;
 }
 
 root_type RirSessionConfig;

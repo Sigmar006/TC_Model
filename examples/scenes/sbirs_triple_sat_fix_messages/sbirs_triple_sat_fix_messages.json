@@ -2,6 +2,7 @@
   "name": "sbirs_triple_sat_fix_messages",
   "cycles": 80,
   "dt_sec": 1.0,
+  "acceptance_log_enabled": true,
   "log_dir": "sbirs_triple_sat_fix_messages",
   "utc_julian_day": 2451544.2230698913,
   "inference_horizon_sec": 1200.0,

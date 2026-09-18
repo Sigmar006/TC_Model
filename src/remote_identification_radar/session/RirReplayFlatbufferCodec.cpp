@@ -1106,7 +1106,7 @@ std::string EncodeRirSessionConfig(const config::RirSessionConfig& config) {
       EncodeEnvironmentConfig(&builder, config.environment);
   const flatbuffers::Offset<cfb::RirSessionConfig> root = cfb::CreateRirSessionConfig(
       builder, hardware, orientation, mission, policy, environment,
-      config.sensor_enabled);
+      config.sensor_enabled, config.acceptance_log_enabled);
   builder.Finish(root, cfb::RirSessionConfigIdentifier());
   return oneq::common::replay::CopyFinishedFlatbuffer(builder);
 }
@@ -1149,6 +1149,7 @@ bool DecodeRirSessionConfig(const std::string& payload_bytes, config::RirSession
   DecodePolicyConfig(root->policy(), &candidate.policy);
   DecodeEnvironmentConfig(root->environment(), &candidate.environment);
   candidate.sensor_enabled = root->sensor_enabled();
+  candidate.acceptance_log_enabled = root->acceptance_log_enabled();
   *config = candidate;
   return true;
 }

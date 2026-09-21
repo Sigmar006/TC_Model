@@ -22,3 +22,7 @@ Each module keeps a design-doc set as its design authority:
 `[evidence: ...]` annotations live in the set; step-by-step algorithm logic belongs in code. The set is a requirement, not current state — some modules are still missing files, so check what exists on disk instead of assuming.
 
 Update the set whenever thresholds, limitations, or veto decisions change.
+
+## Integration guides
+
+- [LRDR 集成指南](practice/lrdr_integration_guide.md) — 静态库/源码接入、调用流程与 BuildScanPattern 链接排障。

@@ -25,4 +25,4 @@ Update the set whenever thresholds, limitations, or veto decisions change.
 
 ## Integration guides
 
-- [LRDR 集成指南](practice/lrdr_integration_guide.md) — 静态库/源码接入、调用流程与 BuildScanPattern 链接排障。
+- [LRDR 集成指南（1q.lib）](practice/lrdr_integration_guide.md) — 静态库交付清单、Visual Studio 配置、会话调用与 BuildScanPattern 链接排障。

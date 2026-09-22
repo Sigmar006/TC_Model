@@ -117,7 +117,11 @@
 | 参数名 | 类型 | 用途 |
 | --- | --- | --- |
 | `sensor_enabled` | bool | 红外传感器会话初始化时的电源/使能状态。 |
-| `acceptance_log_enabled` | bool | 可选的运行时验收日志开关；当前 JSON 省略该键，使用默认 `true`。编译期总开关关闭时不能强制开启日志。 |
+| `acceptance_log_enabled` | bool | 可选的运行时验收日志开关；默认 `true`。编译期总开关关闭时不能强制开启日志。 |
+
+`acceptance_log_output_directory` 为可选目录字符串，默认空。非空时优先于日志环境变量，控制会话内的红外验收日志（含接口、融合副本及结束补写记录）；相对路径以进程工作目录为基准。双星联合验收会话应配置相同目录。空值使用环境变量，再回退至编译期默认路径。
+
+例如在完整配置中设置 `"acceptance_log_enabled": true`、`"acceptance_log_output_directory": "D:/acceptance/sbirs"`，使用 `LoadSbirsSessionConfigFromFile()` 读取后传给 `SbirsSession::Create(config)`；每周期调用 `StepWithResult(input)` 即由模型写入验收记录。构建模型库时须开启 `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`，融合副本另需 `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG`。
 
 代码支持可选的顶层 `orientation` 安装指向域。当前 `sbirs.json` 未显式填写，加载时使用 `SbirsOrientationConfig` 默认值；需要配置安装姿态、扫描限位或安装失准时，应按 `include/1q/sbirs_sensor/config/SbirsOrientationConfig.h` 增加对应对象。
 

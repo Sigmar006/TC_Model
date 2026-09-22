@@ -42,7 +42,7 @@ void WriteSbirsTargetDetectability(std::uint32_t satellite_entity_id, float sim_
                                    double satellite_ecef_y_m, double satellite_ecef_z_m,
                                    double gmst_rad);
 
-// 落盘所有待定可探测性行（会话结束时调用，补最后一拍的顺延行）。
+// 落盘当前输出目录内所有待定可探测性行（会话结束时调用，补最后一拍的顺延行）。
 void FlushSbirsDetectabilityPending();
 
 // kAngleCvKf 后验：滤波方位/俯仰及其变化率。不进公开检测记录（F4）。

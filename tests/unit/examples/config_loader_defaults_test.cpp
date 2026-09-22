@@ -178,3 +178,19 @@ TEST_F(ConfigLoaderDefaultsTest, RirEmptyRootKeepsPoweredOn) {
 
 }  // namespace
 }  // namespace examples
+
+TEST(SbirsAcceptanceConfigLoaderTest, ReadsDirectoryAndPreservesEmptyDefault) {
+  examples::JsonValue root;
+  std::string error;
+  const char* path = "sbirs_acceptance_directory_config_test.json";
+  {
+    std::ofstream file(path);
+    file << R"({"acceptance_log_enabled":true,"acceptance_log_output_directory":"log/sbirs-custom"})";
+  }
+  sbirs_sensor::config::SbirsSessionConfig config;
+  EXPECT_TRUE(config.acceptance_log_output_directory.empty());
+  ASSERT_TRUE(examples::LoadSbirsSessionConfigFromFile(path, &config, &error)) << error;
+  EXPECT_TRUE(config.acceptance_log_enabled);
+  EXPECT_EQ(config.acceptance_log_output_directory, "log/sbirs-custom");
+  std::remove(path);
+}

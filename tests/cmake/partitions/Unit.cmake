@@ -219,6 +219,7 @@ if(_oneq_unit_sbirs_sensor)
     oneq_add_test_partition(
         TYPE unit DOMAIN sbirs_sensor
         SOURCES ${_oneq_unit_sbirs_sensor}
+        COMPILE_DEFS ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=$<BOOL:${ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG}>
         TIMEOUT 60)
 endif()
 

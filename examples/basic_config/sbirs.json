@@ -79,5 +79,7 @@
     "humidity_visibility_interaction_weight": 0.0,
     "rain_humidity_interaction_weight": 0.0
   },
-  "sensor_enabled": true
+  "sensor_enabled": true,
+  "acceptance_log_enabled": true,
+  "acceptance_log_output_directory": ""
 }

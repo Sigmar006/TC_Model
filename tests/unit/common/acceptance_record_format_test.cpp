@@ -157,7 +157,7 @@ TEST_F(AcceptanceRecordFormatTest, RadarOutputUsesDedicatedFile) {
 #else
   EXPECT_NE(content.find("[雷达检测与量测输出接口测试]"), std::string::npos);
 #endif
-  EXPECT_NE(content.find("量测数量=1"), std::string::npos);
+  EXPECT_NE(content.find(u8"量测数量=1"), std::string::npos);
 }
 
 }  // namespace

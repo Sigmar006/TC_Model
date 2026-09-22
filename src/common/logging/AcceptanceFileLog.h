@@ -46,6 +46,7 @@ class ScopedAcceptanceLogOutputDirectory final {
 
 void OpenAcceptanceLog(AcceptanceChannel channel, const char* path);
 void CloseAcceptanceLog(AcceptanceChannel channel);
+// 刷出当前目录作用域的通道；无目录作用域时刷出默认通道。
 void FlushAcceptanceLog(AcceptanceChannel channel);
 bool IsAcceptanceLogOpen(AcceptanceChannel channel);
 void WriteAcceptanceLog(AcceptanceChannel channel, const char* text);

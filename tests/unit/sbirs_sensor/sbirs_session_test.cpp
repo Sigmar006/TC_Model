@@ -1,6 +1,9 @@
 ﻿#include <gtest/gtest.h>
 
 #include <limits>
+#include <fstream>
+#include <iterator>
+#include "common/logging/AcceptanceFileLog.h"
 #include <string>
 
 #include "1q/sbirs_sensor/config/SbirsRuntimeConfigPatch.h"
@@ -209,3 +212,40 @@ TEST(SbirsSessionTest, ExcludedTargetDiagnosticsPropagateToCycleResult) {
 }
 
 }  // namespace
+
+#if defined(ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG) && ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG
+TEST(SbirsAcceptanceDirectoryTest, RoutesCycleAndDeferredRecordsToSessionDirectory) {
+  using namespace oneq::logging;
+  auto config_a = Config();
+  auto config_b = Config();
+  config_a.acceptance_log_output_directory = "sbirs_directory_test/a";
+  config_b.acceptance_log_output_directory = "sbirs_directory_test/b";
+  {
+    auto session_a = sbirs_sensor::session::SbirsSession::Create(config_a);
+    auto session_b = sbirs_sensor::session::SbirsSession::Create(config_b);
+    session_a.SetSatelliteEntityId(701U);
+    session_b.SetSatelliteEntityId(702U);
+    auto input_a = ValidInput(1U);
+    auto input_b = ValidInput(1U);
+    input_a.scene[0].target_id = 801U;
+    input_b.scene[0].target_id = 802U;
+    EXPECT_EQ(session_a.StepWithResult(input_a).status,
+              sbirs_sensor::session::SbirsCycleStatus::kCompleted);
+    EXPECT_TRUE(CurrentAcceptanceLogOutputDirectory().empty());
+    EXPECT_EQ(session_b.StepWithResult(input_b).status,
+              sbirs_sensor::session::SbirsCycleStatus::kCompleted);
+  }
+  for (const auto& config : {config_a, config_b}) {
+    ScopedAcceptanceLogOutputDirectory scope(config.acceptance_log_output_directory);
+    FlushAcceptanceLog(AcceptanceChannel::kSatelliteTarget);
+    std::ifstream file(config.acceptance_log_output_directory + "/SatelliteTarget.log");
+    ASSERT_TRUE(file.good());
+    const std::string text((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+    const bool is_a = config.acceptance_log_output_directory == config_a.acceptance_log_output_directory;
+    EXPECT_NE(text.find(u8"目标可探测性与动态参数生成功能测试"), std::string::npos);
+    EXPECT_NE(text.find(is_a ? u8"目标ID=801 " : u8"目标ID=802 "), std::string::npos);
+    EXPECT_EQ(text.find(is_a ? u8"目标ID=802 " : u8"目标ID=801 "), std::string::npos);
+  }
+}
+#endif

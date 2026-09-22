@@ -385,7 +385,14 @@ void OpenAcceptanceLog(AcceptanceChannel channel, const char* path) {
 
 void CloseAcceptanceLog(AcceptanceChannel channel) { SinkOf(channel).Close(); }
 
-void FlushAcceptanceLog(AcceptanceChannel channel) { SinkOf(channel).Flush(); }
+void FlushAcceptanceLog(AcceptanceChannel channel) {
+  const std::string& directory = CurrentAcceptanceLogOutputDirectory();
+  if (directory.empty()) {
+    SinkOf(channel).Flush();
+  } else {
+    SinkOfPath(channel, JoinPath(directory, ChannelFileName(channel))).Flush();
+  }
+}
 
 bool IsAcceptanceLogOpen(AcceptanceChannel channel) { return SinkOf(channel).IsOpen(); }
 
@@ -405,7 +412,7 @@ void WriteAcceptanceLogToDirectory(AcceptanceChannel channel,
                                    const std::string& output_directory,
                                    const std::string& text) {
   if (output_directory.empty()) {
-    WriteAcceptanceLog(channel, text);
+    SinkOf(channel).Write(text);
     return;
   }
   SinkOfPath(channel, JoinPath(output_directory, ChannelFileName(channel))).Write(text);

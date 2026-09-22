@@ -130,6 +130,7 @@ table SbirsSessionConfig {
   sensor_enabled: bool = true;
   // 外部运行时日志开关；false 禁止红外验收日志及融合副本，默认 true。
   acceptance_log_enabled: bool = true;
+  acceptance_log_output_directory: string;
 }
 
 root_type SbirsSessionConfig;

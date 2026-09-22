@@ -54,13 +54,13 @@ struct DetectabilityEntry {
   double gmst_rad{0.0};
 };
 
-// 待定表：周期 → 目标ID → 卫星ID → 条目（双星齐备即刻成行，单星顺延）。
+// 按输出目录隔离待定表；同目录内按周期 → 目标ID → 卫星ID 会合。
 std::map<std::uint32_t, std::map<std::uint64_t, std::map<std::uint32_t, DetectabilityEntry>>>&
 DetectabilityPending() {
-  static std::map<std::uint32_t,
-                  std::map<std::uint64_t, std::map<std::uint32_t, DetectabilityEntry>>>
+  static std::map<std::string, std::map<std::uint32_t,
+                  std::map<std::uint64_t, std::map<std::uint32_t, DetectabilityEntry>>>>
       pending;
-  return pending;
+  return pending[oneq::logging::CurrentAcceptanceLogOutputDirectory()];
 }
 
 // 待定表为进程级共享（双星定位依赖两星写同一张表会合），组件层当前串行步进；

@@ -6,6 +6,8 @@
 #ifndef ONEQ_SBIRS_SENSOR_CONFIG_SBIRS_SESSION_CONFIG_H_
 #define ONEQ_SBIRS_SENSOR_CONFIG_SBIRS_SESSION_CONFIG_H_
 
+#include <string>
+
 #include "1q/api.hpp"
 #include "1q/sbirs_sensor/config/SbirsEnvironmentConfig.h"
 #include "1q/sbirs_sensor/config/SbirsHardwareConfig.h"
@@ -18,7 +20,7 @@ namespace config {
 
 /**
  * @brief SBIRS-inspired 会话初始化配置，聚合硬件、任务、安装指向、策略、环境五域配置。
- * @note 纯数据类型 (POD)，是构造 `SbirsSession` 的主要输入。
+ * @note 配置值类型，是构造 `SbirsSession` 的主要输入。
  */
 struct ONEQ_API SbirsSessionConfig {
   SbirsHardwareConfig hardware{};       /**< 传感器硬件参数 */
@@ -32,6 +34,10 @@ struct ONEQ_API SbirsSessionConfig {
    * 仅在对应 OPIR/Fusion 编译期日志开关已启用时生效，默认 true。
    */
   bool acceptance_log_enabled{true};
+  /** 验收日志目录；空值沿用环境变量或编译期默认路径。
+   * 相对路径以进程工作目录为基准；共同生成双星验收记录的会话使用同一目录。
+   */
+  std::string acceptance_log_output_directory{};
 };
 
 }  // namespace config

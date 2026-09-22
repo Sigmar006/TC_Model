@@ -184,6 +184,8 @@ table RirSessionConfig {
   sensor_enabled:bool;
   // 外部运行时日志开关；false 禁止 LRDR 验收日志和验收 CSV，默认 true。
   acceptance_log_enabled:bool = true;
+  // 非空时，本会话验收日志及雷达 CSV 写入该目录。
+  acceptance_log_output_directory:string;
 }
 
 root_type RirSessionConfig;

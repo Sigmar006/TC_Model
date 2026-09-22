@@ -8,6 +8,8 @@
 #ifndef ONEQ_REMOTE_IDENTIFICATION_RADAR_CONFIG_RIR_SESSION_CONFIG_H_
 #define ONEQ_REMOTE_IDENTIFICATION_RADAR_CONFIG_RIR_SESSION_CONFIG_H_
 
+#include <string>
+
 #include "1q/api.hpp"
 #include "1q/remote_identification_radar/config/RirEnvironmentConfig.h"
 #include "1q/remote_identification_radar/config/RirHardwareConfig.h"
@@ -37,6 +39,11 @@ struct ONEQ_API RirSessionConfig {
    * 仅在编译期开关 ONEQ_ENABLE_RIR_ACCEPTANCE_LOG 已启用时生效，默认 true。
    */
   bool acceptance_log_enabled{true};
+  /**
+   * 验收日志输出目录；非空时 RadarOutput.log、RadarInternalInterface.log 及两份
+   * 雷达验收 CSV 均写入该目录。空字符串沿用环境变量或编译期默认路径。
+   */
+  std::string acceptance_log_output_directory{};
 };
 
 }  // namespace config

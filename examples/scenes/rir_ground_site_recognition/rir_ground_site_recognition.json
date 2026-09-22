@@ -403,7 +403,8 @@
         }
       },
       "sensor_enabled": true,
-      "acceptance_log_enabled": true
+      "acceptance_log_enabled": true,
+      "acceptance_log_output_directory": "log/rir_ground_site_recognition"
     },
     "fusion": {
       "position_radius_m": 1000.0,

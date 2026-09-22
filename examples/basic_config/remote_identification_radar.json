@@ -110,5 +110,7 @@
       "relative_humidity": 0.5
     }
   },
-  "sensor_enabled": true
+  "sensor_enabled": true,
+  "acceptance_log_enabled": true,
+  "acceptance_log_output_directory": "log/rir"
 }

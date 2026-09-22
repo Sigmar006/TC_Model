@@ -81,8 +81,8 @@ class SbirsAngleCvPredictor final
                                                           kSbirsAngleMeasurementDim> {
  public:
   using GaussianStateT = SbirsAngleCvGaussianState;
-  using TransitionMatrix = typename GaussianStateT::TransitionMatrix;
-  using ProcessNoiseCovariance = typename GaussianStateT::ProcessNoiseCovariance;
+  using TransitionMatrix = GaussianStateT::TransitionMatrix;
+  using ProcessNoiseCovariance = GaussianStateT::ProcessNoiseCovariance;
 
   explicit SbirsAngleCvPredictor(::oneq::common::estimation::KalmanPredictorConfig config = {})
       : config_(config) {}
@@ -142,11 +142,11 @@ class SbirsAngleCvUpdater final
  public:
   using GaussianStateT = SbirsAngleCvGaussianState;
   using Result = SbirsAngleCvUpdateResult;
-  using MeasurementVector = typename GaussianStateT::MeasurementVector;
-  using MeasurementCovariance = typename GaussianStateT::MeasurementCovariance;
-  using MeasurementMatrix = typename GaussianStateT::MeasurementMatrix;
-  using KalmanGainMatrix = typename GaussianStateT::KalmanGainMatrix;
-  using StateCovariance = typename GaussianStateT::StateCovariance;
+  using MeasurementVector = GaussianStateT::MeasurementVector;
+  using MeasurementCovariance = GaussianStateT::MeasurementCovariance;
+  using MeasurementMatrix = GaussianStateT::MeasurementMatrix;
+  using KalmanGainMatrix = GaussianStateT::KalmanGainMatrix;
+  using StateCovariance = GaussianStateT::StateCovariance;
 
   explicit SbirsAngleCvUpdater(::oneq::common::estimation::KalmanUpdaterConfig config = {})
       : R_(::oneq::common::estimation::IKalmanUpdater<kSbirsAngleStateDim, kSbirsAngleMeasurementDim>::

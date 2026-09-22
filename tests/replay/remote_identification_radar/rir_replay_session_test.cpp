@@ -131,6 +131,7 @@ TEST(RirReplaySessionTest, ConfigAndInputPayloadsRoundtripByteExact) {
   config::RirSessionConfig config = MakeIdentifyConfig();
   config.sensor_enabled = false;
   config.acceptance_log_enabled = false;
+  config.acceptance_log_output_directory = "acceptance/rir";
   config.hardware.transmitter.bandwidth_hz = 9.0e6f;
   config.hardware.antenna.model_type =
       config::hardware::RirAntennaPatternModelType::kSincPattern;
@@ -157,6 +158,7 @@ TEST(RirReplaySessionTest, ConfigAndInputPayloadsRoundtripByteExact) {
   EXPECT_EQ(EncodeRirSessionConfig(decoded_config), encoded_config);
   EXPECT_FALSE(decoded_config.sensor_enabled);
   EXPECT_FALSE(decoded_config.acceptance_log_enabled);
+  EXPECT_EQ(decoded_config.acceptance_log_output_directory, "acceptance/rir");
   EXPECT_EQ(decoded_config.policy.recognition.database_path, "features.sqlite");
 
   config::RirRuntimeConfigPatch patch;

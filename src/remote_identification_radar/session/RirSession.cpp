@@ -22,6 +22,7 @@
 #include "1q/remote_identification_radar/session/RirIssueCodes.h"
 #include "1q/remote_identification_radar/session/RirTrackLifecycleRecorder.h"
 #include "common/logging/ProjectLog.h"
+#include "common/logging/AcceptanceFileLog.h"
 #include "common/numerics/Constants.h"
 #include "common/radar/ScanScheduleRuntime.h"
 #include "remote_identification_radar/dwell/RirBeamControl.h"
@@ -228,6 +229,8 @@ RirOutputFrame RirSession::Step(const RirCycleInput& input) {
 RirCycleResult RirSession::StepWithResult(const RirCycleInput& input) {
   runtime::RirScopedAcceptanceLogEnable acceptance_log_scope(
       impl_->config.acceptance_log_enabled);
+  oneq::logging::ScopedAcceptanceLogOutputDirectory acceptance_log_directory_scope(
+      impl_->config.acceptance_log_output_directory);
   // 规则 10：recorder 注册后在 Step/StepWithResult 内部自动驱动（含早退路径，
   // 非执行周期由 recorder 自身空转——空事件、不推进状态）。
   RirCycleResult result = impl_->RunCycle(input);

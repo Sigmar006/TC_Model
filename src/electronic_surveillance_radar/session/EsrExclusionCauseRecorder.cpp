@@ -141,10 +141,10 @@ std::vector<EsrExclusionCauseEvent> EsrExclusionCauseRecorder::Update(
   for (const oneq::electromagnetics::RfSceneEmission* emission : sorted_emissions) {
     const EmissionKey key = KeyFromIdentity(emission->identity);
 
-    typename std::unordered_map<EmissionKey, CurrentExclusion, EmissionKeyHash>::const_iterator
+    std::unordered_map<EmissionKey, CurrentExclusion, EmissionKeyHash>::const_iterator
         current_it = current_by_key.find(key);
     const bool excluded_now = current_it != current_by_key.end() && current_it->second.found;
-    typename std::unordered_map<EmissionKey, ExclusionState, EmissionKeyHash>::iterator prev_it =
+    std::unordered_map<EmissionKey, ExclusionState, EmissionKeyHash>::iterator prev_it =
         impl_->states.find(key);
     const bool excluded_prev = prev_it != impl_->states.end();
 
@@ -181,10 +181,10 @@ std::vector<EsrExclusionCauseEvent> EsrExclusionCauseRecorder::Update(
 
   // A4 退出检测：上一周期被排除但本周期未出现在 current_by_key 中的发射源。
   // 遍历内部状态，找出本周不再被排除（含从输入消失）的源。
-  for (typename std::unordered_map<EmissionKey, ExclusionState, EmissionKeyHash>::iterator
+  for (std::unordered_map<EmissionKey, ExclusionState, EmissionKeyHash>::iterator
            state_it = impl_->states.begin();
        state_it != impl_->states.end();) {
-    typename std::unordered_map<EmissionKey, CurrentExclusion, EmissionKeyHash>::const_iterator
+    std::unordered_map<EmissionKey, CurrentExclusion, EmissionKeyHash>::const_iterator
         current_it = current_by_key.find(state_it->first);
     const bool excluded_now = current_it != current_by_key.end() && current_it->second.found;
     if (!excluded_now) {

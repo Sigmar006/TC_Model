@@ -274,6 +274,13 @@ bool TryLookPolarFromEnuM(float east_m, float north_m, float up_m, float* range_
 }
 
 std::string ResolveRirAntennaPatternCsvPath() {
+  if (!oneq::logging::CurrentAcceptanceLogOutputDirectory().empty()) {
+    const std::string& directory =
+        oneq::logging::CurrentAcceptanceLogOutputDirectory();
+    const char last = directory[directory.size() - 1U];
+    return directory + ((last == '/' || last == '\\') ? "" : "/") +
+           "RadarAntennaGainPatterndata.csv";
+  }
 #if defined(_MSC_VER)
   char* buffer = nullptr;
   if (_dupenv_s(&buffer, nullptr, "ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH") == 0 && buffer != nullptr) {
@@ -293,6 +300,13 @@ std::string ResolveRirAntennaPatternCsvPath() {
 }
 
 std::string ResolveRirScanPatternCsvPath() {
+  if (!oneq::logging::CurrentAcceptanceLogOutputDirectory().empty()) {
+    const std::string& directory =
+        oneq::logging::CurrentAcceptanceLogOutputDirectory();
+    const char last = directory[directory.size() - 1U];
+    return directory + ((last == '/' || last == '\\') ? "" : "/") +
+           "Rir_scan_pattern.csv";
+  }
 #if defined(_MSC_VER)
   char* buffer = nullptr;
   if (_dupenv_s(&buffer, nullptr, "ONEQ_RIR_SCAN_PATTERN_CSV_PATH") == 0 && buffer != nullptr) {

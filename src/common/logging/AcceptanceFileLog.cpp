@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -162,6 +164,38 @@ const char* ChannelLabel(AcceptanceChannel channel) {
   return "opir";
 }
 
+const char* ChannelFileName(AcceptanceChannel channel) {
+  switch (channel) {
+    case AcceptanceChannel::kOpir:
+      return "opir_acceptance.log";
+    case AcceptanceChannel::kRir:
+      return "rir_acceptance.log";
+    case AcceptanceChannel::kFusion:
+      return "fusion_acceptance.log";
+    case AcceptanceChannel::kInference:
+      return "inference_acceptance.log";
+    case AcceptanceChannel::kPrecision:
+      return "precision_acceptance.log";
+    case AcceptanceChannel::kIrInternalInterface:
+      return "IRInternalInterface.log";
+    case AcceptanceChannel::kRadarInternalInterface:
+      return "RadarInternalInterface.log";
+    case AcceptanceChannel::kRadarOutput:
+      return "RadarOutput.log";
+    case AcceptanceChannel::kSatelliteTarget:
+      return "SatelliteTarget.log";
+  }
+  return "acceptance.log";
+}
+
+std::string JoinPath(const std::string& directory, const char* file_name) {
+  if (directory.empty()) {
+    return std::string();
+  }
+  const char last = directory[directory.size() - 1U];
+  return directory + ((last == '/' || last == '\\') ? "" : "/") + file_name;
+}
+
 std::string ResolveDefaultPath(AcceptanceChannel channel) {
 #if defined(_MSC_VER)
   char* buffer = nullptr;
@@ -183,7 +217,9 @@ std::string ResolveDefaultPath(AcceptanceChannel channel) {
 
 class ChannelSink {
  public:
-  explicit ChannelSink(AcceptanceChannel channel) : channel_(channel) {}
+  explicit ChannelSink(AcceptanceChannel channel,
+                       const std::string& explicit_path = std::string())
+      : channel_(channel), explicit_path_(explicit_path) {}
 
   void Open(const char* path) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -218,7 +254,8 @@ class ChannelSink {
     }
     std::lock_guard<std::mutex> lock(mutex_);
     if (!stream_.is_open() && !open_failed_) {
-      const std::string path = ResolveDefaultPath(channel_);
+      const std::string path =
+          explicit_path_.empty() ? ResolveDefaultPath(channel_) : explicit_path_;
       DoOpen(path.c_str());
     }
     if (!stream_.is_open()) {
@@ -264,6 +301,7 @@ class ChannelSink {
   }
 
   AcceptanceChannel channel_;
+  std::string explicit_path_;
   mutable std::mutex mutex_;
   std::ofstream stream_;
   bool open_failed_ = false;
@@ -304,7 +342,42 @@ ChannelSink& SinkOf(AcceptanceChannel channel) {
   }
 }
 
+ChannelSink& SinkOfPath(AcceptanceChannel channel, const std::string& path) {
+  static std::mutex registry_mutex;
+  static std::map<std::string, std::unique_ptr<ChannelSink>> sinks;
+  const std::string key = std::to_string(static_cast<int>(channel)) + ":" + path;
+  std::lock_guard<std::mutex> lock(registry_mutex);
+  std::unique_ptr<ChannelSink>& sink = sinks[key];
+  if (!sink) {
+    sink.reset(new ChannelSink(channel, path));
+  }
+  return *sink;
+}
+
 }  // namespace
+
+namespace {
+
+std::string& ThreadAcceptanceLogOutputDirectory() {
+  static thread_local std::string output_directory;
+  return output_directory;
+}
+
+}  // namespace
+
+const std::string& CurrentAcceptanceLogOutputDirectory() {
+  return ThreadAcceptanceLogOutputDirectory();
+}
+
+ScopedAcceptanceLogOutputDirectory::ScopedAcceptanceLogOutputDirectory(
+    const std::string& output_directory)
+    : previous_output_directory_(ThreadAcceptanceLogOutputDirectory()) {
+  ThreadAcceptanceLogOutputDirectory() = output_directory;
+}
+
+ScopedAcceptanceLogOutputDirectory::~ScopedAcceptanceLogOutputDirectory() {
+  ThreadAcceptanceLogOutputDirectory() = previous_output_directory_;
+}
 
 void OpenAcceptanceLog(AcceptanceChannel channel, const char* path) {
   SinkOf(channel).Open(path);
@@ -320,11 +393,22 @@ void WriteAcceptanceLog(AcceptanceChannel channel, const char* text) {
   if (text == nullptr || *text == '\0') {
     return;
   }
-  SinkOf(channel).Write(std::string(text));
+  WriteAcceptanceLog(channel, std::string(text));
 }
 
 void WriteAcceptanceLog(AcceptanceChannel channel, const std::string& text) {
-  SinkOf(channel).Write(text);
+  WriteAcceptanceLogToDirectory(
+      channel, CurrentAcceptanceLogOutputDirectory(), text);
+}
+
+void WriteAcceptanceLogToDirectory(AcceptanceChannel channel,
+                                   const std::string& output_directory,
+                                   const std::string& text) {
+  if (output_directory.empty()) {
+    WriteAcceptanceLog(channel, text);
+    return;
+  }
+  SinkOfPath(channel, JoinPath(output_directory, ChannelFileName(channel))).Write(text);
 }
 
 }  // namespace logging

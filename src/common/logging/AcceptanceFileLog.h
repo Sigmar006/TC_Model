@@ -28,12 +28,32 @@ enum class AcceptanceChannel {
   kSatelliteTarget = 8,
 };
 
+const std::string& CurrentAcceptanceLogOutputDirectory();
+
+/** @brief 在当前线程内覆盖验收日志输出目录，析构时恢复上一层目录。 */
+class ScopedAcceptanceLogOutputDirectory final {
+ public:
+  explicit ScopedAcceptanceLogOutputDirectory(const std::string& output_directory);
+  ~ScopedAcceptanceLogOutputDirectory();
+
+  ScopedAcceptanceLogOutputDirectory(const ScopedAcceptanceLogOutputDirectory&) = delete;
+  ScopedAcceptanceLogOutputDirectory& operator=(
+      const ScopedAcceptanceLogOutputDirectory&) = delete;
+
+ private:
+  std::string previous_output_directory_;
+};
+
 void OpenAcceptanceLog(AcceptanceChannel channel, const char* path);
 void CloseAcceptanceLog(AcceptanceChannel channel);
 void FlushAcceptanceLog(AcceptanceChannel channel);
 bool IsAcceptanceLogOpen(AcceptanceChannel channel);
 void WriteAcceptanceLog(AcceptanceChannel channel, const char* text);
 void WriteAcceptanceLog(AcceptanceChannel channel, const std::string& text);
+/** @brief 将通道日志写入指定目录；目录为空时沿用环境变量/编译期默认路径。 */
+void WriteAcceptanceLogToDirectory(AcceptanceChannel channel,
+                                   const std::string& output_directory,
+                                   const std::string& text);
 
 }  // namespace logging
 }  // namespace oneq

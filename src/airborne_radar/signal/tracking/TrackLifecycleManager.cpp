@@ -548,7 +548,7 @@ void TrackLifecycleManager::ComputePhase(LifecycleUpdateScratch& scratch, const 
       // track.velocity 仍持有上一周期速度（track_before_update 来自持久化 tracks_by_key_），
       // 在被本周期测量覆盖前保存，供反 VGPO 加速度限幅裁剪。
       const Eigen::Vector3f velocity_before_update = track.velocity;
-      if (measurement.filtered_feature.velocity != Eigen::Vector3f::Zero()) {
+      if (measurement.filtered_feature.velocity.squaredNorm() > 0.0f) {
         track.velocity = measurement.filtered_feature.velocity;
       } else {
         track.velocity = Eigen::Vector3f(measurement.filtered_feature.observed_speed, 0.0f, 0.0f);

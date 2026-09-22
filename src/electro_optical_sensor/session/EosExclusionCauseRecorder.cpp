@@ -87,10 +87,10 @@ std::vector<EosExclusionCauseEvent> EosExclusionCauseRecorder::Update(
       continue;
     }
 
-    typename std::unordered_map<std::size_t, CurrentExclusion>::const_iterator current_it =
+    std::unordered_map<std::size_t, CurrentExclusion>::const_iterator current_it =
         current_by_entity.find(idx);
     const bool excluded_now = current_it != current_by_entity.end() && current_it->second.found;
-    typename std::unordered_map<std::uint64_t, ExclusionState>::iterator prev_it =
+    std::unordered_map<std::uint64_t, ExclusionState>::iterator prev_it =
         impl_->states.find(target.target_id);
     const bool excluded_prev = prev_it != impl_->states.end();
 

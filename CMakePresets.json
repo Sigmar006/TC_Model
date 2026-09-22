@@ -98,6 +98,8 @@
             "description": "VisualStudio.14.0-amd64-none variant with all five per-layer acceptance files ON by default (sbirs/rir/fusion/inference/precision_acceptance.log; docs/review/acceptance_item_catalog_2026-08-22.md). Run scripts/win/fetch_third_party.bat first. VS2015+Conan is not viable on this machine: CMake 4.3.1 emits v145 toolset requirements that MSBuild v140 cannot satisfy (flatbuffers recipe build fails).",
             "inherits": "VisualStudio.14.0-amd64-none",
             "cacheVariables": {
+                "CMAKE_C_FLAGS_RELEASE": "/O2 /Ob2 /DNDEBUG /Zi",
+                "CMAKE_CXX_FLAGS_RELEASE": "/O2 /Ob2 /DNDEBUG /Zi",
                 "ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG": "ON",
                 "ONEQ_ENABLE_RIR_ACCEPTANCE_LOG": "ON",
                 "ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG": "ON",
@@ -146,6 +148,28 @@
                 "BUILD_SHARED_LIBS": "OFF",
                 "ENABLE_TESTING": "OFF",
                 "ENABLE_INSTALL": "ON"
+            }
+        },
+        {
+            "name": "acceptance-v141",
+            "displayName": "Acceptance v141 (Release x64 with PDB)",
+            "description": "Full static 1q acceptance build using the v141 toolset, Release optimization and /Zi debug symbols.",
+            "inherits": "windows-base-none",
+            "generator": "Visual Studio 18 2026",
+            "toolset": "v141,host=x64",
+            "cacheVariables": {
+                "CMAKE_CXX_STANDARD": "14",
+                "CMAKE_C_FLAGS_RELEASE": "/O2 /Ob2 /DNDEBUG /Zi",
+                "CMAKE_CXX_FLAGS_RELEASE": "/O2 /Ob2 /DNDEBUG /Zi",
+                "BUILD_SHARED_LIBS": "OFF",
+                "ENABLE_TESTING": "OFF",
+                "ENABLE_EXAMPLES": "ON",
+                "ENABLE_INSTALL": "ON",
+                "ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG": "ON",
+                "ONEQ_ENABLE_RIR_ACCEPTANCE_LOG": "ON",
+                "ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG": "OFF",
+                "ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG": "OFF",
+                "ONEQ_ENABLE_PRECISION_EVALUATION_LOG": "ON"
             }
         }
     ],
@@ -217,6 +241,13 @@
             "displayName": "VS2026 v141 (VS2017-era) - Release",
             "inherits": "windows-build-base",
             "configurePreset": "VisualStudio.15.0-amd64",
+            "configuration": "Release"
+        },
+        {
+            "name": "acceptance-v141-release",
+            "displayName": "Acceptance v141 - Release x64 with PDB",
+            "inherits": "windows-build-base",
+            "configurePreset": "acceptance-v141",
             "configuration": "Release"
         }
     ],

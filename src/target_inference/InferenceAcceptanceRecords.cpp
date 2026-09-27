@@ -199,6 +199,32 @@ BurnoutPhase UpdateBurnoutTracker(BurnoutTrackerState& state,
   return BurnoutPhase::kObserving;
 }
 
+bool TryResolveBurnoutEstimate(BurnoutPhase phase, const BurnoutTrackerState& state,
+                               double current_time_sec,
+                               const TrajectoryPrediction& trajectory,
+                               double* burnout_time_sec,
+                               oneq::coordinate::LlaPositionDegM* burnout_position) {
+  if (burnout_time_sec == nullptr || burnout_position == nullptr) {
+    return false;
+  }
+  if (phase == BurnoutPhase::kConfirmed) {
+    if (!oneq::coordinate::TryEcefToLla(state.position, burnout_position)) {
+      return false;
+    }
+    *burnout_time_sec = state.time_sec;
+    return true;
+  }
+  const bool can_backtrack = phase == BurnoutPhase::kBeforeWindow ||
+                             phase == BurnoutPhase::kBeforeTrackStart ||
+                             (phase == BurnoutPhase::kObserving && state.valid);
+  if (!can_backtrack || !trajectory.valid || !trajectory.has_launch) {
+    return false;
+  }
+  *burnout_time_sec = current_time_sec + trajectory.launch_time_offset_sec;
+  *burnout_position = trajectory.launch_point;
+  return true;
+}
+
 void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
                               std::vector<TargetInferenceResult>& results,
                               const TargetInferenceConfig& config) {
@@ -208,8 +234,8 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
 
   // 关机点预测（2026-08-22 甲方批注「判断其势能+动能最大的地方」）：助推-滑行
   // 状态机逐航迹判定（双通道助推判别，见 UpdateBurnoutTracker）。
-  // 评审 2026-08-26 条9：行内只保留关机点时刻与关机点坐标（未确认分支统一写
-  // 「正在模拟计算」）；状态/能量峰值/当时速度/机械能峰值/发射时刻锚不再输出。
+  // 评审 2026-08-26 条9：行内只保留关机点时刻与关机点坐标；精度门未通过或
+  // 正在助推时写「正在模拟计算」，其余未确认状态可写带依据标识的回推估计。
   if (tracks.empty()) {
     return;
   }
@@ -241,20 +267,23 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
                              track.sim_time_sec, config.earth_mu_m3_per_s2,
                              velocity_sigma_m);
     std::string burnout = "目标键=" + std::to_string(track.key);
-    if (phase == BurnoutPhase::kConfirmed) {
-      burnout += " 关机点时刻=" + FormatF(state.time_sec, 1) + "s";
-      // 关机点输出经纬高（LLA，库内 TryEcefToLla 换算）：与落点/发射点行同风格，
-      // 高度即椭球高（m）。
-      oneq::coordinate::LlaPositionDegM peak_lla{};
-      if (oneq::coordinate::TryEcefToLla(state.position, &peak_lla)) {
-        burnout += " 关机点经纬高=" + FormatVec3(peak_lla.latitude_deg,
-                                                  peak_lla.longitude_deg,
-                                                  peak_lla.altitude_m, 3);
+    const TrajectoryPrediction empty_trajectory{};
+    const TrajectoryPrediction& trajectory =
+        i < results.size() ? results[i].trajectory : empty_trajectory;
+    double burnout_time_sec = 0.0;
+    oneq::coordinate::LlaPositionDegM burnout_lla{};
+    if (TryResolveBurnoutEstimate(phase, state, track.sim_time_sec, trajectory,
+                                  &burnout_time_sec, &burnout_lla)) {
+      burnout += " 关机点时刻=" + FormatF(burnout_time_sec, 1) + "s";
+      burnout += " 关机点经纬高=" + FormatVec3(
+          burnout_lla.latitude_deg, burnout_lla.longitude_deg, burnout_lla.altitude_m, 3);
+      if (phase != BurnoutPhase::kConfirmed) {
+        burnout += " 判定依据=大气界面回推估计";
       }
       // 评审 2026-08-26 条10 + 2026-08-27 条3：关机点 1-σ = 当前协方差敏度传播
       // 到关机时刻（引擎静态敏度面），随行输出并回填 API 字段供发布行使用。
       if (i < results.size() && track.has_covariance) {
-        const double burnout_offset_sec = state.time_sec - track.sim_time_sec;
+        const double burnout_offset_sec = burnout_time_sec - track.sim_time_sec;
         const double burnout_sigma =
             TargetInferenceEngine::PositionSigmaAt(track, burnout_offset_sec, config);
         if (burnout_sigma > 0.0) {
@@ -264,7 +293,7 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
         }
       }
     } else {
-      // 观测中/助推中/窗口外/早于跟踪起点：关机点尚未确认，统一写正在模拟计算。
+      // 速度精度门未通过、助推中或无可用回推结果：关机点仍需继续计算。
       burnout += " 关机点时刻=正在模拟计算";
       burnout += " 关机点经纬高=正在模拟计算";
     }

@@ -90,6 +90,23 @@ BurnoutPhase UpdateBurnoutTracker(BurnoutTrackerState& state,
                                   double velocity_sigma_m = 0.0);
 
 /**
+ * @brief Resolves a terminal burnout phase to a printable point estimate.
+ * @param[in] phase Burnout state-machine phase.
+ * @param[in] state Accumulated state; confirmed phases use the observed energy peak.
+ * @param[in] current_time_sec Current absolute simulation time.
+ * @param[in] trajectory Current trajectory solution; pre-observation phases use backtracking.
+ * @param[out] burnout_time_sec Estimated absolute burnout time.
+ * @param[out] burnout_position Estimated burnout position in geodetic coordinates.
+ * @return True for an observed confirmation or a valid precision-gated backtrack.
+ * @note The backtracked 100 km atmosphere-interface stop is the modeled upper boundary of
+ *       powered flight. It is an estimate rather than an observed burnout confirmation.
+ */
+bool TryResolveBurnoutEstimate(BurnoutPhase phase, const BurnoutTrackerState& state,
+                               double current_time_sec, const TrajectoryPrediction& trajectory,
+                               double* burnout_time_sec,
+                               oneq::coordinate::LlaPositionDegM* burnout_position);
+
+/**
  * @brief 推演验收行写入。μ 与地球半径取引擎配置（TargetInferenceConfig 单源）。
  * @note results 以非 const 传入：关机点确认分支把敏度传播得到的关机点 1-σ 回填
  *       到 `TrajectoryPrediction::burnout_position_sigma_m`（评审 2026-08-26 条10）。

@@ -244,6 +244,31 @@ TEST(TargetInferenceEngineTest, BurnoutVelocitySigmaGateKeepsObserving) {
   EXPECT_DOUBLE_EQ(armed.time_sec, 7.0);
 }
 
+TEST(TargetInferenceEngineTest, BurnoutEstimateBacktracksWhenBurnoutPrecedesObservation) {
+  BurnoutTrackerState state;
+  TrajectoryPrediction trajectory;
+  trajectory.valid = true;
+  trajectory.has_launch = true;
+  trajectory.launch_time_offset_sec = -650.0;
+  trajectory.launch_point.latitude_deg = 43.0;
+  trajectory.launch_point.longitude_deg = 122.0;
+  trajectory.launch_point.altitude_m = 100000.0;
+
+  double time_sec = 0.0;
+  oneq::coordinate::LlaPositionDegM position{};
+  EXPECT_TRUE(TryResolveBurnoutEstimate(BurnoutPhase::kBeforeWindow, state, 750.0,
+                                        trajectory, &time_sec, &position));
+  EXPECT_DOUBLE_EQ(time_sec, 100.0);
+  EXPECT_DOUBLE_EQ(position.latitude_deg, 43.0);
+  EXPECT_DOUBLE_EQ(position.longitude_deg, 122.0);
+  EXPECT_DOUBLE_EQ(position.altitude_m, 100000.0);
+  EXPECT_FALSE(TryResolveBurnoutEstimate(BurnoutPhase::kObserving, state, 750.0,
+                                         trajectory, &time_sec, &position));
+  state.valid = true;
+  EXPECT_TRUE(TryResolveBurnoutEstimate(BurnoutPhase::kObserving, state, 750.0,
+                                        trajectory, &time_sec, &position));
+}
+
 TEST(TargetInferenceEngineTest, BallisticPredictionConservesEnergy) {
   TargetInferenceEngine engine(TargetInferenceConfig{});
   const auto results = engine.Infer({MakeBallisticMidcourse()});

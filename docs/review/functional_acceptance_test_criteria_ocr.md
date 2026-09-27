@@ -1,13 +1,29 @@
 ---
 Status: draft
-Role: reference（原验收判定标准 OCR 存档 + 外部导入补充判据；原 OCR 条文保持不变）
-Date: 2026-09-15
-Source: 用户提供的验收测试规范截图（OCR 整理）；外部导入 `测试.md`、`测试2.md`
+Role: authoritative（唯一权威口径：原验收判定标准 OCR 存档 + 外部导入补充判据 + 截图编号/路径/新增判据合并）
+Date: 2026-09-28（合并日）
+Source: 用户提供的验收测试规范截图（OCR 整理）；外部导入 `测试.md`、`测试2.md`；用户提供的电子表格截图（输出路径、日志文件名及记录要求）
+Merged-From: `docs/review/acceptance_output_paths_and_log_requirements_from_screenshots.md`（2026-09-27 独立转写，2026-09-28 合并入本文；该文件保留为 OCR 转写存档，不再单独作为执行口径）
 Retrieval: 2026-08-27 对照 `src/**/AcceptanceRecords*.cpp`、`acceptance_log_mapping_2026-08-24.md`
-Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `-DONEQ_ENABLE_*_ACCEPTANCE_LOG=ON` 或 acceptance preset
+Note: OCR 文件名与仓库落盘对照见 §0；截图标号（`5.3.x`、`GN_*`）映射与冲突裁定见 §0C；截图特有测试输入与新增用例见 §十一；开关默认 OFF，需 CMake `-DONEQ_ENABLE_*_ACCEPTANCE_LOG=ON` 或 acceptance preset
 ---
 
 # 功能验收测试判定标准
+
+> **合并说明（2026-09-28）**：本文是验收判定的**唯一权威口径**。截图转写文件
+> `acceptance_output_paths_and_log_requirements_from_screenshots.md` 的编号、输出目录、文件名和
+> 新增记录要求已合并入本文，规则如下：
+>
+> 1. **保留本文既有裁定**：日志开关、`log/` 仓库落盘路径、示例写作规则、缺失/存疑标注、
+>    身份字段和文件独立判定规则全部不变；外部导入的阈值与误差口径继续有效。
+> 2. **合入截图新增内容**：`5.3.x` 需求编号与 `GN_*` 用例代码入 §0C.1 映射表，各条目标题下方
+>    补 **编号** 行；截图特有输出目录、特殊测试输入与阈值入 §十一；截图出现而本文原未覆盖的
+>    用例在 §十一.3 登记。
+> 3. **冲突显式裁定**：截图与本文既有结论不一致的（时间间隔方向、定位误差口径、派生量是否
+>    输出、输出目录、`Opir_acceptance.log` 归属等）逐条记入 §0C.2 裁定表并给出唯一执行口径，
+>    **不采用“两者并存”写法**。
+> 4. **不改判定句形态**：合并只在条目的编号/文件属性层面补充，不改变 §0「行格式」与
+>    「示例写作规则」的日志行规范。
 
 > **通用判定规则**：各测试项以指定日志文件中**能否记录**对应数据为准——能记录视为**通过**，否则视为**不通过**。
 > **例外**：第 50–55 项性能测试不生成验收日志，由独立性能测试夹具采样并在测试报告中判定；
@@ -18,6 +34,7 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 | OCR / 规范文件名 | 仓库实际路径 | 编译开关 |
 |---|---|---|
 | `SatelliteTarget.log`（红外普通功能项） | `log/SatelliteTarget.log` | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
+| `Opir_acceptance.log`（截图口径，第 1–4、24、25 项） | 合并到 `log/SatelliteTarget.log`：本文**不为它新增物理文件**，截图文件名视为同一文件的旧称 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 11–14 项） | `log/SatelliteTarget.log` 与 `log/fusion_acceptance.log` 各写一份、分别判定 | `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `Fusion_acceptance.log`（第 15–18 项） | `log/fusion_acceptance.log` | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
 | `RadarOutput.log`（雷达普通功能与外部接口项） | `log/RadarOutput.log` | `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` |
@@ -26,6 +43,8 @@ Note: OCR 文件名与仓库落盘对照见 §0；开关默认 OFF，需 CMake `
 | `RadarAntennaGainPatterndata.csv` | `log/RadarAntennaGainPatterndata.csv` | 随 RIR 开关 |
 | `Rir_scan_pattern.csv` | `log/Rir_scan_pattern.csv` | 随 RIR 开关 |
 | `integration_events.log` | 示例场景 `log_dir` 下 | 跑 examples 即写，无需库开关 |
+| `SatellitePredict.log`（截图口径，第 18 项） | 合并到 `log/fusion_acceptance.log`：第 18 项滤波角与角变化率仍写融合文件，不新增物理文件 | `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` |
+| `SatellitePredict.txt`、`MissileBallisticData.log`、`RadarSingalProcessingDateFlow.log`（截图口径） | **不落盘**：无对应实现，见 §0C.2 裁定 5；其中落点/发射点/关机点/弹道真值属外部夹具或辅助证据 | — |
 
 **验收日志开关结论**：当前不存在一个覆盖全部验收日志的统一运行时开关。工程按域提供
 `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`、`ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`、
@@ -79,6 +98,118 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 | RIR 检测 / 测量 / 增益 | `目标ID=` | 已有则保持 |
 | RIR 跟踪 / 识别 / 滤波 | `航迹=` + `目标ID=` | 两条都写，不能只写航迹 |
 | 不强制 | — | 模块计时（50–54）、AHP（27）、连续运行次数 |
+
+## 0C. 截图需求编号映射与冲突裁定（2026-09-28 合并）
+
+### 0C.1 截图标号 ↔ 本文编号对照
+
+本文每条目的**编号**行给出截图（需求）编号与 `GN_*` 用例代码。两者关系为：
+需求编号 `5.3.x` 是来源系统中的稳定标号，本文编号 1–77 是执行与对账编号，**判定以本文条目为准**。
+
+| 截图编号 | `GN_*` 用例代码 | 功能测试名称 | 本文编号 | 执行落盘文件 |
+|---|---|---|---|---|
+| 5.3.1.1.1 | `GN_GDCX_TCPT_GDWZ` | 实时计算卫星当前轨道位置功能测试 | 1 | `log/SatelliteTarget.log`（截图作 `Opir_acceptance.log`） |
+| 5.3.1.1.2.1 | `GN_GDCX_TCPT_ZBZH` | 坐标系转换功能测试 | 2 | 同上 |
+| 5.3.1.1.2.2 | `GN_GDCX_TCPT_DLJS` | 卫星轨道动力学计算功能测试 | 3 | 同上 |
+| 5.3.1.1.2.3 | `GN_GDCX_TCPT_LGKT` | 龙格库塔积分功能测试 | 4 | 同上 |
+| 5.3.1.2.1.1 | `GN_GDCX_TCXX_TCJD` | 探测角度计算功能测试 | 5 | `log/SatelliteTarget.log` |
+| 5.3.1.2.1.2 | `GN_GDCX_TCXX_TCJL` | 最大探测距离计算功能测试 | 6 | `log/SatelliteTarget.log` |
+| 5.3.1.2.1.3 | `GN_GDCX_TCXX_MBSB`（名称待复核） | 根据目标识别功能测试 | — | 见 §十一.3 新增用例 A |
+| 5.3.1.2.2 | `GN_GDCX_TCXX_KTCX` | 目标可探测性与动态参数生成功能测试 | 7 | `log/SatelliteTarget.log` |
+| 5.3.1.2.3.1 | `GN_GDCX_TCXX_DWWC` | 卫星自身定位误差模拟功能测试 | 8 | `log/SatelliteTarget.log` |
+| 5.3.1.2.3.2 | `GN_GDCX_TCXX_CJWC` | 红外载荷角误差模拟功能测试 | 9 | `log/SatelliteTarget.log` |
+| 5.3.1.2.3.3 | `GN_GDCX_TCXX_JZWC` | 安装矩阵误差模拟功能测试 | 10 | `log/SatelliteTarget.log` |
+| 5.3.1.3.1 | `GN_GDCX_TCPT_SMTC` | 红外预警卫星大幅面扫描与探测功能测试 | 11 | `log/SatelliteTarget.log` + `log/fusion_acceptance.log` |
+| 5.3.1.3.2.1 | `GN_GDCX_TCPT_KCSM` | 宽视场扫描探测功能测试 | 12 | 同上 |
+| 5.3.1.3.2.2 | `GN_GDCX_TCPT_ZCSM` | 窄视场跟踪探测功能测试 | 13 | 同上 |
+| 5.3.1.3.2.3 | `GN_GDCX_TCPT_KZLH` | 宽窄视场联合探测功能测试 | 14 | 同上 |
+| 5.3.1.4.1 | `GN_GDCX_MNTCQ_MBGZ` | 多传感器目标跟踪功能测试 | 15 | `log/fusion_acceptance.log`（截图并列 `SatelliteTarget.log`） |
+| 5.3.1.4.2 | `GN_GDCX_MNTCQ_JLGZ` | 多传感器接力跟踪功能测试 | 16 | `log/fusion_acceptance.log` |
+| — | — | 协同探测信息融合功能测试 | 17 | `log/fusion_acceptance.log` |
+| `GN_GDCX_DPT_BZLB` | `GN_GDCX_DPT_BZLB` | 标准卡尔曼滤波功能测试 | 18 | `log/fusion_acceptance.log`（截图作 `SatellitePredict.log`） |
+| — | `GN_GDCX_TCXX_MBSB`（判据同源） | 规模目标识别功能测试 | 19 | `log/RadarOutput.log` |
+| `GN_GDCX_DPT_GJYB` | `GN_GDCX_DPT_GJYB` | 目标轨迹预报功能测试 | 20 | `log/inference_acceptance.log` |
+| `GN_GDCX_DPT_LDYC` | `GN_GDCX_DPT_LDYC` | 落点预测功能测试 | 21 | `log/inference_acceptance.log` + `log/RadarOutput.log`（第 21 项引导信息段） |
+| `GN_GDCX_DPT_FSDYC` | `GN_GDCX_DPT_FSDYC` | 发射点预测功能测试 | 22 | `log/inference_acceptance.log` |
+| `GN_GDCX_DPT_GJDYC` | `GN_GDCX_DPT_GJDYC` | 关机点判断功能测试 | 23 | `log/inference_acceptance.log` |
+| `GN_GDCX_MNSC_TSSJ` | `GN_GDCX_MNSC_TSSJ` | 特殊事件监测与提示功能测试 | 24 | `log/SatelliteTarget.log`（截图作 `Opir_acceptance.log`） |
+| — | — | 目标异常事件监测与提示功能测试（记录要求：跟踪中断） | 24（子项） | 同上，见 §十一.3 新增用例 B |
+| — | — | 预警中断事件监测与提示功能测试（记录要求：轨迹突变） | 24（子项） | 同上，与「轨迹突变事件」重叠，**待复核** |
+| — | — | 轨迹突变事件监测与提示功能测试 | 24（子项） | 同上，**待复核** |
+| `GN_GDCX_MNSC_LDYB` | `GN_GDCX_MNSC_LDYB` | 落点预报与信息分发功能测试 | 25 | `log/inference_acceptance.log`（截图并列 `SatelliteTarget.log`） |
+| `GN_GDCX_MNSC_ZBTQ` | `GN_GDCX_MNSC_ZBTQ` | 关键精度指标提取功能测试 | 26 | `log/precision_acceptance.log`（截图作 `SatelliteTarget.log`） |
+| `GN_GDCX_MNSC_CCFX` | `GN_GDCX_MNSC_CCFX` | 层次分析法功能测试 | 27 | `log/precision_acceptance.log`（截图作 `SatelliteTarget.log`） |
+| 5.3.2.1.1.1 | — | 天线方向图仿真功能（高斯主瓣、余弦幂、辛克） | 28 | `log/RadarOutput.log` + `log/RadarAntennaGainPatterndata.csv`（截图目录 `C:.../ModelOutput`） |
+| 5.3.2.1.1.2 | `GN_YCSB_MNTC_HBGL` | 回波功率计算功能测试 | 29 | `log/RadarOutput.log` |
+| 5.3.2.1.1.3 | `GN_YCSB_MNTC_GRGL` | 干扰功率计算功能测试 | 30 | `log/RadarOutput.log` |
+| 5.3.2.1.1.4 | `GN_YCSB_MNTC_ZSGL` | 接收机噪声功率计算功能测试 | 31 | `log/RadarOutput.log` |
+| 5.3.2.1.1.5 | `GN_YCSB_MNTC_MBXH` | 目标信号增益功能测试 | 32 | `log/RadarOutput.log` |
+| 5.3.2.1.1.6 | `GN_YCSB_MNTC_ZSZY` | 噪声增益功能测试 | 33 | `log/RadarOutput.log` |
+| 5.3.2.1.1.7 | `GN_YCSB_MNTC_ZBZY` | 杂波信号处理增益功能测试 | 34 | `log/RadarOutput.log` |
+| 5.3.2.1.1.8 | `GN_YCSB_MNTC_GRZY` | 干扰信号处理增益功能测试 | 35 | `log/RadarOutput.log` |
+| 5.3.2.1.1.9 | `GN_YCSB_MNTC_HXJ` | 恒虚警检测功能测试 | 36 | `log/RadarOutput.log` |
+| 5.3.2.1.2 | — | 空域自主搜索功能测试 | 37 | `log/RadarOutput.log` |
+| 5.3.2.1.2（子项） | — | 地平线搜索功能测试 | 37（子项） | 同上，见 §十一.3 新增用例 C |
+| 5.3.2.1.3 | `GN_YCSB_MNTC_MBCL` | 对目标的角度和距离进行测量功能测试 | 38 | `log/RadarOutput.log` |
+| 5.3.2.2.1 | `GN_YCSB_MNTQGZ_MBGZ` | 对典型目标/再入目标进行跟踪功能测试 | 39 | `log/RadarOutput.log` |
+| 5.3.2.2.2 | `GN_YCSB_MNTQGZ_DMBGZ` | 多目标跟踪功能测试 | 40 | `log/RadarOutput.log` |
+| 5.3.2.3.1.1 | `GN_YCSB_MNSBD_HJGL` | 航迹关联功能测试 | 41 | `log/RadarOutput.log` |
+| 5.3.2.3.1.2 | `GN_YCSB_MNSBD_GZLB` | 跟踪滤波功能测试 | 42 | `log/RadarOutput.log` |
+| 5.3.2.3.2 | `GN_YCSB_MNSBD_SSJS` | 根据目标 RCS 实时计算目标探测结果功能测试 | 43 | `log/RadarOutput.log` |
+| 5.3.2.3.3.1 | `GN_YCSB_MNSBD_YDTZ` | 运动特征处理功能测试 | 44 | `log/RadarOutput.log` |
+| 5.3.2.3.3.2 | `GN_YCSB_MNSBD_RCS` | RCS 统计特征处理功能测试 | 45 | `log/RadarOutput.log` |
+| 5.3.2.3.3.3 | `GN_YCSB_MNSBD_JHTZ` | 极化特征解算功能测试 | 46 | `log/RadarOutput.log` |
+| 5.3.2.3.3.4 | `GN_YCSB_MNSBD_KDYWX` | 宽带一维像特征解算功能测试 | 47 | `log/RadarOutput.log` |
+| 5.3.2.3.3.5 | `GN_YCSB_MNSBD_ZHTZ` | 综合特征识别功能测试 | 47A | `log/RadarOutput.log` |
+| 5.3.2.4.1 | `GN_YCSB_MNSD_BSSM` | 波束扫描功能测试 | 48 | `log/Rir_scan_pattern.csv` |
+| 5.3.2.4.2 | `GN_YCSB_MNSD_DDCL` | 调度策略功能测试 | 49 | `log/RadarOutput.log` |
+
+**说明**：
+
+1. 表中「执行落盘文件」列是**唯一判定依据**，与截图文件名不一致的以本列为准（§0C.2 裁定 1、3、4）。
+2. 第 1–4、24、25 项的截图文件名 `Opir_acceptance.log` **不新增物理文件**：其内容即
+   `log/SatelliteTarget.log` / `log/inference_acceptance.log`，按本文条目既有口径执行。
+3. 第 26、27 项的截图文件名 `SatelliteTarget.log` 与本文 `log/precision_acceptance.log` 冲突，
+   以本文为准（精度评估项不写红外文件）。
+4. 第 15 项截图并列 `SatelliteTarget.log`，本文按融合项单文件判定（第 15–18 项）；若需求方要求
+   与第 11–14 项同样双文件写出，须先改代码再改本文，**当前不判定**。
+5. 表中「—」表示截图未给出 `GN_*` 代码或本文无对应需求编号；新增需求编号待原表复核。
+
+### 0C.2 冲突裁定（截图口径 vs 本文既有结论）
+
+每条只保留**一个**执行口径。裁定原则：保留工程已实现的落盘路径与已冻结的示例写作规则；
+数值判据若两处不一致，取能同时覆盖两处的最严可执行口径，并标注需需求方复核。
+
+| # | 冲突点 | 截图口径 | 本文原有口径 | **裁定（唯一执行口径）** |
+|---|---|---|---|---|
+| 1 | 输出目录 | `C:/SosimPlatform/SosimApplication/SimHelper/`（方向图 `C:.../ModelOutput`） | `log/`（仓库相对） | **以 `log/` 为准**。截图绝对路径仅作来源记录，不写入代码、不要求创建该目录。 |
+| 2 | 第 11 项相邻有效探测时间间隔 | **不大于 `1 s`** | **`≥1 s`** | 取 `≥1 s` 且同时满足 `≤1 s`（即目标值 `1 s`，仅 `1 s` 通过）；实现端按 `≥1 s` 采样、验证端按 `[1 s,1 s]` 判定。**需需求方复核是“≥1 s”还是“≤1 s”**，复核前不放松 `≥1 s`。 |
+| 3 | 第 8 项卫星自身定位误差 | 误差向量模长 `<50 m`（`1σ`，约 68%） | 误差模 `[47.5 m, 52.5 m]`（旧示例 225.0 m 与判据冲突） | 以 `[47.5 m, 52.5 m]` 为准（即 `50 m×(1±5%)`，模长应为 50 m 量级）；旧示例的 `225.0 m` 视为示例笔误，**不作为判据**。`1σ` 置信口径保留在验证程序中。 |
+| 4 | 派生量是否输出 | 第 34 项要求“MTD 处理后的杂波总抑制比、总杂波抑制增益”；第 35 项同（干扰） | 判为派生量，**不输出** | **仍不输出**（遵守 §0 示例写作规则 2）。截图点位对应原始量：MTI 剩余功率、MTD 各多普勒通道功率分布。 |
+| 5 | 未实现文件 `SatellitePredict.txt` / `MissileBallisticData.log` / `RadarSingalProcessingDateFlow.log` | 列为判定文件 | 部分视为外部数据或辅助证据 | **不新增落盘**，不作为判定依据：弹道真值、实际发射/关机/落点由外部夹具保留（§0B.3）；引导信息仍按第 21 项写 `log/RadarOutput.log`。`SatellitePredict.log`（第 18 项）归并到 `log/fusion_acceptance.log`。 |
+| 6 | 第 28 项天线方向图判据 | 与设置值误差不超过 `5%` | 峰值增益须为 `52 dB` | **两者都要**：峰值增益 `52 dB`（容差在验收前冻结），波束宽度设定值相对误差 `≤5%`；判定值为“相控阵/高斯主瓣等三种方向图均满足”。 |
+| 7 | 第 31 项接收机噪声功率 | “记录接收机噪声功率信息”（OCR 判定句写“信噪比信息”） | 只写热噪声功率，**不写 SNR** | **维持只写 `热噪声功率=`**；不因截图文字回写 SNR。 |
+| 8 | 第 1–4 项是否输出验收日志 | 要求写文件、记轨道位置/ECI/ECEF/WGS-84/动力学量 | 登记“**不需要**输出验收日志”（2026-08-27） | **仍不输出**（不实现、不判定）。原因是落盘与身份字段未冻结；若需求方要求输出，须先冻结字段与文件名并改代码，再修订本文第 1–4 项与 §0 映射。 |
+| 9 | 第 19 项与 `5.3.1.2.1.3` 判据重叠 | `5.3.1.2.1.3`「根据目标识别」要求数量误差 `≤30%` | 第 19 项「规模目标识别」要求数量误差 `≤30%` | **判据归第 19 项**（`log/RadarOutput.log`，目标为雷达航迹集群规模）。`5.3.1.2.1.3` 作为新增天基用例登记（§十一.3 用例 A），**待需求方确认是否与第 19 项同源**；未确认前不叠加判定。 |
+| 10 | 第 24 项事件子项 | 拆出“目标异常事件”“预警中断事件”“轨迹突变事件”独立用例 | 一条判定含三类事件 | **保留第 24 项单条判定**（首次探测/跟踪中断/轨迹突变同表），截图拆出的子项登记为 §十一.3 用例 B，**不铺开为独立验收编号**；待原表复核后再拆分。 |
+| 11 | 第 37 项搜索用例 | 拆为「空域自主搜索」+「地平线搜索（子项）」 | 一条判定含指向/扫描调度/检测量测 | **保留第 37 项单条判定**；地平线搜索作为子模式登记（§十一.3 用例 C），其证据与第 37 项同一批字段。 |
+| 12 | 第 42 项与第 38 项字段归属 | 截图把“量测误差统计”并入「跟踪滤波」 | 第 38 项量测误差、第 42 项估计误差分别判定 | **维持本文拆分**：量测误差（量测−真值）留第 38 项，估计误差（滤波−真值）留第 42 项；两处均已落盘，不因截图合并而删除任一条字段要求。 |
+| 13 | 第 46 项极化子指标 | 列 6 项（散射矩阵、极化系数、本征角、椭圆率、目标类型等） | 7 项（含行列式、Span、去极化系数、加权贡献） | **以本文 7 项为准**；截图未列出的子项不删。 |
+| 14 | 第 47A 项字段 | 只写“综合识别结果的统计、正确率 >60%” | 类别/型号/置信度/有效特征掩码 + 正确率 | **以本文为准**（≥5 个字段齐备才算记录成功），正确率仍由外部验证器统计。 |
+
+### 0C.3 待复核清单（合并后）
+
+1. 第 11 项时间间隔方向（`≥1 s` 还是 `≤1 s`）——§0C.2 裁定 2。
+2. `5.3.1.2.1.3`「根据目标识别」的完整名称、编号，及其与第 19 项的关系。
+3. 第 24 项下三个事件子项的完整名称、编号与是否共用同一条记录要求。
+4. 第 37 项地平线搜索子项是否需要独立编号与独立判定。
+5. 第 43 项（根据目标 RCS 实时计算）完整通过判据（“命中概率”原句模糊、逻辑待复核）。
+6. 第 47 项「综合识别加权贡献」的上下限区间。
+7. 第 48 项波束扫描的方位/俯仰上下限；第 49 项调度策略最后一行完整文字。
+8. 截图文件名 `RadarSingalProcessingDateFlow.log` 的拼写（`Singal`/`Signal`、`Date`/`Data`）是否为原表正式名称。
+9. `Opir_acceptance.log` 是否需要作为独立物理文件落盘（当前归并到 `log/SatelliteTarget.log`）。
+
+---
 
 ## 0B. 外部导入测试项的数据责任划分
 
@@ -183,8 +314,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 | 综合特征识别 | 预测类别/型号、置信度、有效特征掩码 | 使用输入目标名称/特征标签及外部冻结的有效样本集合 | 识别正确率 `>60%` |
 | 规模目标识别 | 模型估计数量 | 统计同周期输入场景中的有效目标数 | 数量相对误差 `≤30%`；实际数量为零时使用绝对口径 |
 | 红外测角 | 测量角度、观测阶段 | 由卫星平台和目标输入计算真值 LOS 及角残差 | WFOV `±360 arcsec`；NFOV `±10 arcsec` |
-| 卫星自身定位误差模拟 | 模型产生的卫星位置或误差向量 | 使用输入接口中的卫星平台真值位置计算误差模 | 误差模在 `[47.5 m,52.5 m]` |
-| 大幅面扫描探测 | 每条有效探测的量测时刻 | 按卫星 ID、目标 ID 排序后计算相邻间隔 | 时间间隔 `≥1 s` |
+| 卫星自身定位误差模拟 | 模型产生的卫星位置或误差向量 | 使用输入接口中的卫星平台真值位置计算误差模 | 误差模在 `[47.5 m,52.5 m]`（截图写“`<50 m`、`1σ`”，按 §0C.2 裁定 3 以本列区间为准；`1σ` 置信口径留在验证程序） |
+| 大幅面扫描探测 | 每条有效探测的量测时刻 | 按卫星 ID、目标 ID 排序后计算相邻间隔 | 相邻间隔 `≥1 s`；截图另写“不大于 `1 s`”的上限，按 §0C.2 裁定 2 需需求方复核后冻结 |
 | 宽视场扫描 | 驻留时间、WFOV 测量角 | 由卫星平台和目标输入计算真值 LOS 与角残差 | `0.5 s<驻留<1 s`，角误差 `±360 arcsec` |
 | 窄视场跟踪 | 焦平面脱靶向量、NFOV 测量角 | 由输入计算真值 LOS；验证器计算脱靶模与角残差 | 脱靶量 `<50 m`，角误差 `±10 arcsec` |
 
@@ -199,12 +330,16 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 1. 实时计算卫星当前轨道位置功能测试
 
+- **编号**：`5.3.1.1.1` / `GN_GDCX_TCPT_GDWZ`（截图）；截图要求输出至 `Opir_acceptance.log`，本文归并见 §0C.2 裁定 8。
 - **验收日志输出**：不需要。
 - 原规范判定（不执行）：`SatelliteTarget.log` 文件中能够记录卫星轨道位置信息视为通过，否则视为不通过。
-- **当前输出**：不输出验收日志（2026-08-27 登记）。轨道解算在仿真主链内运行，无对应 `[验收项：…]` 行。
+- **当前输出**：不输出验收日志（2026-08-27 登记）。轨道解算在仿真主链内运行，无对应 `[验收项目…]` 行。
+  - 2026-09-28 合并说明：截图本项要求“能够记录卫星位置信息”。本文维持**不输出、不判定**；
+    若后续要求输出，落盘文件按 §0C.1 归并到 `log/SatelliteTarget.log`，字段与身份口径须先冻结。
 
 ### 2. 坐标系转换功能测试
 
+- **编号**：`5.3.1.1.2.1` / `GN_GDCX_TCPT_ZBZH`（截图）；截图要求输出至 `Opir_acceptance.log`，本文归并见 §0C.2 裁定 8。
 - **验收日志输出**：不需要。
 - 原规范判定（不执行）：
   - `SatelliteTarget.log` 文件中能够记录卫星 **ECI** 坐标系坐标视为通过，否则视为不通过。
@@ -214,6 +349,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 3. 卫星轨道动力学计算功能测试
 
+- **编号**：`5.3.1.1.2.2` / `GN_GDCX_TCPT_DLJS`（截图）；截图要求输出至 `Opir_acceptance.log`，本文归并见 §0C.2 裁定 8。
 - **验收日志输出**：不需要。
 - 原规范判定（不执行）：
   - `SatelliteTarget.log` 文件中能够记录卫星的**经纬度**坐标视为通过，否则视为不通过。
@@ -224,6 +360,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 4. 龙格库塔积分功能测试
 
+- **编号**：`5.3.1.1.2.3` / `GN_GDCX_TCPT_LGKT`（截图）；截图要求输出至 `Opir_acceptance.log`，本文归并见 §0C.2 裁定 8。
 - **验收日志输出**：不需要。
 - 原规范判定（不执行）：
   - `SatelliteTarget.log` 文件中能够记录卫星的**经纬度**坐标视为通过，否则视为不通过。
@@ -234,7 +371,10 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 5. 探测角度计算功能测试
 
+- **编号**：`5.3.1.2.1.1` / `GN_GDCX_TCXX_TCJD`（截图）。
 - `SatelliteTarget.log` 文件中能够记录实体相对卫星的**方位角和俯仰角**（**ECI 坐标、弧度制**）信息视为通过，否则视为不通过。
+  - 2026-09-28 合并说明：截图本项另列“卫星传感器时视场信息、目标是否位于时视场内”。本文维持
+    **只写量测方位/俯仰**；视场门控结果由内部接口第 74 项及 `issues` 排除码承担，不在本项叠加字段。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
   - **时机**：`SbirsPipeline.cpp` WFOV 候选过距离/视场/SNR 门后，与现有 `目标可探测性与动态参数` 同循环，**逐目标**写一行。
@@ -253,6 +393,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 6. 最大探测距离计算功能测试
 
+- **编号**：`5.3.1.2.1.2` / `GN_GDCX_TCXX_TCJL`（截图）。
 - `SatelliteTarget.log` 文件中能够记录目标实体相对卫星的**最大探测距离**视为通过，否则视为不通过。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -273,6 +414,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
   - **已接受代价**：双星行内一颗星的量测可能来自宽场候选、另一颗来自窄场锁定（交会误差口径不同源）。
   - **验证（2026-09-02）**：`sbirs_triple_sat_fix_messages` 本项 2 → **160 行**——周期 2–80 双星行 158（目标1=星4+104、目标2=星4+204，`位置LLA=` 高度与真值 600/500 km 量级吻合），周期 1 两条单星顺延行（星104 当拍两目标均门外/遮挡，凑不齐配对）；其余验收项行数逐项不变。
 
+- **编号**：`5.3.1.2.2` / `GN_GDCX_TCXX_KTCX`（截图）。
 - `SatelliteTarget.log` 文件中，在**双星定位**的特殊情况下能够记录目标的**位置、距离**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录目标的**角度及红外可探测性**视为通过，否则视为不通过。
 - **外部导入合并判据**：本项输出的角度须带 `WFOV` / `NFOV` 阶段。宽视场测角误差约束为
@@ -290,9 +432,12 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 8. 卫星自身定位误差功能测试
 
+- **编号**：`5.3.1.2.3.1` / `GN_GDCX_TCXX_DWWC`（截图；截图项名“卫星自身定位误差模拟功能测试”）。
 - `SatelliteTarget.log` 文件中能够记录卫星自身**定位误差统计数据**视为通过，否则视为不通过。
 - **外部导入合并判据**：定位误差向量模长须位于 `50 m×(1±5%)`，即
   `[47.5 m, 52.5 m]`；日志继续只写误差向量及模长，不写阈值比较结果。
+  - 2026-09-28 合并说明：截图阈值写“误差模长 `<50 m`（`1σ`，约 68%）”。两条不一致，
+    按 §0C.2 裁定 3 以 `[47.5 m, 52.5 m]` 为准；旧示例中的 `|定位误差|=225.0m` 视为示例笔误。
 - **规范口径（文档澄清）**：记录卫星 **真值 ECEF**（外部传入）、**实际 ECEF**（带误差）及 **定位误差**（ECEF 误差向量与模长，m）；**不输出**东/北/天统计、会话 n、均值/RMS、分量 σ、口径说明等。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -307,6 +452,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 9. 红外载荷角误差功能测试
 
+- **编号**：`5.3.1.2.3.2` / `GN_GDCX_TCXX_CJWC`（截图；截图项名“红外载荷角误差模拟功能测试”）。
 - `SatelliteTarget.log` 文件中能够记录红外探测器对高速动态目标进行方位角和俯仰角测量时的**测角残差**视为通过，否则视为不通过。
 - **规范口径（文档澄清）**：只记录相对指定卫星、指定目标的 **ECI 测角残差**（量测角 − 真值角，弧度）；**不输出**测量/真值角本身、会话 RMSE、σ 来源等。
 
@@ -322,6 +468,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 10. 安装矩阵误差功能测试
 
+- **编号**：`5.3.1.2.3.3` / `GN_GDCX_TCXX_JZWC`（截图；截图项名“安装矩阵误差模拟功能测试”）。
 - `SatelliteTarget.log` 文件中能够记录传感器**理想指向、传感器实际指向**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录传感器**安装误差矩阵**视为通过，否则视为不通过。
 - **规范口径（文档澄清）**：只记录 **`理想指向R`**（标称安装矩阵）、**`实际指向R`**（含失准合成指向）、**`安装误差矩阵R`**（失准矩阵）；**不输出** `失准角yaw/pitch/roll` 等欧拉角字段。
@@ -345,6 +492,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 11. 红外预警卫星大幅面扫描与探测（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
+- **编号**：`5.3.1.3.1` / `GN_GDCX_TCPT_SMTC`（截图）；截图仅指定 `SatelliteTarget.log`，本文按第 11–14 项双文件独立判定（§0C.1 说明 4）。
 - `Fusion_acceptance.log` 文件中能够记录红外预警卫星的**扫描幅宽**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录红外预警卫星的**目标辐射**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录红外预警卫星的**检测标志**视为通过，否则视为不通过。
@@ -364,6 +512,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 12. 宽视场扫描探测功能测试（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
+- **编号**：`5.3.1.3.2.1` / `GN_GDCX_TCPT_KCSM`（截图）。
 - `Fusion_acceptance.log` 文件中能够记录各扫描周期的**地面覆盖范围的区域坐标**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录各覆盖区域的**驻留时间**视为通过，否则视为不通过。
 - **外部导入合并判据**：驻留时间须满足 `0.5 s<驻留时间<1 s`；还须记录 WFOV 目标视线
@@ -382,6 +531,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 13. 窄视场跟踪探测功能测试（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
+- **编号**：`5.3.1.3.2.2` / `GN_GDCX_TCPT_ZCSM`（截图）。
 - `Fusion_acceptance.log` 文件中能够记录各采样时刻目标在焦平面上的**脱靶量**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录各采样时刻**跟踪状态**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录各采样时刻**目标信号能量**视为通过，否则视为不通过。
@@ -407,6 +557,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 14. 宽窄视场联合探测功能测试（`log/SatelliteTarget.log`、`log/fusion_acceptance.log`）
 
+- **编号**：`5.3.1.3.2.3` / `GN_GDCX_TCPT_KZLH`（截图）。
 - `Fusion_acceptance.log` 文件中能够记录**宽视场扫描覆盖区域**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录**疑似目标列表**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录**窄视场跟踪目标的精确状态序列**视为通过，否则视为不通过。精确状态序列」要体现的是：同一个目标 ID，在窄场阶段每个周期状态怎么变。例如：
@@ -414,6 +565,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
   各源测角数据、测角融合卫星地面站名称、目标 ECEF 三维位置和误差协方差矩阵。本项不能以
   第 15 项或 `log/SatelliteTarget.log` 中已有同名字段代替；模型不可见的地面站名称由外部
   仿真编排层写入本文件，其余可用字段由相应模型写入。
+  - 2026-09-28 合并说明：截图本项另列“记录宽视场镜头转向时间”。本文维持**不新增该字段**；
+    转向时间由内部接口第 76 项（调度/指令角与指向稳定状态）承担，避免与窄场跟踪字段混写。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
   - **时机**：三条规范字段**分行**写——覆盖区（周期首行）、疑似列表（候选汇总）、窄场状态（NFOV 捕获/跟踪逐目标）。
@@ -433,6 +586,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 15. 多传感器目标跟踪功能测试（`log/fusion_acceptance.log`）
 
+- **编号**：`5.3.1.4.1` / `GN_GDCX_MNTCQ_MBGZ`（截图）；截图并列 `SatelliteTarget.log`，本文维持单文件判定（§0C.1 说明 4）。
 - `Fusion_acceptance.log` 文件中能够记录目标在地心地固系下的**三维位置坐标、误差协方差矩阵**视为通过，否则视为不通过。
 - **外部导入合并判据**：同一航迹还须记录传感器信息源名称、各信息源测角数据和测角信息
   融合卫星地面站名称；融合位置相对场景真值的三维距离误差须 `<50 m`。本项所需字段必须在
@@ -449,6 +603,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 16. 多传感器接力跟踪功能测试（`log/fusion_acceptance.log`）
 
+- **编号**：`5.3.1.4.2` / `GN_GDCX_MNTCQ_JLGZ`（截图）。
 - `Fusion_acceptance.log` 文件中能够记录跟踪目标的**位置、速度、加速度**，**初始卫星对目标的剩余覆盖时间**，**预测目标的运动轨迹**，**接力计划**，**交接指令**及**多源数据融合后的目标跟踪结果**视为通过，否则视为不通过。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -465,6 +620,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 17. 协同探测信息融合功能测试（`log/fusion_acceptance.log`）
 
+- **编号**：无截图编号（第 15–18 项对应编号见 §0C.1；截图在 5.3.1.4.2 之后直接进入 5.3.1.x 预测段）。
 - `Fusion_acceptance.log` 文件中能够记录跟踪目标的**协同探测融合信息**视为通过，否则视为不通过。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
@@ -476,6 +632,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 18. 标准卡尔曼滤波功能测试（`log/fusion_acceptance.log`）
 
+- **编号**：`GN_GDCX_DPT_BZLB`（截图未给 `5.3.x`）；截图文件为 `SatellitePredict.log`，本文归并到 `log/fusion_acceptance.log`（§0C.2 裁定 5）。
 - `Fusion_acceptance.log` 文件中能够记录滤波后的目标**方位角、俯仰角及其变化率**视为通过，否则视为不通过。
 - `Fusion_acceptance.log` 文件中能够记录连续时刻目标**视线方向的平滑估计结果**视为通过，否则视为不通过。
 其中：
@@ -499,6 +656,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 19. 规模目标识别功能测试（`log/RadarOutput.log`）
 
+- **编号**：`GN_GDCX_TCXX_MBSB`（截图判据同源，编号/名称待复核）；判据归属裁定见 §0C.2 裁定 9。
 - `RadarOutput.log` 文件中能够记录集群目标的**具体规模数量**视为通过，否则视为不通过。
 - **外部导入合并判据**：预估数量相对同周期输入场景有效目标数量的误差须 `≤30%`。
   模型日志只写预估规模；实际数量和误差比例由验证程序从输入快照计算。实际数量为零时须先
@@ -514,6 +672,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 20. 目标轨迹预报功能测试（`log/inference_acceptance.log`）
 
+- **编号**：`GN_GDCX_DPT_GJYB`（截图未给 `5.3.x`）；截图并列 `SatellitePredict.txt`、`MissileBallisticData.log`，本文不落盘（§0C.2 裁定 5）。
 - `inference_acceptance.log` 文件中能够记录目标从当前时刻到 **10 秒之间**的**轨迹**视为通过，否则视为不通过。
 - `inference_acceptance.log` 文件中能够记录**预测落点位置**（经度、纬度、高程）视为通过，否则视为不通过。
 - **外部导入合并判据**：预测落点与实际落点的三维距离误差须满足
@@ -528,6 +687,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 21. 落点预测功能测试（`log/inference_acceptance.log`）
 
+- **编号**：`GN_GDCX_DPT_LDYC`（截图未给 `5.3.x`）；截图并列 `SatelliteTarget.log`、`RadarSingalProcessingDateFlow.log`、`MissileBallisticData.log`，其中引导信息段仍由 `log/RadarOutput.log` 承担（§0C.2 裁定 5）。
 - `inference_acceptance.log` 文件中能够记录 **DD 目标**的**初步落点位置**视为通过，否则视为不通过。
 - **外部导入合并判据**：
   - `log/RadarOutput.log` 须在卫星测角数据时刻之后记录卫星探测引导信息，以及 RIR 对 DD 目标得到的
@@ -542,6 +702,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 22. 发射点预测功能测试（`log/inference_acceptance.log`）
 
+- **编号**：`GN_GDCX_DPT_FSDYC`（截图未给 `5.3.x`）。
 - `inference_acceptance.log` 文件中能够记录目标的**预测发射时刻和地理位置**，并记录**误差范围**视为通过，否则视为不通过。
 - **外部导入合并判据**：模型给出的发射点误差范围上限须不超过 DD 实际射程的 `5%`。
   `log/inference_acceptance.log` 必须保留模型产生的误差范围；与实际射程的比例由验证程序计算，
@@ -554,6 +715,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 23. 关机点预测功能测试（`log/inference_acceptance.log`）
 
+- **编号**：`GN_GDCX_DPT_GJDYC`（截图未给 `5.3.x`；截图项名“关机点判断功能测试”，与本文一致）。
 - `inference_acceptance.log` 文件中能够记录目标的**预测关机时刻和关机点位置**视为通过，否则视为不通过。
 - `inference_acceptance.log` 文件中能够记录**误差范围**视为通过，否则视为不通过。
 - **外部导入合并判据**：预测关机时刻须位于实际关机时刻的 `[0.95,1.05]` 倍区间。
@@ -567,6 +729,9 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 24. 特殊事件监测与提示功能测试
 
+- **编号**：`GN_GDCX_MNSC_TSSJ`（截图未给 `5.3.x`）；截图文件为 `Opir_acceptance.log`，归并见 §0C.2 裁定 8。
+  截图另拆出“目标异常事件 / 预警中断事件 / 轨迹突变事件”三个子项，登记为 §十一.3 用例 B，
+  **本文维持单条判定**（裁定 10）。
 - `SatelliteTarget.log` 文件中能够记录**首次探测、跟踪中断、轨迹突变**等关键事件信息（含**事件等级、目标 ID、时间、位置**）视为通过，否则视为不通过。
 
 - **实现**（示例；方括号后**首字段为 `事件=`**）：
@@ -577,6 +742,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 25. 落点预报与信息分发功能测试（`log/inference_acceptance.log`）
 
+- **编号**：`GN_GDCX_MNSC_LDYB`（截图未给 `5.3.x`）；截图并列 `SatelliteTarget.log`、`MissileBallisticData.log`，本文维持 `log/inference_acceptance.log` 单文件判定（§0C.2 裁定 5）。
 - `Inference_acceptance.log` 文件中能够记录 **DD 模型**的**预测落点**、**落点误差范围及置信度**，以及**模拟预报告信息的标准化封装与分发**视为通过，否则视为不通过。
 - **外部导入合并判据**：落点误差范围上限须不超过 DD 实际射程的 `5%`。本项要求的预测
   落点、模型误差范围、标准化封装和分发模拟信息必须全部写入
@@ -594,6 +760,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ## 五、精度评估（`log/precision_acceptance.log`）
 
 ### 26. 关键精度指标提取功能测试
+
+- **编号**：`GN_GDCX_MNSC_ZBTQ`（截图未给 `5.3.x`）；截图文件为 `SatelliteTarget.log`，与本文 `log/precision_acceptance.log` 冲突，按 §0C.2 裁定 1、§0C.1 说明 3 以本文为准。
 - `Precision_acceptance.log` 文件中能够记录并显示目标的**三轴位置误差、距离误差、方位角和俯仰角误差、脱靶量**视为通过，否则视为不通过。
 
 - **实现**（示例，会话汇总一行；字段对齐规范四条，**不写 RMSE/CEP50/CI 等派生项**）：
@@ -604,6 +772,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 27. 层次分析法功能测试
+
+- **编号**：`GN_GDCX_MNSC_CCFX`（截图未给 `5.3.x`）；截图文件为 `SatelliteTarget.log`，以本文 `log/precision_acceptance.log` 为准（同第 26 项）。
 - `Precision_acceptance.log` 文件中能够记录并显示**各层次元素的权重**视为通过，否则视为不通过。
 - `Precision_acceptance.log` 文件中能够记录并显示**各底层指标的得分值**视为通过，否则视为不通过。
 - `Precision_acceptance.log` 文件中能够记录并显示**各层次元素的综合效能总分及等级评估**视为通过，否则视为不通过。
@@ -622,6 +792,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 > `log/RadarAntennaGainPatterndata.csv`。**第 28–55 项示例遵循 §0 写作规则（禁止派生量、无则省略）。**
 
 ### 28. 天线方向图仿真功能测试
+
+- **编号**：`5.3.2.1.1.1`（截图；无 `GN_*` 代码）；截图输出目录为 `C:.../ModelOutput`，本文以 `log/` 为准（§0C.2 裁定 1）。
 - 能够记录**天线增益方向图**数据视为通过，否则视为不通过。
 - 能够记录**扫描波束宽度**视为通过，否则视为不通过。
 - 能够记录**峰值增益值**视为通过，否则视为不通过。
@@ -637,7 +809,10 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
   `az_off_deg,el_off_deg,gain_dbi`，分别表示方位离轴角、俯仰离轴角和天线增益。
 
 ### 29. 回波功率计算功能测试
+- **编号**：`5.3.2.1.1.2` / `GN_YCSB_MNTC_HBGL`（截图）。
 - 能够记录**目标回波功率信息**视为通过，否则视为不通过。
+  - 2026-09-28 合并说明：截图另给两条输入判据（参数清单与 `16 dB` 差值判据），
+    完整转写入 §十一.1；判定字段不变。
 
 - **实现**（逐检测目标一行；**只写回波功率**，不写 SNR/噪声/干扰/杂波/斜距）：
     ```text
@@ -645,7 +820,10 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 30. 干扰功率计算功能测试
+- **编号**：`5.3.2.1.1.3` / `GN_YCSB_MNTC_GRGL`（截图）。
 - 能够**打印**各干扰源到达雷达接收端的**干扰功率**视为通过，否则视为不通过。
+  - 2026-09-28 合并说明：截图另给干扰源参数与“增大功率/增益后功率数值应增大”判据，
+    完整转写入 §十一.2；判定字段不变（身份仍只写 `干扰源ID=`）。
 
 - **实现**（逐干扰源一行；身份只写 **`干扰源ID=`** + 到达功率）：
     ```text
@@ -653,6 +831,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 31. 接收机噪声功率计算
+- **编号**：`5.3.2.1.1.4` / `GN_YCSB_MNTC_ZSGL`（截图）。
 - 能够记录**信噪比信息**视为通过，否则视为不通过。
 
 - **规范口径（文档澄清）**：本条输出接收机 **热噪声功率**（W），**不写 SNR**。OCR 判定句虽写「信噪比」，示例按项标题与用户口径写 `热噪声功率=`。热噪声是接收机底噪（k·T·B·F），不是逐目标量。
@@ -663,6 +842,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 32. 目标信号增益功能测试
+- **编号**：`5.3.2.1.1.5` / `GN_YCSB_MNTC_MBXH`（截图）。
 - 能够记录经处理后的**雷达回波信号**视为通过，否则视为不通过。
 - 能够记录**总增益**视为通过，否则视为不通过。缺失。可计算。
 - 能够记录**脉压增益**视为通过，否则视为不通过。
@@ -689,6 +869,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 33. 噪声增益功能测试
+- **编号**：`5.3.2.1.1.6` / `GN_YCSB_MNTC_ZSZY`（截图）。
 - 能够记录**脉冲压缩后的噪声功率**视为通过，否则视为不通过。
 - 能够记录**各多普勒滤波器通道的噪声功率**视为通过，否则视为不通过。
 - 能够记录 **MTD 处理过后的等效噪声功率**视为通过，否则视为不通过。
@@ -712,6 +893,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 34. 杂波信号处理增益功能测试
+- **编号**：`5.3.2.1.1.7` / `GN_YCSB_MNTC_ZBZY`（截图）。
 - 能够记录 **MTI 处理后杂波剩余功率**视为通过，否则视为不通过。
 - 能够记录 **MTD 各多普勒通道杂波剩余功率分布**视为通过，否则视为不通过。
 - 能够记录 **MTD 处理后的杂波抑制比**视为通过，否则视为不通过。
@@ -733,6 +915,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 35. 干扰信号处理增益功能测试
+- **编号**：`5.3.2.1.1.8` / `GN_YCSB_MNTC_GRZY`（截图）。
 - 能够记录 **MTI 处理后干扰剩余功率**视为通过，否则视为不通过。
 - 能够记录 **MTD 各多普勒通道干扰功率分布**视为通过，否则视为不通过。
 - 能够记录 **MTD 处理后的干扰总抑制比**视为通过，否则视为不通过。
@@ -754,7 +937,10 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 36. 恒虚警检测功能测试
+- **编号**：`5.3.2.1.1.9` / `GN_YCSB_MNTC_HXJ`（截图）。
 - 能够记录**统计检测门限**视为通过，否则视为不通过。
+  - 2026-09-28 合并说明：截图另给“按 90% 检测概率最大探测距离换算、与定界报告对比
+    `±5%`”判据，完整转写入 §十一.3 用例 D（外部换算判据，不改变本条日志字段）。
 - 能够记录**统计检测结果**视为通过，否则视为不通过。
 - 能够记录**统计检测概率**视为通过，否则视为不通过。
 
@@ -766,6 +952,9 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 37. 对指定空域进行搜索功能测试
+
+- **编号**：`5.3.2.1.2`「空域自主搜索功能测试」；截图另有子项 `5.3.2.1.2（子项）`「地平线搜索功能测试」，
+  其检测/量测记录要求与本条第三条同源，登记为 §十一.3 用例 C（§0C.2 裁定 11）。
 - 能够记录当前周期的**方位/俯仰指向信息**视为通过，否则视为不通过。
 - 能够记录**扫描调度信息**视为通过，否则视为不通过。
 - 能够记录**检测与量测信息**视为通过，否则视为不通过。
@@ -786,6 +975,9 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 38. 对目标的角度和距离进行测量功能测试
+
+- **编号**：`5.3.2.1.3` / `GN_YCSB_MNTC_MBCL`（截图）；截图把“目标量测误差统计”写在跟踪滤波条，
+  本文按 §0C.2 裁定 12 维持在本条判定。
 - 能够记录目标的**量测角度和距离**视为通过，否则视为不通过。
 - 能够记录**目标量测误差统计**视为通过，否则视为不通过。缺失。可计算。
 - **外部导入合并判据**：角度误差须在 `[-5°, +5°]`，距离误差绝对值不得超过目标与雷达
@@ -800,6 +992,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 39. 对典型目标/再入目标进行跟踪功能测试
+
+- **编号**：`5.3.2.2.1` / `GN_YCSB_MNTQGZ_MBGZ`（截图）。
 - 能够记录目标的**定位信息**（距离、方位、高度）视为通过，否则视为不通过。
 - 能够记录目标的**运动参数**（速度、航向、加速度）视为通过，否则视为不通过。
 
@@ -817,6 +1011,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 40. 多目标跟踪功能测试
+
+- **编号**：`5.3.2.2.2` / `GN_YCSB_MNTQGZ_DMBGZ`（截图）。
 - 能够记录目标的**定位信息**（距离、方位、高度）视为通过，否则视为不通过。存疑。
 - 能够记录目标的**运动参数**（速度、航向、加速度）视为通过，否则视为不通过。存疑。
 
@@ -837,6 +1033,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 41. 航迹关联功能测试
+
+- **编号**：`5.3.2.3.1.1` / `GN_YCSB_MNSBD_HJGL`（截图）。
 - 能够记录**检测结果、目标位置、检测概率**视为通过，否则视为不通过。
 
 - **实现**（逐量测一行）：
@@ -845,6 +1043,9 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 42. 跟踪滤波功能测试
+
+- **编号**：`5.3.2.3.1.2` / `GN_YCSB_MNSBD_GZLB`（截图）；截图把第 38 项“目标量测误差统计”
+  并入本条，本文按 §0C.2 裁定 12 维持两条分别判定。
 - 能够记录当前时刻的**位置（ECEF）、速度和加速度估计值**视为通过，否则视为不通过。
 - 能够记录当前时刻的**目标状态协方差**视为通过，否则视为不通过。
 - 能够记录当前时刻的**估计误差指标**视为通过，否则视为不通过。缺失。可计算。
@@ -860,6 +1061,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 43. 根据目标 RCS 实时计算目标探测结果功能测试
+
+- **编号**：`5.3.2.3.2` / `GN_YCSB_MNSBD_SSJS`（截图）；截图判据“命中概率”原句模糊，见 §0C.3 第 5 条。
 - 能够记录对已探测目标的持续**定位**和**运动参数**视为通过，否则视为不通过。存疑。
 
 - **规范口径**：**存疑。** 项名是「根据目标 RCS 实时计算目标探测结果」，截图判定却只写持续定位（距离、方位、高度）和运动参数（速度、航向、加速度），**未点名 RCS**，且与第 39/40 项判定相近，疑为图片串行。正式口径待原规范确认。示例仍按**项名**写本周期 RCS，并带定位；运动参数截图有点名则写，不因第 39 项已有而不写。
@@ -874,6 +1077,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 `examples/log/rir_ground_site_recognition/RadarOutput.log`。以下代码块均为该日志中的实际输出。
 
 ### 44. 运动特征处理功能测试（`RadarOutput.log`）
+
+- **编号**：`5.3.2.3.3.1` / `GN_YCSB_MNSBD_YDTZ`（截图）。
 - **验收条件**：日志中必须同时记录航迹、目标 ID、目标速度、目标高度、加速度、
   近似直线判定和识别类别；上述字段齐全且数值有限视为通过，否则视为不通过。
 
@@ -886,6 +1091,9 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 45. RCS 统计特征处理功能测试（`RadarOutput.log`）
+
+- **编号**：`5.3.2.3.3.2` / `GN_YCSB_MNSBD_RCS`（截图；截图记录要求未列“综合识别加权贡献”，
+  本文按 §0C.2 裁定 12 的口径保留该字段要求）。
 - **验收条件**：日志中必须同时记录航迹、目标 ID、RCS 均值/标准差、平均 RCS 归一化值、
   RCS 波动系数和识别类别；形成候选匹配后还必须记录 RCS 综合识别加权贡献。上述字段齐全、
   数值有限且加权贡献位于 `[0,1]` 视为通过，否则视为不通过。
@@ -904,6 +1112,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 46. 极化特征解算功能测试（`RadarOutput.log`）
+
+- **编号**：`5.3.2.3.3.3` / `GN_YCSB_MNSBD_JHTZ`（截图）；截图只列 6 项子指标，本文按 §0C.2 裁定 13 保留 7 项。
 - 能够记录**极化散射矩阵行列式**视为通过，否则视为不通过。
 - 能够记录**功率迹（Span）**视为通过，否则视为不通过。
 - 能够记录**去极化系数**视为通过，否则视为不通过。
@@ -939,6 +1149,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
   本次运行输出 34986 条记录，五项极化统计均为有限数值。
 
 ### 47. 宽带一维像特征解算功能测试（`RadarOutput.log`）
+
+- **编号**：`5.3.2.3.3.4` / `GN_YCSB_MNSBD_KDYWX`（截图）；截图加权贡献上下限被裁切，见 §0C.3 第 6 条。
 - **验收条件**：日志中必须同时记录航迹、目标 ID、散射中心距离与 RCS、目标长度、峰数、
   识别类型；形成候选匹配后还必须记录 HRRP 综合识别加权贡献。上述字段齐全、数值有限且
   加权贡献位于 `[0,1]` 视为通过，否则视为不通过。
@@ -955,6 +1167,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 
 ### 47A. 综合特征识别功能测试（`log/RadarOutput.log`）
 
+- **编号**：`5.3.2.3.3.5` / `GN_YCSB_MNSBD_ZHTZ`（截图）；截图只写“综合识别结果的统计、正确率 >60%”，
+  本文按 §0C.2 裁定 14 保留类别/型号/置信度/有效特征掩码字段要求。
 - `RadarOutput.log` 中能够独立记录
   **运动、RCS、极化和宽带一维像特征综合得到的目标类别**。
 - 以带真值标签的有效样本统计，识别正确率须 `>60%`；真值标签、样本计数、正确率和通过标志
@@ -965,6 +1179,9 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 
 ### 49. 调度策略功能测试
+
+- **编号**：`5.3.2.4.2` / `GN_YCSB_MNSD_DDCL`（截图）；截图另列扫描起始设置（上限、Pitch 方向、
+  `AzimuthFirst/LeftTop`），本文只判定事件执行数量列表，起始设置作为配置输入不入判定字段。
 - 能够记录**各类事件的实际执行数量列表**视为通过，否则视为不通过。
 
 - **实现**（示例）：
@@ -977,6 +1194,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ## 七、波束扫描（`log/Rir_scan_pattern.csv`）
 
 ### 48. 波束扫描功能测试
+
+- **编号**：`5.3.2.4.1` / `GN_YCSB_MNSD_BSSM`（截图）；截图方位/俯仰扫描范围上下限被裁切，见 §0C.3 第 7 条。
 - `Rir_scan_pattern.csv` 文件中能够记录**波位排列表、扫描轨迹序列**视为通过，否则视为不通过。
 - 文件字段为 `index,az_deg,el_deg`，分别表示波位序号、方位角和俯仰角。
 
@@ -1321,16 +1540,19 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 | 日志文件（OCR） | 仓库路径 | 涉及测试项 |
 |---|---|---|
-| `SatelliteTarget.log` | `log/SatelliteTarget.log` | 5–10、11–14、24（1–4 不输出） |
+| `SatelliteTarget.log` | `log/SatelliteTarget.log` | 5–10、11–14、24（1–4 已登记不输出） |
+| `Opir_acceptance.log`（2026-09-28 合并的截图文件名） | 归并到 `log/SatelliteTarget.log` / `log/inference_acceptance.log`，**不新增物理文件** | 1–4、24、25（§0C.2 裁定 8、§0C.1 说明 2） |
 | `Fusion_acceptance.log` | `log/fusion_acceptance.log` | 11–18（第 11–14 项与 OPIR 文件重复写出、分别判定） |
-| `RadarOutput.log` | `log/RadarOutput.log` | 19、28–47、47A、49、62–66 |
+| `SatellitePredict.log`（2026-09-28 合并的截图文件名） | 归并到 `log/fusion_acceptance.log`，**不新增物理文件** | 18（§0C.2 裁定 5） |
+| `RadarOutput.log` | `log/RadarOutput.log` | 19、21（引导信息段）、28–47、47A、49、62–66 |
 | `IRInternalInterface.log` | `log/IRInternalInterface.log` | 74–77（SBIRS 内部接口分项证据） |
 | `RadarInternalInterface.log` | `log/RadarInternalInterface.log` | 70–73（RIR 内部接口分项证据） |
-| `inference_acceptance.log` | `log/inference_acceptance.log` | 20–25, 24（轨迹突变） |
+| `inference_acceptance.log` | `log/inference_acceptance.log` | 20–25（24 为轨迹突变） |
 | `Precision_acceptance.log` | `log/precision_acceptance.log` | 26–27；38/42 误差统计 |
 | `RadarAntennaGainPatterndata.csv` | `log/RadarAntennaGainPatterndata.csv` | 28 |
 | `Rir_scan_pattern.csv` | `log/Rir_scan_pattern.csv` | 48 |
 | `SatelliteTarget.log`（外部接口项） | `log/SatelliteTarget.log` | 57–58、67–68（未实现项仍无对应记录） |
+| `MissileBallisticData.log`、`RadarSingalProcessingDateFlow.log`、`SatellitePredict.txt`（2026-09-28 合并的截图文件名） | **不落盘、不判定** | 见 §0C.2 裁定 5；相关真值由外部夹具保留（§0B.3） |
 
 第 50–55 项性能测试以及第 56、60 项仿真控制与时钟接口测试均不生成验收日志，
 由独立测试夹具的测试断言和测试报告判定。
@@ -1338,4 +1560,52 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 **合计：56 项功能/性能验收测试 + 12 项外部接口验收测试 + 8 项内部接口测试，
 共 76 项；为保持已有文档、代码和日志关联稳定，新增综合特征识别项编号为 47A，其余原编号不变。**
 
-**检索依据**：`docs/review/acceptance_log_mapping_2026-08-24.md`、`docs/review/acceptance_item_catalog_2026-08-22.md`、`src/sbirs_sensor/pipeline/SbirsPipeline.cpp`、`src/**/AcceptanceRecords.cpp`。
+**2026-09-28 合并后用例总数不变**：截图的 43 条用例中，41 条已在本文找到对应条目（多数为
+1:1，7 条为拆分关系，见 §0C.1 与 §0C.2 裁定 9–14），2 条（`5.3.1.2.1.3`、`5.3.2.1.2（子项）`）
+以及第 24 项下三个事件子项按 §十一.3 登记为**待复核新增项**，复核前不计入 76 项总数。
+
+**检索依据**：`docs/review/acceptance_log_mapping_2026-08-24.md`、`docs/review/acceptance_item_catalog_2026-08-22.md`、`src/sbirs_sensor/pipeline/SbirsPipeline.cpp`、`src/**/AcceptanceRecords.cpp`、`src/common/logging/AcceptanceFileLog.cpp`。
+
+---
+
+## 十一、截图特有测试输入、判据与新增用例（2026-09-28 合并）
+
+本节收纳截图转写文件中**不改变本文判定字段、但约束测试输入或验证换算**的内容，以及截图出现
+而本文原无对应编号的用例。各条目标的判定字段仍在对应章节，本节只提供输入条件与验证口径。
+
+### 11.1 回波功率计算（第 29 项）的特殊测试输入
+
+- 在模型属性参数界面输入：峰值发射功率 `582 kW`、载波频率 `3e9 Hz`、发射带宽 `4.5e6 Hz`、
+  发射损耗 `3.5 dB`、接收损耗 `2.0 dB`、天线附加损耗 `0.0 dB`、大气压 `1013.25 hPa`、
+  大气温度 `288.15 K`、相对湿度 `50%`、目标 RCS `1 m²`。
+- 将目标 RCS 改为 `0.025 m²`；在相同距离下，与基准判据相比目标回波功率降低约 `16 dB` 视为通过。
+- **应用边界**：这些是测试夹具输入条件；模型日志仍只写 `回波功率=`（第 29 项），
+  不写输入参数回显，也不写“是否下降 16 dB”的结论。
+
+### 11.2 干扰功率计算（第 30 项）的特殊测试输入
+
+- 基线干扰源参数：干扰功率 `50 W`、干扰载波频率 `3e9 Hz`、干扰带宽 `4e7 Hz`、
+  干扰天线增益 `20 dB`、极化方式 `kVertical`、波束方位指向 `0 deg`、波束俯仰指向 `-20 deg`。
+- 将干扰功率改为 `150 W`、天线增益改为 `30 dB` 后保存并重新执行相应步骤。
+- 非国产化与国产化系统中同名 `RadarOutput.log` 均应记录各干扰源到达雷达接收端的干扰功率；
+  与基线相比数值增大视为通过，否则视为不通过。
+- **应用边界**：身份仍只写 `干扰源ID=`（§0 身份字段表）；通过/失败结论由外部验证程序给出，
+  不写入模型日志。
+
+### 11.3 截图出现而本文原无对应编号的用例
+
+下列 4 项来自截图，本文既无同一编号也无独立判定句。**当前不作为验收编号计入**，待需求方
+复核后按 §0C.3 清单并入或删除。
+
+| 用例 | 截图编号 | 截图记录要求 | 当前处置 |
+|---|---|---|---|
+| A. 根据目标识别功能测试 | `5.3.1.2.1.3` / `GN_GDCX_TCXX_MBSB`（名称待复核） | 目标群具体规模数量；仿真数量与实际数量误差不大于 `30%` 视为通过 | 判据与第 19 项「规模目标识别」同源但对象/文件不同，按 §0C.2 裁定 9 **并入第 19 项**，不另立判定 |
+| B. 目标异常事件 / 预警中断事件 / 轨迹突变事件监测与提示 | 名称与编号均待复核 | 识别跟踪中断、轨迹突变等关键事件信息（含事件等级、目标 ID、时间、位置） | 属第 24 项已含的三类事件，按 §0C.2 裁定 10 **不拆分为独立编号** |
+| C. 地平线搜索功能测试 | `5.3.2.1.2（子项）` | 记录检测、量测信息，及本周期方位/俯仰指向信息、扫描调度信息 | 与第 37 项第三条同源，按 §0C.2 裁定 11 作为第 37 项子模式登记，不另立判定 |
+| D. 恒虚警检测的外部换算判据 | `5.3.2.1.1.9`（属第 36 项） | 按检测概率 `90%` 的最大探测距离、目标 RCS 和雷达方程换算当前目标最大探测距离，与定界报告数值对比误差 `±5%`；记录统计检测概率 | 外部验证程序换算，不进模型日志；第 36 项判定字段不变 |
+
+### 11.4 应用边界
+
+1. 本节内容**不新增模型输出字段**，不改 §0 示例写作规则与 §0B 责任划分。
+2. 涉及输入参数与外部换算的判据由测试夹具和外部验证程序执行，模型日志只保留原始量。
+3. 表 11.3 的 A–D 在需求方复核前不参与“用例总数”统计，避免与第 19、24、36、37 项重复计数。

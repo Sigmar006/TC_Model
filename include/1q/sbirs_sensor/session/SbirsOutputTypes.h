@@ -78,10 +78,11 @@ struct ONEQ_API SbirsDetectionAttributionRecord {
   std::uint64_t target_id{0U};    /**< 输入场景目标 ID */
   std::string target_name{};      /**< 输入场景目标名称 */
   float estimated_range_m{0.0f};  /**< 估计距离，单位 m（仅归属/诊断层） */
-  float max_detection_range_m{0.0f}; /**< 当前时刻最大探测距离 d_max(t)，单位 m（仅归属/诊断层；
-                                          由 WFOV 检测门限反解，依赖该目标辐射强度与本周期
-                                          环境透过率/噪声快照，逐周期变化；NFOV 门限版 =
-                                          该值 × sqrt(wide_min_snr/narrow_min_snr)） */
+  float max_detection_range_m{0.0f}; /**< 当前时刻有效最大探测距离，单位 m（仅归属/诊断层；
+                                          取 WFOV 辐射门限反解、任务距离上限和当前 WFOV
+                                          对目标高度球面的无遮挡最远交会距离三者最小值；
+                                          依赖目标辐射强度、环境/噪声快照和扫描指向，逐周期
+                                          变化） */
   SbirsTrackingSource tracking_source{
       SbirsTrackingSource::kNotApplicable}; /**< 本记录的正式跟踪来源 */
   SbirsCaptureFailureReason capture_failure_reason{

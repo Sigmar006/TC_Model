@@ -251,17 +251,15 @@ struct GroundCoverageEnvelope {
   double max_lat_deg = 0.0;
   double min_lon_deg = 0.0;
   double max_lon_deg = 0.0;
+  double center_lat_deg = 0.0;
+  double center_lon_deg = 0.0;
 };
 
 GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
     const session::SbirsVector3M& satellite_position_eci_m,
-    const SbirsBoresightChain& boresight_chain,
-    float actual_scan_azimuth_sensor_deg,
-    float actual_scan_elevation_sensor_deg,
-    float fov_az_deg,
-    float fov_el_deg,
-    double earth_radius_m,
-    double gmst_rad) {
+    const SbirsBoresightChain& boresight_chain, float actual_scan_azimuth_sensor_deg,
+    float actual_scan_elevation_sensor_deg, float fov_az_deg, float fov_el_deg,
+    double earth_radius_m, double gmst_rad) {
   GroundCoverageEnvelope envelope;
   std::vector<std::pair<double, double>> intersection_points;
 
@@ -308,10 +306,9 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
   // 3. 地平圈（Limb）与地心指向（解决全盘高下视场矩形外围脱靶但盘内全覆盖问题）
   const double sat_distance_m = foundation::Norm(satellite_position_eci_m);
   if (sat_distance_m > earth_radius_m) {
-    const session::SbirsVector3M u_earth{
-        -satellite_position_eci_m.x / sat_distance_m,
-        -satellite_position_eci_m.y / sat_distance_m,
-        -satellite_position_eci_m.z / sat_distance_m};
+    const session::SbirsVector3M u_earth{-satellite_position_eci_m.x / sat_distance_m,
+                                         -satellite_position_eci_m.y / sat_distance_m,
+                                         -satellite_position_eci_m.z / sat_distance_m};
 
     // 检查星下点/地心是否在视场内
     float nadir_az_deg = 0.0f;
@@ -322,8 +319,7 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
       try_add_eci_ray(u_earth);
     }
 
-    auto cross_product = [](const session::SbirsVector3M& a,
-                            const session::SbirsVector3M& b) {
+    auto cross_product = [](const session::SbirsVector3M& a, const session::SbirsVector3M& b) {
       session::SbirsVector3M r;
       r.x = a.y * b.z - a.z * b.y;
       r.y = a.z * b.x - a.x * b.z;
@@ -367,8 +363,7 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
 
           float limb_az_sensor_deg = 0.0f;
           float limb_el_sensor_deg = 0.0f;
-          boresight_chain.SensorAzElOfEciVector(limb_ray, &limb_az_sensor_deg,
-                                                &limb_el_sensor_deg);
+          boresight_chain.SensorAzElOfEciVector(limb_ray, &limb_az_sensor_deg, &limb_el_sensor_deg);
           if (InRectangularFov(limb_az_sensor_deg, limb_el_sensor_deg,
                                actual_scan_azimuth_sensor_deg, actual_scan_elevation_sensor_deg,
                                fov_az_deg, fov_el_deg)) {
@@ -396,7 +391,50 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
     envelope.min_lon_deg = std::min(envelope.min_lon_deg, pt.second);
     envelope.max_lon_deg = std::max(envelope.max_lon_deg, pt.second);
   }
+  // The optical axis may miss Earth while the rectangular WFOV still overlaps it.
+  // Average valid intersections on the unit sphere to avoid antimeridian jumps.
+  session::SbirsVector3M center_vector;
+  for (const auto& pt : intersection_points) {
+    const double lat_rad = oneq::common::numerics::DegToRad(pt.first);
+    const double lon_rad = oneq::common::numerics::DegToRad(pt.second);
+    center_vector.x += std::cos(lat_rad) * std::cos(lon_rad);
+    center_vector.y += std::cos(lat_rad) * std::sin(lon_rad);
+    center_vector.z += std::sin(lat_rad);
+  }
+  foundation::ComputeGeocentricLatLonDeg(center_vector, &envelope.center_lat_deg,
+                                         &envelope.center_lon_deg);
+
   return envelope;
+}
+
+double ComputeMaxVisibleRangeInFovM(const session::SbirsVector3M& satellite_position_eci_m,
+                                    const SbirsBoresightChain& boresight_chain,
+                                    float center_az_sensor_deg, float center_el_sensor_deg,
+                                    float fov_az_deg, float fov_el_deg,
+                                    double target_geocentric_radius_m, double earth_radius_m) {
+  if (!(target_geocentric_radius_m > earth_radius_m)) {
+    target_geocentric_radius_m = earth_radius_m;
+  }
+  double max_range_m = 0.0;
+  constexpr int kAxisSteps = 16;
+  for (int az_index = 0; az_index <= kAxisSteps; ++az_index) {
+    const float az_fraction = static_cast<float>(az_index) / kAxisSteps;
+    const float az_deg = center_az_sensor_deg - 0.5f * fov_az_deg + az_fraction * fov_az_deg;
+    for (int el_index = 0; el_index <= kAxisSteps; ++el_index) {
+      const float el_fraction = static_cast<float>(el_index) / kAxisSteps;
+      const float el_deg = center_el_sensor_deg - 0.5f * fov_el_deg + el_fraction * fov_el_deg;
+      session::SbirsVector3M intersection_eci;
+      if (!foundation::TryIntersectRayWithSphere(
+              satellite_position_eci_m, boresight_chain.EciLosOfSensorPointing(az_deg, el_deg),
+              target_geocentric_radius_m, &intersection_eci) ||
+          foundation::IsEarthOcculted(satellite_position_eci_m, intersection_eci, earth_radius_m)) {
+        continue;
+      }
+      max_range_m = std::max(max_range_m, foundation::Norm(foundation::Subtract(
+                                              intersection_eci, satellite_position_eci_m)));
+    }
+  }
+  return max_range_m;
 }
 
 /**
@@ -1061,17 +1099,20 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         boresight_chain.EciLosOfSensorPointing(actual_scan_azimuth_sensor_deg,
                                                actual_scan_elevation_sensor_deg),
         kEarthRadiusM, gmst_rad, &center_lat_deg, &center_lon_deg);
-    const std::string center_text =
-        center_valid ? FormatFloat(static_cast<float>(center_lat_deg)) + "," +
-                           FormatFloat(static_cast<float>(center_lon_deg))
-                     : std::string("miss");
+    if (!center_valid && envelope.has_intersection) {
+      center_lat_deg = envelope.center_lat_deg;
+      center_lon_deg = envelope.center_lon_deg;
+    }
+    const std::string center_text = (center_valid || envelope.has_intersection)
+                                        ? FormatFloat(static_cast<float>(center_lat_deg)) + "," +
+                                              FormatFloat(static_cast<float>(center_lon_deg))
+                                        : std::string("miss");
 
     std::string footprint = "覆盖四角经纬=[" + corners_csv + "] 中心=(" + center_text +
                             ") 驻留=" + oneq::logging::FormatF(dwell_s, 3) + "s";
     // 规范口径（验收判定标准 第12项）：地面覆盖区域坐标与驻留时间 + 卫星ID。
     std::string wfov_row = "卫星ID=" + std::to_string(satellite_entity_id_) + " " + footprint;
-    SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试",
-                               wfov_row);
+    SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试", wfov_row);
     // 规范口径（验收判定标准 第14项·其一）：宽视场扫描覆盖区域与第 12 项同数据、
     // 按本项分行重写。
     std::string joint_cover = "卫星ID=" + std::to_string(satellite_entity_id_) +
@@ -1335,10 +1376,17 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     // 当前时刻最大探测距离（WFOV 门限反解）：随本周期噪声快照、目标辐射强度与逐目标
     // 路径透过率 τ_geo（壳段气团）变化，进归属层诊断（不进 raw output）；SNR 门失败
     // 目标写入 issue 消息。
-    const double max_detection_range_m = foundation::ComputeMaxDetectionRangeM(
+    const double radiometric_max_detection_range_m = foundation::ComputeMaxDetectionRangeM(
         target.radiant_intensity_w_per_sr, hw.optical_aperture_m, hw.optical_transmission,
         path_transmittance, hw.detector_quantum_efficiency, hw.integration_time_sec,
         effective_noise_w, policy.detection.wide_min_snr_linear);
+    const double fov_max_detection_range_m = ComputeMaxVisibleRangeInFovM(
+        satellite_position_eci_m, boresight_chain, actual_scan_azimuth_sensor_deg,
+        actual_scan_elevation_sensor_deg, mission.wide_field_fov_az_deg,
+        mission.wide_field_fov_el_deg, foundation::Norm(target.position_eci_m), kEarthRadiusM);
+    const double max_detection_range_m =
+        std::min(radiometric_max_detection_range_m,
+                 std::min(static_cast<double>(mission.max_range_m), fov_max_detection_range_m));
     if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
       // 中译：本星本周期对该目标的最大探测距离 d_max（米）。目标已进窄场锁定、由他星
       //       递话而来、或暂在本星宽场视场门外时同样成行。

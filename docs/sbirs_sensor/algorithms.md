@@ -142,10 +142,11 @@ SBIRS 模拟天基红外监视卫星的宽视场（WFOV）扫描探测、星下�
 ---
 
 ### 2.3 当前时刻最大探测距离 (Maximum Detection Range)
-- **算法意图与调用时机**：根据本周期快照逆解探测距离极限，随归属帧输出供诊断。
-- **闭式解公式**：
-  $$d_{\max}(t) = \sqrt{ \frac{I_t \cdot A_{\text{ap}} \cdot \tau_{\text{opt}} \cdot \tau_{geo} \cdot \eta \cdot t_{\text{int}}}{N_{\text{eff}} \cdot \text{SNR}_{\text{th}}} }$$
-- **实现边界**：因 $\tau_{geo}$ 与 $N_{\text{eff}}$ 逐目标、逐周期变化，$d_{\max}(t)$ 呈现动态响应。
+- **算法意图与调用时机**：根据本周期快照计算当前 WFOV 的有效探测距离极限，随归属帧输出供诊断。
+- **辐射闭式解**：
+  $$d_{\text{rad}}(t) = \sqrt{ \frac{I_t \cdot A_{\text{ap}} \cdot \tau_{\text{opt}} \cdot \tau_{geo} \cdot \eta \cdot t_{\text{int}}}{N_{\text{eff}} \cdot \text{SNR}_{\text{th}}} }$$
+- **有效距离**：$d_{\max}=\min(d_{\text{rad}},d_{\text{mission}},d_{\text{WFOV-geometry}})$；几何项在当前矩形 WFOV 内采样目标地心高度球面交点，剔除穿地视线并取最远斜距；无有效交点时为 0。
+- **实现边界**：$\tau_{geo}$、$N_{\text{eff}}$、扫描指向和目标高度均可逐周期变化，故 $d_{\max}(t)$ 动态响应；它仍是能力上限，不替代当前目标的视场/SNR 判门。
 - **边界保护**：任一输入（辐射强度、孔径、透过率、积分时间等）非正或非法时返回 0，不产生虚高距离。
 - **证据链**：[evidence: tests/unit/sbirs_sensor/sbirs_radiative_transfer_test.cpp]
 
@@ -299,6 +300,7 @@ SBIRS 模拟天基红外监视卫星的宽视场（WFOV）扫描探测、星下�
 当启用 `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG`（CMake 开关，**默认 OFF**）时，普通功能项逐周期向
 `SatelliteTarget.log` 写入，性能项写入 `opir_acceptance.log`：
 1. **WFOV 地面覆盖区投影**（2026-09-06 裁剪包络化）：实际扫描中心（传感器系，含共模扰动与限位钳制）的视场矩形 4 边缘在传感器系采样，地平圈（Limb）圆弧在 ECI 绕星-地心方向按角半径 $0.999\rho$（$\rho=\arcsin(R_{\oplus}/r_{\text{sat}})$，收缩因子避免切线掠射求交失败）采样，经 boresight 链双向变换后取落盘（视场∩地球盘）交集采样点，与地球圆球求交（`kEarthRadiusM`，与遮挡门控同口径）旋回 ECEF 提取地心经纬度，输出交集的经纬度包络 [lat_min, lat_max]×[lon_min, lon_max] 映射为规范 4 角（西北、东北、东南、西南）；视场完全脱靶记 `miss`。圆球地球模型（椭球为已登记非目标，见 boundaries.md）。
+   - 覆盖中心优先采用实际光轴落地点；光轴脱靶但矩形 WFOV 仍与地球盘相交时，采用全部有效交点单位球向量均值对应的经纬度；仅视场完全脱靶时记 `miss`。
 2. **驻留时间**：$T_{\text{dwell}} = \text{FOV}_{\text{az}} / \omega_{\text{scan}}$（rate=0 退化配置记 0）。
 3. **焦平面脱靶量**：逐轴小角投影 $\Delta x = f \cdot \tan(\Delta\text{az}), \Delta y = f \cdot \tan(\Delta\text{el})$（非畸变光学模型）。
 4. **目标信号能量**：$E = P_{\text{received}} \cdot t_{\text{int}}$（`ComputeSnr` 出参透出，不改 SNR 数值）。

@@ -189,7 +189,7 @@ double EngineManager::GetRotationSpeedKts() const {
     // 中译：抬轮速度计算输入非法（重量/机翼面积/密度），回退默认值。
     // 标识：数值保护——输入不合法时使用回退抬轮速度，避免除零/非有限结果。
     PROJECT_LOG_WARN("[ENGINE] GetRotationSpeedKts: invalid inputs "
-                 "weight={:.0f}lbs area={:.1f}ft² rho={:.6f} → fallback {:.0f} kts",
+                 "weight={:.0f}lbs area={:.1f}ft^2 rho={:.6f} → fallback {:.0f} kts",
                  weight_lbs, wing_area_ft2, rho, kFallbackVrKts);
     return kFallbackVrKts;
   }
@@ -275,7 +275,7 @@ double EngineManager::GetRotationSpeedKts() const {
   // 标识：性能计算追溯——记录抬轮速度的物理推导输入，供核对机型参数。
   PROJECT_LOG_DEBUG("[ENGINE] Vr={:.1f} kts  V_stall={:.1f} kts  CLmax={:.1f}  "
                 "Vr_factor={:.3f}  Iyy={:.1e}  AR={:.2f}{}  weight={:.0f} lbs  "
-                "S={:.0f} ft²  rho={:.4f}",
+                "S={:.0f} ft^2  rho={:.4f}",
                 vr_kts, v_stall_kts, cl_max, vr_factor, iyy, aspect_ratio,
                 is_delta_wing ? " δ" : "", weight_lbs, wing_area_ft2, rho);
 

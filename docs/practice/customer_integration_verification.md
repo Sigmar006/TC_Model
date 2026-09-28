@@ -260,12 +260,21 @@ findstr /C:"[标准卡尔曼滤波功能测试]" log\sbirs_triple_sat_fix_messag
    `EncodeAcceptanceText` 做了 `ANSI → UTF-8` 转换（2026-09-28 实测：两类文件均
    `UTF-8 可解码 / GBK 解码失败`）。因此**强制 UTF-8 的工具正常，按 GBK 读的工具会乱码**——
    与早期文档描述相反，请以本条为准。
-   - 已知显示缺陷仍然存在，但根因在**编译期字符串字面量**而非落盘编码：单位 `m/s²`
-     的 `²` 不在 GBK 码页内，MSVC 先把它转写成 `?` 编进库，日志里就是 `m/s?`
-     （读数不受影响）。同类字符已改用 `^2` 等 ASCII 写法规避。
+   - **单位显示已收口**：早前日志里的 `m/s?`、`0.100m?` 与落盘编码无关，根因在**编译期
+     字符串字面量**——`²` 不在 GBK 码页内，MSVC 编译期就把它转写成 `?` 编进库（cl 报
+     `warning C4566`，读数不受影响）。2026-09-28 全库扫尾后字面量统一为 `^2` 等 ASCII
+     写法（`m/s^2`、`目标RCS=0.100m^2`、`ft^2`），日志里不再出现 `?`；新增字面量由
+     `scripts/check_source_literals.py check` 守（CI guard job 阻断），注释与文档里的
+     同类字符无害、不受限。
    - 源文件本身要求带 UTF-8 BOM（仓库约定，`scripts/utf8_bom.py` 维护），否则 MSVC 会
      按 GBK 误读中文注释并触发 `C2001/C2059` 一类级联报错。自建库/扩库时务必先跑
      `python scripts/utf8_bom.py convert`。
+   - **集成端视图/事件日志另算**：`integration_views.log` / `integration_events.log` 由示例层
+     日志设施（`examples/logger`）直写，不经过 `EncodeAcceptanceText`，Windows 下仍是编译机
+     ANSI（GBK）字节——2026-09-28 实测 `rir_ground_site_recognition`（40 周期）与
+     `sbirs_triple_sat_fix_messages`（80 周期）产物：验收文件 `UTF-8 OK / GBK FAIL`，
+     这两个文件 `UTF-8 FAIL / GBK OK`。按 UTF-8 强读它们会乱码（需按 GBK 读或转码）；
+     是否统一为 UTF-8 待定（改动落在示例层，不在六份验收文件链上）。
 2. **五个验收开关编进库**：拿交付的 `1q.lib` 不用管；**自建库时忘开开关 =
    该域一行都不出**（也不报错）。开关只决定“是否产生该域记录”，落盘文件恒为 §3 的六个。
    先跑场景 B 验通路。

@@ -214,7 +214,7 @@ patch 只改会话配置）。
 per-target 状态 + 规则 13b kInfo 排除诊断；关机周期清零，拒绝周期为
 `kCycleNotCompleted`/`kCycleNotExecuted` 快照）。组件在 `Step` 内取该视图
 直写中文人读行到集成端视图日志 `integration_views.log`（每周期一行，如
-`[视图:ar] 周期=5 完成=是 目标=[1001 已确认(RCS 2.20m²)] 问题=[ar.target_snr_below_threshold 目标信噪比低于门限]`；
+`[视图:ar] 周期=5 完成=是 目标=[1001 已确认(RCS 2.20m^2)] 问题=[ar.target_snr_below_threshold 目标信噪比低于门限]`；
 SAR 为阶段型摘要行）——日志给人读，结构化持久化由外部集成方接入自己的
 日志/事件系统实现（示例不内置 JSON 序列化器）。落盘密度（三模式）由
 `logger/logger_modes.h` 模式选择区宏控制。ESR 库内无 DebugView，不适用

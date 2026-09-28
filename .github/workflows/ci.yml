@@ -58,6 +58,12 @@ jobs:
       - name: Source encoding guard (UTF-8 BOM)
         run: python3 scripts/utf8_bom.py check
 
+      # 字面量守卫：字符串字面量里不得出现 ANSI 代码页（中文 Windows = GBK）
+      # 表示不了的字符——MSVC 会静默编成 '?'（如 m² → m?），落盘日志与甲方
+      # 判据文本对不上。改为纯 ASCII 写法（m^2 / m/s^2）或显式 u8"..."。
+      - name: Source literal guard (ANSI-safe string literals)
+        run: python3 scripts/check_source_literals.py check
+
       - name: Install Conan 2.x
         run: pip install conan
 

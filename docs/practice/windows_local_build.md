@@ -135,6 +135,12 @@ INTERFACE 传播）。BOM 使 cl.exe 无条件按 UTF-8 解码。维护链：
 `scripts/utf8_bom.py`（convert/check/strip）+ pre-commit 自动补齐 + CI `check`
 守卫 + `.editorconfig` 声明 `utf-8-bom`。
 
+同一条"无 `/utf-8`"约束还管**字面量内容**：窄字符串字面量由 MSVC 按系统代码页
+（中文 Windows = GBK）生成，代码页表示不了的字符被静默编成 `?`（`m²` → `m?`，
+cl 仅给 `warning C4566`）。故字面量统一用 ASCII 写法（`m^2` / `ft^2` / `m/s^2`），
+由 `scripts/check_source_literals.py check` 守卫（CI guard job 阻断）——注释与文档
+里的同类字符无害，不在守卫范围。
+
 **Preset 选择**：
 
 | Preset | 用途 |

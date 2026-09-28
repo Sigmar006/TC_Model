@@ -140,7 +140,7 @@ bool ArSensorComponent::TryApplyRuntimeConfig(
 //   模式二 delta（只写状态有变化的目标行；无变化时整周期静默不写，防刷屏）：
 //     周期=5 目标=1001 状态=已确认
 //   模式三 summary（默认；每周期恰好一行完整摘要）：
-//     周期=400 完成=是 目标=[1001 不在输出(RCS 1.20m²), 1002 不在输出(RCS 0.10m²)]
+//     周期=400 完成=是 目标=[1001 不在输出(RCS 1.20m^2), 1002 不在输出(RCS 0.10m^2)]
 //     问题=[ar.target_snr_below_threshold 目标信噪比低于门限…]
 void ArSensorComponent::LogDebugView(
     const airborne_radar::session::ArTrackOutputDebugView& view,
@@ -226,7 +226,7 @@ void ArSensorComponent::LogDebugView(
     }
     tracks_text += std::to_string(track.external_target_id) +
                    std::string(" ") + ArTrackStatusName(track.status) + "(RCS " +
-                   std::to_string(track.rcs) + "m²)";
+                   std::to_string(track.rcs) + "m^2)";
   }
   const std::string issues_text = app::FormatIssueText(view.issues);
   // 与下方写入行同内容：纯 std::string/std::to_string 拼接的日志字符串，供集成方直接搬入己方日志（示例自身不消费）。

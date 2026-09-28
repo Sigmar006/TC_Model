@@ -70,7 +70,7 @@
 | 缺陷 | 现象与根因 | 修复 |
 |---|---|---|
 | 会话配置留空时 `--output-dir` / 环境变量钉扎失效 | `ScopedAcceptanceLogOutputDirectory` 对空字符串也执行覆盖，把线程内目录清空，验收日志退回进程工作目录的编译期默认路径；表现为「同一场景的 integration 日志在 `--output-dir`，验收日志却落到会话配置目录」 | 空字符串改为「不指定目录」：构造与析构都不改动当前作用域，继续按 环境变量 → 编译期默认路径 解析 |
-| 字符串常量里的 `²`（U+00B2）在日志里变成 `?` | 该字符不在 GBK 码页内，MSVC 把它转写成 `?` 后编入库中，落盘即 `目标RCS=0.100m?` | 所有**字符串常量**中的 `U+00B2` 换成 `^2`（`目标RCS=0.100m^2`）；注释中的非 GBK 字符无害可保留（源文件带 BOM 时按 UTF-8 解码） |
+| 字符串常量里的 `²`（U+00B2）在日志里变成 `?` | 该字符不在 GBK 码页内，MSVC 把它转写成 `?` 后编入库中，落盘即 `目标RCS=0.100m?` | 所有**字符串常量**中的 `U+00B2` 换成 `^2`（`目标RCS=0.100m^2`）；注释中的非 GBK 字符无害可保留（源文件带 BOM 时按 UTF-8 解码）。**2026-09-28 全库扫尾**：本轮再补 3 处漏网——`examples/components/ar_sensor_component.cpp`（视图行 `RCS …m²`）与 `src/flight_dynamic/propulsion/EngineManager.cpp`（engine 日志两处 `ft²`）；新增 `scripts/check_source_literals.py check` 守卫（纯词法扫描，字面量内出现 GBK 表示不了的字符即失败；CI guard job 阻断），文档示例同步改 `m^2` |
 | 运行器完成提示仍列旧文件名 | 提示写 `fusion/inference/precision_acceptance.log`，与实际六文件模型不符 | 提示改为六个目标文件 + 两份 CSV |
 
 **端到端核对结果（`rir_ground_site_recognition`，120 周期，本次构建）**

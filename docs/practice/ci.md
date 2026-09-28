@@ -10,7 +10,7 @@ Authority: build & test infrastructure
 
 | Workflow | 触发 | Job | 内容 | 阻断 PR |
 |---|---|---|---|---|
-| `ci.yml` | push / PR | **guard** | 编码守卫（`scripts/utf8_bom.py check`：C/C++ 源文件必须 UTF-8 with BOM）+ `-L contract`：运行 live CTest inventory 中的 compiled contract 与 script guards | ✅ |
+| `ci.yml` | push / PR | **guard** | 编码守卫（`scripts/utf8_bom.py check`：C/C++ 源文件必须 UTF-8 with BOM）+ 字面量守卫（`scripts/check_source_literals.py check`：字符串字面量须为 ANSI 代码页可表示字符）+ `-L contract`：运行 live CTest inventory 中的 compiled contract 与 script guards | ✅ |
 | `ci.yml` | push / PR | **build-test** | Debug 库/第一方示例构建 + 安装 consumer + `ci_required` + 全量 `unit` 分区 | ✅ |
 | `nightly.yml` | cron 02:00 + 手动 | **performance** | Release 构建 + 性能/cxx11 兼容 gate | ❌ |
 | `nightly.yml` | cron + 手动 | **flight-dynamic** | FD=ON + JSBSim 数据 + `unit::flight_dynamic` | ❌ |
@@ -36,6 +36,7 @@ CI 跑的每条命令都可在本地复现，便于调试失败：
 ```bash
 # === guard job（contract 守护）===
 python3 scripts/utf8_bom.py check  # 编码守卫：C/C++ 源文件必须 UTF-8 with BOM
+python3 scripts/check_source_literals.py check  # 字面量守卫：字面量须 ANSI 代码页可表示
 bash scripts/bootstrap_conan.sh llvm-ninja-debug
 cmake --preset llvm-ninja-debug
 ctest --test-dir build/llvm-ninja-debug -L contract --output-on-failure -j 4
@@ -93,6 +94,8 @@ preset 仅属未验收脚手架，是否保留由全链证据决定。
 **guard job 失败**：通常是某个 `check_*.cmake` 守护脚本发现架构违规（如 include 方向、命名规约、公共 API 边界）。看失败信息里的 `VIOLATIONS:` 清单，对应修源码。这类失败最快修——纯文本规则，无需理解编译。
 
 **Source encoding guard 失败**：git 追踪的 C/C++ 文件缺 UTF-8 BOM（多为新增文件由编辑器存成无 BOM）。修复：`python scripts/utf8_bom.py convert`（幂等，只补 BOM 不动其它字节）。背景：VS2015 集成端对无 BOM 文件按系统代码页（GBK）误读，中文注释错位截断；`.editorconfig` 已对 C/C++ 声明 `utf-8-bom`。
+
+**Source literal guard 失败**：字符串/字符字面量里出现了 ANSI 代码页（中文 Windows = GBK/cp936）表示不了的字符（典型是 `²` U+00B2），MSVC 会静默把它编成 `?`——编得过、跑得动，只有落盘日志看得出（`目标RCS=0.100m?`）。修复：改成纯 ASCII 写法（`m^2` / `ft^2` / `m/s^2`），或给该字面量加 `u8` 前缀（编译器显式转 UTF-8，与代码页无关）。注释与文档里的同类字符无害，守卫只查字面量内部。
 
 **Conan 缓存导致依赖旧**：改了 `conanfile.py` 后 CI 应自动重建缓存（key 含文件哈希）。若仍用旧包，检查 `CONAN_CACHE_KEY` 是否正确更新。
 

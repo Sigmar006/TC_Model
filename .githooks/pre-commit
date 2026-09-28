@@ -2,6 +2,8 @@
 # 1Q pre-commit 钩子（经 core.hooksPath=.githooks 激活，activate 脚本自动配置）：
 # 暂存区 C/C++ 文件缺 UTF-8 BOM 时自动补齐并重新暂存（VS2015 交付要求）。
 # 存在分块暂存（暂存内容 ≠ 工作区）时拒绝自动补齐，避免夹带未暂存改动。
+# 字面量守卫：字符串/字符/raw 字面量含 ANSI 代码页表示不了的字符时阻断提交
+# （GBK 表示不了的字符会被 MSVC 静默编成 '?'，仅 warning C4566）；无 python 时降级为提示。
 # merge 提交跳过。
 # 不再在 main/master 上自动开 feature/auto-*：合入走 --no-ff，过程分支由调用方删除。
 set -euo pipefail
@@ -46,6 +48,32 @@ if (( ${#_bom_blocked[@]} > 0 )); then
 fi
 if (( _bom_fixed > 0 )); then
   echo "[pre-commit] 已为 ${_bom_fixed} 个 C/C++ 文件自动补 UTF-8 BOM 并重新暂存"
+fi
+
+# ---------- 字面量守卫 ----------
+# 口径与 CI guard job 的 `scripts/check_source_literals.py check` 完全一致（全树扫描，
+# 不只看暂存区）：字符串/字符/raw 字面量里的字符必须能被编译机 ANSI 代码页表示——
+# GBK 表示不了的字符（典型 `²` U+00B2）会被 MSVC 静默编成 `?`，日志里就成了 `m?`。
+# `u8"..."` / `L"..."` 前缀由编译器显式转码，守卫跳过；注释与文档不在守卫范围。
+# 解释器探测必须先自证可执行：Windows 的应用执行别名 python3.exe 是 Microsoft Store
+# 存根，`command -v` 能找到但运行即静默失败，会让守卫误判为"未通过"。
+_python=""
+for _cand in python3 python; do
+  if command -v "${_cand}" >/dev/null 2>&1 && "${_cand}" -c 'import sys' >/dev/null 2>&1; then
+    _python="${_cand}"
+    break
+  fi
+done
+
+if [[ -n "${_python}" ]]; then
+  if ! "${_python}" scripts/check_source_literals.py check >&2; then
+    echo "[pre-commit] 字面量守卫未通过（上方 error 行给出 file:line:col）。" >&2
+    echo "             处理：改成纯 ASCII 写法（m^2 / ft^2 / m/s^2），或给该字面量加 u8 前缀。" >&2
+    echo "             注释里的同类字符无害，可保留。详见 scripts/check_source_literals.py。" >&2
+    exit 1
+  fi
+else
+  echo "[pre-commit] 未找到可用的 python3/python：跳过字面量守卫（CI guard job 仍会阻断）" >&2
 fi
 
 exit 0

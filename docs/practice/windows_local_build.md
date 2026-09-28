@@ -138,8 +138,10 @@ INTERFACE 传播）。BOM 使 cl.exe 无条件按 UTF-8 解码。维护链：
 同一条"无 `/utf-8`"约束还管**字面量内容**：窄字符串字面量由 MSVC 按系统代码页
 （中文 Windows = GBK）生成，代码页表示不了的字符被静默编成 `?`（`m²` → `m?`，
 cl 仅给 `warning C4566`）。故字面量统一用 ASCII 写法（`m^2` / `ft^2` / `m/s^2`），
-由 `scripts/check_source_literals.py check` 守卫（CI guard job 阻断）——注释与文档
-里的同类字符无害，不在守卫范围。
+由 `scripts/check_source_literals.py check` 守卫——`.githooks/pre-commit` 阻断提交、
+CI guard job 阻断 PR；注释与文档里的同类字符无害，不在守卫范围。该脚本的解释器
+探测会先自证可执行（Windows 的 `python3.exe` 应用执行别名是 Store 存根，能找到但
+运行即静默失败），找不到可用解释器时降级为提示，不误拦提交。
 
 **Preset 选择**：
 

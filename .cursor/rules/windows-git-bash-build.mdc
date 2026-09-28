@@ -46,6 +46,11 @@ scripts/1q.sh test VisualStudio.15.0-amd64-release -R "unit::<module>" -j 4
 手动兜底：`scripts/utf8_bom.py convert`（只处理 git 已追踪文件 → 新建文件先 `git add`）。
 **禁止**删中文注释来消 C4819。
 
+同一钩子还会跑字面量守卫（`scripts/check_source_literals.py check`）并在违例时阻断提交：
+窄字符串字面量按系统代码页（GBK）生成，`²` 这类码页外字符会被 MSVC 静默编成 `?`（仅
+`warning C4566`），日志里就成了 `m?`。写成 ASCII（`m^2` / `ft^2` / `m/s^2`）或用 `u8"..."`；
+注释里的同类字符无害。手动兜底：`python scripts/check_source_literals.py check`。
+
 ## 陈旧增量产物 / 文件锁
 
 public 头布局变更后若模块测试批量 SEH `0xc0000005` / 无关 `bad_alloc`：

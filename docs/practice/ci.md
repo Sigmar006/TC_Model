@@ -95,7 +95,7 @@ preset 仅属未验收脚手架，是否保留由全链证据决定。
 
 **Source encoding guard 失败**：git 追踪的 C/C++ 文件缺 UTF-8 BOM（多为新增文件由编辑器存成无 BOM）。修复：`python scripts/utf8_bom.py convert`（幂等，只补 BOM 不动其它字节）。背景：VS2015 集成端对无 BOM 文件按系统代码页（GBK）误读，中文注释错位截断；`.editorconfig` 已对 C/C++ 声明 `utf-8-bom`。
 
-**Source literal guard 失败**：字符串/字符字面量里出现了 ANSI 代码页（中文 Windows = GBK/cp936）表示不了的字符（典型是 `²` U+00B2），MSVC 会静默把它编成 `?`——编得过、跑得动，只有落盘日志看得出（`目标RCS=0.100m?`）。修复：改成纯 ASCII 写法（`m^2` / `ft^2` / `m/s^2`），或给该字面量加 `u8` 前缀（编译器显式转 UTF-8，与代码页无关）。注释与文档里的同类字符无害，守卫只查字面量内部。
+**Source literal guard 失败**：字符串/字符字面量里出现了 ANSI 代码页（中文 Windows = GBK/cp936）表示不了的字符（典型是 `²` U+00B2），MSVC 会静默把它编成 `?`——编得过、跑得动，只有落盘日志看得出（`目标RCS=0.100m?`）。修复：改成纯 ASCII 写法（`m^2` / `ft^2` / `m/s^2`），或给该字面量加 `u8` 前缀（编译器显式转 UTF-8，与代码页无关）。注释与文档里的同类字符无害，守卫只查字面量内部。同一脚本也挂在 `.githooks/pre-commit`（激活过 `core.hooksPath` 的机器在提交时即阻断）。
 
 **Conan 缓存导致依赖旧**：改了 `conanfile.py` 后 CI 应自动重建缓存（key 含文件哈希）。若仍用旧包，检查 `CONAN_CACHE_KEY` 是否正确更新。
 

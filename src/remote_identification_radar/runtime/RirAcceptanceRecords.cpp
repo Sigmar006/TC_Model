@@ -65,6 +65,21 @@ std::string BallisticSubclassName(int subclass) {
   }
 }
 
+/** @brief 方向图模型中文名（第28项日志的「模型=」字段；未识别返回「未知模型」）。 */
+const char* AntennaPatternModelText(config::hardware::RirAntennaPatternModelType model) {
+  using config::hardware::RirAntennaPatternModelType;
+  switch (model) {
+    case RirAntennaPatternModelType::kGaussianMainLobe:
+      return "高斯主瓣";
+    case RirAntennaPatternModelType::kCosinePower:
+      return "余弦幂";
+    case RirAntennaPatternModelType::kSincPattern:
+      return "辛克";
+    default:
+      return "未知模型";
+  }
+}
+
 const char* CategoryName(int category) {
   using session::RirRecognitionCategory;
   switch (category) {
@@ -516,24 +531,32 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
                           std::string(verdict_sidelobe) == "通过" &&
                           std::string(verdict_backlobe) == "通过";
 
-  // 日志边界（本项复核要求）：只保留可追溯标识（雷达ID）、分项结果与整体结果；
-  // 反算值与配置值同样落盘，作为分项结果的依据，便于外部按各自口径复核。
+  // 日志边界（主文档第28项「日志边界」明确要求）：**不打印**峰值增益/波束宽度/旁瓣/后瓣的
+  // 反算数值，也不以这些数值是否被记录作为通过条件；只写方向图模型、方向图数据文件标识、
+  // 各参数校验结果与整体一致性结果，便于定位失败项。详细数值保留在代码内部校验上下文
+  //（即上面的 derived_/conf_ 变量），不再落盘。2026-09-28 按主文档收紧。
+  const std::string pattern_csv_path = ResolveRirAntennaPatternCsvPath();
   std::string content = "雷达ID=" + std::to_string(radar_id);
-  content += " 反算峰值增益=" + FormatF(derived_peak_gain_dbi, 3) + "dBi";
-  content += " 配置峰值增益=" + FormatF(conf_peak_gain_dbi, 3) + "dBi 峰值增益判据=" + verdict_peak;
-  content += " 反算波束宽度az/el=" + FormatPairDeg(derived_az_bw_deg, derived_el_bw_deg, 3) + "°";
-  content += " 配置波束宽度az/el=" + FormatPairDeg(conf_az_bw_deg, conf_el_bw_deg, 3) + "°";
-  content += " 波束宽度判据az/el=" + std::string(verdict_az_bw) + "/" + verdict_el_bw;
-  content += " 反算最大旁瓣电平=" + FormatF(derived_sidelobe_db, 3) + "dB 配置最大旁瓣电平=" +
-             FormatF(conf_sidelobe_db, 3) + "dB 最大旁瓣判据=" + verdict_sidelobe;
-  content += " 反算后瓣电平=" + FormatF(derived_backlobe_db, 3) + "dB 配置后瓣电平=" +
-             FormatF(conf_backlobe_db, 3) + "dB 后瓣判据=" + verdict_backlobe;
-  content += all_within ? " 方向图整体判据=通过(各项≤5%)" : " 方向图整体判据=不通过";
+  content += " 模型=" + std::string(AntennaPatternModelText(antenna.model_type));
+  content += " 方向图文件=" + pattern_csv_path;
+  content += " 峰值增益校验=" + std::string(verdict_peak);
+  content += " 方位波束宽度校验=" + std::string(verdict_az_bw);
+  content += " 俯仰波束宽度校验=" + std::string(verdict_el_bw);
+  content += " 最大旁瓣电平校验=" + std::string(verdict_sidelobe);
+  content += " 后瓣电平校验=" + std::string(verdict_backlobe);
+  content += all_within ? " 外部配置一致性=通过" : " 外部配置一致性=不通过";
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
 }
 
 void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  // 无检测单元（未走到检测链）时本函数没有任何真实过程数据：不写 29/32/33/34/35/36 任何行。
+  // 2026-09-28 按“没有相关信息输出或输入则不打印日志；未经过具体流程步骤则不输出”收紧：
+  // 早期实现在无 cell 时会写出仅含配置派生值或「缺失」占位的行，属于无输入也要出日志的伪输出。
+  const bool has_detection_cell = input.has_cell && input.detected;
+  if (!has_detection_cell) {
     return;
   }
   const float t = input.sim_time_sec;
@@ -606,20 +629,16 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
 
   // 验收判定标准 第34项：杂波——植被 kDisabled（clutter_power_w=0）时整条省略；
   // 有杂波时只写 MTI 剩余与 MTD 通道分布（抑制比/总抑制增益为派生量，不写）。
-  const bool has_clutter = input.has_cell && clutter > 0.0;
+  const bool has_clutter = clutter > 0.0;
   if (has_clutter) {
     Emit(t, cycle, "杂波信号处理增益功能测试",
          id_sp + "MTI处理后杂波剩余功率=" +
              FormatSci(has_bank ? bank.mti_residual_clutter_w : mti_residual) + "W");
-  } else {
-    // 规范口径：本项四项均为必写输出；无杂波（植被关闭或 clutter_power_w=0）时不得静默
-    // 省略整个用例，逐字段写「缺失」标记（区别于 §0 规则3 的无值省略）。
-    Emit(t, cycle, "杂波信号处理增益功能测试",
-         id_sp + "MTI处理后杂波剩余功率=缺失 抑制比/总抑制增益=缺失");
+    EmitOrNone(t, cycle, "杂波信号处理增益功能测试", id_sp + "MTD各多普勒通道杂波剩余功率分布=",
+               has_bank, has_bank ? FormatChannelWatts(bank.clutter_w) + "W" : std::string());
   }
-  EmitOrNone(t, cycle, "杂波信号处理增益功能测试", id_sp + "MTD各多普勒通道杂波剩余功率分布=",
-             has_clutter && has_bank,
-             has_clutter && has_bank ? FormatChannelWatts(bank.clutter_w) + "W" : std::string());
+  // 2026-09-28 收紧（无输入不出日志）：无杂波时整条省略，不再写「缺失」占位行——
+  // 本项要求“记录杂波处理增益”，没有杂波输入就没有可记录的量。
   // 2026-09-28 合并（§0C.2 裁定 4 复核后放开）：截图要求「MTD 处理后的杂波抑制比」与
   // 「总杂波抑制增益」，由本条已落盘的原始/剩余功率直接求比值（10log10 输入/剩余）。
   // 抑制比取目标所在多普勒通道，总增益取全通道合计，两者均为功率比，不引入新观测量。
@@ -641,8 +660,8 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     }
   }
 
-  // 验收判定标准 第35项：干扰——四项均为必写输出；无外部干扰单音或无 detection cell
-  // 时不得静默省略整个用例，逐字段写「缺失」标记；CFAR 统计归第 36 项。
+  // 验收判定标准 第35项：干扰——无外部干扰单音时整条省略（无输入不出日志）；
+  // CFAR 统计归第 36 项。
   const bool has_jam = has_bank && bank.has_jam_channels;
   if (has_jam) {
     Emit(t, cycle, "干扰信号处理增益功能测试",
@@ -672,9 +691,6 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
       Emit(t, cycle, "干扰信号处理增益功能测试",
            id_sp + "总干扰抑制增益=" + FormatF(ratio_db, 3) + "dB");
     }
-  } else {
-    Emit(t, cycle, "干扰信号处理增益功能测试",
-         id_sp + "MTI处理后干扰剩余功率=缺失 抑制比/总抑制增益=缺失");
   }
 
   // 验收判定标准 第36项：CFAR 三子项（门限/结果/概率，key=value 分行）。
@@ -879,7 +895,7 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED() || detections.empty()) {
     return;
   }
   // 验收判定标准 第37项「空域自主搜索功能测试」：指向信息与检测量测两行（扫描调度信息
@@ -889,9 +905,6 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
   Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
            FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
-  if (detections.empty()) {
-    return;  // 无检出：该行无有效值，整行省略（§0 规则3，不写空列表占位）
-  }
   std::string found;
   for (std::size_t i = 0U; i < detections.size(); ++i) {
     if (i != 0U) {
@@ -908,7 +921,7 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
                                      std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED() || detections.empty()) {
     return;
   }
   // 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名，按 §0.9
@@ -916,9 +929,6 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
   Emit(sim_time_sec, cycle, "地平线搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
            FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
-  if (detections.empty()) {
-    return;
-  }
   std::string found;
   for (std::size_t i = 0U; i < detections.size(); ++i) {
     if (i != 0U) {
@@ -1045,7 +1055,7 @@ void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
   // 甲方 2026-08-22 批注「要输出集群目标数量（知道能打出几枚即可）」：
   // 集群目标数量 = 确认航迹数（身份去重后的在跟目标数，非检测条数——
   // 「检测条数不得顶替集群规模」原裁定由本批注按计数口径覆盖）。同时给出
-  // 待确认/丢失计数作上下文；无确认航迹时如实写 0。
+  // 待确认/丢失计数作上下文；无确认航迹时整项省略，不写规模 0 占位。
   // 验收判定标准 第19项：被跟踪对象明细按状态分列（航迹→目标ID），
   // 空列表省略；external_target_id 为 0（未知）时目标写「未知」。
   std::size_t confirmed = 0U;
@@ -1063,6 +1073,9 @@ void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
         ++lost;
         break;
     }
+  }
+  if (confirmed == 0U) {
+    return;
   }
   std::string confirmed_ids;
   std::size_t index = 0U;

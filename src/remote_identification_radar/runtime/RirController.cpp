@@ -883,7 +883,10 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                             std::uint64_t designated_external_target_id) {
   // TAS 防御：空计划退化为单条目缺省指向搜索驻留（既有兜底语义不变）。
   static const std::vector<RirDwellPlan> kFallbackPlan(1U);
-  const std::vector<RirDwellPlan>& plan = dwell_plan.empty() ? kFallbackPlan : dwell_plan;
+  // 兜底条目的指向是 (0,0) 常数，不是本周期真实波束指向：验收「指向」行在此不成立，
+  // 按「未经过具体流程步骤则不输出」抑制该项日志（2026-09-28）。
+  const bool has_real_dwell_plan = !dwell_plan.empty();
+  const std::vector<RirDwellPlan>& plan = has_real_dwell_plan ? dwell_plan : kFallbackPlan;
   // 验收"指向"行与接收链回退口径按计划首条目；发射记录逐驻留
   //（见 ResolveRfCycle / last_emission_frame_，核查 9.2）。
   const config::RirAzimuthElevationDeg& dwell_center_deg = plan.front().pointing_deg;
@@ -1183,14 +1186,16 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       const float horizon_half_beam_deg =
           0.5f * std::max(hardware_.antenna.nominal_az_beamwidth_deg,
                           hardware_.antenna.nominal_el_beamwidth_deg);
-      if (std::fabs(dwell_center_deg.el_deg) <= horizon_half_beam_deg) {
-        WriteRirHorizonSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
-                                        input.input_cycle_index, dwell_center_deg.az_deg,
-                                        dwell_center_deg.el_deg, g_acceptance_found_targets);
-      } else {
-        WriteRirSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
-                                 input.input_cycle_index, dwell_center_deg.az_deg,
-                                 dwell_center_deg.el_deg, g_acceptance_found_targets);
+      if (has_real_dwell_plan) {
+        if (std::fabs(dwell_center_deg.el_deg) <= horizon_half_beam_deg) {
+          WriteRirHorizonSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
+                                          input.input_cycle_index, dwell_center_deg.az_deg,
+                                          dwell_center_deg.el_deg, g_acceptance_found_targets);
+        } else {
+          WriteRirSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
+                                   input.input_cycle_index, dwell_center_deg.az_deg,
+                                   dwell_center_deg.el_deg, g_acceptance_found_targets);
+        }
       }
       const float gate_sigma = std::max(0.0f, policy_.association.distance_gate_sigma);
       WriteRirAssociation(input.sim_time_sec, input.input_cycle_index, association, platform_lla,

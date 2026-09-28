@@ -477,6 +477,11 @@ void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environm
                                   const session::SbirsSceneTargetList& scene) {
   // 验收判定标准 第58项：目标与红外环境场景输入接口测试 → log/IRExternalInterface.log。
   // 记录目标数量、目标状态数组、红外辐射特征、背景辐射与大气透过率；场景有效期字段已删除。
+  // 无场景目标时本项没有可投影的输入对象（目标数量/状态数组/辐射特征全为空），
+  // 按「没有相关信息输入则不打印日志」整条省略（2026-09-28）；不再写“目标数量=0”空投影行。
+  if (scene.empty()) {
+    return;
+  }
   std::string head = "卫星ID=" + std::to_string(satellite_id);
   head += " 目标数量=" + std::to_string(scene.size());
   head += " 背景辐射亮度=" + FormatF(background_radiance_w_sr_m2, 4) + "W/(sr·m^2)";
@@ -548,6 +553,12 @@ void WriteSbirsExternalObservationOutput(
     if (detection.record.detected) {
       ++observed_count;
     }
+  }
+  // 本周期没有任何检出记录时，对外观测输出接口没有可发布的观测事实：
+  // 按「没有相关信息输出则不打印日志」整条省略（2026-09-28），
+  // 不再写“观测数量=0 目标数量=N”这类无观测内容的空投影行。
+  if (observed_count == 0U) {
+    return;
   }
   std::string head = "卫星ID=" + std::to_string(satellite_id);
   head += " 观测数量=" + std::to_string(observed_count);

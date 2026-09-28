@@ -53,7 +53,7 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 | 被测 | RIR 地基站点识别链（RCS+运动真值四维特征）+ 运行期指令指定任务 + 特征量测进五源融合 + 推演 + 威胁 | 三星 GEO 红外交会 + 消息投递地面站融合 + 推演 + **精度评估（五项误差 + AHP）** |
 | 周期 | 400 × 1 s（场景 JSON 里改） | 80 × 1 s |
 | 集成形态 | 挂 5 类组件（§4） | 三卫星实体挂 SBIRS（`kMessage` 投递）；地面站挂 `GroundStationFusionComponent`（内含 `FusionEngine` + `PrecisionEvaluationSession`）（§6） |
-| 验收文件 | `RadarOutput.log` + `rir_acceptance.log`（性能）+ `RadarAntennaGainPatterndata.csv` + `Rir_scan_pattern.csv` + `fusion/inference_acceptance.log` | `SatelliteTarget.log` + `precision/opir/fusion/inference_acceptance.log` |
+| 验收文件 | `RadarOutput.log` + `RadarExternalInterface.log` + `RadarInternalInterface.log` + `RadarAntennaGainPatterndata.csv` + `Rir_scan_pattern.csv` | `SatelliteTarget.log` + `IRExternalInterface.log` + `IRInternalInterface.log` |
 | 集成端日志 | `integration_events.log` + `integration_views.log`（rir/inference/threat 视图行） | `integration_events.log` / `integration_views.log`（消息投递与回执事件） |
 | 冒烟判据 | demo 退出码 0（航迹≥2、融合≥1、视图/CSV 行数达标） | demo 退出码 0（五指标有样本、AHP 合法、`dual_sat_cycles>0`） |
 
@@ -61,27 +61,43 @@ cl 自动按 UTF-8 解码；这正是交付验证要证明的约束）。工程�
 
 ## 3. 验收开关与日志路径（先打通这个）
 
-五个验收文件开关是**库编译期**的（交付的 `1q.lib` 已全开；自建库时用
-`1q_log_vs2015` preset 或按下表传 `-D`）：
+五个验收开关仍是**库编译期**的（交付的 `1q.lib` 已全开；自建库时用
+`1q_log_vs2015` preset 或按下表传 `-D`）。
 
-| CMake 开关（编译库时） | 控制文件 |
-| --- | --- |
-| `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` | `SatelliteTarget.log` + `opir_acceptance.log`（性能）+ `IRInternalInterface.log` |
-| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | `RadarOutput.log` + `rir_acceptance.log`（性能）+ `RadarInternalInterface.log`（+ 两份雷达 CSV） |
-| `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` | `fusion_acceptance.log` |
-| `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` | `inference_acceptance.log` |
-| `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` | `precision_acceptance.log` |
+**2026-09-28 起落盘只有六个目标文件**：开关继续控制“该域是否产生验收记录”，但不再各自
+对应一个独立文件——融合、推演、精度的旧独立文件已归并到 `SatelliteTarget.log`。
 
-**运行时路径**：默认落在进程当前目录 `log/` 下；集成方可用以下环境变量把
-单文件钉到自己的输出目录（示例的 `InitIntegrationLog` 就是这么做的）：
+| CMake 开关（编译库时） | 控制范围 | 落盘文件 |
+| --- | --- | --- |
+| `ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG` | 红外普通功能 + 红外外部/内部接口 | `SatelliteTarget.log`、`IRExternalInterface.log`、`IRInternalInterface.log` |
+| `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` | 雷达普通功能 + 雷达外部/内部接口 + 两份 CSV | `RadarOutput.log`、`RadarExternalInterface.log`、`RadarInternalInterface.log`、`RadarAntennaGainPatterndata.csv`、`Rir_scan_pattern.csv` |
+| `ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG` | 融合域记录（功能控制） | 归并到 `SatelliteTarget.log`，**不再生成** `fusion_acceptance.log` |
+| `ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG` | 推演域记录（功能控制） | 归并到 `SatelliteTarget.log`，**不再生成** `inference_acceptance.log` |
+| `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` | 精度评估记录（功能控制） | 归并到 `SatelliteTarget.log`，**不再生成** `precision_acceptance.log` |
+
+> 性能项（第 50–55 项）与第 56、60 项不写验收日志，由测试夹具与报告判定；
+> 历史上的 `rir_acceptance.log` / `opir_acceptance.log` 也不再生成。
+
+**运行时路径**：默认落在进程当前目录 `log/` 下；集成方可用环境变量把文件钉到自己的
+输出目录（示例的 `InitIntegrationLog` 就是这么做的）。**旧变量名仍被识别**（作为兼容回退），
+但推荐用新名：
 
 ```
-ONEQ_OPIR_ACCEPTANCE_LOG_PATH / ONEQ_RIR_ACCEPTANCE_LOG_PATH /
-ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH / ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH /
-ONEQ_RADAR_OUTPUT_LOG_PATH /
-ONEQ_FUSION_ACCEPTANCE_LOG_PATH / ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH /
-ONEQ_PRECISION_ACCEPTANCE_LOG_PATH = <目录>/<文件名>
+ONEQ_SATELLITE_TARGET_LOG_PATH / ONEQ_RADAR_OUTPUT_LOG_PATH /
+ONEQ_RADAR_EXTERNAL_INTERFACE_LOG_PATH / ONEQ_IR_EXTERNAL_INTERFACE_LOG_PATH /
+ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH / ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH
+= <目录>/<文件名>
 ```
+
+兼容回退：`ONEQ_OPIR_ACCEPTANCE_LOG_PATH` → `SatelliteTarget.log`；
+`ONEQ_RIR_ACCEPTANCE_LOG_PATH` → `RadarOutput.log`（新变量优先）。
+已废弃、不再产生任何文件：`ONEQ_FUSION_ACCEPTANCE_LOG_PATH`、
+`ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH`、`ONEQ_PRECISION_ACCEPTANCE_LOG_PATH`。
+
+**会话级目录优先级**（V2.3 行为修正）：`RirSessionConfig::acceptance_log_output_directory` /
+`SbirsSessionConfig::acceptance_log_output_directory` **非空时优先于上述环境变量**；
+**留空时不再覆盖**，继续按“环境变量 → 编译期默认路径”解析。此前留空会把线程内目录清空，
+导致验收日志退回进程工作目录，使环境变量钉扎失效。
 
 场景 B 的 demo 还有一个**示例编译期**开关 `PE_ACCEPTANCE_LOG_ENABLED=1`（钉盘
 分支），消费工程 CMakeLists 里照抄即可。
@@ -94,8 +110,8 @@ ONEQ_PRECISION_ACCEPTANCE_LOG_PATH = <目录>/<文件名>
 | --- | --- | --- | --- | --- | --- |
 | 1 | `rir_ground_site`（**独立地基实体，先于平台创建**） | `RirSensorComponent` | `RirSession::Create(configs.rir)` | 站点局部 ENU 场景目标（`RirSceneTarget`，含识别特征真值）+ 站点 ECEF | `RirOutputFrame`（航迹/识别/量测）；量测经库适配器 `AdaptRirFeatureMeasurementsToDetectionRecords`（源通道 `kRirSourceId=5`）供融合；普通功能与外部接口写 `RadarOutput.log` |
 | 2 | `platform` | `FlightComponent` | flight_dynamic（FD 门控；Windows 走运动学回退） | 场景航路（LLA 航点） | 平台位姿推进；发布 `on_platform_state` / `on_waypoint_reached` |
-| 3 | `platform` | `FusionComponent` | `fusion::FusionEngine(scene_data.fusion)` | 本周期各源 `DetectionRecord`（含 RIR 源 5） | `FusedTarget` 态势（含逐航迹 UKF 运动学估计，库默认开）；发布 `on_fusion_updated`；写 `fusion_acceptance.log` |
-| 4 | `platform` | `InferenceComponent` | `target_inference::TargetInferenceEngine`（纯函数式） | 融合目标的运动学估计 | 轨迹预报/发射点/落点/类型概率；写 `inference_acceptance.log`；`[视图:inference]` 输出发射/落点 LLA |
+| 3 | `platform` | `FusionComponent` | `fusion::FusionEngine(scene_data.fusion)` | 本周期各源 `DetectionRecord`（含 RIR 源 5） | `FusedTarget` 态势（含逐航迹 UKF 运动学估计，库默认开）；发布 `on_fusion_updated`；融合验收行写入 `SatelliteTarget.log` |
+| 4 | `platform` | `InferenceComponent` | `target_inference::TargetInferenceEngine`（纯函数式） | 融合目标的运动学估计 | 轨迹预报/发射点/落点/类型概率；推演验收行写入 `SatelliteTarget.log`；`[视图:inference]` 输出发射/落点 LLA |
 | 5 | `platform` | `ThreatComponent` | threat_assessment（`ThreatEvaluator`） | 融合态势置信度 | 威胁分/等级；等级升级发 `on_threat_updated`；`[视图:threat]` |
 
 ### 4.2 明确**不挂**的（挂了反而坏）
@@ -194,53 +210,65 @@ for (cycle = 1..80) {
 auto report = fusion->SummarizeEvaluation();
 ```
 
-验收文件（precision/opir/fusion/inference 四份）由库会话写出，路径钉法同 §3。
+验收文件由库会话写出，落盘目标见 §3（六个目标文件，路径钉法同 §3）。
 冒烟判据照 demo：`all_metrics_sampled && ahp_valid && 0 < composite ≤ 1 &&
 dual_sat_cycles > 0`（精度评估交会只用前两颗星——库 API 双视线边界，第三星
 进融合不进交会指标）。
 
 ## 7. 验收核验清单（跑完逐项勾）
 
-**四段行格式**（一行一条原文指标，直接按项名搜索）：
+**四段行格式**（一行一条原文指标，直接按项名搜索；**方括号内不写「验收项」三字，
+方括号后不写「验收内容：」**）：
 
 ```
-仿真时间=1.000s 仿真周期=1 [验收项：MTD增益] 验收内容：目标ID=1001 6.021dB
+仿真时间=1.000s 仿真周期=1 [目标信号增益功能测试] 目标ID=1001 MTD增益=6.021dB
 ```
 
 场景 A（400 周期；行数基线为 2026-08-28 场景精简前的实测，保留场景逐项
 数值待重跑后更新）：
 
 - [ ] demo 退出码 0
-- [ ] `RadarOutput.log` 存在且包含普通功能与外部接口验收行；`rir_acceptance.log` 仅包含性能项
-- [ ] `[验收项：目标测量角度与距离]` 有行，**无一行 `斜距=无`**
-- [ ] `[验收项：IMM模型权重]`、`[验收项：独立目标识别器结论]`、`[验收项：极化特征解算]`、`[验收项：散射中心和轮廓特征]` 均有行
+- [ ] `RadarOutput.log` 存在且只包含普通功能验收行；`RadarExternalInterface.log` 只包含
+      62–66 外部接口行；`RadarInternalInterface.log` 只包含 70–73 内部接口行；
+      **不存在** `rir_acceptance.log` / `fusion_acceptance.log` / `inference_acceptance.log`
+- [ ] `[对目标的角度和距离进行测量功能测试]` 有行，**无一行 `斜距=无`**
+- [ ] `[跟踪滤波功能测试]`、`[综合特征识别功能测试]`、`[极化特征解算功能测试]`、`[宽带一维像特征解算功能测试]` 均有行
 - [ ] `RadarAntennaGainPatterndata.csv`、`Rir_scan_pattern.csv` 存在
 - [ ] `integration_events.log` 含三行计时：`初始化时间`/`单步执行时间`/`单个模型加载时间`（模块=RIR）
 - [ ] `integration_views.log`：`[视图:rir]`≈400 行量级、`[视图:inference]`/`[视图:threat]` 同步
 - [ ] `platform_track.csv` 行数 = 周期数；`target_truth/route_plan/zones.csv` 存在
-- [ ] `fusion_acceptance.log`、`inference_acceptance.log` 有四段行（RIR 源通道 5 并键）
+- [ ] 融合、推演验收行与红外验收行同在 `SatelliteTarget.log`（RIR 源通道 5 并键）；
+      融合/推演开关关闭时该文件只含红外行，属预期
 
 场景 B（80 周期；基线同理待重跑更新）：
 
 - [ ] demo 退出码 0；stdout 末行 `dual_sat_cycles=N/80`（N>0 即过冒烟）
-- [ ] 四份验收文件齐：`precision`/`opir`/`fusion`/`inference`
-- [ ] `[验收项：层次分析法]` 一行：综合分/等级/CR 有数；`[验收项：关键精度指标]` 有逐周期行 + 汇总行
-- [ ] `[验收项：关机点预测]` = `暂无`（按设计，无推力模型）；`集群目标识别` 不落盘（按设计）
+- [ ] 三份文件齐：`SatelliteTarget.log` / `IRExternalInterface.log` / `IRInternalInterface.log`
+- [ ] `[层次分析法功能测试]` 一行：综合分/等级有数；`[关键精度指标提取功能测试]` 有逐周期行 + 汇总行
+- [ ] `[关机点判断功能测试]`、`[规模目标识别功能测试]` 按设计不落盘（无推力模型 / 无 RIR 航迹）
 - [ ] 行数不是硬门控——判据是**文件齐 + 项名齐 + 冒烟过**
 
-搜索示例（Windows，验收文件为 ANSI/GBK 编码）：
+搜索示例（Windows）：
 
 ```bat
-findstr /C:"[验收项：UKF滤波]" log\sbirs_triple_sat_fix_messages\fusion_acceptance.log
+findstr /C:"[标准卡尔曼滤波功能测试]" log\sbirs_triple_sat_fix_messages\SatelliteTarget.log
 ```
 
 ## 8. 已知限制与坑（集成前读一遍）
 
-1. **验收文件编码 = 编译机的 ANSI 代码页**（交付链路无 `/utf-8`，中文 Windows
-   上即 GBK）：记事本/`findstr` 直接可读；用强制 UTF-8 的工具会乱码。已知显示
-   缺陷：单位 `m/s²` 在 GBK 落盘成 `m/s?`（GBK 无此字符，读数不受影响）。
+1. **验收文件编码 = UTF-8（无 BOM）**，不是编译机的 ANSI 代码页：落盘前经
+   `EncodeAcceptanceText` 做了 `ANSI → UTF-8` 转换（2026-09-28 实测：两类文件均
+   `UTF-8 可解码 / GBK 解码失败`）。因此**强制 UTF-8 的工具正常，按 GBK 读的工具会乱码**——
+   与早期文档描述相反，请以本条为准。
+   - 已知显示缺陷仍然存在，但根因在**编译期字符串字面量**而非落盘编码：单位 `m/s²`
+     的 `²` 不在 GBK 码页内，MSVC 先把它转写成 `?` 编进库，日志里就是 `m/s?`
+     （读数不受影响）。同类字符已改用 `^2` 等 ASCII 写法规避。
+   - 源文件本身要求带 UTF-8 BOM（仓库约定，`scripts/utf8_bom.py` 维护），否则 MSVC 会
+     按 GBK 误读中文注释并触发 `C2001/C2059` 一类级联报错。自建库/扩库时务必先跑
+     `python scripts/utf8_bom.py convert`。
 2. **五个验收开关编进库**：拿交付的 `1q.lib` 不用管；**自建库时忘开开关 =
-   文件一个都不出**（也不报错）。先跑场景 B 验通路。
+   该域一行都不出**（也不报错）。开关只决定“是否产生该域记录”，落盘文件恒为 §3 的六个。
+   先跑场景 B 验通路。
 3. **`rir_ground_site` 必须先于平台创建**（§4.3），顺序反了融合读不到同周期量测。
 4. **融合参数会话级不可变**：`FusionEngine` 只在构造时接受 `FusionConfig`，
    没有运行时补丁接口（要热改参数须先提库需求）。

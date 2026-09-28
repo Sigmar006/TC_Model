@@ -105,12 +105,106 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 | RIR 跟踪 / 识别 / 滤波 | `航迹=` + `目标ID=` | 两条都写，不能只写航迹 |
 | 不强制 | — | 模块计时（50–54）、AHP（27）、连续运行次数 |
 
+## 0A. 正文用例索引
+
+本索引只反映本文正文的用例编号、名称和目标验收文件。它与截图来源编号、当前代码是否已实现
+分开管理；截图编号见 §0C.1，当前实现差距见
+`acceptance_log_remaining_work_guide.md`。第 59、69 项在当前正文中没有定义，保留为空号，
+不得把后续条目向前顺延。
+
+| 本文编号 | 功能测试名称 | 目标验收文件 |
+|---|---|---|
+| 1 | 实时计算卫星当前轨道位置功能测试 | `log/SatelliteTarget.log` |
+| 2 | 坐标系转换功能测试 | `log/SatelliteTarget.log` |
+| 3 | 卫星轨道动力学计算功能测试 | `log/SatelliteTarget.log` |
+| 4 | 龙格库塔积分功能测试 | `log/SatelliteTarget.log` |
+| 5 | 探测角度计算功能测试 | `log/SatelliteTarget.log` |
+| 6 | 最大探测距离计算功能测试 | `log/SatelliteTarget.log` |
+| 7 | 目标可探测性与动态参数生成功能测试 | `log/SatelliteTarget.log` |
+| 8 | 卫星自身定位误差功能测试 | `log/SatelliteTarget.log` |
+| 9 | 红外载荷角误差功能测试 | `log/SatelliteTarget.log` |
+| 10 | 安装矩阵误差功能测试 | `log/SatelliteTarget.log` |
+| 11 | 红外预警卫星大幅面扫描与探测 | `log/SatelliteTarget.log` |
+| 12 | 宽视场扫描探测功能测试 | `log/SatelliteTarget.log` |
+| 13 | 窄视场跟踪探测功能测试 | `log/SatelliteTarget.log` |
+| 14 | 宽窄视场联合探测功能测试 | `log/SatelliteTarget.log` |
+| 15 | 多传感器目标跟踪功能测试 | `log/SatelliteTarget.log` |
+| 16 | 多传感器接力跟踪功能测试 | `log/SatelliteTarget.log` |
+| 17 | 协同探测信息融合功能测试 | `log/SatelliteTarget.log` |
+| 18 | 标准卡尔曼滤波功能测试 | `log/SatelliteTarget.log` |
+| 19 | 规模目标识别功能测试 | `log/RadarOutput.log` |
+| 19A | 根据目标识别功能测试 | `log/SatelliteTarget.log` |
+| 20 | 目标轨迹预报功能测试 | `log/SatelliteTarget.log` |
+| 21 | 落点预测功能测试 | `log/SatelliteTarget.log`；雷达引导信息另写 `log/RadarOutput.log` |
+| 22 | 发射点预测功能测试 | `log/SatelliteTarget.log` |
+| 23 | 关机点预测功能测试 | `log/SatelliteTarget.log` |
+| 24 | 特殊事件监测与提示功能测试 | `log/SatelliteTarget.log` |
+| 24A | 目标异常事件监测与提示功能测试 | `log/SatelliteTarget.log` |
+| 24B | 预警中断事件监测与提示功能测试 | `log/SatelliteTarget.log` |
+| 24C | 轨迹突变事件监测与提示功能测试 | `log/SatelliteTarget.log` |
+| 25 | 落点预报与信息分发功能测试 | `log/SatelliteTarget.log` |
+| 26 | 关键精度指标提取功能测试 | `log/SatelliteTarget.log` |
+| 27 | 层次分析法功能测试 | `log/SatelliteTarget.log` |
+| 28 | 天线方向图仿真功能测试 | `log/RadarOutput.log`、`log/RadarAntennaGainPatterndata.csv` |
+| 29 | 回波功率计算功能测试 | `log/RadarOutput.log` |
+| 30 | 干扰功率计算功能测试 | `log/RadarOutput.log` |
+| 31 | 接收机噪声功率计算 | `log/RadarOutput.log` |
+| 32 | 目标信号增益功能测试 | `log/RadarOutput.log` |
+| 33 | 噪声增益功能测试 | `log/RadarOutput.log` |
+| 34 | 杂波信号处理增益功能测试 | `log/RadarOutput.log` |
+| 35 | 干扰信号处理增益功能测试 | `log/RadarOutput.log` |
+| 36 | 恒虚警检测功能测试 | `log/RadarOutput.log` |
+| 37 | 空域自主搜索功能测试 | `log/RadarOutput.log` |
+| 37A | 地平线搜索功能测试 | `log/RadarOutput.log` |
+| 38 | 对目标的角度和距离进行测量功能测试 | `log/RadarOutput.log` |
+| 39 | 对典型目标/再入目标进行跟踪功能测试 | `log/RadarOutput.log` |
+| 40 | 多目标跟踪功能测试 | `log/RadarOutput.log` |
+| 41 | 航迹关联功能测试 | `log/RadarOutput.log` |
+| 42 | 跟踪滤波功能测试 | `log/RadarOutput.log` |
+| 43 | 根据目标 RCS 实时计算目标探测结果功能测试 | `log/RadarOutput.log` |
+| 44 | 运动特征处理功能测试 | `log/RadarOutput.log` |
+| 45 | RCS 统计特征处理功能测试 | `log/RadarOutput.log` |
+| 46 | 极化特征解算功能测试 | `log/RadarOutput.log` |
+| 47 | 宽带一维像特征解算功能测试 | `log/RadarOutput.log` |
+| 47A | 综合特征识别功能测试 | `log/RadarOutput.log` |
+| 48 | 波束扫描功能测试 | `log/Rir_scan_pattern.csv`；扫描摘要另写 `log/RadarOutput.log` |
+| 49 | 调度策略功能测试 | `log/RadarOutput.log` |
+| 50 | 初始化时间性能测试 | 无专用验收日志 |
+| 51 | 单步执行时间性能测试 | 无专用验收日志 |
+| 52 | 单个模型加载时间性能测试 | 无专用验收日志 |
+| 53 | 多个模型并行加载性能测试 | 无专用验收日志 |
+| 54 | 可支持连续运行次数性能测试 | 无专用验收日志 |
+| 55 | 红外系统测角误差性能测试 | 无专用验收日志 |
+| 56 | 仿真控制与时钟接口测试 | 无专用验收日志 |
+| 57 | 卫星平台与载荷配置接口测试 | `log/IRExternalInterface.log` |
+| 58 | 目标与红外环境场景输入接口测试 | `log/IRExternalInterface.log` |
+| 59 | 保留空号（当前正文无此用例） | — |
+| 60 | 仿真控制与时钟-雷达接口测试 | 无专用验收日志 |
+| 61 | 雷达平台与工作参数配置接口测试 | `log/RadarExternalInterface.log` |
+| 62 | 目标场景接口测试 | `log/RadarExternalInterface.log` |
+| 63 | 外部干扰输入雷达接口测试 | `log/RadarExternalInterface.log` |
+| 64 | 雷达对外目标信息输出接口测试（点迹量测） | `log/RadarExternalInterface.log` |
+| 65 | 雷达对外目标信息输出接口测试（航迹识别） | `log/RadarExternalInterface.log` |
+| 66 | 雷达资源状态与日志接口测试 | `log/RadarExternalInterface.log` |
+| 67 | 红外观测与航迹输出接口测试 | `log/IRExternalInterface.log` |
+| 68 | 预警预测与精度评估接口测试 | `log/IRExternalInterface.log` |
+| 69 | 保留空号（当前正文无此用例） | — |
+| 70 | 雷达回波与信号处理交互接口测试 | `log/RadarInternalInterface.log` |
+| 71 | 雷达信号处理与检测判决交互接口测试 | `log/RadarInternalInterface.log` |
+| 72 | 雷达检测量测与航迹处理交互接口测试 | `log/RadarInternalInterface.log` |
+| 73 | 雷达航迹与特征识别交互接口测试 | `log/RadarInternalInterface.log` |
+| 74 | 红外场景几何与视场门控交互接口测试 | `log/IRInternalInterface.log` |
+| 75 | 红外辐射噪声与检测判决交互接口测试 | `log/IRInternalInterface.log` |
+| 76 | 红外宽场候选与窄场调度交互接口测试 | `log/IRInternalInterface.log` |
+| 77 | 红外量测与跟踪滤波交互接口测试 | `log/IRInternalInterface.log` |
+
 ## 0C. 截图需求编号映射与冲突裁定（2026-09-28 合并）
 
-### 0C.1 截图标号 ↔ 本文编号对照
+### 0C.1 截图来源标号 ↔ 本文编号对照（不是正文索引）
 
 本文每条目的**编号**行给出截图（需求）编号与 `GN_*` 用例代码。两者关系为：
-需求编号 `5.3.x` 是来源系统中的稳定标号，本文编号 1–77 是执行与对账编号，**判定以本文条目为准**。
+需求编号 `5.3.x` 是来源系统中的稳定标号，本文编号是执行与对账编号，**判定以正文条目为准**。
+本表只登记截图中可见的 1–49 相关来源项，不承担正文目录功能。
 
 | 截图编号 | `GN_*` 用例代码 | 功能测试名称 | 本文编号 | 执行落盘文件 |
 |---|---|---|---|---|
@@ -132,19 +226,19 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 | 5.3.1.4.1 | `GN_GDCX_MNTCQ_MBGZ` | 多传感器目标跟踪功能测试 | 15 | `log/SatelliteTarget.log` |
 | 5.3.1.4.2 | `GN_GDCX_MNTCQ_JLGZ` | 多传感器接力跟踪功能测试 | 16 | `log/SatelliteTarget.log` |
 | — | — | 协同探测信息融合功能测试 | 17 | `log/SatelliteTarget.log` |
-| `GN_GDCX_DPT_BZLB` | `GN_GDCX_DPT_BZLB` | 标准卡尔曼滤波功能测试 | 18 | `log/SatelliteTarget.log` |
+| — | `GN_GDCX_DPT_BZLB` | 标准卡尔曼滤波功能测试 | 18 | `log/SatelliteTarget.log` |
 | — | `GN_GDCX_TCXX_MBSB`（判据同源） | 规模目标识别功能测试 | 19 | `log/RadarOutput.log` |
-| `GN_GDCX_DPT_GJYB` | `GN_GDCX_DPT_GJYB` | 目标轨迹预报功能测试 | 20 | `log/SatelliteTarget.log` |
-| `GN_GDCX_DPT_LDYC` | `GN_GDCX_DPT_LDYC` | 落点预测功能测试 | 21 | `log/SatelliteTarget.log` + `log/RadarOutput.log`（第 21 项引导信息段） |
-| `GN_GDCX_DPT_FSDYC` | `GN_GDCX_DPT_FSDYC` | 发射点预测功能测试 | 22 | `log/SatelliteTarget.log` |
-| `GN_GDCX_DPT_GJDYC` | `GN_GDCX_DPT_GJDYC` | 关机点判断功能测试 | 23 | `log/SatelliteTarget.log` |
-| `GN_GDCX_MNSC_TSSJ` | `GN_GDCX_MNSC_TSSJ` | 特殊事件监测与提示功能测试 | 24 | `log/SatelliteTarget.log`（截图作 `Opir_acceptance.log`） |
+| — | `GN_GDCX_DPT_GJYB` | 目标轨迹预报功能测试 | 20 | `log/SatelliteTarget.log` |
+| — | `GN_GDCX_DPT_LDYC` | 落点预测功能测试 | 21 | `log/SatelliteTarget.log` + `log/RadarOutput.log`（第 21 项引导信息段） |
+| — | `GN_GDCX_DPT_FSDYC` | 发射点预测功能测试 | 22 | `log/SatelliteTarget.log` |
+| — | `GN_GDCX_DPT_GJDYC` | 关机点判断功能测试 | 23 | `log/SatelliteTarget.log` |
+| — | `GN_GDCX_MNSC_TSSJ` | 特殊事件监测与提示功能测试 | 24 | `log/SatelliteTarget.log`（截图作 `Opir_acceptance.log`） |
 | — | — | 目标异常事件监测与提示功能测试（记录要求：跟踪中断） | 24A | `log/SatelliteTarget.log` |
 | — | — | 预警中断事件监测与提示功能测试（记录要求：轨迹突变） | 24B | `log/SatelliteTarget.log`，与 24C 名称关系**待复核** |
 | — | — | 轨迹突变事件监测与提示功能测试 | 24C | `log/SatelliteTarget.log`，与 24B 名称关系**待复核** |
-| `GN_GDCX_MNSC_LDYB` | `GN_GDCX_MNSC_LDYB` | 落点预报与信息分发功能测试 | 25 | `log/SatelliteTarget.log` |
-| `GN_GDCX_MNSC_ZBTQ` | `GN_GDCX_MNSC_ZBTQ` | 关键精度指标提取功能测试 | 26 | `log/SatelliteTarget.log` |
-| `GN_GDCX_MNSC_CCFX` | `GN_GDCX_MNSC_CCFX` | 层次分析法功能测试 | 27 | `log/SatelliteTarget.log` |
+| — | `GN_GDCX_MNSC_LDYB` | 落点预报与信息分发功能测试 | 25 | `log/SatelliteTarget.log` |
+| — | `GN_GDCX_MNSC_ZBTQ` | 关键精度指标提取功能测试 | 26 | `log/SatelliteTarget.log` |
+| — | `GN_GDCX_MNSC_CCFX` | 层次分析法功能测试 | 27 | `log/SatelliteTarget.log` |
 | 5.3.2.1.1.1 | — | 天线方向图仿真功能（高斯主瓣、余弦幂、辛克） | 28 | `log/RadarOutput.log` + `log/RadarAntennaGainPatterndata.csv`（截图目录 `C:.../ModelOutput`） |
 | 5.3.2.1.1.2 | `GN_YCSB_MNTC_HBGL` | 回波功率计算功能测试 | 29 | `log/RadarOutput.log` |
 | 5.3.2.1.1.3 | `GN_YCSB_MNTC_GRGL` | 干扰功率计算功能测试 | 30 | `log/RadarOutput.log` |
@@ -1265,19 +1359,6 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     仿真时间=2.000s 仿真周期=2 [综合特征识别功能测试] 航迹=1 目标ID=1001 目标类别=弹道导弹 目标型号=DD-1 置信度=0.83000 特征有效掩码=15
     ```
 
-### 49. 调度策略功能测试
-
-- **编号**：`5.3.2.4.2` / `GN_YCSB_MNSD_DDCL`（截图）；截图另列扫描起始设置（上限、Pitch 方向、
-  `AzimuthFirst/LeftTop`），本文只判定事件执行数量列表，起始设置作为配置输入不入判定字段。
-- 能够记录**各类事件的实际执行数量列表**视为通过，否则视为不通过。
-
-- **实现**（示例）：
-    ```text
-    仿真时间=1.000s 仿真周期=1 [调度策略功能测试] 雷达ID=1 [搜索×1,跟踪×2,识别×2]
-    ```
-
----
-
 ## 七、波束扫描（`log/Rir_scan_pattern.csv`）
 
 ### 48. 波束扫描功能测试
@@ -1294,6 +1375,17 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
     ```
 - **扫描范围**：按实际波位表求方位/俯仰上下限，与 CSV 同源一次性写出
   （`WriteRirScanRangeSummary`）；阵面方向、扫描起始等配置输入不回显。
+
+### 49. 调度策略功能测试
+
+- **编号**：`5.3.2.4.2` / `GN_YCSB_MNSD_DDCL`（截图）；截图另列扫描起始设置（上限、Pitch 方向、
+  `AzimuthFirst/LeftTop`），本文只判定事件执行数量列表，起始设置作为配置输入不入判定字段。
+- 能够记录**各类事件的实际执行数量列表**视为通过，否则视为不通过。
+
+- **实现**（示例）：
+    ```text
+    仿真时间=1.000s 仿真周期=1 [调度策略功能测试] 雷达ID=1 [搜索×1,跟踪×2,识别×2]
+    ```
 
 ---
 
@@ -1644,24 +1736,25 @@ SBIRS 红外卫星 4 项，总数不超过 10。内部接口以“同周期、�
 
 ---
 
-## 附录：日志文件索引
+## 附录：目标物理文件反向索引
 
-| 日志文件（OCR） | 仓库路径 | 涉及测试项 |
-|---|---|---|
-| `SatelliteTarget.log` | `log/SatelliteTarget.log` | 1–18、19A、20–27（含 24A–24C） |
-| `Opir_acceptance.log`（2026-09-28 合并的截图文件名） | 归并到 `log/SatelliteTarget.log`，**不新增物理文件** | 1–4、24、25（§0C.2 裁定 8、§0C.1 说明 2） |
-| `Fusion_acceptance.log` | 归并到 `log/SatelliteTarget.log`，**不新增物理文件** | 11–18 |
-| `SatellitePredict.log`（2026-09-28 合并的截图文件名） | 归并到 `log/SatelliteTarget.log`，**不新增物理文件** | 18（§0C.2 裁定 5） |
-| `RadarOutput.log` | `log/RadarOutput.log` | 19、21（引导信息段）、28–49（含 37A、47A；48 的扫描摘要） |
-| 雷达外部接口日志 | `log/RadarExternalInterface.log` | 61–66 |
-| 红外外部接口日志 | `log/IRExternalInterface.log` | 57–58、67–68 |
-| `IRInternalInterface.log` | `log/IRInternalInterface.log` | 74–77（SBIRS 内部接口分项证据） |
-| `RadarInternalInterface.log` | `log/RadarInternalInterface.log` | 70–73（RIR 内部接口分项证据） |
-| `inference_acceptance.log` | 归并到 `log/SatelliteTarget.log`，**不新增物理文件** | 20–25（24 为轨迹突变） |
-| `Precision_acceptance.log` | 归并到 `log/SatelliteTarget.log`，**不新增物理文件** | 26–27；38/42 的误差统计归 `RadarOutput.log`，不属于精度文件 |
-| `RadarAntennaGainPatterndata.csv` | `log/RadarAntennaGainPatterndata.csv` | 28 |
-| `Rir_scan_pattern.csv` | `log/Rir_scan_pattern.csv` | 48 |
-| `MissileBallisticData.log`、`RadarSingalProcessingDateFlow.log`、`SatellitePredict.txt`（2026-09-28 合并的截图文件名） | **不落盘、不判定** | 见 §0C.2 裁定 5；相关真值由外部夹具保留（§0B.3） |
+本表仅列最终要生成的物理文件。旧 OCR 文件名不混入本表，避免把历史名称误认为新增输出。
+
+| 目标物理文件 | 精确对应的本文测试项 |
+|---|---|
+| `log/SatelliteTarget.log` | 1、2、3、4、5、6、7、8、9、10、11、12、13、14、15、16、17、18、19A、20、21、22、23、24、24A、24B、24C、25、26、27 |
+| `log/RadarOutput.log` | 19、21（仅雷达引导信息段）、28、29、30、31、32、33、34、35、36、37、37A、38、39、40、41、42、43、44、45、46、47、47A、48（仅扫描摘要）、49 |
+| `log/RadarAntennaGainPatterndata.csv` | 28 |
+| `log/Rir_scan_pattern.csv` | 48 |
+| `log/IRExternalInterface.log` | 57、58、67、68 |
+| `log/RadarExternalInterface.log` | 61、62、63、64、65、66 |
+| `log/RadarInternalInterface.log` | 70、71、72、73 |
+| `log/IRInternalInterface.log` | 74、75、76、77 |
+
+历史名称 `Opir_acceptance.log`、`Fusion_acceptance.log`、`SatellitePredict.log`、
+`inference_acceptance.log` 和 `Precision_acceptance.log` 均归并到
+`log/SatelliteTarget.log`，不新增同名物理文件。`MissileBallisticData.log`、
+`RadarSingalProcessingDateFlow.log` 和 `SatellitePredict.txt` 不落盘、不作为模型日志判定证据。
 
 第 50–55 项性能测试以及第 56、60 项仿真控制与时钟接口测试均不生成验收日志，
 由独立测试夹具的测试断言和测试报告判定。

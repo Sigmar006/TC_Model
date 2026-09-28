@@ -49,10 +49,8 @@ float CnrDb(const RirSurfaceClutterModel& model, const RirSurfaceClutterInput& i
   return 10.0f * std::log10(clutter_w / input.thermal_noise_w);
 }
 
-/// @brief 独立双精度手算期望（B·τ 脉压口径）：峰值雷达方程 dB 值 +
-///        10·log10(max(1, B·τ)) − 10·log10(热噪)。
-/// @note  2026-09-28 审计 DES-3：common 雷达方程已移除内置 `τ/13µs` 参考能量缩放，
-///        故手算链不再含该项（脉压增益是唯一能量修正量）。
+/// @brief 独立双精度手算期望（B·τ 脉压口径）：旧公式 dB 值（峰值雷达方程 +
+///        common τ/13µs 参考能量缩放）+ 10·log10(max(1, B·τ)) − 10·log10(热噪)。
 /// @note  输入须用 MakeInput 构造（nominal 4°/4° 为正直接生效 → 波束宽度 4°；
 ///        草地档 σ₀ = -28 dB），手算链与被测实现无共享代码路径。
 double HandComputedCnrDb(const RirSurfaceClutterInput& input, double sigma0_profile_db) {
@@ -75,6 +73,7 @@ double HandComputedCnrDb(const RirSurfaceClutterInput& input, double sigma0_prof
       sigma0_profile_db + grazing_factor_db + 10.0 * std::log10(clutter_area_m2);
   const double legacy_echo_dbw =
       10.0 * std::log10(input.transmitter.peak_power_w) +
+      10.0 * std::log10(input.transmitter.pulse_width_s / 13.0e-6) +
       2.0 * input.antenna.main_beam_gain_db + 20.0 * std::log10(wavelength_m) +
       clutter_rcs_db - 30.0 * std::log10(4.0 * pi) - 40.0 * std::log10(input.range_m) -
       (input.transmitter.transmit_loss_db + input.propagation_loss_db);

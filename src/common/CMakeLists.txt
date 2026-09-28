@@ -25,6 +25,7 @@ set(ONEQ_COMMON_SOURCES
     replay/ReplayTrace.cpp
     timing/TimingRegimeModel.cpp
     logging/AcceptanceFileLog.cpp
+    logging/ExternalTestLogPrinter.cpp
     estimation/EstimationInstantiations.cpp
 )
 

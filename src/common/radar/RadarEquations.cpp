@@ -36,7 +36,11 @@ const float kRefTemperature = 290.0f;
  * @brief π 常数。
  * @note 代码行为依据：当前实现用该值展开雷达方程中的 `4π` 项。
  */
-
+/**
+ * @brief 参考脉宽（单位：s），用于把峰值功率映射到单脉冲能量尺度。
+ * @note 取配置默认值，确保默认参数下行为连续。
+ */
+const float kReferencePulseWidthS = 13.0e-6f;
 using oneq::common::numerics::kLog10Floor;
 /**
  * @brief 将线性值转为 dB。
@@ -50,7 +54,18 @@ float LinearToDb(float linear) {
   return 10.0f * std::log10(linear);
 }
 
-
+/**
+ * @brief 计算相对参考脉宽的单脉冲能量缩放。
+ * @param tx 发射机参数。
+ * @return 线性能量缩放因子，最小钳位到机器精度量级。
+ */
+float ComputePulseEnergyScale(float pulse_width_s) {
+  constexpr float kMinEnergyScale = 1e-12f;
+  if (!std::isfinite(pulse_width_s) || pulse_width_s <= 0.0f) {
+    return kMinEnergyScale;
+  }
+  return std::max(pulse_width_s / kReferencePulseWidthS, kMinEnergyScale);
+}
 /**
  * @brief 将 dB 转为线性值。
  * @param db dB 值。
@@ -75,8 +90,7 @@ float ClampPd(float pd) {
 }  // namespace
 
 float RadarEquations::ComputeEchoPowerWithGain_dBW(float peak_power_w,
-                                                   float transmit_loss_db,
-                                                   float /*pulse_width_s*/,
+                                                   float transmit_loss_db, float pulse_width_s,
                                                    float frequency_hz, float one_way_gain_db,
                                                    float rcs_m2, float range_m,
                                                    float propagation_loss_db) {
@@ -87,6 +101,7 @@ float RadarEquations::ComputeEchoPowerWithGain_dBW(float peak_power_w,
   const float wavelength_m =
       static_cast<float>(oneq::common::numerics::kLightSpeed) / frequency_hz;
   const float pt_db = LinearToDb(peak_power_w);
+  const float pulse_energy_scale_db = LinearToDb(ComputePulseEnergyScale(pulse_width_s));
   /* lambda_db = 10·log10(λ)，公式中乘以 2 等价于 10·log10(λ²) */
   const float lambda_db = LinearToDb(wavelength_m);
   /* r_db = 10·log10(R)，公式中乘以 4 等价于 10·log10(R⁴) */
@@ -96,7 +111,7 @@ float RadarEquations::ComputeEchoPowerWithGain_dBW(float peak_power_w,
   /* 总损耗 L_sys 包含发射系统损耗和传播损耗 */
   const float total_loss_db = transmit_loss_db + propagation_loss_db;
 
-  const float pr_dbw = pt_db + one_way_gain_db + one_way_gain_db +
+  const float pr_dbw = pt_db + pulse_energy_scale_db + one_way_gain_db + one_way_gain_db +
                        2.0f * lambda_db + rcs_db - 30.0f * std::log10(4.0f * static_cast<float>(oneq::common::numerics::kPi)) - 4.0f * r_db -
                        total_loss_db;
 

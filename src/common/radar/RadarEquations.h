@@ -48,12 +48,10 @@ enum class SwerlingModel {
  */
 struct RadarEquations {
   /**
-   * @brief 单站雷达方程（对数域），按指定单程天线增益计算接收回波**峰值**功率。
+   * @brief 单站雷达方程（对数域），按指定单程天线增益计算接收回波功率。
    * 公式: Pr_dBW = Pt_dB + 2*G_one_way_dB + 2*λ_dB + σ_dB
    *                - 30*log10(4π) - 4*R_dB - L_sys
-   * @note 2026-09-28 审计 DES-3：本式不再内置 τ/13µs 参考能量缩放，输出即峰值
-   *       回波功率（dBW）；匹配滤波能量增益 B·τ 由消费侧显式施加，主路径与回退
-   *       路径共用同一"峰值功率 → 匹配滤波后单脉冲 SINR"账本。
+   * 其中 Pt 项按峰值功率与脉宽的单脉冲能量语义进行缩放。
    * @param peak_power_w 发射峰值功率 (W)
    * @param transmit_loss_db 发射系统损耗 (dB)
    * @param pulse_width_s 发射脉宽 (s)
@@ -70,7 +68,7 @@ struct RadarEquations {
                                             float propagation_loss_db);
 
   /**
-   * @brief 单站雷达方程（对数域），以天线主瓣峰值增益计算接收回波**峰值**功率。
+   * @brief 单站雷达方程（对数域），以天线主瓣峰值增益计算接收回波功率。
    * @param peak_power_w 发射峰值功率 (W)
    * @param transmit_loss_db 发射系统损耗 (dB)
    * @param pulse_width_s 发射脉宽 (s)

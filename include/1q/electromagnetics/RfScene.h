@@ -69,21 +69,6 @@ struct ONEQ_API RfEmissionIdentity {
 };
 
 /**
- * @brief 身份二元组同一性判定（`sensor_entity_id` + `emission_id`）。
- * @note 本判定是"自身链剔除"的唯一谓词单源：检测单元解析、干扰源写出与控制器
- *       接受侧过滤必须共用它，避免同一规则在三处各写一遍而口径漂移。
- */
-inline bool operator==(const RfEmissionIdentity& left, const RfEmissionIdentity& right) {
-  return left.sensor_entity_id == right.sensor_entity_id &&
-         left.emission_id == right.emission_id;
-}
-
-/** @brief 身份二元组不同一（见 `operator==`）。 */
-inline bool operator!=(const RfEmissionIdentity& left, const RfEmissionIdentity& right) {
-  return !(left == right);
-}
-
-/**
  * @brief 一个绝对 world-time 轴上的参数化 RF 活动。
  * @note 调用方应通过 `TryCreateRf*Waveform` 构造；默认值是无效占位值。
  */

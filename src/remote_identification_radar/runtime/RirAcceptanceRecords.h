@@ -92,10 +92,56 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
                                    std::uint32_t cycle,
                                    const config::hardware::RirAntennaConfig& antenna);
 
+/**
+ * @brief 波位表方位角跨度（跨 ±180° 缝合线时给出真实连续扇区）。
+ * @param[in] azimuths_deg 波位方位角（deg，已规范化到 [-180, 180]；同一方位可重复，
+ *            函数内部按 1e-9 容差去重，以适配"逐 (az, el) 成行"的波位表）。
+ * @param[out] center_deg 扇区中心（deg，连续区间中点规范化回 [-180, 180)）。
+ * @param[out] half_width_deg 半宽（deg，非负；单方位时为 0）。
+ * @param[out] min_deg 连续展开区间下界（deg，可超出 ±180）。
+ * @param[out] max_deg 连续展开区间上界（deg，可超出 ±180）。
+ * @return 输出指针有效且输入至少含一个有限方位角时为 true；否则不修改输出。
+ * @note 2026-09-28 审计 Q-2：波位表由"扫描中心 + 相对扇区"生成后经
+ *       `NormalizeAzimuthDeg` 折到 ±180°，跨缝表（如中心 −110°、宽 184°）直接求
+ *       min/max 会得 `-179.6/179.6`，读起来像全向扫描。本函数以"最大角间隙 = 缝"
+ *       回推真实扇区，输出连续区间（本场景 −202°~−18°）。
+ * @note 判据前提：波位在扇区内足够密集，使 `360° − 扇区宽` 的接缝间隙大于任何
+ *       带内间隙。本模型扫描生成器的步长 = 波束宽 × `step_scale`，远小于扇区宽度，
+ *       前提成立；若输入是极稀疏的两个点簇，函数会按同一判据给出较小的那一侧区间
+ *       （结果仍自洽，只是分辨率不足），不属计算错误。
+ */
+bool TryResolveAzimuthSpanDeg(const std::vector<float>& azimuths_deg, double* center_deg,
+                              double* half_width_deg, double* min_deg, double* max_deg);
+
 void WriteRirDetectionChain(const RirDetectionAcceptInput& input);
 
+/**
+ * @brief 验收判定标准 第30项「干扰功率计算功能测试」：逐**外部**干扰源写出到达功率。
+ * @param[in] own_emission_identity 本雷达本周期的发射身份；身份相同的链路（自身同址
+ *            耦合）不写出——本项记录的是外部干扰源，同址耦合不是干扰源。
+ *            剔除谓词与检测链共用 `RfEmissionIdentity` 的 `sensor_entity_id +
+ *            emission_id` 二元组同一性。
+ * @note 2026-09-28 审计 Q-1：早期实现直接遍历 `incident_links`，把控制器为饱和门
+ *       有意追加的自身发射写成"干扰源"，与同周期第 29 项 `干扰功率=0`、第 35 项
+ *       整条省略互相矛盾（本场景会读出 +60.6 dB 的假干扰）。
+ */
 void WriteRirInterferenceLinks(
     float sim_time_sec, std::uint32_t cycle,
+    const oneq::electromagnetics::RfEmissionIdentity& own_emission_identity,
+    const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links);
+
+/**
+ * @brief 从入射链中挑出**外部**干扰源（剔除自身同址耦合链），并保持输入顺序。
+ *
+ * 契约：本机发射身份由 `sensor_entity_id + emission_id` 二元组判定；被追加进场景的
+ * 自身链一律剔除，其余链路原序保留（含功率为 0 的合法外部链）。
+ * @param[in] links 周期级入射链（含自身链）。
+ * @param[in] own_emission_identity 本雷达本周期发射身份；无效身份（任一字段为 0）时
+ *            不做剔除（无法判定何者为自身）。
+ * @return 外部干扰链（值拷贝，便于测试与日志写出共用）。
+ */
+std::vector<oneq::electromagnetics::RfIncidentLinkResult> SelectRirExternalInterferenceLinks(
+    const oneq::electromagnetics::RfEmissionIdentity& own_emission_identity,
     const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links);
 
 /** @brief 第63项：将外部 RF 场景中的干扰发射输入摘要写入 RadarOutput.log。 */
@@ -230,6 +276,14 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
 void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern);
 
+/**
+ * @brief 导出方向图增益 CSV（列：`az_off_deg,el_off_deg,gain_dbi`）。
+ *
+ * 网格覆盖 az 0–360°、el -90–90°，步长取波束宽度且不小于 0.1°。
+ * 格点由整数序号与步长相乘生成，避免浮点逐次累加造成坐标漂移。
+ * @note 极区/钳位处的增益是方向图模型的数值下限，不是物理电平。
+ * @return 文件成功打开并写完返回 true；打不开返回 false。
+ */
 bool TryExportRirAntennaPatternCsv(const config::hardware::RirAntennaConfig& antenna,
                                    const char* path);
 

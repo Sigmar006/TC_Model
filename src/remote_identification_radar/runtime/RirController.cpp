@@ -937,13 +937,16 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       last_emission_frame_.emissions = rf_cycle.per_dwell_emissions;
     }
 
-    // 验收事件 interference_link（3.2.2.1.1.3）：逐干扰源到达接收端的入射功率
-    // （RF 前端口径，未做 detection cell 内时频重叠聚合；聚合后进入 SINR 分母的
-    // 总量见 detection_cell 事件 interference_w 字段）。
+    // 验收事件 interference_link（3.2.2.1.1.3）：逐**外部**干扰源到达接收端的入射
+    // 功率（RF 前端口径，未做 detection cell 内时频重叠聚合；聚合后进入 SINR 分母
+    // 的总量见 detection_cell 事件 interference_w 字段）。2026-09-28 审计 Q-1：
+    // 自身同址耦合链按本机发射身份剔除，与检测链排除规则同源
+    // （RfEmissionIdentity 的 sensor_entity_id + emission_id 二元组）。
     if (RIR_ACCEPTANCE_LOG_ENABLED()) {
       g_acceptance_found_targets.clear();
       WriteRirExternalInterferenceInput(input.sim_time_sec, input.input_cycle_index, input.rf_scene);
-      WriteRirInterferenceLinks(input.sim_time_sec, input.input_cycle_index, rf_cycle.incident_links);
+      WriteRirInterferenceLinks(input.sim_time_sec, input.input_cycle_index,
+                                rf_cycle.own_emission_identity, rf_cycle.incident_links);
     }
 
     // 上一周期航迹快照先行（子窗豁免判定与候选排序同源消费）。

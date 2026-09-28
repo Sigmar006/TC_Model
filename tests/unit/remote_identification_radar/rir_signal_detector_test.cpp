@@ -139,7 +139,9 @@ TEST(RirSignalDetectorTest, WiderBandwidthKeepsMatchedFilterSnrAtSameEnergy) {
 
 /// @brief 回退路径手算恒等式（B·τ 脉压口径裁定）：snr_db =
 ///        10·log10(峰值方程回波 × B·τ / (kT·B·NF + 杂波 + 干扰))；
-///        独立双精度复算全链路（含 common τ/13µs 参考能量缩放），容差 1e-3。
+///        独立双精度复算全链路，容差 1e-3。
+/// @note common 方程保留 `τ/13µs` 参考缩放；RIR 回退路径用局部净修正抵消它，
+///       因而最终复算式只含一次 B·τ，与检测单元路径一致。
 TEST(RirSignalDetectorTest, DetectSnrMatchesPeakEquationTimesBtOverNoiseBudget) {
   struct HandComputedBudget {
     double echo_power_dbw;
@@ -160,8 +162,7 @@ TEST(RirSignalDetectorTest, DetectSnrMatchesPeakEquationTimesBtOverNoiseBudget) 
         static_cast<double>(config.transmitter.bandwidth_hz) * config.transmitter.pulse_width_s;
     const double echo_w =
         config.transmitter.peak_power_w * antenna_gain_linear * antenna_gain_linear *
-        wavelength_m * wavelength_m * target.rcs_m2 *
-        (config.transmitter.pulse_width_s / 13.0e-6) * std::max(1.0, time_bandwidth_product) /
+        wavelength_m * wavelength_m * target.rcs_m2 * std::max(1.0, time_bandwidth_product) /
         (std::pow(4.0 * pi, 3.0) * std::pow(static_cast<double>(target.range_m), 4.0) *
          total_loss_linear);
     const double thermal_noise_w =
@@ -182,7 +183,7 @@ TEST(RirSignalDetectorTest, DetectSnrMatchesPeakEquationTimesBtOverNoiseBudget) 
   env.clutter_noise_w = 3.0e-13f;
   env.jam_noise_w = 2.0e-13f;
 
-  // 默认参数（B=4.5 MHz, τ=13 µs → B·τ=58.5，参考能量缩放恰为 1）。
+  // 默认参数（B=4.5 MHz, τ=13 µs → B·τ=58.5，脉压增益 +17.67 dB）。
   const RirDetectorConfig config;
   RirSignalDetector detector(config);
   detector.SetRandomSeed(42u);
@@ -191,8 +192,7 @@ TEST(RirSignalDetectorTest, DetectSnrMatchesPeakEquationTimesBtOverNoiseBudget) 
   EXPECT_NEAR(result.snr_db, expected.snr_db, 1.0e-3);
   EXPECT_NEAR(result.echo_power_dbw, expected.echo_power_dbw, 1.0e-3);
 
-  // 非默认带宽/脉宽（B=2 MHz, τ=26 µs → B·τ=52）：τ/13µs 参考缩放与
-  // max(1, B·τ) 增益同时激活，验证修正公式形状而非单一默认点。
+  // 非默认带宽/脉宽验证局部抵消生效，最终账本没有额外参考脉宽缩放项。
   RirDetectorConfig wide_pulse = config;
   wide_pulse.transmitter.bandwidth_hz = 2.0e6f;
   wide_pulse.transmitter.pulse_width_s = 26.0e-6f;
@@ -202,6 +202,9 @@ TEST(RirSignalDetectorTest, DetectSnrMatchesPeakEquationTimesBtOverNoiseBudget) 
   const HandComputedBudget wide_expected = hand_compute(wide_pulse, target, env);
   EXPECT_NEAR(wide_result.snr_db, wide_expected.snr_db, 1.0e-3);
   EXPECT_NEAR(wide_result.echo_power_dbw, wide_expected.echo_power_dbw, 1.0e-3);
+  EXPECT_NEAR(result.echo_power_dbw - wide_result.echo_power_dbw,
+              10.0 * std::log10(std::max(1.0, 4.5e6 * 13.0e-6) / std::max(1.0, 2.0e6 * 26.0e-6)),
+              1.0e-3);
 }
 
 /// @brief 同 SNR 下脉冲数 N=8 的 Pd 高于 N=1。

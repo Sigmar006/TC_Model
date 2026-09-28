@@ -60,6 +60,18 @@ float RirRadarEquations::ComputePulseCompressionGainDb(
   return time_bandwidth_product > 1.0f ? 10.0f * std::log10(time_bandwidth_product) : 0.0f;
 }
 
+float RirRadarEquations::ComputeFallbackPulseCompressionCorrectionDb(
+    const config::hardware::RirTransmitterConfig& tx) {
+  constexpr float kReferencePulseWidthS = 13.0e-6f;
+  if (!std::isfinite(tx.bandwidth_hz) || !std::isfinite(tx.pulse_width_s) ||
+      !(tx.bandwidth_hz > 0.0f) || !(tx.pulse_width_s > 0.0f)) {
+    return 0.0f;
+  }
+  const float reference_scale_db =
+      10.0f * std::log10(tx.pulse_width_s / kReferencePulseWidthS);
+  return ComputePulseCompressionGainDb(tx) - reference_scale_db;
+}
+
 float RirRadarEquations::ComputeThermalNoisePower_W(
     const config::hardware::RirTransmitterConfig& tx,
     const config::hardware::RirReceiverConfig& rx) {

@@ -30,6 +30,15 @@ struct DetectionCellConfig {
   oneq::electromagnetics::RfWaveformSchedule own_transmit_waveform{};
   double receive_window_start_time_s{0.0};
   double receive_window_duration_s{0.0};
+  /**
+   * @brief 回波可归入本接收窗的绝对时间上界（s；与 receive_window_start_time_s 同一时基）。
+   * @note duration 是接收机本驻留保持开通的时长（同时决定入射链时窗重叠与饱和门
+   *       口径），本字段是"该时延以内的回波仍算本单元"的判定边界；二者解耦后可表达
+   *       "驻留 0.05 s 但接收链需覆盖 2·max_range/c"这类远距探测口径。
+   * @note 0 = 未指定，退化为"窗起始 + 驻留时长"（既有调用方无需改动）；指定时必须
+   *       ≥ 窗起始，判定取 max(本字段, 窗末)，故只会放宽、不会收紧既有行为。
+   */
+  double receive_window_end_time_s{0.0};
   double matched_filter_bandwidth_hz{0.0};
   double one_way_antenna_gain_dbi{0.0};
   double receiver_loss_db{0.0};

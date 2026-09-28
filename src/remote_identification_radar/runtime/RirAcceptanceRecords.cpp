@@ -48,6 +48,12 @@ using oneq::logging::FormatSci;
 using oneq::logging::FormatVec3;
 using oneq::logging::YesNo;
 
+bool SameIdentity(const oneq::electromagnetics::RfEmissionIdentity& left,
+                  const oneq::electromagnetics::RfEmissionIdentity& right) {
+  return left.sensor_entity_id == right.sensor_entity_id &&
+         left.emission_id == right.emission_id;
+}
+
 /** @brief 弹道细分类型中文名（仅验收日志消费；判据未冻结前不会被调用）。 */
 std::string BallisticSubclassName(int subclass) {
   using session::RirBallisticSubclass;
@@ -760,7 +766,8 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   if (input.has_cell) {
     interface_detection += " 总噪声功率=" + FormatSci(total_noise_w) + "W";
   }
-  interface_detection += " 脉压/MTI/MTD增益=" + FormatF(pc_db, 3) + "/" +
+  interface_detection += " 脉压/MTI/MTD增益=" +
+                         FormatF(pc_db, 3) + "/" +
                          (has_bank ? FormatF(bank.mti_gain_db, 3) : std::string("无")) + "/" +
                          (has_bank ? FormatF(bank.mtd_gain_db, 3) : std::string("无")) + "dB";
   if (has_threshold) {
@@ -772,18 +779,42 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   RIR_INTERNAL_INTERFACE_ITEM(t, cycle, "雷达信号处理与检测判决交互接口测试", interface_detection);
 }
 
+std::vector<oneq::electromagnetics::RfIncidentLinkResult> SelectRirExternalInterferenceLinks(
+    const oneq::electromagnetics::RfEmissionIdentity& own_emission_identity,
+    const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links) {
+  // 身份无效（任一字段为 0）时无法判定"何者为自身"，保守保留全部链路，避免把
+  // 真实外部干扰静默丢掉。
+  const bool can_exclude_own = own_emission_identity.sensor_entity_id != 0U &&
+                               own_emission_identity.emission_id != 0U;
+  std::vector<oneq::electromagnetics::RfIncidentLinkResult> external;
+  external.reserve(links.size());
+  for (const oneq::electromagnetics::RfIncidentLinkResult& link : links) {
+    if (can_exclude_own && SameIdentity(link.identity, own_emission_identity)) {
+      continue;
+    }
+    external.push_back(link);
+  }
+  return external;
+}
+
 void WriteRirInterferenceLinks(
     float sim_time_sec, std::uint32_t cycle,
+    const oneq::electromagnetics::RfEmissionIdentity& own_emission_identity,
     const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
-  if (links.empty()) {
-    return;
-  }
   // 验收判定标准 第30项：身份只写 干扰源ID=（干扰实体）+ 到达雷达功率；
   // 发射二元组、路径与时频域重叠（链路上下文）不写。
-  for (const oneq::electromagnetics::RfIncidentLinkResult& link : links) {
+  // 2026-09-28 审计 Q-1：只写**外部**干扰源。控制器为接收前端饱和门把自身发射
+  // 追加进解析场景（RirController::ResolveRfCycle），该同址耦合链不是干扰源；
+  // 与第 29 项 cell.interference_power_w、第 35 项 MTI/MTD 干扰分布同一排除规则。
+  const std::vector<oneq::electromagnetics::RfIncidentLinkResult> external_links =
+      SelectRirExternalInterferenceLinks(own_emission_identity, links);
+  if (external_links.empty()) {
+    return;  // 本周期无外部干扰源：第30项整条省略（无输入不出日志）。
+  }
+  for (const oneq::electromagnetics::RfIncidentLinkResult& link : external_links) {
     std::string content = "干扰源ID=" + std::to_string(link.identity.sensor_entity_id);
     content += " 到达雷达功率=" + FormatSci(link.received_power_w) + "W";
     RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "干扰功率计算功能测试", content);
@@ -1677,6 +1708,80 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
   }
 }
 
+bool TryResolveAzimuthSpanDeg(const std::vector<float>& azimuths_deg, double* center_deg,
+                              double* half_width_deg, double* min_deg, double* max_deg) {
+  if (center_deg == nullptr || half_width_deg == nullptr || min_deg == nullptr ||
+      max_deg == nullptr) {
+    return false;
+  }
+  std::vector<double> sorted;
+  sorted.reserve(azimuths_deg.size());
+  for (float azimuth_deg : azimuths_deg) {
+    if (std::isfinite(azimuth_deg)) {
+      sorted.push_back(static_cast<double>(azimuth_deg));
+    }
+  }
+  if (sorted.empty()) {
+    return false;
+  }
+  std::sort(sorted.begin(), sorted.end());
+  // 去重：波位表逐 (az, el) 成行，同一方位会出现多次（每行一个俯仰）；不去重则
+  // 相邻零间隙会同时污染"最大角间隙"判定与展开累加。
+  std::vector<double> distinct;
+  distinct.reserve(sorted.size());
+  for (double azimuth_deg : sorted) {
+    if (distinct.empty() || (azimuth_deg - distinct.back()) > 1.0e-9) {
+      distinct.push_back(azimuth_deg);
+    }
+  }
+  const double full_circle_deg = 360.0;
+  // 单方位（或全部重合）：扇区退化为一个点，半宽 0，不编造跨度。
+  if (distinct.size() == 1U) {
+    *center_deg = distinct.front();
+    *half_width_deg = 0.0;
+    *min_deg = distinct.front();
+    *max_deg = distinct.front();
+    return true;
+  }
+  // 缝 = 相邻方位（含首尾环绕）之间的最大角间隙；连续扇区即该缝的**补集**，
+  // 从缝的结束端一路到缝的起始端。补集起点取"缝起始端 + 缝宽"再规范化回
+  // [-180, 180)——它就是缝另一侧的波位（本场景 158°），终点为起点加补集宽。
+  std::size_t seam_start_index = distinct.size() - 1U;  // 环绕缝：起始端 = 最后一个方位
+  double largest_gap_deg = (distinct.front() + full_circle_deg) - distinct.back();
+  for (std::size_t index = 0U; index + 1U < distinct.size(); ++index) {
+    const double gap_deg = distinct[index + 1U] - distinct[index];
+    if (gap_deg > largest_gap_deg) {
+      largest_gap_deg = gap_deg;
+      seam_start_index = index;
+    }
+  }
+  const double span_deg = full_circle_deg - largest_gap_deg;
+  double complement_start_deg = distinct[seam_start_index] + largest_gap_deg;
+  complement_start_deg = std::fmod(complement_start_deg + 180.0, full_circle_deg);
+  if (complement_start_deg < 0.0) {
+    complement_start_deg += full_circle_deg;
+  }
+  complement_start_deg -= 180.0;
+  const double min_unwrapped_deg = complement_start_deg;
+  const double max_unwrapped_deg = complement_start_deg + span_deg;
+  // 中心取连续区间中点后规范化回 [-180, 180)：跨缝扇区的中心即扫描中心
+  // （本场景 −202°~−18° → 中心 −110°）。
+  double center_unwrapped_deg = 0.5 * (min_unwrapped_deg + max_unwrapped_deg);
+  center_unwrapped_deg = std::fmod(center_unwrapped_deg + 180.0, full_circle_deg);
+  if (center_unwrapped_deg < 0.0) {
+    center_unwrapped_deg += full_circle_deg;
+  }
+  center_unwrapped_deg -= 180.0;
+  *center_deg = center_unwrapped_deg;
+  *half_width_deg = 0.5 * span_deg;
+  // 以规范化后的中心为锚点输出连续区间，便于验收日志直接读出配置语义。
+  // 例如中心 -110°、半宽 92° 输出 -202°/-18°，不会因补集起点的等价表示
+  // 落成 158°/342°。
+  *min_deg = center_unwrapped_deg - *half_width_deg;
+  *max_deg = center_unwrapped_deg + *half_width_deg;
+  return true;
+}
+
 void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
@@ -1687,17 +1792,12 @@ void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::u
   }
   // 2026-09-28 合并：截图第48项要求记录方位/俯仰扫描范围。按实际波位表求上下限，
   // 不另引入配置回显（阵面方向/扫描起始为配置输入，按 §0B 不作为模型输出复写）。
-  float az_min = pattern[0].az_deg;
-  float az_max = pattern[0].az_deg;
+  std::vector<float> azimuths_deg;
+  azimuths_deg.reserve(pattern.size());
   float el_min = pattern[0].el_deg;
   float el_max = pattern[0].el_deg;
   for (const oneq::common::radar::AzimuthElevationDeg& point : pattern) {
-    if (point.az_deg < az_min) {
-      az_min = point.az_deg;
-    }
-    if (point.az_deg > az_max) {
-      az_max = point.az_deg;
-    }
+    azimuths_deg.push_back(point.az_deg);
     if (point.el_deg < el_min) {
       el_min = point.el_deg;
     }
@@ -1705,10 +1805,21 @@ void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::u
       el_max = point.el_deg;
     }
   }
-  Emit(sim_time_sec, cycle, "波束扫描功能测试",
-       "雷达ID=" + std::to_string(radar_id) + " 方位扫描范围=" + FormatF(az_min, 3) + "/" +
-           FormatF(az_max, 3) + "° 俯仰扫描范围=" + FormatF(el_min, 3) + "/" +
-           FormatF(el_max, 3) + "°");
+  double az_center_deg = 0.0;
+  double az_half_width_deg = 0.0;
+  double az_continuous_min_deg = 0.0;
+  double az_continuous_max_deg = 0.0;
+  if (!TryResolveAzimuthSpanDeg(azimuths_deg, &az_center_deg, &az_half_width_deg,
+                                &az_continuous_min_deg, &az_continuous_max_deg)) {
+    return;  // 无有效方位角：判定字段无有效值，整行省略。
+  }
+  // 2026-09-28 审计 Q-2：跨缝方位按连续区间输出，避免直接 min/max 得到
+  // `-179.600/179.600` 并被误读为全向扫描；字段名称与验收标准第48项保持一致。
+  std::string content = "雷达ID=" + std::to_string(radar_id);
+  content += " 方位扫描范围=" + FormatF(az_continuous_min_deg, 3) + "/" +
+             FormatF(az_continuous_max_deg, 3) + "°";
+  content += " 俯仰扫描范围=" + FormatF(el_min, 3) + "/" + FormatF(el_max, 3) + "°";
+  Emit(sim_time_sec, cycle, "波束扫描功能测试", content);
 }
 
 bool TryExportRirAntennaPatternCsv(const config::hardware::RirAntennaConfig& antenna,
@@ -1730,18 +1841,24 @@ bool TryExportRirAntennaPatternCsv(const config::hardware::RirAntennaConfig& ant
   // 下限 0.1° 防窄束配置行数爆炸）。主瓣峰值点 (0,0) 始终在格点上。旧 ±5·bw
   // 自适应网格见评审 2026-08-26 条14（已废止）；同日修订：el 初版 ±180° 有
   // 方向冗余，收敛为 ±90°。
-  const float step = std::max(0.1f, std::min(antenna.nominal_az_beamwidth_deg,
-                                             antenna.nominal_el_beamwidth_deg));
-  const float span_az = 360.0f;
-  const float span_el = 90.0f;
-  for (float az = 0.0f; az <= span_az + 0.5f * step; az += step) {
-    for (float el = -span_el; el <= span_el + 0.5f * step; el += step) {
+  // 以整数序号生成坐标，避免浮点逐次累加造成网格漂移；输出域、顺序和步长不变。
+  const double step_deg =
+      std::max(0.1, std::min(static_cast<double>(antenna.nominal_az_beamwidth_deg),
+                             static_cast<double>(antenna.nominal_el_beamwidth_deg)));
+  const int az_count = static_cast<int>(std::floor(360.0 / step_deg + 0.5));
+  const int el_count = static_cast<int>(std::floor(180.0 / step_deg + 0.5));
+  for (int az_index = 0; az_index <= az_count; ++az_index) {
+    const float az_deg = static_cast<float>(static_cast<double>(az_index) * step_deg);
+    for (int el_index = 0; el_index <= el_count; ++el_index) {
+      const float el_deg =
+          static_cast<float>(-90.0 + static_cast<double>(el_index) * step_deg);
       dwell::RirAntennaLookOffsetDeg offset;
-      offset.delta_az_deg = az;
-      offset.delta_el_deg = el;
-      const dwell::RirAntennaPatternSample sample = dwell::RirEvaluateAntennaPattern(
-          antenna, beamwidth, offset, pointing, 0.0f);
-      out << FormatF(az, 2) << "," << FormatF(el, 2) << "," << FormatF(sample.gain_dbi, 3) << "\n";
+      offset.delta_az_deg = az_deg;
+      offset.delta_el_deg = el_deg;
+      const dwell::RirAntennaPatternSample sample =
+          dwell::RirEvaluateAntennaPattern(antenna, beamwidth, offset, pointing, 0.0f);
+      out << FormatF(az_deg, 2) << "," << FormatF(el_deg, 2) << ","
+          << FormatF(sample.gain_dbi, 3) << "\n";
     }
   }
   return true;

@@ -26,11 +26,6 @@ double GainFactorFromDb(double gain_db) {
   return std::pow(10.0, clamped / 10.0);
 }
 
-bool SameIdentity(const oneq::electromagnetics::RfEmissionIdentity& left,
-                  const oneq::electromagnetics::RfEmissionIdentity& right) {
-  return left.sensor_entity_id == right.sensor_entity_id &&
-         left.emission_id == right.emission_id;
-}
 
 bool IsValidIdentity(const oneq::electromagnetics::RfEmissionIdentity& identity) {
   return identity.sensor_entity_id != 0U && identity.emission_id != 0U;
@@ -46,7 +41,7 @@ double IntervalOverlap(double left_center_hz, double left_bandwidth_hz, double r
 }
 
 bool TryCountAvailableEchoPulses(const oneq::electromagnetics::RfWaveformSchedule& waveform,
-                                 double echo_delay_s, double receive_window_end_s,
+                                 double echo_delay_s, double echo_capture_window_end_s,
                                  std::uint32_t requested_count, std::uint32_t* available_count) {
   if (available_count == nullptr) {
     return false;
@@ -59,7 +54,7 @@ bool TryCountAvailableEchoPulses(const oneq::electromagnetics::RfWaveformSchedul
     if (!oneq::electromagnetics::TryResolveRfPulseStartTime(waveform, middle, &pulse_start_s)) {
       return false;
     }
-    if (pulse_start_s + echo_delay_s < receive_window_end_s) {
+    if (pulse_start_s + echo_delay_s < echo_capture_window_end_s) {
       low = middle + 1U;
     } else {
       high = middle;
@@ -114,7 +109,7 @@ bool TryResolveCellInterference(
   long double total_interference_w = 0.0L;
   for (const auto& ordered_link : ordered) {
     const auto& link = *ordered_link.second;
-    if (SameIdentity(link.identity, own_emission_identity)) {
+    if (link.identity == own_emission_identity) {
       continue;
     }
     long double link_overlap_sum = 0.0L;
@@ -211,6 +206,20 @@ bool TryResolveDetectionCell(
     return false;
   }
 
+  // 回波捕获上界：显式字段只放宽、不收紧（0 = 未指定，沿用接收机开通窗末）；
+  // 指定值非法（非有限或早于窗起始）时本单元拒绝，不静默回退。
+  const double receiver_open_window_end_s =
+      config.receive_window_start_time_s + config.receive_window_duration_s;
+  double echo_capture_window_end_s = receiver_open_window_end_s;
+  if (config.receive_window_end_time_s != 0.0) {
+    if (!std::isfinite(config.receive_window_end_time_s) ||
+        config.receive_window_end_time_s < config.receive_window_start_time_s) {
+      return false;
+    }
+    echo_capture_window_end_s =
+        std::max(config.receive_window_end_time_s, receiver_open_window_end_s);
+  }
+
   DetectionCellResult candidate;
   const double wavelength_m = kLightSpeed / own_waveform.center_frequency_hz;
   const double antenna_gain_linear = std::pow(10.0, config.one_way_antenna_gain_dbi / 10.0);
@@ -231,10 +240,9 @@ bool TryResolveDetectionCell(
   const double noise_figure_linear = std::pow(10.0, config.receiver_noise_figure_db / 10.0);
   candidate.thermal_noise_power_w = kBoltzmann * config.reference_temperature_k *
                                     config.matched_filter_bandwidth_hz * noise_figure_linear;
-  if (!TryCountAvailableEchoPulses(
-          own_waveform, candidate.echo_delay_s,
-          config.receive_window_start_time_s + config.receive_window_duration_s,
-          target.effective_pulse_count, &candidate.effective_pulse_count) ||
+  if (!TryCountAvailableEchoPulses(own_waveform, candidate.echo_delay_s,
+                                   echo_capture_window_end_s, target.effective_pulse_count,
+                                   &candidate.effective_pulse_count) ||
       !TryResolveCellInterference(
           config, candidate.echo_delay_s,
           own_waveform.center_frequency_hz + candidate.two_way_doppler_shift_hz,

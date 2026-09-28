@@ -78,6 +78,14 @@ struct RirRadarEquations {
   static float ComputePulseCompressionGainDb(const config::hardware::RirTransmitterConfig& tx);
 
   /**
+   * @brief RIR 回退检测对 common 雷达方程的脉压净修正量（dB）。
+   * @note common 方程已含 `τ/13µs` 参考缩放；为使回退检测最终只含一次 B·τ，
+   *       本值等于 `10log10(max(1,B·τ)) - 10log10(τ/13µs)`。
+   */
+  static float ComputeFallbackPulseCompressionCorrectionDb(
+      const config::hardware::RirTransmitterConfig& tx);
+
+  /**
    * @brief 接收机热噪声功率底: N₀ = k·T₀·B·F。
    * T₀ = 290K (IEEE 标准参考温度)。
    * @param tx 发射机参数（取带宽）

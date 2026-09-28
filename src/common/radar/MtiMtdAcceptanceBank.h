@@ -2,7 +2,13 @@
  * @file MtiMtdAcceptanceBank.h
  * @brief 验收旁路 MTI/MTD 频谱效能核（不进检测 SINR）。
  *
- * 常量：N=8、2 脉冲 MTI、杂波谱宽 σ_v=0.25 m/s。不算四增益偏置。
+ * 常量：N=8、2 脉冲 MTI、杂波谱宽 σ_v=0.25 m/s。不算四增益偏置。 *
+ * @note 2026-09-28 审计 DES-2：本核是**验收旁路**——它按 2 脉冲对消器 + 8 点 DFT
+ *       的闭式响应算出频域增益，供验收日志记录频谱效能，结果**不进入检测 SINR**
+ *       （检测链的单脉冲 SINR 由 DetectionCellResolver 独立给出）。驻留内只有 1 个
+ *       发射脉冲时（PRF=10 Hz、驻留 0.05 s），8 通道 MTD 是单脉冲上的纸面计算，无
+ *       相干处理区间（CPI）可言；消费方（验收日志字段名）必须显式标注
+ *       "验收旁路/单通道/不进检测 SINR"，不得让评审把它读成实测 CPI 结果。
  */
 
 #ifndef COMMON_RADAR_MTI_MTD_ACCEPTANCE_BANK_H_

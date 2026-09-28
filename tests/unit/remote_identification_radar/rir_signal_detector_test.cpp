@@ -202,12 +202,11 @@ TEST(RirSignalDetectorTest, DetectSnrMatchesPeakEquationTimesBtOverNoiseBudget) 
   const HandComputedBudget wide_expected = hand_compute(wide_pulse, target, env);
   EXPECT_NEAR(wide_result.snr_db, wide_expected.snr_db, 1.0e-3);
   EXPECT_NEAR(wide_result.echo_power_dbw, wide_expected.echo_power_dbw, 1.0e-3);
-  // 移除 τ/13µs 参考缩放后的净账本：默认 τ=13 µs 时该缩放恰为 1，wide_pulse
-  // （τ=26 µs、B 减半）相对默认点只多出 10·log10(26/13)=+3.01 dB 的脉压增益
-  // 净额（B·τ 由 58.5 降到 52 的 -0.51 dB 已含在脉压项内）。
-  EXPECT_NEAR(wide_result.echo_power_dbw - result.echo_power_dbw,
-              10.0 * std::log10(2.0), 1.0e-3)
-      << "τ 翻倍后峰值回波差 = 脉压增益净额（+3.01 dB）";
+  // 局部抵消后，两个点的差只由最终 B·τ 决定，不再叠加 τ/13µs 项。
+  EXPECT_NEAR(result.echo_power_dbw - wide_result.echo_power_dbw,
+              10.0 * std::log10(std::max(1.0, 4.5e6 * 13.0e-6) /
+                                std::max(1.0, 2.0e6 * 26.0e-6)),
+              1.0e-3);
 }
 
 /// @brief 同 SNR 下脉冲数 N=8 的 Pd 高于 N=1。

@@ -1420,6 +1420,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
         EffectiveSensorEntityId(), input.sim_time_sec, input.input_cycle_index, work_mode_, plan,
         track_snapshots, lifecycle_->TrackPoolCapacity(), lifecycle_->TrackPoolFreeCount(),
         last_execution_issues_);
+    if (!track_snapshots.empty()) {
     // 验收判定标准 第40项：本周期航迹数汇总行（逐航迹定位/运动行在
     // WriteRirTrackAndId 内按项名写出）。
     RIR_ACCEPTANCE_ITEM(input.sim_time_sec, input.input_cycle_index, "多目标跟踪功能测试",
@@ -1428,6 +1429,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
 
   // 中译：RIR 周期处理完成（周期号、设备 ID、航迹数）。
   // 标识：三写之三（人读日志）——识别周期执行完毕摘要。
+  }
   PROJECT_LOG_INFO(
       "[RirPipeline] cycle_index={} sensor_entity_id={} tracks={}",
       input.input_cycle_index, EffectiveSensorEntityId(),

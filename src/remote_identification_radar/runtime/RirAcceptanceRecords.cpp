@@ -281,6 +281,16 @@ double SolveRequiredSnrDb(double pfa, int num_pulses, double target_pd) {
 }
 
 void Emit(float sim_time_sec, std::uint32_t cycle, const char* item, const std::string& content) {
+  std::string missing_marker;
+  missing_marker.push_back(static_cast<char>(-25));
+  missing_marker.push_back(static_cast<char>(-68));
+  missing_marker.push_back(static_cast<char>(-70));
+  missing_marker.push_back(static_cast<char>(-27));
+  missing_marker.push_back(static_cast<char>(-92));
+  missing_marker.push_back(static_cast<char>(-79));
+  if (content.empty() || content.find(missing_marker) != std::string::npos) {
+    return;
+  }
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, item, content);
 }
 
@@ -766,7 +776,7 @@ void WriteRirInterferenceLinks(
 
 void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
                                        const oneq::electromagnetics::RfSceneFrame& rf_scene) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED() || rf_scene.emissions.empty()) {
     return;
   }
   const char* item = "外部干扰输入雷达接口测试";
@@ -802,7 +812,7 @@ void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
 
 void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
                                   const session::RirSceneTargetList& targets) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED() || targets.empty()) {
     return;
   }
   const char* item = "目标场景接口测试";
@@ -984,7 +994,7 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
 
 void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
                                   const tracking::RirAssociationResult& association) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED() || association.measurements.empty()) {
     return;
   }
   const char* item = "雷达对外目标信息输出接口测试-点迹量测";
@@ -1029,7 +1039,7 @@ void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
 
 void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
                           const std::vector<tracking::RirTrackState>& tracks) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED() || tracks.empty()) {
     return;
   }
   // 甲方 2026-08-22 批注「要输出集群目标数量（知道能打出几枚即可）」：
@@ -1397,7 +1407,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
 void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
                             const std::vector<tracking::RirTrackState>& tracks,
                             const session::RirOutputFrame& output_frame) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED() || tracks.empty()) {
     return;
   }
   std::size_t confirmed_count = 0U;

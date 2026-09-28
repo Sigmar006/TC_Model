@@ -433,6 +433,10 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
                                            input.input_cycle_index,
                                            config.hardware.antenna.main_beam_gain_db,
                                            beamwidth.az_beamwidth_deg, beamwidth.el_beamwidth_deg);
+    // 2026-09-28 按主文档补全：第28项还须从实际方向图采样反算特征并与配置逐项比对（5%）。
+    runtime::WriteRirAntennaPatternDerived(controller.EffectiveSensorEntityId(),
+                                           input.sim_time_sec, input.input_cycle_index,
+                                           config.hardware.antenna);
     acceptance_scan_pattern_logged = true;
   }
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {

@@ -787,6 +787,13 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   const config::SbirsPolicyConfig& policy = config_.session.policy;
   const config::SbirsEnvironmentConfig& environment_config = config_.session.environment;
   const float sim_time_sec = static_cast<float>(input.cycle_index) * input.dt_sec;
+  // 验收判定标准 第58项：本周期场景/环境输入的接口投影 → log/IRExternalInterface.log。
+  // 与普通功能项分文件独立判定，不受会话运行期 acceptance_log_enabled 关闭影响
+  //（接口输入投影属对外接口证据）。
+  WriteSbirsExternalSceneInput(environment_config,
+                               static_cast<double>(config_.session.hardware.background_radiance_w_sr_m2),
+                               static_cast<double>(config_.session.hardware.detector_temperature_k),
+                               sim_time_sec, input.cycle_index, satellite_entity_id_, input.scene);
   const double cycle_start_time_s =
       static_cast<double>(input.cycle_index) * static_cast<double>(input.dt_sec);
   const double cycle_end_time_s =
@@ -1135,7 +1142,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     WriteSbirsOrbitSample(satellite_entity_id_, sim_time_sec, input.cycle_index,
                           policy.error_model.orbit_sigma_deg, sat_range,
                           policy.error_model.nav_position_sigma_m,
-                          input.satellite_position_ecef_m);
+                          input.satellite_position_ecef_m,
+                          input.satellite_velocity_ecef_m_per_s);
   }
 
   // 门内归因目标无关量（仅依赖硬件/门限配置，循环外计算一次）：有效噪声与达标所需签名 =
@@ -2498,6 +2506,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
 
   register_detectability();
   log_cycle_summary();
+  // 验收判定标准 第67项：本周期观测/航迹的对外接口投影 → log/IRExternalInterface.log。
+  // 放在周期末，快照含本周期已提交的滤波状态；与普通功能项分文件独立判定。
+  WriteSbirsExternalObservationOutput(satellite_entity_id_, sim_time_sec, input.cycle_index,
+                                      result.detections, CaptureRuntimeState());
   return result;
 }
 

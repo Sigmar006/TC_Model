@@ -24,32 +24,23 @@
 #include <windows.h>
 #endif
 
-#ifndef ONEQ_OPIR_ACCEPTANCE_LOG_PATH
-#define ONEQ_OPIR_ACCEPTANCE_LOG_PATH "log/opir_acceptance.log"
-#endif
-#ifndef ONEQ_RIR_ACCEPTANCE_LOG_PATH
-#define ONEQ_RIR_ACCEPTANCE_LOG_PATH "log/rir_acceptance.log"
-#endif
-#ifndef ONEQ_FUSION_ACCEPTANCE_LOG_PATH
-#define ONEQ_FUSION_ACCEPTANCE_LOG_PATH "log/fusion_acceptance.log"
-#endif
-#ifndef ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH
-#define ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH "log/inference_acceptance.log"
-#endif
-#ifndef ONEQ_PRECISION_ACCEPTANCE_LOG_PATH
-#define ONEQ_PRECISION_ACCEPTANCE_LOG_PATH "log/precision_acceptance.log"
-#endif
-#ifndef ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH
-#define ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH "log/IRInternalInterface.log"
-#endif
-#ifndef ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH
-#define ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH "log/RadarInternalInterface.log"
+#ifndef ONEQ_SATELLITE_TARGET_LOG_PATH
+#define ONEQ_SATELLITE_TARGET_LOG_PATH "log/SatelliteTarget.log"
 #endif
 #ifndef ONEQ_RADAR_OUTPUT_LOG_PATH
 #define ONEQ_RADAR_OUTPUT_LOG_PATH "log/RadarOutput.log"
 #endif
-#ifndef ONEQ_SATELLITE_TARGET_LOG_PATH
-#define ONEQ_SATELLITE_TARGET_LOG_PATH "log/SatelliteTarget.log"
+#ifndef ONEQ_RADAR_EXTERNAL_INTERFACE_LOG_PATH
+#define ONEQ_RADAR_EXTERNAL_INTERFACE_LOG_PATH "log/RadarExternalInterface.log"
+#endif
+#ifndef ONEQ_IR_EXTERNAL_INTERFACE_LOG_PATH
+#define ONEQ_IR_EXTERNAL_INTERFACE_LOG_PATH "log/IRExternalInterface.log"
+#endif
+#ifndef ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH
+#define ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH "log/RadarInternalInterface.log"
+#endif
+#ifndef ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH
+#define ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH "log/IRInternalInterface.log"
 #endif
 
 namespace oneq {
@@ -94,98 +85,91 @@ std::string EncodeAcceptanceText(const std::string& text) {
 
 const char* EnvName(AcceptanceChannel channel) {
   switch (channel) {
-    case AcceptanceChannel::kOpir:
-      return "ONEQ_OPIR_ACCEPTANCE_LOG_PATH";
-    case AcceptanceChannel::kRir:
-      return "ONEQ_RIR_ACCEPTANCE_LOG_PATH";
-    case AcceptanceChannel::kFusion:
-      return "ONEQ_FUSION_ACCEPTANCE_LOG_PATH";
-    case AcceptanceChannel::kInference:
-      return "ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH";
-    case AcceptanceChannel::kPrecision:
-      return "ONEQ_PRECISION_ACCEPTANCE_LOG_PATH";
-    case AcceptanceChannel::kIrInternalInterface:
-      return "ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH";
-    case AcceptanceChannel::kRadarInternalInterface:
-      return "ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH";
-    case AcceptanceChannel::kRadarOutput:
-      return "ONEQ_RADAR_OUTPUT_LOG_PATH";
     case AcceptanceChannel::kSatelliteTarget:
       return "ONEQ_SATELLITE_TARGET_LOG_PATH";
+    case AcceptanceChannel::kRadarOutput:
+      return "ONEQ_RADAR_OUTPUT_LOG_PATH";
+    case AcceptanceChannel::kRadarExternalInterface:
+      return "ONEQ_RADAR_EXTERNAL_INTERFACE_LOG_PATH";
+    case AcceptanceChannel::kIrExternalInterface:
+      return "ONEQ_IR_EXTERNAL_INTERFACE_LOG_PATH";
+    case AcceptanceChannel::kRadarInternalInterface:
+      return "ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH";
+    case AcceptanceChannel::kIrInternalInterface:
+      return "ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH";
   }
-  return "ONEQ_OPIR_ACCEPTANCE_LOG_PATH";
+  return "ONEQ_SATELLITE_TARGET_LOG_PATH";
+}
+
+/**
+ * @brief 兼容旧独立文件的环境变量名（融合/推演/精度/OPIR/RIR 归并前）。
+ *
+ * 归并后这些域统一落到 SatelliteTarget.log / RadarOutput.log；旧集成脚本若仍只设置
+ * 旧变量，应继续生效而不是被静默忽略。返回空串表示本通道无旧变量。
+ */
+const char* LegacyEnvName(AcceptanceChannel channel) {
+  switch (channel) {
+    case AcceptanceChannel::kSatelliteTarget:
+      return "ONEQ_OPIR_ACCEPTANCE_LOG_PATH";
+    case AcceptanceChannel::kRadarOutput:
+      return "ONEQ_RIR_ACCEPTANCE_LOG_PATH";
+    default:
+      return nullptr;
+  }
 }
 
 const char* CompileDefaultPath(AcceptanceChannel channel) {
   switch (channel) {
-    case AcceptanceChannel::kOpir:
-      return ONEQ_OPIR_ACCEPTANCE_LOG_PATH;
-    case AcceptanceChannel::kRir:
-      return ONEQ_RIR_ACCEPTANCE_LOG_PATH;
-    case AcceptanceChannel::kFusion:
-      return ONEQ_FUSION_ACCEPTANCE_LOG_PATH;
-    case AcceptanceChannel::kInference:
-      return ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH;
-    case AcceptanceChannel::kPrecision:
-      return ONEQ_PRECISION_ACCEPTANCE_LOG_PATH;
-    case AcceptanceChannel::kIrInternalInterface:
-      return ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH;
-    case AcceptanceChannel::kRadarInternalInterface:
-      return ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH;
-    case AcceptanceChannel::kRadarOutput:
-      return ONEQ_RADAR_OUTPUT_LOG_PATH;
     case AcceptanceChannel::kSatelliteTarget:
       return ONEQ_SATELLITE_TARGET_LOG_PATH;
+    case AcceptanceChannel::kRadarOutput:
+      return ONEQ_RADAR_OUTPUT_LOG_PATH;
+    case AcceptanceChannel::kRadarExternalInterface:
+      return ONEQ_RADAR_EXTERNAL_INTERFACE_LOG_PATH;
+    case AcceptanceChannel::kIrExternalInterface:
+      return ONEQ_IR_EXTERNAL_INTERFACE_LOG_PATH;
+    case AcceptanceChannel::kRadarInternalInterface:
+      return ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH;
+    case AcceptanceChannel::kIrInternalInterface:
+      return ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH;
   }
-  return ONEQ_OPIR_ACCEPTANCE_LOG_PATH;
+  return ONEQ_SATELLITE_TARGET_LOG_PATH;
 }
 
 const char* ChannelLabel(AcceptanceChannel channel) {
   switch (channel) {
-    case AcceptanceChannel::kOpir:
-      return "opir";
-    case AcceptanceChannel::kRir:
-      return "rir";
-    case AcceptanceChannel::kFusion:
-      return "fusion";
-    case AcceptanceChannel::kInference:
-      return "inference";
-    case AcceptanceChannel::kPrecision:
-      return "precision";
-    case AcceptanceChannel::kIrInternalInterface:
-      return "ir-internal-interface";
-    case AcceptanceChannel::kRadarInternalInterface:
-      return "radar-internal-interface";
-    case AcceptanceChannel::kRadarOutput:
-      return "radar-output";
     case AcceptanceChannel::kSatelliteTarget:
       return "satellite-target";
+    case AcceptanceChannel::kRadarOutput:
+      return "radar-output";
+    case AcceptanceChannel::kRadarExternalInterface:
+      return "radar-external-interface";
+    case AcceptanceChannel::kIrExternalInterface:
+      return "ir-external-interface";
+    case AcceptanceChannel::kRadarInternalInterface:
+      return "radar-internal-interface";
+    case AcceptanceChannel::kIrInternalInterface:
+      return "ir-internal-interface";
   }
-  return "opir";
+  return "satellite-target";
 }
 
 const char* ChannelFileName(AcceptanceChannel channel) {
   switch (channel) {
-    case AcceptanceChannel::kOpir:
-      return "opir_acceptance.log";
-    case AcceptanceChannel::kRir:
-      return "rir_acceptance.log";
-    case AcceptanceChannel::kFusion:
-      return "fusion_acceptance.log";
-    case AcceptanceChannel::kInference:
-      return "inference_acceptance.log";
-    case AcceptanceChannel::kPrecision:
-      return "precision_acceptance.log";
-    case AcceptanceChannel::kIrInternalInterface:
-      return "IRInternalInterface.log";
-    case AcceptanceChannel::kRadarInternalInterface:
-      return "RadarInternalInterface.log";
-    case AcceptanceChannel::kRadarOutput:
-      return "RadarOutput.log";
     case AcceptanceChannel::kSatelliteTarget:
       return "SatelliteTarget.log";
+    case AcceptanceChannel::kRadarOutput:
+      return "RadarOutput.log";
+    case AcceptanceChannel::kRadarExternalInterface:
+      return "RadarExternalInterface.log";
+    case AcceptanceChannel::kIrExternalInterface:
+      return "IRExternalInterface.log";
+    case AcceptanceChannel::kRadarInternalInterface:
+      return "RadarInternalInterface.log";
+    case AcceptanceChannel::kIrInternalInterface:
+      return "IRInternalInterface.log";
   }
-  return "acceptance.log";
+  return "SatelliteTarget.log";
 }
 
 std::string JoinPath(const std::string& directory, const char* file_name) {
@@ -196,22 +180,35 @@ std::string JoinPath(const std::string& directory, const char* file_name) {
   return directory + ((last == '/' || last == '\\') ? "" : "/") + file_name;
 }
 
-std::string ResolveDefaultPath(AcceptanceChannel channel) {
+/** @brief 读环境变量；未设置返回空串（MSVC 用 _dupenv_s 避免 getenv 告警）。 */
+std::string ReadEnv(const char* name) {
+  if (name == nullptr || *name == '\0') {
+    return std::string();
+  }
 #if defined(_MSC_VER)
   char* buffer = nullptr;
-  if (_dupenv_s(&buffer, nullptr, EnvName(channel)) == 0 && buffer != nullptr) {
-    std::string result(buffer);
-    std::free(buffer);
-    if (!result.empty()) {
-      return result;
-    }
+  if (_dupenv_s(&buffer, nullptr, name) != 0 || buffer == nullptr) {
+    return std::string();
   }
+  std::string result(buffer);
+  std::free(buffer);
+  return result;
 #else
-  const char* env = std::getenv(EnvName(channel));
-  if (env != nullptr && *env != '\0') {
-    return std::string(env);
-  }
+  const char* env = std::getenv(name);
+  return (env != nullptr && *env != '\0') ? std::string(env) : std::string();
 #endif
+}
+
+std::string ResolveDefaultPath(AcceptanceChannel channel) {
+  const std::string primary = ReadEnv(EnvName(channel));
+  if (!primary.empty()) {
+    return primary;
+  }
+  // 归并前的旧独立文件变量（如 ONEQ_FUSION_ACCEPTANCE_LOG_PATH）仍生效。
+  const std::string legacy = ReadEnv(LegacyEnvName(channel));
+  if (!legacy.empty()) {
+    return legacy;
+  }
   return std::string(CompileDefaultPath(channel));
 }
 
@@ -310,35 +307,26 @@ class ChannelSink {
 };
 
 ChannelSink& SinkOf(AcceptanceChannel channel) {
-  static ChannelSink opir(AcceptanceChannel::kOpir);
-  static ChannelSink rir(AcceptanceChannel::kRir);
-  static ChannelSink fusion(AcceptanceChannel::kFusion);
-  static ChannelSink inference(AcceptanceChannel::kInference);
-  static ChannelSink precision(AcceptanceChannel::kPrecision);
-  static ChannelSink ir_internal_interface(AcceptanceChannel::kIrInternalInterface);
-  static ChannelSink radar_internal_interface(AcceptanceChannel::kRadarInternalInterface);
-  static ChannelSink radar_output(AcceptanceChannel::kRadarOutput);
   static ChannelSink satellite_target(AcceptanceChannel::kSatelliteTarget);
+  static ChannelSink radar_output(AcceptanceChannel::kRadarOutput);
+  static ChannelSink radar_external_interface(AcceptanceChannel::kRadarExternalInterface);
+  static ChannelSink ir_external_interface(AcceptanceChannel::kIrExternalInterface);
+  static ChannelSink radar_internal_interface(AcceptanceChannel::kRadarInternalInterface);
+  static ChannelSink ir_internal_interface(AcceptanceChannel::kIrInternalInterface);
   switch (channel) {
-    case AcceptanceChannel::kRir:
-      return rir;
-    case AcceptanceChannel::kFusion:
-      return fusion;
-    case AcceptanceChannel::kInference:
-      return inference;
-    case AcceptanceChannel::kPrecision:
-      return precision;
-    case AcceptanceChannel::kIrInternalInterface:
-      return ir_internal_interface;
-    case AcceptanceChannel::kRadarInternalInterface:
-      return radar_internal_interface;
     case AcceptanceChannel::kRadarOutput:
       return radar_output;
+    case AcceptanceChannel::kRadarExternalInterface:
+      return radar_external_interface;
+    case AcceptanceChannel::kIrExternalInterface:
+      return ir_external_interface;
+    case AcceptanceChannel::kRadarInternalInterface:
+      return radar_internal_interface;
+    case AcceptanceChannel::kIrInternalInterface:
+      return ir_internal_interface;
     case AcceptanceChannel::kSatelliteTarget:
-      return satellite_target;
-    case AcceptanceChannel::kOpir:
     default:
-      return opir;
+      return satellite_target;
   }
 }
 

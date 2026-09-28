@@ -84,6 +84,14 @@ std::string ResolveRirScanPatternCsvPath();
 void WriteRirAntennaPatternSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                                    float peak_gain_dbi, float bw_az_deg, float bw_el_deg);
 
+/**
+ * @brief 第28项：从实际方向图采样反算峰值增益/波束宽度/最大旁瓣/后瓣电平，与配置逐项
+ *        比较后按主文档 `5%` 判据输出各项误差与整体结果。
+ */
+void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
+                                   std::uint32_t cycle,
+                                   const config::hardware::RirAntennaConfig& antenna);
+
 void WriteRirDetectionChain(const RirDetectionAcceptInput& input);
 
 void WriteRirInterferenceLinks(

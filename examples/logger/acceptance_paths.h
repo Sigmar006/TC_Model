@@ -26,20 +26,20 @@ inline void SetProcessEnv(const char* name, const std::string& value) {
 }
 
 /// 验收文件与天线/波位 CSV 钉到场景输出目录（库侧 env 覆盖优先级最高）。
+/// 2026-09-28 归并后目标文件只有六个：SatelliteTarget / RadarOutput /
+/// RadarExternalInterface / IRExternalInterface / RadarInternalInterface /
+/// IRInternalInterface；融合、推演、精度不再生成独立文件，故不再设置其旧变量。
 inline void BindAcceptanceLogPaths(const std::string& output_dir) {
-  SetProcessEnv("ONEQ_RIR_ACCEPTANCE_LOG_PATH", output_dir + "/rir_acceptance.log");
-  SetProcessEnv("ONEQ_OPIR_ACCEPTANCE_LOG_PATH", output_dir + "/opir_acceptance.log");
-  SetProcessEnv("ONEQ_FUSION_ACCEPTANCE_LOG_PATH", output_dir + "/fusion_acceptance.log");
-  SetProcessEnv("ONEQ_INFERENCE_ACCEPTANCE_LOG_PATH",
-                output_dir + "/inference_acceptance.log");
-  SetProcessEnv("ONEQ_PRECISION_ACCEPTANCE_LOG_PATH",
-                output_dir + "/precision_acceptance.log");
-  SetProcessEnv("ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH",
-                output_dir + "/IRInternalInterface.log");
+  SetProcessEnv("ONEQ_SATELLITE_TARGET_LOG_PATH", output_dir + "/SatelliteTarget.log");
+  SetProcessEnv("ONEQ_RADAR_OUTPUT_LOG_PATH", output_dir + "/RadarOutput.log");
+  SetProcessEnv("ONEQ_RADAR_EXTERNAL_INTERFACE_LOG_PATH",
+                output_dir + "/RadarExternalInterface.log");
+  SetProcessEnv("ONEQ_IR_EXTERNAL_INTERFACE_LOG_PATH",
+                output_dir + "/IRExternalInterface.log");
   SetProcessEnv("ONEQ_RADAR_INTERNAL_INTERFACE_LOG_PATH",
                 output_dir + "/RadarInternalInterface.log");
-  SetProcessEnv("ONEQ_RADAR_OUTPUT_LOG_PATH", output_dir + "/RadarOutput.log");
-  SetProcessEnv("ONEQ_SATELLITE_TARGET_LOG_PATH", output_dir + "/SatelliteTarget.log");
+  SetProcessEnv("ONEQ_IR_INTERNAL_INTERFACE_LOG_PATH",
+                output_dir + "/IRInternalInterface.log");
   SetProcessEnv("ONEQ_RIR_ANTENNA_PATTERN_CSV_PATH",
                 output_dir + "/RadarAntennaGainPatterndata.csv");
   SetProcessEnv("ONEQ_RIR_SCAN_PATTERN_CSV_PATH", output_dir + "/Rir_scan_pattern.csv");

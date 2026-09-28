@@ -1,6 +1,7 @@
 ﻿/**
  * @file RirAcceptanceLog.h
- * @brief RIR 功能验收日志宏：普通功能与外部接口项写入 RadarOutput.log。
+ * @brief RIR 功能验收日志宏：普通功能项写入 RadarOutput.log，外部接口项写入
+ *        RadarExternalInterface.log，内部接口项写入 RadarInternalInterface.log。
  *
  * 编译期由 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG` 门控（默认 OFF），运行期再由
  * `RirSessionConfig::acceptance_log_enabled` 按会话门控。
@@ -66,7 +67,7 @@ class RirScopedAcceptanceLogEnable final {
   do {                                                                                 \
     if (RIR_ACCEPTANCE_LOG_ENABLED()) {                                                \
       ::oneq::logging::WriteAcceptanceLog(                                             \
-          ::oneq::logging::AcceptanceChannel::kRadarOutput,                           \
+          ::oneq::logging::AcceptanceChannel::kRadarExternalInterface,                \
           ::oneq::logging::FormatAcceptanceLine((sim_time), (cycle), (item),          \
                                                  (content)));                          \
     }                                                                                  \

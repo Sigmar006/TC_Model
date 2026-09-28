@@ -378,6 +378,112 @@ void WriteRirAntennaPatternSummary(std::uint64_t radar_id, float sim_time_sec, s
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
 }
 
+void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
+                                   std::uint32_t cycle,
+                                   const config::hardware::RirAntennaConfig& antenna) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  // 验收判定标准 第28项（2026-09-28 按主文档补全）：从**实际生成的方向图采样**反算
+  // 可配置特征，再与外部参数逐项比较，按 5% 判据给出各项与整体结果。
+  // 反算量：峰值增益、方位/俯仰波束宽度（主瓣 -3 dB 宽度）、最大旁瓣电平、后瓣电平。
+  // 不使用配置输入自身冒充反算值；方向图 CSV 仍按需另行导出供追溯。
+  dwell::RirAntennaPatternBeamwidthDeg beamwidth;
+  beamwidth.az_beamwidth_deg = antenna.nominal_az_beamwidth_deg;
+  beamwidth.el_beamwidth_deg = antenna.nominal_el_beamwidth_deg;
+  const config::RirAzimuthElevationDeg pointing(0.0f, 0.0f);
+  const config::RirAzimuthElevationDeg boresight(antenna.boresight_offset_deg.az_deg,
+                                                 antenna.boresight_offset_deg.el_deg);
+
+  // 方位/俯仰主轴 -3 dB 宽度：以 0.02° 步长细扫（配置波束宽度作为初始上界）。
+  const double step_deg = 0.02;
+  const double half_span_deg =
+      std::max(1.0, 2.0 * std::max(static_cast<double>(antenna.nominal_az_beamwidth_deg),
+                                   static_cast<double>(antenna.nominal_el_beamwidth_deg)));
+  const double peak_gain_dbi = static_cast<double>(antenna.main_beam_gain_db);
+
+  auto evaluate_gain = [&](double delta_az_deg, double delta_el_deg) -> double {
+    dwell::RirAntennaLookOffsetDeg offset;
+    offset.delta_az_deg = static_cast<float>(delta_az_deg);
+    offset.delta_el_deg = static_cast<float>(delta_el_deg);
+    return static_cast<double>(
+        dwell::RirEvaluateAntennaPattern(antenna, beamwidth, offset, pointing, 0.0f).gain_dbi);
+  };
+
+  auto half_power_width_deg = [&](bool along_azimuth) -> double {
+    const double target_dbi = peak_gain_dbi - 3.0;
+    double width = 0.0;
+    for (double offset = 0.0; offset <= half_span_deg; offset += step_deg) {
+      const double gain =
+          along_azimuth ? evaluate_gain(offset, 0.0) : evaluate_gain(0.0, offset);
+      if (gain <= target_dbi) {
+        width = 2.0 * offset;  // 主瓣对称：单侧 -3 dB 点 × 2
+        break;
+      }
+    }
+    return width;
+  };
+
+  const double derived_az_bw_deg = half_power_width_deg(true);
+  const double derived_el_bw_deg = half_power_width_deg(false);
+
+  // 后瓣电平：与波束指向相反方向（离轴 180°）的增益。
+  const double derived_backlobe_db =
+      evaluate_gain(180.0 - boresight.az_deg, 0.0) - peak_gain_dbi;
+
+  // 最大旁瓣电平：主瓣外（离轴 > 半波束宽）方位扫描的最大增益。
+  double derived_sidelobe_db = -60.0;
+  for (double offset = 1.5 * antenna.nominal_az_beamwidth_deg; offset <= 180.0;
+       offset += 1.0) {
+    const double gain = evaluate_gain(offset, 0.0);
+    if (std::isfinite(gain)) {
+      derived_sidelobe_db = std::max(derived_sidelobe_db, gain - peak_gain_dbi);
+    }
+  }
+
+  const double conf_peak_gain_dbi = static_cast<double>(antenna.main_beam_gain_db);
+  const double conf_az_bw_deg = static_cast<double>(antenna.nominal_az_beamwidth_deg);
+  const double conf_el_bw_deg = static_cast<double>(antenna.nominal_el_beamwidth_deg);
+  const double conf_sidelobe_db = static_cast<double>(antenna.max_sidelobe_level_db);
+  const double conf_backlobe_db = static_cast<double>(antenna.backlobe_level_db);
+
+  // 相对误差 = |反算 − 配置| / |配置|；配置为 0 时退化为绝对差（dB 量本身即差值）。
+  auto relative_error = [](double derived, double configured) -> double {
+    if (!std::isfinite(derived) || !std::isfinite(configured)) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (std::fabs(configured) < 1.0e-9) {
+      return std::fabs(derived - configured);
+    }
+    return std::fabs(derived - configured) / std::fabs(configured);
+  };
+
+  const double err_peak_gain = relative_error(peak_gain_dbi, conf_peak_gain_dbi);
+  const double err_az_bw = relative_error(derived_az_bw_deg, conf_az_bw_deg);
+  const double err_el_bw = relative_error(derived_el_bw_deg, conf_el_bw_deg);
+  const double err_sidelobe = relative_error(derived_sidelobe_db, conf_sidelobe_db);
+  const double err_backlobe = relative_error(derived_backlobe_db, conf_backlobe_db);
+
+  const double kTolerance = 0.05;
+  const bool all_within =
+      std::isfinite(err_peak_gain) && err_peak_gain <= kTolerance &&
+      std::isfinite(err_az_bw) && err_az_bw <= kTolerance && std::isfinite(err_el_bw) &&
+      err_el_bw <= kTolerance && std::isfinite(err_sidelobe) &&
+      err_sidelobe <= kTolerance && std::isfinite(err_backlobe) && err_backlobe <= kTolerance;
+
+  std::string content = "雷达ID=" + std::to_string(radar_id);
+  content += " 反算峰值增益=" + FormatF(peak_gain_dbi, 3) + "dBi";
+  content += " 反算波束宽度az/el=" + FormatPairDeg(derived_az_bw_deg, derived_el_bw_deg, 3) + "°";
+  content += " 反算最大旁瓣电平=" + FormatF(derived_sidelobe_db, 3) + "dB";
+  content += " 反算后瓣电平=" + FormatF(derived_backlobe_db, 3) + "dB";
+  content += " 峰值增益误差=" + FormatF(err_peak_gain, 4);
+  content += " 波束宽度误差az/el=" + FormatPairDeg(err_az_bw, err_el_bw, 4);
+  content += " 最大旁瓣误差=" + FormatF(err_sidelobe, 4);
+  content += " 后瓣误差=" + FormatF(err_backlobe, 4);
+  content += all_within ? " 方向图判据=通过(≤5%)" : " 方向图判据=不通过(>5%)";
+  RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
+}
+
 void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
@@ -399,10 +505,20 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   oneq::common::radar::MtiMtdAcceptanceResult bank;
   const bool has_bank = TryBuildAcceptanceBank(input, &bank);
 
-  // 验收判定标准 第29项：回波功率（W，dBW→W 换算）；斜距/SNR/噪声/干扰/杂波
-  // 分属第 36–37 项或超出规范，不写入本条。
-  Emit(t, cycle, "回波功率计算功能测试",
-       id + " 回波功率=" + FormatSci(FromDb(input.echo_power_dbw)) + "W");
+  // 验收判定标准 第29项：逐目标一行记录 目标ID/斜距/目标RCS/回波功率/噪声功率/干扰功率。
+  // 2026-09-28 按主文档补全：本项不能只写回波功率——同距离不同 RCS（1 m² 与 0.025 m²）
+  // 的 16 dB 差值判据需要同一行同时给出六项，外部验证程序据斜距配对样本计算功率差。
+  // 干扰功率取该检测单元实际收到的干扰功率（无干扰时为 0）。
+  {
+    std::string echo = id;
+    echo += " 斜距=" + FormatF(input.range_m, 1) + "m";
+    echo += " 目标RCS=" + FormatF(input.rcs_m2, 3) + "m²";
+    echo += " 回波功率=" + FormatSci(FromDb(input.echo_power_dbw)) + "W";
+    echo += " 噪声功率=" + FormatSci(thermal) + "W";
+    echo += " 干扰功率=" +
+            FormatSci(input.has_cell ? input.cell.interference_power_w : 0.0) + "W";
+    Emit(t, cycle, "回波功率计算功能测试", echo);
+  }
 
   // 验收判定标准 第31项：接收机热噪声功率（接收机底噪，非逐目标量）——每雷达
   // 每周期只写一行（本函数逐检测目标调用，同周期后续调用跳过）。

@@ -11,8 +11,10 @@
 #include <vector>
 
 #include "1q/coordinate/types.h"
+#include "1q/sbirs_sensor/config/SbirsEnvironmentConfig.h"
 #include "1q/sbirs_sensor/session/SbirsDetectionLifecycleRecorder.h"
 #include "1q/sbirs_sensor/session/SbirsSceneTypes.h"
+#include "sbirs_sensor/pipeline/SbirsPipeline.h"
 
 namespace sbirs_sensor {
 namespace pipeline {
@@ -22,11 +24,13 @@ void WriteSbirsInstallMatrices(std::uint32_t satellite_id,
                                const oneq::coordinate::EulerAnglesDeg& mount_deg,
                                const oneq::coordinate::EulerAnglesDeg& misalignment_deg);
 
-// 规范口径（验收判定标准 第8项）：每周期一行 卫星ID/真值ECEF/实际ECEF/定位误差ECEF/模长。
+// 规范口径（验收判定标准 第8项）：每周期一行 卫星ID/真值位置ECEF/实际位置ECEF/
+// 定位误差ECEF/模长/真值速度ECEF/实际速度ECEF/速度误差ECEF。
 void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
                            float orbit_sigma_deg, double reference_range_m,
                            float nav_position_sigma_m,
-                           const session::SbirsVector3M& satellite_ecef);
+                           const session::SbirsVector3M& satellite_ecef,
+                           const session::SbirsVector3M& satellite_velocity_ecef);
 
 void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
                           std::uint64_t target_id, double az_error_deg, double el_error_deg);
@@ -54,6 +58,28 @@ void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,
                                std::uint32_t cycle,
                                const std::vector<session::SbirsDetectionLifecycleEvent>& events,
                                const session::SbirsCycleInput& input);
+
+/**
+ * @brief 验收判定标准 第58项：目标与红外环境场景输入投影 → log/IRExternalInterface.log。
+ *
+ * 记录目标数量、逐目标状态数组（ECEF 位置/速度、有效标志、红外辐射强度）、背景辐射
+ * 亮度与基础大气透过率。背景噪声分量由载荷/环境在模型内部计算，本项只投影输入事实。
+ */
+void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environment,
+                                  double background_radiance_w_sr_m2,
+                                  double detector_temperature_k, float sim_time_sec,
+                                  std::uint32_t cycle, std::uint32_t satellite_id,
+                                  const session::SbirsSceneTargetList& scene);
+
+/**
+ * @brief 验收判定标准 第67项：红外观测与航迹输出接口测试 → log/IRExternalInterface.log。
+ *
+ * 分三层输出：原始观测（检测 ID/ECI 方位俯仰/IR SNR/阶段/检测标志）、归属诊断
+ *（目标 ID 与估计距离，显式标注非被动红外直接测距）、跟踪状态（状态估计与协方差）。
+ */
+void WriteSbirsExternalObservationOutput(
+    std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
+    const std::vector<SbirsPipelineDetection>& detections, const SbirsPipelineSnapshot& snapshot);
 
 }  // namespace pipeline
 }  // namespace sbirs_sensor

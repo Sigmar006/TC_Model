@@ -2,6 +2,13 @@
  * @file AcceptanceFileLog.h
  * @brief 分层验收日志落盘：各层独立文件，与 1q_library.log 解耦。
  *
+ * 目标物理文件（验收判定标准 §0「开发落盘口径」，2026-09-28）只有六个：
+ * `log/SatelliteTarget.log`（红外普通功能 + 融合/推演/精度归并）、
+ * `log/RadarOutput.log`（雷达普通功能）、`log/RadarExternalInterface.log`、
+ * `log/IRExternalInterface.log`、`log/RadarInternalInterface.log`、
+ * `log/IRInternalInterface.log`。融合、推演、精度不再生成独立验收文件，
+ * 其原编译开关只作功能控制。
+ *
  * 路径优先级：OpenAcceptanceLog 显式路径 > 环境变量 > 编译期默认文件名。
  * 覆写语义：同一进程内首次打开截断旧文件（重跑进程得到干净的验收文件），
  * 进程内再次打开（会话重启）追加，保住本进程已写行。
@@ -17,15 +24,12 @@ namespace oneq {
 namespace logging {
 
 enum class AcceptanceChannel {
-  kOpir = 0,
-  kRir = 1,
-  kFusion = 2,
-  kInference = 3,
-  kPrecision = 4,
-  kIrInternalInterface = 5,
-  kRadarInternalInterface = 6,
-  kRadarOutput = 7,
-  kSatelliteTarget = 8,
+  kSatelliteTarget = 0,        /**< 红外普通功能 + 融合/推演/精度归并。 */
+  kRadarOutput = 1,            /**< 雷达普通功能。 */
+  kRadarExternalInterface = 2, /**< 雷达对外/外部接口。 */
+  kIrExternalInterface = 3,    /**< 红外对外/外部接口。 */
+  kRadarInternalInterface = 4, /**< 雷达内部接口。 */
+  kIrInternalInterface = 5,    /**< 红外内部接口。 */
 };
 
 const std::string& CurrentAcceptanceLogOutputDirectory();

@@ -28,6 +28,7 @@ namespace {
 using oneq::logging::FormatF;
 using oneq::logging::FormatPairDeg;
 using oneq::logging::FormatVec3;
+using oneq::logging::YesNo;
 
 std::string FormatRotation(const oneq::coordinate::RotationMatrix3d& r) {
   return "[[" + FormatF(r.m00, 6) + "," + FormatF(r.m01, 6) + "," + FormatF(r.m02, 6) + "];[" +
@@ -148,7 +149,8 @@ void WriteSbirsInstallMatrices(std::uint32_t satellite_id,
 void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
                            float orbit_sigma_deg, double reference_range_m,
                            float nav_position_sigma_m,
-                           const session::SbirsVector3M& satellite_ecef) {
+                           const session::SbirsVector3M& satellite_ecef,
+                           const session::SbirsVector3M& satellite_velocity_ecef) {
   if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -186,8 +188,14 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
   }
   const double err_norm = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-  // 规范口径（验收判定标准 第8项）：只写真值ECEF/实际ECEF/定位误差ECEF/模长 + 卫星ID；
-  // 不输出东/北/天统计、会话 n、均值/RMS、分量 σ 与口径说明。
+  // 规范口径（验收判定标准 第8项）：真值/实际位置ECEF、定位误差ECEF、模长，以及
+  // 真值/实际速度ECEF 与速度误差ECEF + 卫星ID；不输出东/北/天统计、会话 n、均值/RMS、
+  // 分量 σ 与口径说明。
+  // 速度误差：与位置误差同源抽样（同一 σ 口径），仅作模型动态参数输出，不参与位置阈值判定。
+  const double vel_sigma = nav_sigma * 0.01;  // 速度误差量级：导航 σ 的 1%（m/s）
+  const double dvx = vel_sigma * SampleNormal(cycle, 67U + sat_salt);
+  const double dvy = vel_sigma * SampleNormal(cycle, 71U + sat_salt);
+  const double dvz = vel_sigma * SampleNormal(cycle, 73U + sat_salt);
   std::string nav = "卫星ID=" + std::to_string(satellite_id);
   if (have_truth_ecef) {
     // ECEF 误差向量 = ENU 分量经本地东北天基旋转合成；实际 ECEF = 真值 + 误差向量。
@@ -213,18 +221,29 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
     const double vec_x = dx * east_x + dy * north_x + dz * up_x;
     const double vec_y = dx * east_y + dy * north_y + dz * up_y;
     const double vec_z = dy * north_z + dz * up_z;
-    nav += " 真值ECEF=";
+    nav += " 真值位置ECEF=";
     nav += FormatVec3(satellite_ecef.x, satellite_ecef.y, satellite_ecef.z, 1);
-    nav += "m 实际ECEF=";
+    nav += "m 实际位置ECEF=";
     nav += FormatVec3(satellite_ecef.x + vec_x, satellite_ecef.y + vec_y,
                       satellite_ecef.z + vec_z, 1);
     nav += "m 定位误差ECEF=(" + FormatF(vec_x, 1) + "," + FormatF(vec_y, 1) + "," +
            FormatF(vec_z, 1) + ")m";
+    nav += " 真值速度ECEF=";
+    nav += FormatVec3(satellite_velocity_ecef.x, satellite_velocity_ecef.y,
+                      satellite_velocity_ecef.z, 1);
+    nav += "m/s 实际速度ECEF=";
+    nav += FormatVec3(satellite_velocity_ecef.x + dvx, satellite_velocity_ecef.y + dvy,
+                      satellite_velocity_ecef.z + dvz, 1);
+    nav += "m/s 速度误差ECEF=(" + FormatF(dvx, 3) + "," + FormatF(dvy, 3) + "," +
+           FormatF(dvz, 3) + ")m/s";
   } else {
     // 传入 ECEF 不可用：位置字段如实记不可用，误差向量按导航 σ 三维抽样。
-    nav += " 真值ECEF=不可用 实际ECEF=不可用";
+    nav += " 真值位置ECEF=不可用 实际位置ECEF=不可用";
     nav += " 定位误差ECEF=(" + FormatF(dx, 1) + "," + FormatF(dy, 1) + "," + FormatF(dz, 1) +
            ")m";
+    nav += " 真值速度ECEF=不可用 实际速度ECEF=不可用";
+    nav += " 速度误差ECEF=(" + FormatF(dvx, 3) + "," + FormatF(dvy, 3) + "," +
+           FormatF(dvz, 3) + ")m/s";
   }
   nav += " |定位误差|=" + FormatF(err_norm, 1) + "m";
   SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "卫星自身定位误差功能测试", nav);
@@ -236,12 +255,16 @@ void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::u
     return;
   }
   constexpr double kDegToRad = 0.017453292519943295;
-  // 规范口径（验收判定标准 第9项）：只写 ECI 测角残差（量测−真值，rad）+
-  // 相对卫星ID/目标ID；测量/真值角本身、会话 RMSE、σ 来源不写进本项。
+  constexpr double kDegToArcsec = 3600.0;
+  // 规范口径（验收判定标准 第9项）：写 ECI 测角残差（量测−真值，rad；须补 arcsec 以便
+  // 与 5 arcsec 判定句直接比对）+ 相对卫星ID/目标ID；测量/真值角本身、会话 RMSE、
+  // σ 来源不写进本项。
   std::string content = "相对卫星ID=" + std::to_string(satellite_id);
   content += " 目标ID=" + std::to_string(target_id);
   content += " 测角残差方位/俯仰(ECI)=(" + FormatF(az_error_deg * kDegToRad, 8) + "," +
              FormatF(el_error_deg * kDegToRad, 8) + ")rad";
+  content += " 测角残差方位/俯仰=(" + FormatF(az_error_deg * kDegToArcsec, 2) + "," +
+             FormatF(el_error_deg * kDegToArcsec, 2) + ")arcsec";
   SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "红外载荷角误差功能测试", content);
 }
 
@@ -444,6 +467,158 @@ void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,
                                            found->second->position_ecef_m.z, 1);
     }
     SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "特殊事件监测与提示功能测试", content);
+  }
+}
+
+void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environment,
+                                  double background_radiance_w_sr_m2,
+                                  double detector_temperature_k, float sim_time_sec,
+                                  std::uint32_t cycle, std::uint32_t satellite_id,
+                                  const session::SbirsSceneTargetList& scene) {
+  // 验收判定标准 第58项：目标与红外环境场景输入接口测试 → log/IRExternalInterface.log。
+  // 记录目标数量、目标状态数组、红外辐射特征、背景辐射与大气透过率；场景有效期字段已删除。
+  std::string head = "卫星ID=" + std::to_string(satellite_id);
+  head += " 目标数量=" + std::to_string(scene.size());
+  head += " 背景辐射亮度=" + FormatF(background_radiance_w_sr_m2, 4) + "W/(sr·m^2)";
+  head += " 基础大气透过率=" +
+          FormatF(static_cast<double>(environment.base_atmospheric_transmittance), 6);
+  head += " 环境温度=" + FormatF(static_cast<double>(environment.temperature_c), 2) + "C";
+  head += " 相对湿度=" +
+          FormatF(static_cast<double>(environment.relative_humidity_percent), 2) + "%";
+  if (detector_temperature_k > 0.0) {
+    head += " 探测器温度=" + FormatF(detector_temperature_k, 2) + "K";
+  }
+  SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "目标与红外环境场景输入接口测试", head);
+
+  // 目标状态数组：逐目标 ECEF 位置/速度、有效标志与红外辐射特征（辐射强度）。
+  for (const session::SbirsSceneTarget& target : scene) {
+    std::string row = "卫星ID=" + std::to_string(satellite_id);
+    row += " 目标ID=" + std::to_string(target.target_id);
+    row += " 目标名称=" +
+           (target.target_name.empty() ? std::string("未提供") : target.target_name);
+    row += " 目标状态=" + std::string(target.active ? "有效" : "无效");
+    row += " 位置ECEF=" + FormatVec3(target.position_ecef_m.x, target.position_ecef_m.y,
+                                     target.position_ecef_m.z, 3) + "m";
+    if (target.has_velocity_ecef_m_per_s) {
+      row += " 速度ECEF=" + FormatVec3(target.velocity_ecef_m_per_s.x,
+                                       target.velocity_ecef_m_per_s.y,
+                                       target.velocity_ecef_m_per_s.z, 3) + "m/s";
+    }
+    row += " 红外辐射强度=" + FormatF(target.radiant_intensity_w_per_sr, 6) + "W/sr";
+    SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "目标与红外环境场景输入接口测试", row);
+  }
+}
+
+namespace {
+
+/** @brief Eigen 方阵 → "[[a,b];[c,d]]" 文本（验收行内联协方差用）。 */
+template <typename MatrixType>
+std::string FormatEigenMatrix(const MatrixType& matrix) {
+  std::string text = "[";
+  for (int row = 0; row < matrix.rows(); ++row) {
+    if (row != 0) {
+      text += ";";
+    }
+    text += "[";
+    for (int col = 0; col < matrix.cols(); ++col) {
+      if (col != 0) {
+        text += ",";
+      }
+      text += FormatF(static_cast<double>(matrix(row, col)), 6);
+    }
+    text += "]";
+  }
+  text += "]";
+  return text;
+}
+
+}  // namespace
+
+void WriteSbirsExternalObservationOutput(
+    std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
+    const std::vector<SbirsPipelineDetection>& detections, const SbirsPipelineSnapshot& snapshot) {
+  // 验收判定标准 第67项：红外观测与航迹输出接口测试 → log/IRExternalInterface.log。
+  // 分层输出，不混淆语义：
+  //   ① 原始观测层：检测 ID、ECI 方位/俯仰、IR SNR、观测阶段、检测标志；
+  //   ② 归属/诊断层：目标 ID 与估计距离（明确标注「非被动红外直接测距」）；
+  //   ③ 跟踪状态层：内部滤波状态估计与状态协方差（按目标 ID 关联）。
+  // SCR 与目标类别字段已删除，不写。
+  std::size_t observed_count = 0U;
+  for (const SbirsPipelineDetection& detection : detections) {
+    if (detection.record.detected) {
+      ++observed_count;
+    }
+  }
+  std::string head = "卫星ID=" + std::to_string(satellite_id);
+  head += " 观测数量=" + std::to_string(observed_count);
+  head += " 目标数量=" + std::to_string(detections.size());
+  SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "红外观测与航迹输出接口测试", head);
+
+  for (const SbirsPipelineDetection& detection : detections) {
+    const output::SbirsDetectionRecord& record = detection.record;
+    const attribution::SbirsDetectionAttributionRecord& attribution = detection.attribution;
+    if (!record.detected) {
+      continue;  // 未过门记录不属于对外观测输出
+    }
+    std::string row = "卫星ID=" + std::to_string(satellite_id);
+    row += " 观测ID=" + std::to_string(record.detection_id);
+    row += " 目标ID=" + std::to_string(attribution.target_id);
+    row += " 检测标志=" + std::string(YesNo(record.detected));
+    row += " 方位(ECI)=" + FormatF(static_cast<double>(record.azimuth_rad), 8) + "rad";
+    row += " 俯仰(ECI)=" + FormatF(static_cast<double>(record.elevation_rad), 8) + "rad";
+    row += " IR_SNR=" + FormatF(static_cast<double>(record.infrared_snr_linear), 6);
+    row += " 观测阶段=";
+    switch (record.observation_stage) {
+      case output::SbirsObservationStage::kWideFieldSearch:
+        row += "WFOV";
+        break;
+      case output::SbirsObservationStage::kNarrowFieldAcquisition:
+        row += "NFOV捕获";
+        break;
+      case output::SbirsObservationStage::kNarrowFieldTrack:
+        row += "NFOV跟踪";
+        break;
+    }
+    // 归属/诊断层：显式标注不是被动红外载荷的直接测距结果。
+    row += " 引导估计距离=" + FormatF(static_cast<double>(attribution.estimated_range_m), 1) +
+           "m(归属诊断,非被动红外直接测距)";
+    SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "红外观测与航迹输出接口测试", row);
+
+    // 跟踪状态层：优先 IMM 合成状态，其次 EKF/IMM 单模型状态，最后角度 CV-KF 状态。
+    std::string state_row = "卫星ID=" + std::to_string(satellite_id);
+    state_row += " 目标ID=" + std::to_string(attribution.target_id);
+    bool wrote_state = false;
+    const auto imm_found = snapshot.imm_snapshots.find(attribution.target_id);
+    if (snapshot.imm_active && imm_found != snapshot.imm_snapshots.end() &&
+        !imm_found->second.model_states.empty()) {
+      const tracking::SbirsImmModelState& model = imm_found->second.model_states.front();
+      state_row += " 状态估计来源=IMM";
+      state_row += " 状态向量=" + FormatEigenMatrix(model.state.mean);
+      state_row += " 状态协方差=" + FormatEigenMatrix(model.state.covariance);
+      state_row += " 模型权重=" + FormatF(static_cast<double>(model.weight), 6);
+      wrote_state = true;
+    } else {
+      const auto filter_found = snapshot.filter_states.find(attribution.target_id);
+      if (filter_found != snapshot.filter_states.end()) {
+        state_row += " 状态估计来源=EKF";
+        state_row += " 状态向量=" + FormatEigenMatrix(filter_found->second.mean);
+        state_row += " 状态协方差=" + FormatEigenMatrix(filter_found->second.covariance);
+        wrote_state = true;
+      } else {
+        const auto angle_found = snapshot.angle_kf_states.find(attribution.target_id);
+        if (angle_found != snapshot.angle_kf_states.end()) {
+          state_row += " 状态估计来源=角度CV-KF";
+          state_row += " 状态向量=" + FormatEigenMatrix(angle_found->second.mean);
+          state_row += " 状态协方差=" + FormatEigenMatrix(angle_found->second.covariance);
+          wrote_state = true;
+        }
+      }
+    }
+    // 过滤/角度后端均未持有该目标状态时不伪造估计值（§0 规则3）。
+    if (wrote_state) {
+      SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "红外观测与航迹输出接口测试",
+                                       state_row);
+    }
   }
 }
 

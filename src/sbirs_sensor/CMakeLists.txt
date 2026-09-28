@@ -42,13 +42,14 @@ set(SBIRS_CORE_SOURCES
 
 oneq_add_component(sbirs_engine SOURCES ${SBIRS_ENGINE_SOURCES})
 oneq_add_component(sbirs_core SOURCES ${SBIRS_CORE_SOURCES})
-# OPIR 普通功能验收写入 SatelliteTarget.log，内部接口证据写入
-# IRInternalInterface.log；性能测试不写验收日志。engine 出周期物理量，core 出生命周期事件。
+# OPIR 普通功能验收写入 SatelliteTarget.log，红外外部接口项（第 57、58、67、68 项）写入
+# IRExternalInterface.log，内部接口证据写入 IRInternalInterface.log；性能测试不写验收日志。
+# engine 出周期物理量，core 出生命周期事件。
 if(ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG)
     target_compile_definitions(sbirs_engine PRIVATE ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=1)
     target_compile_definitions(sbirs_core PRIVATE ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=1)
 endif()
-# 第 11–14 项按验收文件独立判定：SBIRS 物理量同时写入 fusion_acceptance.log。
+# 第 11–14 项：融合域与 OPIR 普通功能归并到同一 SatelliteTarget.log（单次写出，不再双写）。
 if(ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG)
     target_compile_definitions(sbirs_engine PRIVATE ONEQ_ENABLE_FUSION_ACCEPTANCE_LOG=1)
 endif()

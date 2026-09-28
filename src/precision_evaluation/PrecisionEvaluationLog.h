@@ -1,6 +1,10 @@
 ﻿/**
  * @file PrecisionEvaluationLog.h
- * @brief 精度评估验收日志宏：按项写入 precision_acceptance.log（四段同一行）。
+ * @brief 精度评估验收日志宏：按项写入 log/SatelliteTarget.log（四段同一行）。
+ *
+ * 2026-09-28 归并：精度评估不再生成独立验收文件，原
+ * `ONEQ_ENABLE_PRECISION_EVALUATION_LOG` 开关保留为功能控制，落盘通道统一为
+ * SatelliteTarget。
  */
 
 #ifndef ONEQ_SRC_PRECISION_EVALUATION_PRECISION_EVALUATION_LOG_H_
@@ -13,7 +17,8 @@
 
 #define PRECISION_EVAL_LOG_ENABLED() true
 #define PRECISION_EVAL_RECORD(text) \
-  ::oneq::logging::WriteAcceptanceLog(::oneq::logging::AcceptanceChannel::kPrecision, (text))
+  ::oneq::logging::WriteAcceptanceLog( \
+      ::oneq::logging::AcceptanceChannel::kSatelliteTarget, (text))
 #define PRECISION_EVAL_ITEM(sim_time, cycle, item, content) \
   PRECISION_EVAL_RECORD(::oneq::logging::FormatAcceptanceLine((sim_time), (cycle), (item), (content)))
 

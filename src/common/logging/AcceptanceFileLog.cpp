@@ -359,12 +359,20 @@ const std::string& CurrentAcceptanceLogOutputDirectory() {
 
 ScopedAcceptanceLogOutputDirectory::ScopedAcceptanceLogOutputDirectory(
     const std::string& output_directory)
-    : previous_output_directory_(ThreadAcceptanceLogOutputDirectory()) {
-  ThreadAcceptanceLogOutputDirectory() = output_directory;
+    : previous_output_directory_(ThreadAcceptanceLogOutputDirectory()),
+      active_(!output_directory.empty()) {
+  // 空目录表示“本会话不指定目录”，而不是“清空已有目录”：后者会让验收日志退回
+  // 进程工作目录的编译期默认路径，使 `--output-dir` / 环境变量钉扎失效
+  //（2026-09-28 端到端核对发现：会话配置留空时验收日志没有落到场景输出目录）。
+  if (active_) {
+    ThreadAcceptanceLogOutputDirectory() = output_directory;
+  }
 }
 
 ScopedAcceptanceLogOutputDirectory::~ScopedAcceptanceLogOutputDirectory() {
-  ThreadAcceptanceLogOutputDirectory() = previous_output_directory_;
+  if (active_) {
+    ThreadAcceptanceLogOutputDirectory() = previous_output_directory_;
+  }
 }
 
 void OpenAcceptanceLog(AcceptanceChannel channel, const char* path) {

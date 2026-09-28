@@ -256,7 +256,7 @@ void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::u
   }
   constexpr double kDegToRad = 0.017453292519943295;
   constexpr double kDegToArcsec = 3600.0;
-  // 规范口径（验收判定标准 第9项）：写 ECI 测角残差（量测−真值，rad；须补 arcsec 以便
+  // 规范口径（验收判定标准 第9项）：写 ECI 测角残差（量测-真值，rad；须补 arcsec 以便
   // 与 5 arcsec 判定句直接比对）+ 相对卫星ID/目标ID；测量/真值角本身、会话 RMSE、
   // σ 来源不写进本项。
   std::string content = "相对卫星ID=" + std::to_string(satellite_id);

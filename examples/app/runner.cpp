@@ -429,7 +429,8 @@ int RunScene(const std::string& scene_path, const RunOptions& options) {
             << "\n"
             << "log output -> " << output_dir
             << " (integration_events.log / integration_views.log / "
-               "SatelliteTarget.log / RadarOutput.log / fusion/inference/precision_acceptance.log / "
+               "SatelliteTarget.log / RadarOutput.log / RadarExternalInterface.log / "
+               "IRExternalInterface.log / RadarInternalInterface.log / IRInternalInterface.log / "
                "RadarAntennaGainPatterndata.csv / Rir_scan_pattern.csv / "
                "platform_track.csv / target_truth.csv / route_plan.csv / zones.csv"
             << (rir_viz_src != nullptr ? " / rir_site.csv / rir_targets.csv" : "") << ")\n";

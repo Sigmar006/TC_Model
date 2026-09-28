@@ -470,7 +470,7 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
   const double conf_sidelobe_db = static_cast<double>(antenna.max_sidelobe_level_db);
   const double conf_backlobe_db = static_cast<double>(antenna.backlobe_level_db);
 
-  // 误差口径：|反算 − 配置| / |配置|；配置为 0 时退化为绝对差。dB 量按同式给出比值误差，
+  // 误差口径：|反算 - 配置| / |配置|；配置为 0 时退化为绝对差。dB 量按同式给出比值误差，
   // 反算值与配置值一并落盘，便于验证程序按各自口径复核。
   auto relative_error = [](double derived, double configured) -> double {
     if (!std::isfinite(derived) || !std::isfinite(configured)) {
@@ -544,13 +544,13 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   const bool has_bank = TryBuildAcceptanceBank(input, &bank);
 
   // 验收判定标准 第29项：逐目标一行记录 目标ID/斜距/目标RCS/回波功率/噪声功率/干扰功率。
-  // 2026-09-28 按主文档补全：本项不能只写回波功率——同距离不同 RCS（1 m² 与 0.025 m²）
+  // 2026-09-28 按主文档补全：本项不能只写回波功率——同距离不同 RCS（1 m^2 与 0.025 m^2）
   // 的 16 dB 差值判据需要同一行同时给出六项，外部验证程序据斜距配对样本计算功率差。
   // 干扰功率取该检测单元实际收到的干扰功率（无干扰时为 0）。
   {
     std::string echo = id;
     echo += " 斜距=" + FormatF(input.range_m, 1) + "m";
-    echo += " 目标RCS=" + FormatF(input.rcs_m2, 3) + "m²";
+    echo += " 目标RCS=" + FormatF(input.rcs_m2, 3) + "m^2";
     echo += " 回波功率=" + FormatSci(FromDb(input.echo_power_dbw)) + "W";
     echo += " 噪声功率=" + FormatSci(thermal) + "W";
     echo += " 干扰功率=" +
@@ -694,7 +694,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
                                      &max_range_m)) {
       Emit(t, cycle, "恒虚警检测功能测试",
            id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
-               "m 依据RCS=" + FormatF(input.rcs_m2, 3) + "m²");
+               "m 依据RCS=" + FormatF(input.rcs_m2, 3) + "m^2");
     }
   }
 
@@ -929,9 +929,9 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
-  (void)gate_threshold;  // 波门不再随行输出（马氏距离²为派生量，验收行不写）。
+  (void)gate_threshold;  // 波门不再随行输出（马氏距离^2为派生量，验收行不写）。
   // 验收判定标准 第41项：逐量测一行（目标ID/位置LLA/检测概率/关联结果）；
-  // 计数汇总、马氏距离²（派生）与重复的更新后航迹集合行不写。
+  // 计数汇总、马氏距离^2（派生）与重复的更新后航迹集合行不写。
   for (const tracking::RirTrackMeasurement& measurement : association.measurements) {
     std::string content = "目标ID=" + std::to_string(measurement.external_target_id);
     oneq::coordinate::EcefPositionM measurement_ecef;
@@ -1191,7 +1191,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
     Emit(sim_time_sec, cycle, "综合特征识别功能测试", comprehensive);
   }
 
-  // 第38项 角度和距离测量：量测角距一行；目标量测误差统计=量测−真值（可计算口径，
+  // 第38项 角度和距离测量：量测角距一行；目标量测误差统计=量测-真值（可计算口径，
   // 真值上下文缺失时省略误差行）。方位误差取最短角差。
   if (has_polar) {
     Emit(sim_time_sec, cycle, "对目标的角度和距离进行测量功能测试",
@@ -1234,7 +1234,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   Emit(sim_time_sec, cycle, kMultiItem, track_target_id + " " + motion);
 
   // 第42项 跟踪滤波：当前估计/协方差/估计误差指标三行（下一时刻外推、协方差迹、
-  // IMM 权重为超出规范或分子项，不写；误差指标=滤波−真值，无真值时省略该行）。
+  // IMM 权重为超出规范或分子项，不写；误差指标=滤波-真值，无真值时省略该行）。
   if (have_frame) {
     Emit(sim_time_sec, cycle, "跟踪滤波功能测试",
          track_target_id + " 位置（ECEF）=" +
@@ -1702,7 +1702,7 @@ bool TryExportRirAntennaPatternCsv(const config::hardware::RirAntennaConfig& ant
   beamwidth.az_beamwidth_deg = antenna.nominal_az_beamwidth_deg;
   beamwidth.el_beamwidth_deg = antenna.nominal_el_beamwidth_deg;
   config::RirAzimuthElevationDeg pointing(0.0f, 0.0f);
-  // 2026-08-31 用户裁定：全向网格 az 0–360° × el −90–90°（az/el 正好无冗余覆盖
+  // 2026-08-31 用户裁定：全向网格 az 0–360° × el -90–90°（az/el 正好无冗余覆盖
   // 全空间；主瓣/副瓣/尾瓣全落在数据内），步长 = 波束宽度（不再用 bw/20 高密度；
   // 下限 0.1° 防窄束配置行数爆炸）。主瓣峰值点 (0,0) 始终在格点上。旧 ±5·bw
   // 自适应网格见评审 2026-08-26 条14（已废止）；同日修订：el 初版 ±180° 有

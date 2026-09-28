@@ -24,7 +24,7 @@
     "scan_direction": "kIncreasingAzimuth",
     "scan_azimuth_reference": "kEciAbsolute",
     "scan_center_el_deg": -90.0,
-    "scan_rate_deg_per_sec": 10.0,
+    "scan_rate_deg_per_sec": 26,
     "min_range_m": 1000.0,
     "max_range_m": 5.0e7,
     "frame_rate_hz": 10.0,

@@ -131,7 +131,7 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
 
 /**
  * @param[in] platform_lla 平台 LLA（雷达局部 ENU 的绝对锚点；量测位置 LLA 换算用）。
- * @param[in] gate_threshold 关联波门（马氏距离² 门限，无量纲；行内量纲说明用）。
+ * @param[in] gate_threshold 关联波门（马氏距离^2 门限，无量纲；行内量纲说明用）。
  */
 void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
                          const tracking::RirAssociationResult& association,

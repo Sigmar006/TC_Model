@@ -34,7 +34,13 @@ enum class AcceptanceChannel {
 
 const std::string& CurrentAcceptanceLogOutputDirectory();
 
-/** @brief 在当前线程内覆盖验收日志输出目录，析构时恢复上一层目录。 */
+/**
+ * @brief 在当前线程内覆盖验收日志输出目录，析构时恢复上一层目录。
+ *
+ * @note 传入**空字符串**表示“本会话不指定目录”，既不覆盖也不清空当前作用域，
+ *       验收日志继续按环境变量 → 编译期默认路径解析。这样 `--output-dir` 与
+ *       `BindAcceptanceLogPaths` 的钉扎在会话配置留空时仍然生效。
+ */
 class ScopedAcceptanceLogOutputDirectory final {
  public:
   explicit ScopedAcceptanceLogOutputDirectory(const std::string& output_directory);
@@ -46,6 +52,7 @@ class ScopedAcceptanceLogOutputDirectory final {
 
  private:
   std::string previous_output_directory_;
+  bool active_{false};
 };
 
 void OpenAcceptanceLog(AcceptanceChannel channel, const char* path);

@@ -429,11 +429,9 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     // 2026-09-28 合并：第48项要求记录方位/俯仰扫描范围（波位表上下限），与 CSV 同源。
     runtime::WriteRirScanRangeSummary(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                       input.input_cycle_index, scan_pattern);
-    runtime::WriteRirAntennaPatternSummary(controller.EffectiveSensorEntityId(), input.sim_time_sec,
-                                           input.input_cycle_index,
-                                           config.hardware.antenna.main_beam_gain_db,
-                                           beamwidth.az_beamwidth_deg, beamwidth.el_beamwidth_deg);
-    // 2026-09-28 按主文档补全：第28项还须从实际方向图采样反算特征并与配置逐项比对（5%）。
+    // 2026-09-28 按主文档补全：第28项从实际方向图采样反算特征并与配置逐项比对（5%）。
+    // 早期的“直接打印配置峰值/宽度”摘要已删除——它与反算校验并存会造成自证，且不满足
+    // “只记录校验结果”的边界要求。
     runtime::WriteRirAntennaPatternDerived(controller.EffectiveSensorEntityId(),
                                            input.sim_time_sec, input.input_cycle_index,
                                            config.hardware.antenna);

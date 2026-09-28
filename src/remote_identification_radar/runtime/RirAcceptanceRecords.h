@@ -81,12 +81,12 @@ struct RirDetectionAcceptInput {
 std::string ResolveRirAntennaPatternCsvPath();
 std::string ResolveRirScanPatternCsvPath();
 
-void WriteRirAntennaPatternSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                                   float peak_gain_dbi, float bw_az_deg, float bw_el_deg);
-
 /**
  * @brief 第28项：从实际方向图采样反算峰值增益/波束宽度/最大旁瓣/后瓣电平，与配置逐项
- *        比较后按主文档 `5%` 判据输出各项误差与整体结果。
+ *        比较后按主文档 `5%` 判据输出各项判据与整体结果。
+ * @note 2026-09-28 复核后本项**只此一个**输出入口：早期的
+ *       `WriteRirAntennaPatternSummary`（直接打印配置峰值/宽度）已删除，避免与
+ *       “反算校验”并存造成自证。
  */
 void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
                                    std::uint32_t cycle,
@@ -144,6 +144,25 @@ void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
 
 void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
                           const std::vector<tracking::RirTrackState>& tracks);
+
+/**
+ * @brief 第36项：按目标检测概率反解最大探测距离（四次方根距离定律）。
+ *
+ * `R = R_now · (SNR_now / SNR_req)^(1/4)`，其中 `SNR_req` 由同一 Marcum Q 检测模型对
+ * `pd_target` 二分反解。方向约定：当前 SNR 高于所需值时 R > R_now（目标可以更远），
+ * 低于时 R < R_now；当前 SNR 越高，反解距离单调不减。
+ *
+ * @param[in]  current_range_m 当前斜距（m，须 > 0）。
+ * @param[in]  current_snr_db  当前单脉冲 SNR（dB）。
+ * @param[in]  pd_target       目标检测概率（0,1）。
+ * @param[in]  pfa             虚警概率（0,1）。
+ * @param[in]  num_pulses      积累脉冲数（≥1）。
+ * @param[out] max_range_m     反解出的最大探测距离（m）。
+ * @return 入参合法且反解有解时为 true；否则不改输出。
+ */
+bool TryComputeDetectionRangeAtPd(double current_range_m, double current_snr_db,
+                                  double pd_target, double pfa, int num_pulses,
+                                  double* max_range_m);
 
 /**
  * @brief 雷达局部 ENU 位置换斜距与视线角（与 RirController::ComputeLookAngles 同口径）。

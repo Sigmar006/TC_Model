@@ -176,6 +176,10 @@ class SbirsPipeline {
   foundation::SbirsRandomSource sensor_like_output_random_source_;
   SbirsCuePredictor cue_predictor_{};
   SbirsTrackingCoordinator tracking_coordinator_{};
+  // 窄场镜头转向计时（验收判定标准 第14项「记录宽视场镜头转向时间」）：目标进入
+  // kSlewing 的周期记录起始时刻，捕获成功时按差值给出转向时长（s）；仅用于验收行
+  // 取证，不参与任何调度/滤波计算。
+  std::map<std::uint64_t, float> nfov_slew_start_time_s_{};
 };
 
 }  // namespace pipeline

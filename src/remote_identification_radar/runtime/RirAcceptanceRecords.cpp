@@ -294,6 +294,30 @@ void EmitOrNone(float sim_time_sec, std::uint32_t cycle, const char* item, const
 
 }  // namespace
 
+bool TryComputeDetectionRangeAtPd(double current_range_m, double current_snr_db,
+                                  double pd_target, double pfa, int num_pulses,
+                                  double* max_range_m) {
+  if (max_range_m == nullptr || !std::isfinite(current_range_m) || current_range_m <= 0.0 ||
+      !std::isfinite(current_snr_db) || !std::isfinite(pd_target)) {
+    return false;
+  }
+  // 四次方根距离定律：RCS/增益/带宽等条件不变时 SNR ∝ 1/R⁴，故达到目标 Pd 所需 SNR
+  // 对应的距离为 R = R_now · (SNR_now / SNR_req)^(1/4)。
+  // 2026-09-28 复核修正：早期实现把比值写反（(SNR_req/SNR_now)^(1/4)），会出现
+  // SNR 越高、最大距离反而越小的反向单调性。
+  const double snr_required_db = SolveRequiredSnrDb(pfa, num_pulses, pd_target);
+  if (!std::isfinite(snr_required_db)) {
+    return false;
+  }
+  const double snr_ratio = std::pow(10.0, (current_snr_db - snr_required_db) / 10.0);
+  const double computed_range_m = current_range_m * std::pow(snr_ratio, 0.25);
+  if (!std::isfinite(computed_range_m) || computed_range_m <= 0.0) {
+    return false;
+  }
+  *max_range_m = computed_range_m;
+  return true;
+}
+
 bool TryLookPolarFromEnuM(float east_m, float north_m, float up_m, float* range_m, float* az_deg,
                           float* el_deg) {
   if (range_m == nullptr || az_deg == nullptr || el_deg == nullptr) {
@@ -365,19 +389,6 @@ std::string ResolveRirScanPatternCsvPath() {
   return std::string(ONEQ_RIR_SCAN_PATTERN_CSV_PATH);
 }
 
-void WriteRirAntennaPatternSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                                   float peak_gain_dbi, float bw_az_deg, float bw_el_deg) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
-    return;
-  }
-  // 验收判定标准 第28项：天线方向图——日志只写峰值增益与波束宽度（2D 增益明细
-  // 在 RadarAntennaGainPatterndata.csv，路径行不写）。
-  std::string content = "雷达ID=" + std::to_string(radar_id);
-  content += " 峰值增益=" + FormatF(static_cast<double>(peak_gain_dbi), 2) + "dBi";
-  content += " 波束宽度az/el=" + FormatPairDeg(bw_az_deg, bw_el_deg, 3) + "°";
-  RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
-}
-
 void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
                                    std::uint32_t cycle,
                                    const config::hardware::RirAntennaConfig& antenna) {
@@ -386,8 +397,9 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
   }
   // 验收判定标准 第28项（2026-09-28 按主文档补全）：从**实际生成的方向图采样**反算
   // 可配置特征，再与外部参数逐项比较，按 5% 判据给出各项与整体结果。
+  // 2026-09-28 复核修正：峰值增益也必须从采样反算（早期实现直接取
+  // antenna.main_beam_gain_db，误差恒为 0，属自证），此处按网格求采样最大值。
   // 反算量：峰值增益、方位/俯仰波束宽度（主瓣 -3 dB 宽度）、最大旁瓣电平、后瓣电平。
-  // 不使用配置输入自身冒充反算值；方向图 CSV 仍按需另行导出供追溯。
   dwell::RirAntennaPatternBeamwidthDeg beamwidth;
   beamwidth.az_beamwidth_deg = antenna.nominal_az_beamwidth_deg;
   beamwidth.el_beamwidth_deg = antenna.nominal_el_beamwidth_deg;
@@ -395,12 +407,10 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
   const config::RirAzimuthElevationDeg boresight(antenna.boresight_offset_deg.az_deg,
                                                  antenna.boresight_offset_deg.el_deg);
 
-  // 方位/俯仰主轴 -3 dB 宽度：以 0.02° 步长细扫（配置波束宽度作为初始上界）。
   const double step_deg = 0.02;
   const double half_span_deg =
       std::max(1.0, 2.0 * std::max(static_cast<double>(antenna.nominal_az_beamwidth_deg),
                                    static_cast<double>(antenna.nominal_el_beamwidth_deg)));
-  const double peak_gain_dbi = static_cast<double>(antenna.main_beam_gain_db);
 
   auto evaluate_gain = [&](double delta_az_deg, double delta_el_deg) -> double {
     dwell::RirAntennaLookOffsetDeg offset;
@@ -410,34 +420,47 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
         dwell::RirEvaluateAntennaPattern(antenna, beamwidth, offset, pointing, 0.0f).gain_dbi);
   };
 
+  // 采样峰值增益：在主瓣范围内二维细扫求最大值（不读配置峰值）。
+  double derived_peak_gain_dbi = -1.0e9;
+  for (double az = -half_span_deg; az <= half_span_deg; az += step_deg) {
+    for (double el = -half_span_deg; el <= half_span_deg; el += step_deg) {
+      const double gain = evaluate_gain(az, el);
+      if (std::isfinite(gain)) {
+        derived_peak_gain_dbi = std::max(derived_peak_gain_dbi, gain);
+      }
+    }
+  }
+  if (!std::isfinite(derived_peak_gain_dbi)) {
+    return;  // 采样全部非有限：本项无有效反算值，整行省略（§0 规则3）
+  }
+
+  // -3 dB 宽度以采样峰值为基准（不再以配置峰值为基准，避免配置误差掩盖采样特征）。
   auto half_power_width_deg = [&](bool along_azimuth) -> double {
-    const double target_dbi = peak_gain_dbi - 3.0;
-    double width = 0.0;
+    const double target_dbi = derived_peak_gain_dbi - 3.0;
     for (double offset = 0.0; offset <= half_span_deg; offset += step_deg) {
       const double gain =
           along_azimuth ? evaluate_gain(offset, 0.0) : evaluate_gain(0.0, offset);
       if (gain <= target_dbi) {
-        width = 2.0 * offset;  // 主瓣对称：单侧 -3 dB 点 × 2
-        break;
+        return 2.0 * offset;  // 主瓣对称：单侧 -3 dB 点 × 2
       }
     }
-    return width;
+    return std::numeric_limits<double>::quiet_NaN();
   };
 
   const double derived_az_bw_deg = half_power_width_deg(true);
   const double derived_el_bw_deg = half_power_width_deg(false);
 
-  // 后瓣电平：与波束指向相反方向（离轴 180°）的增益。
+  // 后瓣电平：与波束指向相反方向（离轴 180°）的采样增益，相对采样峰值。
   const double derived_backlobe_db =
-      evaluate_gain(180.0 - boresight.az_deg, 0.0) - peak_gain_dbi;
+      evaluate_gain(180.0 - boresight.az_deg, 0.0) - derived_peak_gain_dbi;
 
-  // 最大旁瓣电平：主瓣外（离轴 > 半波束宽）方位扫描的最大增益。
+  // 最大旁瓣电平：主瓣外（离轴 > 半波束宽）方位扫描的最大采样增益，相对采样峰值。
   double derived_sidelobe_db = -60.0;
   for (double offset = 1.5 * antenna.nominal_az_beamwidth_deg; offset <= 180.0;
        offset += 1.0) {
     const double gain = evaluate_gain(offset, 0.0);
     if (std::isfinite(gain)) {
-      derived_sidelobe_db = std::max(derived_sidelobe_db, gain - peak_gain_dbi);
+      derived_sidelobe_db = std::max(derived_sidelobe_db, gain - derived_peak_gain_dbi);
     }
   }
 
@@ -447,7 +470,8 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
   const double conf_sidelobe_db = static_cast<double>(antenna.max_sidelobe_level_db);
   const double conf_backlobe_db = static_cast<double>(antenna.backlobe_level_db);
 
-  // 相对误差 = |反算 − 配置| / |配置|；配置为 0 时退化为绝对差（dB 量本身即差值）。
+  // 误差口径：|反算 − 配置| / |配置|；配置为 0 时退化为绝对差。dB 量按同式给出比值误差，
+  // 反算值与配置值一并落盘，便于验证程序按各自口径复核。
   auto relative_error = [](double derived, double configured) -> double {
     if (!std::isfinite(derived) || !std::isfinite(configured)) {
       return std::numeric_limits<double>::quiet_NaN();
@@ -458,29 +482,43 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
     return std::fabs(derived - configured) / std::fabs(configured);
   };
 
-  const double err_peak_gain = relative_error(peak_gain_dbi, conf_peak_gain_dbi);
+  const double err_peak_gain = relative_error(derived_peak_gain_dbi, conf_peak_gain_dbi);
   const double err_az_bw = relative_error(derived_az_bw_deg, conf_az_bw_deg);
   const double err_el_bw = relative_error(derived_el_bw_deg, conf_el_bw_deg);
   const double err_sidelobe = relative_error(derived_sidelobe_db, conf_sidelobe_db);
   const double err_backlobe = relative_error(derived_backlobe_db, conf_backlobe_db);
 
   const double kTolerance = 0.05;
-  const bool all_within =
-      std::isfinite(err_peak_gain) && err_peak_gain <= kTolerance &&
-      std::isfinite(err_az_bw) && err_az_bw <= kTolerance && std::isfinite(err_el_bw) &&
-      err_el_bw <= kTolerance && std::isfinite(err_sidelobe) &&
-      err_sidelobe <= kTolerance && std::isfinite(err_backlobe) && err_backlobe <= kTolerance;
+  auto verdict = [](double error, double tolerance) -> const char* {
+    if (!std::isfinite(error)) {
+      return "缺失";
+    }
+    return error <= tolerance ? "通过" : "不通过";
+  };
+  const char* verdict_peak = verdict(err_peak_gain, kTolerance);
+  const char* verdict_az_bw = verdict(err_az_bw, kTolerance);
+  const char* verdict_el_bw = verdict(err_el_bw, kTolerance);
+  const char* verdict_sidelobe = verdict(err_sidelobe, kTolerance);
+  const char* verdict_backlobe = verdict(err_backlobe, kTolerance);
+  const bool all_within = std::string(verdict_peak) == "通过" &&
+                          std::string(verdict_az_bw) == "通过" &&
+                          std::string(verdict_el_bw) == "通过" &&
+                          std::string(verdict_sidelobe) == "通过" &&
+                          std::string(verdict_backlobe) == "通过";
 
+  // 日志边界（本项复核要求）：只保留可追溯标识（雷达ID）、分项结果与整体结果；
+  // 反算值与配置值同样落盘，作为分项结果的依据，便于外部按各自口径复核。
   std::string content = "雷达ID=" + std::to_string(radar_id);
-  content += " 反算峰值增益=" + FormatF(peak_gain_dbi, 3) + "dBi";
+  content += " 反算峰值增益=" + FormatF(derived_peak_gain_dbi, 3) + "dBi";
+  content += " 配置峰值增益=" + FormatF(conf_peak_gain_dbi, 3) + "dBi 峰值增益判据=" + verdict_peak;
   content += " 反算波束宽度az/el=" + FormatPairDeg(derived_az_bw_deg, derived_el_bw_deg, 3) + "°";
-  content += " 反算最大旁瓣电平=" + FormatF(derived_sidelobe_db, 3) + "dB";
-  content += " 反算后瓣电平=" + FormatF(derived_backlobe_db, 3) + "dB";
-  content += " 峰值增益误差=" + FormatF(err_peak_gain, 4);
-  content += " 波束宽度误差az/el=" + FormatPairDeg(err_az_bw, err_el_bw, 4);
-  content += " 最大旁瓣误差=" + FormatF(err_sidelobe, 4);
-  content += " 后瓣误差=" + FormatF(err_backlobe, 4);
-  content += all_within ? " 方向图判据=通过(≤5%)" : " 方向图判据=不通过(>5%)";
+  content += " 配置波束宽度az/el=" + FormatPairDeg(conf_az_bw_deg, conf_el_bw_deg, 3) + "°";
+  content += " 波束宽度判据az/el=" + std::string(verdict_az_bw) + "/" + verdict_el_bw;
+  content += " 反算最大旁瓣电平=" + FormatF(derived_sidelobe_db, 3) + "dB 配置最大旁瓣电平=" +
+             FormatF(conf_sidelobe_db, 3) + "dB 最大旁瓣判据=" + verdict_sidelobe;
+  content += " 反算后瓣电平=" + FormatF(derived_backlobe_db, 3) + "dB 配置后瓣电平=" +
+             FormatF(conf_backlobe_db, 3) + "dB 后瓣判据=" + verdict_backlobe;
+  content += all_within ? " 方向图整体判据=通过(各项≤5%)" : " 方向图整体判据=不通过";
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
 }
 
@@ -643,22 +681,20 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测结果=" + YesNo(input.detected));
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测概率=" + FormatF(input.pd, 5));
   // 2026-09-28 新增要求：本项还须写「检测概率=90%的最大探测距离」及所依据的 RCS。
-  // 由当前雷达方程反解：R_90 = R_now·(SNR_req/SNR_now)^(1/4)（四次方根距离定律，RCS、
-  // 增益等其余条件不变）。SNR_req 由同一 Marcum Q 检测模型对 Pd=0.90 二分反解，不使用
-  // 任务粗筛距离或当前已探测最远距离充当该值。该字段由本轮用户要求提升为必写输出。
+  // 四次方根距离定律：RCS/增益等条件不变时 SNR ∝ 1/R⁴，故
+  //   R_90 = R_now · (SNR_now / SNR_req)^(1/4)
+  // 当前 SNR 高于所需值时比值 > 1（目标还能更远），低于时 < 1（已不足）。方向在
+  // 2026-09-28 复核中修正：早期实现把比值写反，会出现 SNR 越高、最大距离反而越小。
+  // SNR_req 由同一 Marcum Q 检测模型对 Pd=0.90 二分反解，不使用任务粗筛距离充当该值。
   if (input.has_cell && input.range_m > 0.0f) {
     const double snr_now_db = static_cast<double>(input.cell.processed_single_pulse_sinr_db);
-    const double snr_required_db =
-        SolveRequiredSnrDb(input.cfar_pfa, static_cast<int>(std::max(1U, pulses)), 0.90);
-    if (std::isfinite(snr_now_db) && std::isfinite(snr_required_db) && snr_now_db > -200.0) {
-      const double snr_ratio = std::pow(10.0, (snr_required_db - snr_now_db) / 10.0);
-      const double max_range_m =
-          static_cast<double>(input.range_m) * std::pow(snr_ratio, 0.25);
-      if (std::isfinite(max_range_m) && max_range_m > 0.0) {
-        Emit(t, cycle, "恒虚警检测功能测试",
-             id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
-                 "m 依据RCS=" + FormatF(input.rcs_m2, 3) + "m²");
-      }
+    double max_range_m = 0.0;
+    if (TryComputeDetectionRangeAtPd(static_cast<double>(input.range_m), snr_now_db, 0.90,
+                                     input.cfar_pfa, static_cast<int>(std::max(1U, pulses)),
+                                     &max_range_m)) {
+      Emit(t, cycle, "恒虚警检测功能测试",
+           id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
+               "m 依据RCS=" + FormatF(input.rcs_m2, 3) + "m²");
     }
   }
 

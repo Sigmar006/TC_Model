@@ -1642,6 +1642,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       const double az_err = AzimuthDelta(candidate.measured_azimuth_deg, azimuth_deg);
       const double el_err = candidate.measured_elevation_deg - elevation_deg;
       const double kDegToRad = 0.017453292519943295;
+      const double kDegToArcsec = 3600.0;
       // 第5项 探测角度计算：实体相对卫星的方位/俯仰（ECI、弧度制；身份字段
       // 相对卫星ID= 随行——§0 身份规则，双星场景可辨哪颗星）。
       std::string angle = "相对卫星ID=" + std::to_string(satellite_entity_id_);
@@ -1669,6 +1670,11 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                     oneq::logging::FormatF(candidate.measured_azimuth_deg * kDegToRad, 8) + "," +
                     oneq::logging::FormatF(candidate.measured_elevation_deg * kDegToRad, 8) +
                     ")rad";
+      // 2026-09-28 按主文档补全（第12项）：还须记录宽视场视线角误差（量测−真值，arcsec），
+      // 误差约束 ±360 arcsec 由外部验证程序判定；本行只落原始误差量，不写通过标志。
+      wfov_angle += " 宽视场视线角误差方位/俯仰=(" +
+                    oneq::logging::FormatF(az_err * kDegToArcsec, 2) + "," +
+                    oneq::logging::FormatF(el_err * kDegToArcsec, 2) + ")arcsec";
       SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试",
                                  wfov_angle);
       // 第11项 红外预警卫星大幅面扫描与探测：扫描幅宽（ECI rad）/目标辐射能量链/
@@ -2054,6 +2060,22 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                                  attribution::SbirsCaptureFailureReason::kNfovAcquisitionFailed);
       return;
     }
+    // 2026-09-28 按主文档补全（第14项）：宽视场镜头转向时间 = 首次「转向中」到本周期
+    // 捕获成功的时长（s）；无转向记录（首拍即在窄场内免转动捕获）时不伪造该字段。
+    if (SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED()) {
+      const auto slew_found = nfov_slew_start_time_s_.find(target_id);
+      if (slew_found != nfov_slew_start_time_s_.end()) {
+        const double turn_time_s =
+            std::max(0.0, static_cast<double>(sim_time_sec) -
+                              static_cast<double>(slew_found->second));
+        SBIRS_DUAL_ACCEPTANCE_ITEM(
+            sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
+            "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
+                std::to_string(target_id) + " 镜头转向时间=" +
+                oneq::logging::FormatF(turn_time_s, 3) + "s");
+      }
+    }
+    nfov_slew_start_time_s_.erase(target_id);
     pointing_coordinator_.PromoteToTracking(target_id);
     cue_predictor_.Release(target_id);
     // 进入跟踪即清零连续命中计数：丢锁回宽场后需重新积累 required 次命中才能再调度。
@@ -2344,12 +2366,23 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       if (focal_valid) {
         nfov += " 脱靶量m=(" + oneq::logging::FormatF(focal_offset.x_m, 6) + "," +
                 oneq::logging::FormatF(focal_offset.y_m, 6) + ")";
+        // 2026-09-28 按主文档补全（第13项）：脱靶量模（<50 m 判据的量），由同一焦平面
+        // 分量直接求得，不引入新观测量。
+        const double focal_offset_norm_m =
+            std::sqrt(static_cast<double>(focal_offset.x_m) * focal_offset.x_m +
+                      static_cast<double>(focal_offset.y_m) * focal_offset.y_m);
+        nfov += " 脱靶量模=" + oneq::logging::FormatF(focal_offset_norm_m, 5) + "m";
         nfov += " 脱靶量像素=(" + oneq::logging::FormatF(focal_offset.x_pixels, 2) + "," +
                 oneq::logging::FormatF(focal_offset.y_pixels, 2) + ")";
       }
       nfov += " 窄视场目标视线方位/俯仰(ECI)=(" +
               oneq::logging::FormatF(detection.record.azimuth_rad, 8) + "," +
               oneq::logging::FormatF(detection.record.elevation_rad, 8) + ")rad";
+      // 2026-09-28 按主文档补全（第13项）：窄视场视线角误差（量测−真值，arcsec）；
+      // ±10 arcsec 约束由外部验证程序判定，本行只落原始误差量，不写通过标志。
+      nfov += " 窄视场视线角误差方位/俯仰=(" +
+              oneq::logging::FormatF(az_err * 3600.0, 2) + "," +
+              oneq::logging::FormatF(el_err * 3600.0, 2) + ")arcsec";
       const double snr_db = 10.0 * std::log10(std::max(context.snr, 1.0e-12));
       nfov += " 跟踪状态=";
       nfov += detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪";
@@ -2396,6 +2429,11 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       const SbirsCandidate& selected = *candidate_it->second;
       processed_target_ids.insert(served_target_id);
       if (pointing_result.status == SbirsPointingAdvanceStatus::kSlewing) {
+        // 第14项「镜头转向时间」计时起点：目标首次进入转向中（同一目标的连续转向周期
+        // 只记最早一拍，避免每周期覆盖导致时长被压缩到单周期）。
+        if (nfov_slew_start_time_s_.find(served_target_id) == nfov_slew_start_time_s_.end()) {
+          nfov_slew_start_time_s_[served_target_id] = sim_time_sec;
+        }
         if (SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED()) {
           // 中译：窄视场首次捕获事件——转向中（卫星、目标、窄场指向命令角、SNR）。
           // 标识：验收日志 E4——3.2.1.3.2.1 NFOV 指向/捕获过程的"转向"中间态证据；

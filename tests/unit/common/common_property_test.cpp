@@ -12,10 +12,24 @@
 #include <cmath>
 #include <limits>
 
+// RapidCheck 是 conanfile.py 的 test_requires，仅属性测试需要。缺依赖的构建树里
+// `find_package(rapidcheck CONFIG REQUIRED)` 找不到包、头文件也不在包含路径上；
+// 此处按 __has_include 降级，保证同目录的常量/边界用例仍可构建运行，而不是整目标
+// 因一个可选依赖缺失而 fatal error C1083。
+#if defined(__has_include)
+#if __has_include("rapidcheck.h")
+#define ONEQ_TEST_HAS_RAPIDCHECK 1
+#endif
+#endif
+
+#if defined(ONEQ_TEST_HAS_RAPIDCHECK)
 #include "rapidcheck.h"
+#endif
 
 #include "1q/coordinate/attitude_transform.h"
+#if defined(ONEQ_TEST_HAS_RAPIDCHECK)
 #include "support/rapidcheck_gtest.h"
+#endif
 
 namespace oneq {
 namespace coordinate {
@@ -44,6 +58,7 @@ double WrapDeg(double deg) { return std::fmod(deg, 360.0); }
 // 属性：任意姿态角构造的矩阵与其逆复合，必为单位阵。
 // 依据：attitude_transform.h 声明 RotationMatrix3d 为"三维旋转矩阵"，
 // 旋转矩阵满足 R·R⁻¹ = I；本属性同时覆盖 BuildRotationMatrix 与 Inverse。
+#if defined(ONEQ_TEST_HAS_RAPIDCHECK)
 RC_GTEST_PROP(CoordinateAttitudePropertyTest, MatrixComposedWithInverseIsIdentity,
               (double raw_yaw, double raw_pitch, double raw_roll)) {
   const RotationMatrix3d rotation =
@@ -86,10 +101,12 @@ RC_GTEST_PROP(CoordinateAttitudePropertyTest, ComposeIsAssociative,
   // 容差依据：两次复合共 36 次乘加，量级 ≤1，累计误差约 1e-14，取 1e-12。
   RC_ASSERT(MaxAbsDifference(Compose(Compose(a, b), c), Compose(a, Compose(b, c))) < 1.0e-12);
 }
+#endif  // ONEQ_TEST_HAS_RAPIDCHECK
 
 // 属性：局部 → ENU → 局部 的旋转往返应还原原向量。
 // 依据：RotateEnuToLocal 声明"数学上等价于 Inverse(BuildRotationMatrix(attitude))·v"，
 // 与 RotateLocalToEnu 互为逆变换（attitude_transform.h）。
+#if defined(ONEQ_TEST_HAS_RAPIDCHECK)
 RC_GTEST_PROP(CoordinateAttitudePropertyTest, LocalEnuRotationRoundTrip,
               (double raw_x, double raw_y, double raw_z, double raw_yaw, double raw_pitch,
                double raw_roll)) {
@@ -108,6 +125,7 @@ RC_GTEST_PROP(CoordinateAttitudePropertyTest, LocalEnuRotationRoundTrip,
   EXPECT_NEAR(local.y, y, 1.0e-9);
   EXPECT_NEAR(local.z, z, 1.0e-9);
 }
+#endif  // ONEQ_TEST_HAS_RAPIDCHECK
 
 // 边界用例：万向节锁（|pitch| = 90°）处正交性仍必须成立。
 // 依据：无论反解分支如何取，BuildRotationMatrix 的产物都是旋转矩阵。

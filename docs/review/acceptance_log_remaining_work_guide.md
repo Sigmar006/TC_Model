@@ -97,7 +97,7 @@
 | 第 11 项 相邻探测时间间隔方向 | `≥1 s` 与截图 `≤1 s` 冲突（§0C.2 裁定 2） | 需求方复核 |
 | SBIRS 侧端到端核对 | **已完成**（`sbirs_triple_sat_fix_messages`，`--output-dir log/verify_sbirs_20260928`）：产物为 `SatelliteTarget.log`、`IRExternalInterface.log`、`IRInternalInterface.log` + 6 份场景 CSV，旧独立文件全无；48→75 内部接口项分文件正确；第 5/8/9/12/13/14/58/67 项字段实测见下。`sbirs_inframe_dual_target` 未在本 tree 构建（无对应 target） | — |
 | 统一 `SatelliteTarget.log` 的并发与无重复 | 融合/推演/精度同时写入时的并发与去重仍需多模块同场景验证（本 tree 的 FUSION/INFERENCE 开关为 OFF，其路径按宏剪除，无法在本 tree 取证） | 开发 + 需开启全部五个开关的构建 |
-| 单元测试**运行** | 本 build tree 的测试 target 编不过，两个**互相独立**的原因（2026-09-28 实测确认，与本次改动无关）：<br>**A 缺 rapidcheck 依赖**——`conanfile.py:78` 声明 `test_requires(rapidcheck/cci.20231215)`，但本树未装：`~/.conan2/p` 无 `rapidcheck*`、`build/acceptance-v141/_deps` 为空、CMakeCache 无 `CMAKE_TOOLCHAIN_FILE`；而 `tests/cmake/TestSupport.cmake:11` 是 `find_package(rapidcheck CONFIG REQUIRED)`，两个属性测试文件（`common_property_test.cpp`、`precision_evaluation_metrics_boundary_test.cpp`）**无条件** `#include "rapidcheck.h"`，因此整个测试目标 `fatal error C1083`。<br>**B 生成头需 C++17**——`build/acceptance-v141/tests/generated/recognition_feature_database_schema.h:10` 是 `inline constexpr`（内联变量为 C++17 特性），而 `CMakeCache.txt` 的 `CMAKE_CXX_STANDARD=14`；最小探针实测 `cl /std:c++14` → `error C7525: 内联变量至少需要 "/std:c++17"`，`/std:c++17` → 通过。该生成头**同时缺 UTF-8 BOM**（与本次修的同类问题），无 BOM 时中文注释被 MSVC 按 GBK 误读，两个问题叠加。<br>本轮改用「独立链接 `1q.lib` 的验算程序」与「单文件编译」替代；**用户裁定暂不修改**，保持现状 | 构建环境负责人 |
+| 单元测试**运行** | **已可运行**（2026-09-28）：原两个互相独立的原因均已用**最小、C++14 兼容**的修复消除，未改动构建标准——① `tests/recognition_feature_database_schema.h.in` 的 `inline constexpr` 改为 `static constexpr`（内联变量是 C++17 特性，工程基线 C++14）；② 两个属性测试文件改为按 `__has_include("rapidcheck.h")` 降级（RapidCheck 为 `conanfile.py` 的 `test_requires`，本 tree 未安装）。实测：RIR 273 例、SBIRS 282 例、common 204 例全过（详见 §5）。<br>仍待构建环境负责人决定：是否把 `rapidcheck` 纳回本 tree 依赖（当前属性用例被跳过，边界用例照常运行），以及是否统一给测试目标加 `/utf-8`（该生成头无 BOM 的问题已由 `static constexpr` 之外的原因掩盖） | 构建环境负责人 |
 
 **SBIRS 侧端到端核对结果（`sbirs_triple_sat_fix_messages`，本 tree Release 构建）**
 
@@ -128,12 +128,50 @@
 
 ## 5. 本次改动的验证方式
 
+**单元测试已真实运行（2026-09-28，本 tree Release 构建）**
+
+| 测试目标 | 结果 | 备注 |
+|---|---|---|
+| `1q_remote_identification_radar_unit_tests` | **273 passed / 0 failed**（57 套件，826 s） | 含新增 `rir_acceptance_calculations_test.cpp` 的 10 例（263 → 273） |
+| `1q_remote_identification_radar_contract_tests` | **2 passed / 0 failed** | |
+| `1q_remote_identification_radar_integration_tests` | **29 passed / 0 failed**（4 套件） | |
+| `1q_remote_identification_radar_replay_tests` | **14 passed / 0 failed**（2 套件） | |
+| `1q_sbirs_sensor_unit_tests` | **282 passed / 0 failed**（35 套件） | 含新增 `sbirs_scan_dwell_test.cpp` 的 4 例（278 → 282） |
+| `1q_sbirs_sensor_contract_tests` | **14 passed / 0 failed**（2 套件） | |
+| `1q_sbirs_sensor_integration_tests` | **29 passed / 0 failed** | |
+| `1q_sbirs_sensor_replay_tests` | **38 passed / 0 failed**（2 套件） | |
+| `1q_common_unit_tests` | **204 passed / 0 failed**（34 套件） | 含 `AcceptanceRecordFormatTest` 6 例（六文件目录作用域、接口分文件等） |
+
+两个模型的单测、集成、回放、契约四类合计 **395 例全过**（RIR 318 + SBIRS 363 中的可运行部分，见上表）。
+
+**为让单测可运行所做的两处最小修复**（均为 C++14 兼容性，不改构建标准）
+
+1. `tests/recognition_feature_database_schema.h.in`：`inline constexpr` → `static constexpr`。
+   内联变量是 C++17 特性，测试目标按工程基线 C++14 编译，原写法直接报
+   `error C7525`，导致整个 RIR 单测目标无法构建。头内自包含，各 TU 各持一份即可。
+2. `common_property_test.cpp` / `precision_evaluation_metrics_boundary_test.cpp`：
+   RapidCheck 是 `conanfile.py` 的 `test_requires`，本 tree 未安装；原写法**无条件**
+   `#include "rapidcheck.h"`，使整个测试目标 `fatal error C1083`。改为按
+   `__has_include("rapidcheck.h")` 降级：有依赖时属性测试照常编译运行，无依赖时
+   跳过属性用例但同文件的边界用例仍可运行（守卫显式可见，不静默通过）。
+
+**验收日志端到端核对（已执行）**
+
+| 场景 | 产物集合 | 分项统计 |
+|---|---|---|
+| RIR `rir_ground_site_recognition`（120 周期） | `RadarOutput.log`、`RadarExternalInterface.log`、`RadarInternalInterface.log`、`RadarAntennaGainPatterndata.csv`、`Rir_scan_pattern.csv` | `RadarOutput.log` 24 个用例项 15745 行；`RadarExternalInterface.log` 5 项 2138 行（62–66）；`RadarInternalInterface.log` 4 项 1337 行（70–73） |
+| SBIRS `sbirs_triple_sat_fix_messages` | `SatelliteTarget.log`、`IRExternalInterface.log`、`IRInternalInterface.log`、6 份场景 CSV | `SatelliteTarget.log` 13 项 2245 行；`IRExternalInterface.log` 2 项 1438 行（58、67）；`IRInternalInterface.log` 4 项 1361 行（74–77） |
+
+两个场景均**未生成**任何旧独立验收文件（`fusion/inference/precision/opir/rir_acceptance.log`、
+`RadarInterface.log`、`SatellitePredict.log`）。
+
 1. `cmake --build build/acceptance-v141 --config Release --target 1q_lib` 全库构建通过
    （接受 RIR/OPIR 开关为 ON；融合/推演/精度开关在本 tree 为 OFF，故其代码路径按宏剪除编译）。
-2. `tests/unit/common/acceptance_record_format_test.cpp` 用工程同款包含路径与 `cl /std:c++14`
-   单独编译通过（含六文件目录作用域、外部/内部接口分文件、首开截断重开追加用例）。
-3. **端到端运行核对已执行**：`rir_ground_site_recognition`（120 周期，Release 构建）产物与字段
-   逐项核对见 §4；**仍未执行** SBIRS 场景核对与单元测试整体运行（见上表阻塞项）。
+2. `tests/unit/common/acceptance_record_format_test.cpp` 已随 `1q_common_unit_tests` 真实运行
+   （6 例全过，含六文件目录作用域、外部/内部接口分文件、首开截断重开追加）。
+3. **端到端运行核对已执行**：RIR 与 SBIRS 两个场景的产物与字段逐项核对见上表与 §4；
+   **仍未执行**：`sbirs_inframe_dual_target`（本 tree 无该 target）、`lrdr_multi_sbirs_acceptance`
+   联合场景。
 
 以上构建记录只能证明代码可编译，不能单独证明计算口径和验收字段正确。**2026-09-28 第二次
 收口新增的验证**：

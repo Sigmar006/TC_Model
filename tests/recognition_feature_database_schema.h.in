@@ -7,7 +7,10 @@ namespace airborne_radar {
 namespace tests {
 
 // 识别特征数据库权威 schema（测试构造与加载器、建库工具共用同一 DDL 单源）。
-inline constexpr const char* kRecognitionSchemaSql = R"sql(
+// 编译期标准：测试目标按工程基线的 C++14 编译（交付库面向 VS2015），因此此处用
+// `static constexpr` 而非 C++17 的 `inline constexpr`——后者在本工程会直接报
+// error C7525「内联变量至少需要 /std:c++17」。头内自包含，各 TU 各持一份即可。
+static constexpr const char* kRecognitionSchemaSql = R"sql(
 @RECOGNITION_FEATURE_DATABASE_SCHEMA_SQL@
 )sql";
 

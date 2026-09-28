@@ -592,11 +592,14 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ### 12. 宽视场扫描探测功能测试（`log/SatelliteTarget.log`）
 
 - **编号**：`5.3.1.3.2.1` / `GN_GDCX_TCPT_KCSM`（截图）。
+- **本项新增必写输出**：宽视场目标视线方位/俯仰、宽视场视线角方位/俯仰误差、
+  地面覆盖区域和驻留时间；驻留须满足 `0.5 s<驻留时间<1 s`，角误差须位于
+  `±360 arcsec`。
 - `SatelliteTarget.log` 文件中能够记录各扫描周期的**地面覆盖范围的区域坐标**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录各覆盖区域的**驻留时间**视为通过，否则视为不通过。
 - **外部导入合并判据**：驻留时间须满足 `0.5 s<驻留时间<1 s`；还须记录 WFOV 目标视线
-  角度及其方位/俯仰误差，测角误差约束为 `±360 arcsec`。`log/SatelliteTarget.log` 与
-  `log/SatelliteTarget.log` 输出本项驻留时间、原始视线角和视线角误差。
+  角度及其方位/俯仰误差，测角误差约束为 `±360 arcsec`。`log/SatelliteTarget.log`
+  输出本项驻留时间、原始视线角和视线角误差。
 
 - **实现**（如何写出 §0 示例行；本次仅文档，不改代码）：
   - **时机**：每周期 WFOV footprint 计算后写一行。
@@ -611,6 +614,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ### 13. 窄视场跟踪探测功能测试（`log/SatelliteTarget.log`）
 
 - **编号**：`5.3.1.3.2.2` / `GN_GDCX_TCPT_ZCSM`（截图）。
+- **本项新增必写输出**：窄视场目标视线方位/俯仰及其方位/俯仰误差；角误差须位于
+  `±10 arcsec`。该要求不能只由外部程序计算而不写原始误差字段。
 - `SatelliteTarget.log` 文件中能够记录各采样时刻目标在焦平面上的**脱靶量**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录各采样时刻**跟踪状态**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录各采样时刻**目标信号能量**视为通过，否则视为不通过。
@@ -637,6 +642,9 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ### 14. 宽窄视场联合探测功能测试（`log/SatelliteTarget.log`）
 
 - **编号**：`5.3.1.3.2.3` / `GN_GDCX_TCPT_KZLH`（截图）。
+- **本项新增必写输出**：宽视场目标视线方位/俯仰及误差、窄视场目标视线方位/俯仰及误差、
+  窄视场镜头转动时间。宽场误差须位于 `±360 arcsec`，窄场误差须位于
+  `±10 arcsec`。
 - `SatelliteTarget.log` 文件中能够记录**宽视场扫描覆盖区域**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录**疑似目标列表**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录**窄视场跟踪目标的精确状态序列**视为通过，否则视为不通过。精确状态序列」要体现的是：同一个目标 ID，在窄场阶段每个周期状态怎么变。例如：
@@ -665,6 +673,8 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ### 15. 多传感器目标跟踪功能测试（`log/SatelliteTarget.log`）
 
 - **编号**：`5.3.1.4.1` / `GN_GDCX_MNTCQ_MBGZ`（截图）。
+- **本项新增必写输出**：目标角度及目标**红外可观测性（即本文字段“红外可探测性”）**；
+  示例字段固定为 `红外可探测=是/否`。
 - `SatelliteTarget.log` 文件中能够记录目标在地心地固系下的**三维位置坐标、误差协方差矩阵**视为通过，否则视为不通过。
 - **外部导入合并判据**：同一航迹还须记录传感器信息源名称、各信息源测角数据和测角信息
   融合卫星地面站名称；融合位置相对场景真值的三维距离误差须 `<50 m`。本项所需字段必须在
@@ -762,6 +772,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ### 20. 目标轨迹预报功能测试（`log/SatelliteTarget.log`）
 
 - **编号**：`GN_GDCX_DPT_GJYB`（截图未给 `5.3.x`）；截图并列 `SatellitePredict.txt`、`MissileBallisticData.log`，本文不落盘（§0C.2 裁定 5）。
+- **本项新增必写输出**：预测落点的误差椭圆半长轴、半短轴和方位角参数；不得只写预测落点。
 - `SatelliteTarget.log` 文件中能够记录目标从当前时刻到 **10 秒之间**的**轨迹**视为通过，否则视为不通过。
 - `SatelliteTarget.log` 文件中能够记录**预测落点位置**（经度、纬度、高程）、**落点误差椭圆参数**及**实际与预测落点距离误差**视为通过，否则视为不通过。
 - **外部导入合并判据**：预测落点与实际落点的三维距离误差须满足
@@ -777,6 +788,7 @@ LRDR 和红外还分别提供会话输入参数 `RirSessionConfig::acceptance_lo
 ### 21. 落点预测功能测试（`log/SatelliteTarget.log`）
 
 - **编号**：`GN_GDCX_DPT_LDYC`（截图未给 `5.3.x`）；截图并列 `SatelliteTarget.log`、`RadarSingalProcessingDateFlow.log`、`MissileBallisticData.log`，其中引导信息段仍由 `log/RadarOutput.log` 承担（§0C.2 裁定 5）。
+- **本项新增必写输出**：卫星对目标的探测方位角、探测俯仰角和测角时刻；不得只有初步落点。
 - `SatelliteTarget.log` 文件中能够记录 **DD 目标**的**初步落点位置**视为通过，否则视为不通过；关联证据还须记录卫星对目标的**探测方位角、俯仰角及测角时刻**。
 - **外部导入合并判据**：
   - `log/SatelliteTarget.log` 须记录卫星对 DD 目标的探测方位角、俯仰角和测角时刻。

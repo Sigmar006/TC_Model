@@ -579,7 +579,8 @@ int main(int argc, char* argv[]) {
 
 #if !defined(PE_ACCEPTANCE_LOG_ENABLED) || !PE_ACCEPTANCE_LOG_ENABLED
   std::cerr << "warning: ONEQ_ENABLE_PRECISION_EVALUATION_LOG=OFF; "
-            << output_dir << "/precision_acceptance.log will not be written\n";
+            << "precision acceptance items will not be written to "
+            << output_dir << "/SatelliteTarget.log\n";
 #endif
 
   scene.config.fusion.enable_track_filtering = true;
@@ -719,7 +720,7 @@ int main(int argc, char* argv[]) {
             << " cycles x " << scene.dt_sec << " s, satellites=" << scene.satellites.size()
             << " GEO (ground-station message delivery)\n"
             << "acceptance logs -> " << output_dir
-            << " (SatelliteTarget.log + precision/fusion/inference_acceptance.log)\n";
+            << " (SatelliteTarget.log / IRExternalInterface.log / IRInternalInterface.log)\n";
   for (std::size_t i = 0U; i < scene.satellites.size(); ++i) {
     const LoadedSatellite& sat = scene.satellites[i];
     std::cout << "  sat " << sat.id << " source_id=" << sat.source_id << " ecef=("

@@ -95,9 +95,36 @@
 | 第 68 项 预警预测与精度评估接口 | 字段跨 inference/precision/threat 多个模型与日志，缺统一聚合责任方与稳定目标键；主文档要求“新增稳定预警消息 DTO 或由编排层聚合”后方可验收 | 需求方/架构确定聚合边界 |
 | 第 21 项 卫星探测引导段 | RIR 当前周期输入没有 SBIRS→RIR 引导消息及投递时序语义字段（§0B.3 已登记为模型不可见） | 仿真消息总线/编排层提供 |
 | 第 11 项 相邻探测时间间隔方向 | `≥1 s` 与截图 `≤1 s` 冲突（§0C.2 裁定 2） | 需求方复核 |
-| SBIRS 侧端到端核对 | 本次只核对了 RIR 场景；`SatelliteTarget.log`/`IRExternalInterface.log` 的第 2、5–14、58、67 项需跑 SBIRS 场景（本 tree 未构建 SBIRS 示例 target） | 开发 + 构建环境 |
-| 统一 `SatelliteTarget.log` 的并发与无重复 | 融合/推演/精度同时写入时的并发与去重仍需多模块同场景验证 | 开发 + 场景 |
+| SBIRS 侧端到端核对 | **已完成**（`sbirs_triple_sat_fix_messages`，`--output-dir log/verify_sbirs_20260928`）：产物为 `SatelliteTarget.log`、`IRExternalInterface.log`、`IRInternalInterface.log` + 6 份场景 CSV，旧独立文件全无；48→75 内部接口项分文件正确；第 5/8/9/12/13/14/58/67 项字段实测见下。`sbirs_inframe_dual_target` 未在本 tree 构建（无对应 target） | — |
+| 统一 `SatelliteTarget.log` 的并发与无重复 | 融合/推演/精度同时写入时的并发与去重仍需多模块同场景验证（本 tree 的 FUSION/INFERENCE 开关为 OFF，其路径按宏剪除，无法在本 tree 取证） | 开发 + 需开启全部五个开关的构建 |
 | 单元测试**运行** | 本 build tree 的测试 target 缺 `rapidcheck` 依赖、生成头需 `/std:c++17`（工程为 C++14），改动前即不可构建；本轮改用「独立链接 `1q.lib` 的验算程序」与「单文件编译」替代 | 构建环境负责人 |
+
+**SBIRS 侧端到端核对结果（`sbirs_triple_sat_fix_messages`，本 tree Release 构建）**
+
+- 产物：`SatelliteTarget.log`、`IRExternalInterface.log`、`IRInternalInterface.log` +
+  `sbirs_dual_fix/scan/sats/los/fused/truth.csv`、`integration_*`；**未生成**
+  `fusion_acceptance.log`、`inference_acceptance.log`、`precision_acceptance.log`、
+  `opir_acceptance.log`、`SatellitePredict.log`。
+- 第 5 项（实测）：`相对卫星ID=4 目标ID=1 量测方位/俯仰(ECI)=(2.85073738,0.04572722)rad
+  瞬时视场方位/俯仰范围=(0.075922,0.075922)rad 位于瞬时视场内=是`
+- 第 8 项：`卫星ID=4 真值位置ECEF=… 实际位置ECEF=… 定位误差ECEF=(-46.2,83.1,-38.1)m
+  真值速度ECEF=(0.0,0.0,0.0)m/s 实际速度ECEF=(-0.1,0.3,0.3)m/s
+  速度误差ECEF=(-0.110,0.330,0.279)m/s |定位误差|=102.4m`
+  （注：本场景 `orbit_sigma_deg` 配置偏大，模长未落在 `[47.5,52.5] m`；属场景参数问题，见下）
+- 第 9 项：`测角残差方位/俯仰(ECI)=(-0.00000027,0.00000136)rad 测角残差方位/俯仰=(-0.05,0.28)arcsec`
+- 第 12/14 项（驻留时间收口后实测）：`驻留=0.725s` —— 落在 `0.5–1 s` 开区间
+- 第 13 项：`脱靶量m=(0.617990,0.033404) 脱靶量模=0.61889m 窄视场目标视线方位/俯仰(ECI)=…
+  窄视场视线角误差方位/俯仰=(-0.93,0.11)arcsec 跟踪状态=… 信号能量=7.141e-13J SNR=18.463dB`
+- 第 58 项：`卫星ID=4 目标数量=2 背景辐射亮度=2.0000W/(sr·m^2) 基础大气透过率=0.800000
+  环境温度=15.00C 相对湿度=50.00%`
+- 第 67 项：`卫星ID=4 观测数量=1 目标数量=1` + 逐观测行（观测ID/目标ID/检测标志/ECI 方位俯仰/
+  IR_SNR/观测阶段）+ 归属诊断距离（显式标注非被动红外直接测距）+ 跟踪状态行
+
+**新发现的待办（由 SBIRS 端到端核对暴露）**
+
+| 事项 | 现象 | 需要谁决定 |
+|---|---|---|
+| 第 8 项定位误差模长超出 `[47.5, 52.5] m` | `sbirs_triple_sat_fix_messages` 实测 `|定位误差|=102.4m`，超出判据；逐轴误差 `(-46.2, 83.1, -38.1)` 说明场景 `error_model.orbit_sigma_deg` / `nav_position_sigma_m` 配置与 `50 m` 口径不匹配 | 需求方确认目标噪声量级；若要判据成立需调场景误差模型参数（属场景配置，不是模型公式） |
 
 ## 5. 本次改动的验证方式
 

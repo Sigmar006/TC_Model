@@ -95,7 +95,7 @@
         {
             "name": "1q_log_vs2015",
             "displayName": "1q acceptance logs (VS2015 x64, no Conan)",
-            "description": "VisualStudio.14.0-amd64-none variant with all five per-layer acceptance files ON by default (sbirs/rir/fusion/inference/precision_acceptance.log; docs/review/acceptance_item_catalog_2026-08-22.md). Run scripts/win/fetch_third_party.bat first. VS2015+Conan is not viable on this machine: CMake 4.3.1 emits v145 toolset requirements that MSBuild v140 cannot satisfy (flatbuffers recipe build fails).",
+            "description": "VisualStudio.14.0-amd64-none variant with all five per-layer acceptance switches ON by default. Since 2026-09-28 those switches gate功能 but the落盘 targets are only six files: SatelliteTarget.log / RadarOutput.log / RadarExternalInterface.log / IRExternalInterface.log / RadarInternalInterface.log / IRInternalInterface.log (fusion/inference/precision no longer write standalone files; docs/review/acceptance_log_remaining_work_guide.md). Run scripts/win/fetch_third_party.bat first. VS2015+Conan is not viable on this machine: CMake 4.3.1 emits v145 toolset requirements that MSBuild v140 cannot satisfy (flatbuffers recipe build fails).",
             "inherits": "VisualStudio.14.0-amd64-none",
             "cacheVariables": {
                 "CMAKE_C_FLAGS_RELEASE": "/O2 /Ob2 /DNDEBUG /Zi",

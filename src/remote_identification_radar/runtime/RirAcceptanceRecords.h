@@ -98,9 +98,28 @@ void WriteRirExternalInterferenceInput(float sim_time_sec, std::uint32_t cycle,
 void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
                                   const session::RirSceneTargetList& targets);
 
+/** @brief 第37项「检测与量测信息」逐检测目标量测（Pd 归第36项，本条不写）。 */
+struct RirSearchDetectionLite {
+  std::uint64_t target_id{0U};
+  float range_m{0.0f};
+  float az_deg{0.0f};
+  float el_deg{0.0f};
+};
+
+/**
+ * @brief 验收判定标准 第37项「空域自主搜索功能测试」：指向信息行 + 检测与量测信息行
+ *        （扫描调度信息另见 `WriteRirSchedule`）。
+ */
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
-                              const std::string& found_targets);
+                              const std::vector<RirSearchDetectionLite>& detections);
+
+/**
+ * @brief 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名。
+ */
+void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
+                                     std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
+                                     const std::vector<RirSearchDetectionLite>& detections);
 
 /**
  * @param[in] platform_lla 平台 LLA（雷达局部 ENU 的绝对锚点；量测位置 LLA 换算用）。
@@ -174,6 +193,15 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
  */
 void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                        const std::vector<RirDwellPlan>& dwell_plan);
+
+/**
+ * @brief 验收判定标准 第48项：波束扫描范围摘要（方位/俯仰扫描上下限）。
+ *
+ * 与 `TryExportRirScanPatternCsv` 同源调用（波位表生成处），按实际波位表求方位/俯仰
+ * 最小/最大值；空表不写该行（判定字段无有效值）。
+ */
+void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
+                              const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern);
 
 bool TryExportRirAntennaPatternCsv(const config::hardware::RirAntennaConfig& antenna,
                                    const char* path);

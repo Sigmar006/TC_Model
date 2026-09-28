@@ -63,7 +63,7 @@ std::uint64_t SecondaryDwellEmissionId(std::uint32_t cycle_index, std::size_t dw
          static_cast<std::uint64_t>(dwell_index);
 }
 
-std::string g_acceptance_found_targets;
+std::vector<runtime::RirSearchDetectionLite> g_acceptance_found_targets;
 
 internal::RirSwerlingModel ToInternalSwerling(session::RirSwerlingType type) {
   switch (type) {
@@ -822,7 +822,7 @@ bool RirController::TryBuildMeasurement(
     }
     *measurement = SampleMeasurementPosition(built);
   }
-  // 验收判定标准 第37项（检测与量测信息）：逐检测目标串接——量测斜距与量测方位/
+  // 验收判定标准 第37项（检测与量测信息）：逐检测目标登记——量测斜距与量测方位/
   // 俯仰取采样后的量测位置（6 dB 回退模式量测位置即真值）；Pd 归第 36 项，不写。
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {
     float measured_range_m = 0.0f;
@@ -831,14 +831,12 @@ bool RirController::TryBuildMeasurement(
     if (runtime::TryLookPolarFromEnuM(measurement->position.x(), measurement->position.y(),
                                       measurement->position.z(), &measured_range_m,
                                       &measured_az_deg, &measured_el_deg)) {
-      if (!g_acceptance_found_targets.empty()) {
-        g_acceptance_found_targets += "; ";
-      }
-      g_acceptance_found_targets +=
-          "ID=" + std::to_string(target.external_target_id) + " 斜距=" +
-          oneq::logging::FormatF(measured_range_m, 1) + "m 量测方位/俯仰=(" +
-          oneq::logging::FormatF(measured_az_deg, 3) + "," +
-          oneq::logging::FormatF(measured_el_deg, 3) + ")°";
+      runtime::RirSearchDetectionLite detection;
+      detection.target_id = target.external_target_id;
+      detection.range_m = measured_range_m;
+      detection.az_deg = measured_az_deg;
+      detection.el_deg = measured_el_deg;
+      g_acceptance_found_targets.push_back(detection);
     }
   }
   return true;
@@ -1179,9 +1177,21 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     // 验收事件 association（3.2.2.3.1.1）：全局最优关联结果——命中对（键/量测
     // 索引/马氏代价）与漏检航迹键（量测清单经 detection_cell 事件逐目标留痕）。
     if (RIR_ACCEPTANCE_LOG_ENABLED()) {
-      WriteRirSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec, input.input_cycle_index,
-                               dwell_center_deg.az_deg, dwell_center_deg.el_deg,
-                               g_acceptance_found_targets);
+      // 验收判定标准 第37项/第37A项：本周期主驻留指向俯仰接近 0°（|el| ≤ 半波束宽）
+      // 时判为地平线搜索，按 37A 独立项名写出（与 37 项同批字段）；其余按 37 项写出。
+      // 本模型无独立地平线搜索模式，判据为「波束实际指向接近地平线」。
+      const float horizon_half_beam_deg =
+          0.5f * std::max(hardware_.antenna.nominal_az_beamwidth_deg,
+                          hardware_.antenna.nominal_el_beamwidth_deg);
+      if (std::fabs(dwell_center_deg.el_deg) <= horizon_half_beam_deg) {
+        WriteRirHorizonSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
+                                        input.input_cycle_index, dwell_center_deg.az_deg,
+                                        dwell_center_deg.el_deg, g_acceptance_found_targets);
+      } else {
+        WriteRirSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
+                                 input.input_cycle_index, dwell_center_deg.az_deg,
+                                 dwell_center_deg.el_deg, g_acceptance_found_targets);
+      }
       const float gate_sigma = std::max(0.0f, policy_.association.distance_gate_sigma);
       WriteRirAssociation(input.sim_time_sec, input.input_cycle_index, association, platform_lla,
                           static_cast<double>(gate_sigma * gate_sigma));

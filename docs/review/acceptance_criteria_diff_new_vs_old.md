@@ -181,4 +181,5 @@ Note: 本文件只做对照，不改动上述两份文件
 - 新文件条目按“截图转写表的一行 = 一条用例”统计（表头行、对比表 §5 不计入）。
 - 旧文件条目按 `### <编号>. <名称>` 标题统计（第 0 章 §0B 小节、第 9.1 节等非用例标题已剔除）。
 - “拆分”判定标准：旧编号在新文件中对应的用例行数 ≥2，且各行**分别指定**文件名或记录要求。
-- 本报告不改动 `acceptance_output_paths_and_log_requirements_from_screenshots.md` 与 `functional_acceptance_test_criteria_ocr.md` 的任何内容。
+- 本报告只做对照，不改动 `acceptance_output_paths_and_log_requirements_from_screenshots.md`；
+  2026-09-28 起 `functional_acceptance_test_criteria_ocr.md` 已按本报告完成合并，执行口径以该文件为准。

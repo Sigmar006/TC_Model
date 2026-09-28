@@ -9,6 +9,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -240,6 +242,44 @@ bool TryBuildAcceptanceBank(const RirDetectionAcceptInput& input,
   return oneq::common::radar::TryResolveMtiMtdAcceptanceBank(bank_input, bank);
 }
 
+/**
+ * @brief 反解达到目标检测概率所需的单脉冲 SNR (dB)。
+ *
+ * 验收判定标准 第36项：由同一 Marcum Q 检测模型对 Pd 二分搜索（SNR 在 [-20, 60] dB
+ * 上单调递增），不引入第二套检测模型。参数非法或区间内无解返回非有限值，调用方省略该行。
+ */
+double SolveRequiredSnrDb(double pfa, int num_pulses, double target_pd) {
+  if (!std::isfinite(pfa) || pfa <= 0.0 || pfa >= 1.0 || num_pulses < 1 ||
+      !std::isfinite(target_pd) || target_pd <= 0.0 || target_pd >= 1.0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double low_probe_db = -20.0;
+  const double high_probe_db = 60.0;
+  const double pd_low = oneq::common::radar::RadarEquations::ComputeDetectionProbability(
+      static_cast<float>(low_probe_db), static_cast<float>(pfa),
+      oneq::common::radar::SwerlingModel::kSwerling0, num_pulses);
+  const double pd_high = oneq::common::radar::RadarEquations::ComputeDetectionProbability(
+      static_cast<float>(high_probe_db), static_cast<float>(pfa),
+      oneq::common::radar::SwerlingModel::kSwerling0, num_pulses);
+  if (!(pd_low <= target_pd && target_pd <= pd_high)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  double low_db = low_probe_db;
+  double high_db = high_probe_db;
+  for (int i = 0; i < 60; ++i) {
+    const double mid_db = 0.5 * (low_db + high_db);
+    const double pd = oneq::common::radar::RadarEquations::ComputeDetectionProbability(
+        static_cast<float>(mid_db), static_cast<float>(pfa),
+        oneq::common::radar::SwerlingModel::kSwerling0, num_pulses);
+    if (pd < target_pd) {
+      low_db = mid_db;
+    } else {
+      high_db = mid_db;
+    }
+  }
+  return 0.5 * (low_db + high_db);
+}
+
 void Emit(float sim_time_sec, std::uint32_t cycle, const char* item, const std::string& content) {
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, item, content);
 }
@@ -407,18 +447,71 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     Emit(t, cycle, "杂波信号处理增益功能测试",
          id_sp + "MTI处理后杂波剩余功率=" +
              FormatSci(has_bank ? bank.mti_residual_clutter_w : mti_residual) + "W");
+  } else {
+    // 规范口径：本项四项均为必写输出；无杂波（植被关闭或 clutter_power_w=0）时不得静默
+    // 省略整个用例，逐字段写「缺失」标记（区别于 §0 规则3 的无值省略）。
+    Emit(t, cycle, "杂波信号处理增益功能测试",
+         id_sp + "MTI处理后杂波剩余功率=缺失 抑制比/总抑制增益=缺失");
   }
   EmitOrNone(t, cycle, "杂波信号处理增益功能测试", id_sp + "MTD各多普勒通道杂波剩余功率分布=",
              has_clutter && has_bank,
              has_clutter && has_bank ? FormatChannelWatts(bank.clutter_w) + "W" : std::string());
+  // 2026-09-28 合并（§0C.2 裁定 4 复核后放开）：截图要求「MTD 处理后的杂波抑制比」与
+  // 「总杂波抑制增益」，由本条已落盘的原始/剩余功率直接求比值（10log10 输入/剩余）。
+  // 抑制比取目标所在多普勒通道，总增益取全通道合计，两者均为功率比，不引入新观测量。
+  if (has_clutter && has_bank) {
+    const double channel_count = static_cast<double>(oneq::common::radar::kMtiMtdChannelCount);
+    const double original_channel_clutter =
+        clutter_db <= 0.0 ? clutter / channel_count : clutter / FromDb(clutter_db);
+    const double residual_total = std::accumulate(bank.clutter_w.begin(), bank.clutter_w.end(), 0.0);
+    double ratio_db = 0.0;
+    if (oneq::common::radar::TryAcceptancePowerRatioDb(
+            original_channel_clutter, bank.clutter_w[bank.selected_channel], &ratio_db)) {
+      Emit(t, cycle, "杂波信号处理增益功能测试",
+           id_sp + "MTD处理后的杂波抑制比=" + FormatF(ratio_db, 3) + "dB");
+    }
+    if (oneq::common::radar::TryAcceptancePowerRatioDb(input.has_cell ? clutter : mti_residual,
+                                                       residual_total, &ratio_db)) {
+      Emit(t, cycle, "杂波信号处理增益功能测试",
+           id_sp + "总杂波抑制增益=" + FormatF(ratio_db, 3) + "dB");
+    }
+  }
 
-  // 验收判定标准 第35项：干扰——只写 MTI 剩余与 MTD 通道分布；无外部干扰单音时
-  // 整条省略（抑制比/总抑制增益不写；CFAR 统计归第 36 项）。
+  // 验收判定标准 第35项：干扰——四项均为必写输出；无外部干扰单音或无 detection cell
+  // 时不得静默省略整个用例，逐字段写「缺失」标记；CFAR 统计归第 36 项。
   const bool has_jam = has_bank && bank.has_jam_channels;
-  EmitOrNone(t, cycle, "干扰信号处理增益功能测试", id_sp + "MTI处理后干扰剩余功率=", has_jam,
-             has_jam ? FormatSci(bank.mti_residual_jam_w) + "W" : std::string());
-  EmitOrNone(t, cycle, "干扰信号处理增益功能测试", id_sp + "MTD各多普勒通道干扰功率分布=",
-             has_jam, has_jam ? FormatChannelWatts(bank.jam_w) + "W" : std::string());
+  if (has_jam) {
+    Emit(t, cycle, "干扰信号处理增益功能测试",
+         id_sp + "MTI处理后干扰剩余功率=" + FormatSci(bank.mti_residual_jam_w) + "W");
+    Emit(t, cycle, "干扰信号处理增益功能测试",
+         id_sp + "MTD各多普勒通道干扰功率分布=" + FormatChannelWatts(bank.jam_w) + "W");
+    // 2026-09-28 合并（§0C.2 裁定 4 复核后放开）：截图要求「MTD 处理后的干扰总抑制比」与
+    // 「总干扰抑制增益」，口径同第 34 项（干扰原始总功率取各路到达功率之和）。
+    double original_jam = 0.0;
+    for (const auto& link : input.incident_links) {
+      const double power = std::isfinite(link.received_power_before_overlap_w)
+                               ? link.received_power_before_overlap_w
+                               : link.received_power_w;
+      if (std::isfinite(power) && power > 0.0) {
+        original_jam += power;
+      }
+    }
+    const double residual_total = std::accumulate(bank.jam_w.begin(), bank.jam_w.end(), 0.0);
+    double ratio_db = 0.0;
+    if (std::isfinite(bank.mti_residual_jam_w) &&
+        oneq::common::radar::TryAcceptancePowerRatioDb(
+            bank.mti_residual_jam_w, bank.jam_w[bank.selected_channel], &ratio_db)) {
+      Emit(t, cycle, "干扰信号处理增益功能测试",
+           id_sp + "MTD处理后的干扰总抑制比=" + FormatF(ratio_db, 3) + "dB");
+    }
+    if (oneq::common::radar::TryAcceptancePowerRatioDb(original_jam, residual_total, &ratio_db)) {
+      Emit(t, cycle, "干扰信号处理增益功能测试",
+           id_sp + "总干扰抑制增益=" + FormatF(ratio_db, 3) + "dB");
+    }
+  } else {
+    Emit(t, cycle, "干扰信号处理增益功能测试",
+         id_sp + "MTI处理后干扰剩余功率=缺失 抑制比/总抑制增益=缺失");
+  }
 
   // 验收判定标准 第36项：CFAR 三子项（门限/结果/概率，key=value 分行）。
   bool has_threshold = false;
@@ -433,6 +526,25 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
              has_threshold ? FormatF(threshold, 6) : std::string());
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测结果=" + YesNo(input.detected));
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测概率=" + FormatF(input.pd, 5));
+  // 2026-09-28 新增要求：本项还须写「检测概率=90%的最大探测距离」及所依据的 RCS。
+  // 由当前雷达方程反解：R_90 = R_now·(SNR_req/SNR_now)^(1/4)（四次方根距离定律，RCS、
+  // 增益等其余条件不变）。SNR_req 由同一 Marcum Q 检测模型对 Pd=0.90 二分反解，不使用
+  // 任务粗筛距离或当前已探测最远距离充当该值。该字段由本轮用户要求提升为必写输出。
+  if (input.has_cell && input.range_m > 0.0f) {
+    const double snr_now_db = static_cast<double>(input.cell.processed_single_pulse_sinr_db);
+    const double snr_required_db =
+        SolveRequiredSnrDb(input.cfar_pfa, static_cast<int>(std::max(1U, pulses)), 0.90);
+    if (std::isfinite(snr_now_db) && std::isfinite(snr_required_db) && snr_now_db > -200.0) {
+      const double snr_ratio = std::pow(10.0, (snr_required_db - snr_now_db) / 10.0);
+      const double max_range_m =
+          static_cast<double>(input.range_m) * std::pow(snr_ratio, 0.25);
+      if (std::isfinite(max_range_m) && max_range_m > 0.0) {
+        Emit(t, cycle, "恒虚警检测功能测试",
+             id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
+                 "m 依据RCS=" + FormatF(input.rcs_m2, 3) + "m²");
+      }
+    }
+  }
 
   // 内部接口第70项：同一条目标检测快照中，回波计算结果即为信号处理入口消费值。
   // 仅有 detection cell 有效时输出，不伪造缺失分量。
@@ -604,17 +716,58 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
-                              const std::string& found_targets) {
+                              const std::vector<RirSearchDetectionLite>& detections) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
-  // 验收判定标准 第37项：指向与检测量测两行（扫描调度信息行随 WriteRirSchedule
-  // 写出——调度统计在该调用点）；搜索角域为配置派生，不写。
-  Emit(sim_time_sec, cycle, "对指定空域进行搜索功能测试",
+  // 验收判定标准 第37项「空域自主搜索功能测试」：指向信息与检测量测两行（扫描调度信息
+  // 行随 WriteRirSchedule 写出——调度统计在该调用点）。项名固定为
+  // [空域自主搜索功能测试]，不与 37A 互相替代。检测量测只写目标ID/斜距/量测方位俯仰
+  //（Pd 归第36项，不写）。
+  Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
            FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
-  Emit(sim_time_sec, cycle, "对指定空域进行搜索功能测试",
-       "检测与量测信息=搜到目标=[" + found_targets + "]");
+  if (detections.empty()) {
+    return;  // 无检出：该行无有效值，整行省略（§0 规则3，不写空列表占位）
+  }
+  std::string found;
+  for (std::size_t i = 0U; i < detections.size(); ++i) {
+    if (i != 0U) {
+      found += "; ";
+    }
+    found += "ID=" + std::to_string(detections[i].target_id);
+    found += " 斜距=" + FormatF(detections[i].range_m, 1) + "m";
+    found += " 量测方位/俯仰=" + FormatPairDeg(detections[i].az_deg, detections[i].el_deg, 3) + "°";
+  }
+  Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
+       "检测与量测信息=搜到目标=[" + found + "]");
+}
+
+void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
+                                     std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
+                                     const std::vector<RirSearchDetectionLite>& detections) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  // 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名，按 §0.9
+  // 条目独立判定，不得互相替代。指向角取该波位实际指向（地平线波位 el≈0）。
+  Emit(sim_time_sec, cycle, "地平线搜索功能测试",
+       "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
+           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
+  if (detections.empty()) {
+    return;
+  }
+  std::string found;
+  for (std::size_t i = 0U; i < detections.size(); ++i) {
+    if (i != 0U) {
+      found += "; ";
+    }
+    found += "ID=" + std::to_string(detections[i].target_id);
+    found += " 斜距=" + FormatF(detections[i].range_m, 1) + "m";
+    found += " 量测方位/俯仰=" + FormatPairDeg(detections[i].az_deg, detections[i].el_deg, 3) + "°";
+  }
+  Emit(sim_time_sec, cycle, "地平线搜索功能测试",
+       "检测与量测信息=搜到目标=[" + found + "]");
 }
 
 void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
@@ -907,11 +1060,12 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
 
   // 第39/40项 定位信息与运动参数（两判定句相同，各按项名分行；加速度优先 ECEF
   // 三分量，锚点不可用时退 ENU）。第40项另由控制器写 本周期航迹数= 汇总行。
+  // 2026-09-28 按更新后的规范：定位信息固定为 斜距 + 方位/俯仰（角定位），不再追加
+  // 高度= 代替俯仰；无有效角距时整行以「定位信息=缺失」如实标记，不写高度占位。
   const std::string positioning =
       has_polar ? ("定位信息=斜距=" + FormatF(range_m, 1) + "m 方位/俯仰=" +
-                   FormatPairDeg(az_deg, el_deg, 3) + "° 高度=" +
-                   FormatF(track.position.z(), 1) + "m")
-                : ("定位信息=高度=" + FormatF(track.position.z(), 1) + "m");
+                   FormatPairDeg(az_deg, el_deg, 3) + "°")
+                : std::string("定位信息=缺失");
   const std::string motion =
       std::string("运动参数=速度=") + FormatF(track.speed, 3) + "m/s 航向=" +
       FormatF(heading, 2) + "° 加速度=" +
@@ -1300,7 +1454,7 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   // 验收判定标准 第37项·其二：扫描调度信息（搜索/指定/跟踪/预算/已耗时；
   // 2026-08-30 核查 9.1：删除"计划驻留/实际执行"字段——库内逐驻留执行，实际数
   // 恒等于计划数，无信息量；按类分项计数与时间预算保留）。
-  Emit(sim_time_sec, cycle, "对指定空域进行搜索功能测试",
+  Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
            " 跟踪=" + std::to_string(track_count) +
@@ -1321,13 +1475,23 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
   // 波位排列表/扫描轨迹全量在 Rir_scan_pattern.csv（index,az_deg,el_deg）；日志不再
   // 重复当前波束指向，搜索驻留只写本周期序号（=波位表游标，可索引 CSV）。
   // 指定/跟踪驻留带种类与目标 ID 标记。
+  // 2026-09-28 追加：本模型无独立地平线搜索模式，故以波位表内俯仰接近 0°（|el| ≤
+  // 半波束宽）的搜索驻留作为地平线波位，按其实际指向独立写出第 37A 项「方位/俯仰
+  // 指向信息」行；该项的扫描调度信息行随 WriteRirSchedule 一并写出。
   const std::string scan_csv_path = ResolveRirScanPatternCsvPath();
+  constexpr double kHorizonElevationToleranceDeg = 0.5;
   for (const RirDwellPlan& dwell : dwell_plan) {
     if (dwell.kind == RirDwellKind::kSearch) {
       Emit(sim_time_sec, cycle, "波束扫描功能测试",
            "雷达ID=" + std::to_string(radar_id) +
                " 本周期序号=" + std::to_string(dwell.scan_pattern_index) +
                " 波位排列表已输出至" + scan_csv_path);
+      if (std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
+          kHorizonElevationToleranceDeg) {
+        Emit(sim_time_sec, cycle, "地平线搜索功能测试",
+             "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
+                 FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");
+      }
     } else {
       const char* kind_text =
           dwell.kind == RirDwellKind::kDesignate ? "指定驻留" : "跟踪驻留";
@@ -1336,6 +1500,40 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
                " 目标ID=" + std::to_string(dwell.external_target_id));
     }
   }
+}
+
+void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
+                              const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  if (pattern.empty()) {
+    return;  // 无波位表：判定字段无有效值，整行省略（§0 规则3）。
+  }
+  // 2026-09-28 合并：截图第48项要求记录方位/俯仰扫描范围。按实际波位表求上下限，
+  // 不另引入配置回显（阵面方向/扫描起始为配置输入，按 §0B 不作为模型输出复写）。
+  float az_min = pattern[0].az_deg;
+  float az_max = pattern[0].az_deg;
+  float el_min = pattern[0].el_deg;
+  float el_max = pattern[0].el_deg;
+  for (const oneq::common::radar::AzimuthElevationDeg& point : pattern) {
+    if (point.az_deg < az_min) {
+      az_min = point.az_deg;
+    }
+    if (point.az_deg > az_max) {
+      az_max = point.az_deg;
+    }
+    if (point.el_deg < el_min) {
+      el_min = point.el_deg;
+    }
+    if (point.el_deg > el_max) {
+      el_max = point.el_deg;
+    }
+  }
+  Emit(sim_time_sec, cycle, "波束扫描功能测试",
+       "雷达ID=" + std::to_string(radar_id) + " 方位扫描范围=" + FormatF(az_min, 3) + "/" +
+           FormatF(az_max, 3) + "° 俯仰扫描范围=" + FormatF(el_min, 3) + "/" +
+           FormatF(el_max, 3) + "°");
 }
 
 bool TryExportRirAntennaPatternCsv(const config::hardware::RirAntennaConfig& antenna,

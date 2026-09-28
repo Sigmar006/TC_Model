@@ -1641,6 +1641,19 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       angle += " 量测方位/俯仰(ECI)=(" +
                oneq::logging::FormatF(candidate.measured_azimuth_deg * kDegToRad, 8) + "," +
                oneq::logging::FormatF(candidate.measured_elevation_deg * kDegToRad, 8) + ")rad";
+      // 2026-09-28 合并：截图第5项要求同时给出「卫星传感器瞬时视场信息」与「目标是否
+      // 位于瞬时视场内的判定结果」。本行只在 WFOV 四门全过时成行，故判定结果恒为「是」；
+      // 字段名与示例对齐（瞬时视场方位/俯仰范围=半视场，位于瞬时视场内=）。
+      const double wfov_az_delta_deg =
+          std::fabs(AzimuthDelta(sensor_azimuth_deg, actual_scan_azimuth_sensor_deg));
+      const double wfov_el_delta_deg =
+          std::fabs(sensor_elevation_deg - actual_scan_elevation_sensor_deg);
+      const bool in_wfov = wfov_az_delta_deg <= 0.5 * mission.wide_field_fov_az_deg &&
+                           wfov_el_delta_deg <= 0.5 * mission.wide_field_fov_el_deg;
+      angle += " 瞬时视场方位/俯仰范围=(" +
+               oneq::logging::FormatF(0.5 * mission.wide_field_fov_az_deg * kDegToRad, 6) + "," +
+               oneq::logging::FormatF(0.5 * mission.wide_field_fov_el_deg * kDegToRad, 6) + ")rad";
+      angle += in_wfov ? " 位于瞬时视场内=是" : " 位于瞬时视场内=否";
       SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "探测角度计算功能测试", angle);
       std::string wfov_angle = "卫星ID=" + std::to_string(satellite_entity_id_);
       wfov_angle += " 目标ID=" + std::to_string(target.target_id);
@@ -1661,7 +1674,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       const double snr_db_wide = 10.0 * std::log10(std::max(snr, 1.0e-12));
       energy += " 接收功率=" + oneq::logging::FormatSci(received_power_w) + "W";
       energy += " 信号能量=" + oneq::logging::FormatSci(signal_energy_j) + "J";
-      energy += " SNR(dB)=" + oneq::logging::FormatF(snr_db_wide, 3) + "dB";
+      energy += " SNR=" + oneq::logging::FormatF(snr_db_wide, 3) + "dB";
       const double pfa_wide =
           0.5 * std::erfc(static_cast<double>(policy.detection.wide_min_snr_linear) /
                           std::sqrt(2.0));
@@ -2021,7 +2034,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
               " 窄场方位/俯仰(ECI)=(" +
               oneq::logging::FormatF(selected.command_azimuth_deg * kDegToRad, 8) + "," +
               oneq::logging::FormatF(selected.command_elevation_deg * kDegToRad, 8) +
-              ")rad SNR(dB)=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB");
+              ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB");
     }
     if (!captured) {
       log_acceptance_release(target_id, "acquisition_ineligible", 0U);
@@ -2333,7 +2346,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       nfov += " 跟踪状态=";
       nfov += detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪";
       nfov += " 信号能量=" + oneq::logging::FormatSci(context.signal_energy_j) + "J";
-      nfov += " SNR(dB)=" + oneq::logging::FormatF(snr_db, 3) + "dB";
+      nfov += " SNR=" + oneq::logging::FormatF(snr_db, 3) + "dB";
       // 高刷新率高精度数据输出（单镜筒轮转口径）：本周期实际帧数 + 单帧/融合 1-σ。
       nfov += " 帧数=" + std::to_string(nfov_frame_count);
       nfov += " 单帧σ=" + oneq::logging::FormatSci(nfov_frame_sigma_deg) + "deg";
@@ -2349,7 +2362,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                      oneq::logging::FormatF(detection.record.elevation_rad, 8) + ")rad";
       joint_track += " 跟踪状态=";
       joint_track += detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪";
-      joint_track += " SNR(dB)=" + oneq::logging::FormatF(snr_db, 3) + "dB";
+      joint_track += " SNR=" + oneq::logging::FormatF(snr_db, 3) + "dB";
       SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
                                  "宽窄视场联合探测功能测试", joint_track);
       WriteSbirsAngleError(satellite_entity_id_, sim_time_sec, input.cycle_index,
@@ -2387,7 +2400,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                   std::to_string(served_target_id) + " 捕获=转向中 窄场方位/俯仰(ECI)=(" +
                   oneq::logging::FormatF(selected.command_azimuth_deg * kDegToRad, 8) + "," +
                   oneq::logging::FormatF(selected.command_elevation_deg * kDegToRad, 8) +
-                  ")rad SNR(dB)=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB");
+                  ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB");
         }
         append_wfov_detection(selected);
       } else if (pointing_result.status == SbirsPointingAdvanceStatus::kTimedOut) {

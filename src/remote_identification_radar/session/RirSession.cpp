@@ -426,6 +426,9 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     runtime::TryExportRirAntennaPatternCsv(config.hardware.antenna, csv_path.c_str());
     const std::string scan_csv_path = runtime::ResolveRirScanPatternCsvPath();
     runtime::TryExportRirScanPatternCsv(scan_pattern, scan_csv_path.c_str());
+    // 2026-09-28 合并：第48项要求记录方位/俯仰扫描范围（波位表上下限），与 CSV 同源。
+    runtime::WriteRirScanRangeSummary(controller.EffectiveSensorEntityId(), input.sim_time_sec,
+                                      input.input_cycle_index, scan_pattern);
     runtime::WriteRirAntennaPatternSummary(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                            input.input_cycle_index,
                                            config.hardware.antenna.main_beam_gain_db,

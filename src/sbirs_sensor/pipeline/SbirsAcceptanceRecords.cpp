@@ -396,15 +396,18 @@ void FlushSbirsDetectabilityPending() {
 void WriteSbirsAngleStateEstimate(float sim_time_sec, std::uint32_t cycle, std::uint64_t target_id,
                                   double azimuth_deg, double elevation_deg,
                                   double azimuth_rate_deg_per_s, double elevation_rate_deg_per_s) {
-  if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
+  if (!SBIRS_ACCEPTANCE_LOG_ENABLED() && !SBIRS_FUSION_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
+  constexpr double kDegToRad = 0.017453292519943295;
+  // 2026-09-28 合并（验收判定标准 第18项·标准卡尔曼滤波）：「滤波方位/俯仰及其变化率」
+  // 属第18项判定字段，方括号须用规范测试项名、只写融合文件，角度与变化率统一 rad / rad/s。
   std::string content = "目标ID=" + std::to_string(target_id);
-  content += " 滤波方位=" + FormatF(azimuth_deg, 6) + "°";
-  content += " 滤波俯仰=" + FormatF(elevation_deg, 6) + "°";
-  content += " 方位变化率=" + FormatF(azimuth_rate_deg_per_s, 8) + "°/s";
-  content += " 俯仰变化率=" + FormatF(elevation_rate_deg_per_s, 8) + "°/s";
-  SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "目标角度状态估计", content);
+  content += " 滤波方位/俯仰(ECI)=(" + FormatF(azimuth_deg * kDegToRad, 9) + "," +
+             FormatF(elevation_deg * kDegToRad, 9) + ")rad";
+  content += " 方位变化率=" + FormatF(azimuth_rate_deg_per_s * kDegToRad, 12) + "rad/s";
+  content += " 俯仰变化率=" + FormatF(elevation_rate_deg_per_s * kDegToRad, 12) + "rad/s";
+  SBIRS_FUSION_ACCEPTANCE_ITEM(sim_time_sec, cycle, "标准卡尔曼滤波功能测试", content);
 }
 
 void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,

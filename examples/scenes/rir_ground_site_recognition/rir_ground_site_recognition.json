@@ -24,7 +24,7 @@
       "projected_area_m2": 1.0,
       "temperature_k": 600.0,
       "radiant_intensity_w_per_sr": 300.0,
-      "emitter_center_frequency_hz": 0.0,
+      "emitter_center_frequency_hz": 3000000000.0,
       "rir": {
         "rcs_dbsm": -10.0,
         "truth_model": "BALLISTIC_EXAMPLE_B",
@@ -155,12 +155,12 @@
     }
   ],
   "esr": {
-    "peak_gain_dbi": 30.0,
-    "bandwidth_hz": 2000000.0,
-    "peak_power_w": 50000000.0,
-    "pulse_width_s": 1e-06,
-    "pri_s": 0.001,
-    "pulse_count": 200,
+    "peak_gain_dbi": 0.0,
+    "bandwidth_hz": 4500000.0,
+    "peak_power_w": 10.0,
+    "pulse_width_s": 0.02,
+    "pri_s": 0.05,
+    "pulse_count": 20,
     "timing_seed": 42
   },
   "sensors": {
@@ -394,7 +394,7 @@
       },
       "environment": {
         "weather_attenuation_db": 0.0,
-        "vegetation_cover_profile": "kDisabled",
+        "vegetation_cover_profile": "kOpenGrassland",
         "atmospheric_physics": {
           "enable_physical_model": false,
           "pressure_hpa": 1013.25,

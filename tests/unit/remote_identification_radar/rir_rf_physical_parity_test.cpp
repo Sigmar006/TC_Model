@@ -22,6 +22,7 @@
 #include "remote_identification_radar/dwell/RirDetectionCellResolver.h"
 #include "remote_identification_radar/dwell/RirRfFrontEndResolver.h"
 #include "remote_identification_radar/dwell/RirSignalDetector.h"
+#include "remote_identification_radar/internal/RirSurfaceClutterModel.h"
 
 namespace remote_identification_radar {
 namespace tests {
@@ -142,6 +143,25 @@ oneq::electromagnetics::RfSceneEmission MakeExternalJammer(std::uint64_t emissio
   return emission;
 }
 
+oneq::electromagnetics::RfSceneEmission MakeBallisticPodJammer(
+    const oneq::coordinate::EcefPositionM& receiver_position, double range_m,
+    double jammer_power_w) {
+  oneq::electromagnetics::RfSceneEmission emission;
+  emission.identity.sensor_entity_id = 208U;
+  emission.identity.emission_id = 1U;
+  emission.position_ecef_m = receiver_position;
+  emission.position_ecef_m.x_m += range_m;
+  emission.antenna.boresight_ecef.x = -1.0;
+  emission.antenna.boresight_ecef.y = 0.0;
+  emission.antenna.boresight_ecef.z = 0.0;
+  emission.antenna.peak_gain_dbi = 0.0;
+  emission.antenna.half_power_beamwidth_deg = 120.0;
+  emission.polarization = oneq::electromagnetics::RfScenePolarization::kHorizontal;
+  EXPECT_TRUE(oneq::electromagnetics::TryCreateRfNoiseWaveform(
+      0.0, kDwellSec, 3.0e9, 4.5e6, jammer_power_w, &emission.waveform));
+  return emission;
+}
+
 RirDetectionCellTarget MakeCellTarget(double range_m, double rcs_m2) {
   RirDetectionCellTarget target;
   target.range_m = range_m;
@@ -164,6 +184,8 @@ struct ParityOutcome {
   bool chain_resolved{false};
   bool receiver_saturated{false};
   double sinr_db{0.0};
+  double interference_power_w{0.0};
+  double clutter_power_w{0.0};
   bool detected{false};
 };
 
@@ -227,6 +249,8 @@ ParityOutcome RunRirChain(const RirHardwareConfig& hardware, const RirRfCycleInp
   outcome.chain_resolved = true;
   outcome.receiver_saturated = front_end.receiver_saturated;
   outcome.sinr_db = cell.processed_single_pulse_sinr_db;
+  outcome.interference_power_w = cell.interference_power_w;
+  outcome.clutter_power_w = cell.clutter_power_w;
   outcome.detected = detection.detected;
   return outcome;
 }
@@ -385,6 +409,42 @@ TEST_F(RirRfPhysicalParityTest, EnvironmentDerivedClutterChainMatchesAr) {
   EXPECT_NEAR(rir.sinr_db, ar.sinr_db, kSinrToleranceDb);
   EXPECT_EQ(rir.detected, ar.detected);
   EXPECT_TRUE(rir.detected);
+}
+
+/// @brief 弹道目标携带同带干扰吊舱，低仰角入射时植被地杂波与外部干扰必须
+///        同时进入检测单元噪声账本；该用例不改变正式弹道场景的窄波束几何。
+TEST_F(RirRfPhysicalParityTest, BallisticPodJammerAndSurfaceClutterShareDetectionBudget) {
+  const RirDetectionCellTarget cell_target = MakeCellTarget(10000.0, 1.0);
+
+  internal::RirSurfaceClutterInput clutter_input;
+  clutter_input.vegetation_cover_profile = config::RirVegetationCoverProfile::kOpenGrassland;
+  clutter_input.transmitter = hardware_.transmitter;
+  clutter_input.antenna = hardware_.antenna;
+  clutter_input.range_m = static_cast<float>(cell_target.range_m);
+  clutter_input.look_el_deg = 0.1f;
+  clutter_input.thermal_noise_w =
+      oneq::common::radar::RadarEquations::ComputeThermalNoisePower_W(
+          hardware_.transmitter.bandwidth_hz, hardware_.receiver.noise_figure_db);
+  const double clutter_power_w =
+      internal::RirSurfaceClutterModel().EvaluateClutterNoiseW(clutter_input);
+  ASSERT_GT(clutter_power_w, 0.0);
+
+  oneq::electromagnetics::RfSceneFrame clean_scene;
+  const ParityOutcome clean =
+      RunRirChain(hardware_, rir_input_, clean_scene, cell_target, 0.0, 35.0f);
+
+  oneq::electromagnetics::RfSceneFrame jammed_scene;
+  jammed_scene.emissions.push_back(
+      MakeBallisticPodJammer(rir_input_.platform_position_ecef_m, cell_target.range_m, 1.0e-4));
+  const ParityOutcome combined = RunRirChain(hardware_, rir_input_, jammed_scene, cell_target,
+                                              clutter_power_w, 35.0f);
+
+  ASSERT_TRUE(clean.chain_resolved);
+  ASSERT_TRUE(combined.chain_resolved);
+  EXPECT_GT(combined.interference_power_w, 0.0);
+  EXPECT_DOUBLE_EQ(combined.clutter_power_w, clutter_power_w);
+  EXPECT_LT(combined.sinr_db, clean.sinr_db);
+  EXPECT_FALSE(combined.receiver_saturated);
 }
 
 TEST_F(RirRfPhysicalParityTest, ReceiverSaturationFlagMatchesAr) {

@@ -151,6 +151,20 @@
             }
         },
         {
+            "name": "VisualStudio.12.0-amd64-none",
+            "displayName": "Visual Studio 12 2013 (x64, no Conan)",
+            "description": "VS2013 v120 x64 without Conan: run scripts/win/fetch_third_party.bat first to git clone deps into third_party/, consumed by VendorPackages.cmake",
+            "inherits": "windows-base-none",
+            "generator": "Visual Studio 12 2013",
+            "toolset": "v120",
+            "cacheVariables": {
+                "CMAKE_CXX_STANDARD": "11",
+                "BUILD_SHARED_LIBS": "OFF",
+                "ENABLE_TESTING": "OFF",
+                "ENABLE_INSTALL": "ON"
+            }
+        },
+        {
             "name": "acceptance-v141",
             "displayName": "Acceptance v141 (Release x64 with PDB)",
             "description": "Full static 1q acceptance build using the v141 toolset, Release optimization and /Zi debug symbols.",
@@ -227,6 +241,20 @@
             "displayName": "Visual Studio 14 2015 (x64, no Conan) - Release",
             "inherits": "windows-build-base",
             "configurePreset": "VisualStudio.14.0-amd64-none",
+            "configuration": "Release"
+        },
+        {
+            "name": "VisualStudio.12.0-amd64-none-debug",
+            "displayName": "Visual Studio 12 2013 (x64, no Conan) - Debug",
+            "inherits": "windows-build-base",
+            "configurePreset": "VisualStudio.12.0-amd64-none",
+            "configuration": "Debug"
+        },
+        {
+            "name": "VisualStudio.12.0-amd64-none-release",
+            "displayName": "Visual Studio 12 2013 (x64, no Conan) - Release",
+            "inherits": "windows-build-base",
+            "configurePreset": "VisualStudio.12.0-amd64-none",
             "configuration": "Release"
         },
         {

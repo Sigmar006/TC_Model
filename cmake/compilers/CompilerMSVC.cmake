@@ -24,10 +24,14 @@ function(apply_msvc_options)
     message(STATUS "  └─ Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 
     # /MP：多源文件并行编译；/Zc:inline：剔除 COMDAT 重复定义，缩减代码体积。
+    # /Zc:inline 需 VS2015+（MSVC 1900），VS2013（v120/1800）不识别，故按版本追加。
     # 编码说明：仓库全部 C/C++ 源文件统一携带 UTF-8 BOM（scripts/utf8_bom.py 维护），
     # cl.exe 对带 BOM 文件无条件按 UTF-8 解码，不依赖 /utf-8 选项、pragma 或
     # VS2015 Update 等级；交付库面向无 /utf-8 的 VS2015 消费方（BOM 自描述）。
-    set(_msvc_common_compile_options /MP /Zc:inline)
+    set(_msvc_common_compile_options /MP)
+    if(MSVC_VERSION GREATER_EQUAL 1900)
+        list(APPEND _msvc_common_compile_options /Zc:inline)
+    endif()
     # /permissive- 与 /Zc:referenceBinding 需 VS2017+（MSVC 1910）。
     if(MSVC_VERSION GREATER_EQUAL 1910)
         list(APPEND _msvc_common_compile_options

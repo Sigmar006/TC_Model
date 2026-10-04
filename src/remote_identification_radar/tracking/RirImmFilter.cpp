@@ -47,6 +47,8 @@ std::vector<float> BuildDefaultNoiseDiffCoeffs(std::uint32_t model_count_hint) {
 
 }  // namespace
 
+RirImmFilter::RirImmFilter() : RirImmFilter(Config()) {}
+
 RirImmFilter::RirImmFilter(const Config& config) {
   std::vector<float> coeffs = config.model_noise_diff_coeffs;
   if (coeffs.empty()) {

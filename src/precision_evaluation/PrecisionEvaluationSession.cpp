@@ -161,10 +161,8 @@ PrecisionEvaluationSession::PrecisionEvaluationSession(const PrecisionEvaluation
 
 PrecisionEvaluationSession::~PrecisionEvaluationSession() = default;
 
-PrecisionEvaluationSession::PrecisionEvaluationSession(PrecisionEvaluationSession&&) noexcept =
-    default;
-PrecisionEvaluationSession& PrecisionEvaluationSession::operator=(
-    PrecisionEvaluationSession&&) noexcept = default;
+PrecisionEvaluationSession::PrecisionEvaluationSession(PrecisionEvaluationSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+PrecisionEvaluationSession& PrecisionEvaluationSession::operator=(PrecisionEvaluationSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
     std::uint32_t cycle_index, float dt_sec, double utc_julian_day,

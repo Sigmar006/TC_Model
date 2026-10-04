@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "1q/sbirs_sensor/session/SbirsCycleInput.h"
 
@@ -146,10 +147,8 @@ SbirsDetectionLifecycleRecorder::SbirsDetectionLifecycleRecorder(
     : impl_(new Impl{config, {}}) {}
 
 SbirsDetectionLifecycleRecorder::~SbirsDetectionLifecycleRecorder() = default;
-SbirsDetectionLifecycleRecorder::SbirsDetectionLifecycleRecorder(
-    SbirsDetectionLifecycleRecorder&&) noexcept = default;
-SbirsDetectionLifecycleRecorder& SbirsDetectionLifecycleRecorder::operator=(
-    SbirsDetectionLifecycleRecorder&&) noexcept = default;
+SbirsDetectionLifecycleRecorder::SbirsDetectionLifecycleRecorder(SbirsDetectionLifecycleRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+SbirsDetectionLifecycleRecorder& SbirsDetectionLifecycleRecorder::operator=(SbirsDetectionLifecycleRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<SbirsDetectionLifecycleEvent> SbirsDetectionLifecycleRecorder::Update(
     const SbirsCycleInput& input, const SbirsCycleResult& result) {

@@ -27,13 +27,18 @@ REM   boost       1.85.0   header-only    源码包下载 archives.boost.io（mo
 REM                                       无法直接 git clone 出预合并头；airborne_radar 使用
 REM                                       boost/math/special_functions/gamma.hpp 与
 REM                                       boost/pool/object_pool.hpp，故必须提供真实头）
+REM
+REM VS2013（MSVC<1900）额外拉取降级版本（VendorPackages.cmake 按 MSVC 版本选择）：
+REM   eigen_vs2013     3.3.9    Eigen 3.4 在 MSVC 1800 上矩阵乘积触发 ICE（C1001）
+REM   boost_vs2013     1.68.0   VS2013 可编译的 boost/math + multiprecision
+REM   nanoflann_vs2013 v1.2.3   1.3.x 的表达式 SFINAE 在 MSVC 2013 上不通过
 REM ============================================================================
 
 setlocal EnableDelayedExpansion
 
-REM --- 定位仓库根目录（脚本位于 <root>\scripts\ 下） ---
+REM --- 定位仓库根目录（脚本位于 <root>\scripts\win\ 下） ---
 set "SCRIPT_DIR=%~dp0"
-pushd "%SCRIPT_DIR%.." >nul 2>&1
+pushd "%SCRIPT_DIR%..\.." >nul 2>&1
 set "ROOT_DIR=%CD%"
 popd >nul 2>&1
 set "TP_DIR=%ROOT_DIR%\third_party"
@@ -100,20 +105,27 @@ if exist "%_target%\boost" (
 )
 
 echo [fetch_third_party] 下载 boost %_ver% 源码包（~205MB，来自 archives.boost.io）
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ErrorActionPreference='Stop';" ^
-  "$ProgressPreference='SilentlyContinue';" ^
-  "$tmp=[System.IO.Path]::GetTempFileName() + '.zip';" ^
-  "Invoke-WebRequest -Uri '%_url%' -OutFile $tmp;" ^
-  "Expand-Archive -Path $tmp -DestinationPath '%TP_DIR%\_boost_extract' -Force;" ^
-  "Move-Item -Path '%TP_DIR%\_boost_extract\boost_%_ver_us%' -Destination '%_target%' -Force;" ^
-  "Remove-Item -Recurse -Force '%TP_DIR%\_boost_extract';" ^
-  "Remove-Item $tmp"
+REM 用 curl.exe 下载（Git for Windows / Windows 10+ 均自带；走系统 TLS，绕开 Windows
+REM PowerShell 默认 TLS 版本过旧导致的 "连接被意外关闭"）。
+set "_tmp_zip=%TP_DIR%\_boost_%_ver%.zip"
+curl.exe -L --fail --retry 3 -o "%_tmp_zip%" "%_url%"
 if errorlevel 1 (
-    echo [fetch_third_party] 错误: 下载/解压 boost %_ver% 失败（%_url%） >&2
-    if exist "%TP_DIR%\_boost_extract" rmdir /s /q "%TP_DIR%\_boost_extract" 2>nul
+    echo [fetch_third_party] 错误: 下载 boost %_ver% 失败（%_url%） >&2
+    del "%_tmp_zip%" 2>nul
     exit /b 1
 )
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "Expand-Archive -Path '%_tmp_zip%' -DestinationPath '%TP_DIR%\_boost_extract' -Force;" ^
+  "Move-Item -Path '%TP_DIR%\_boost_extract\boost_%_ver_us%' -Destination '%_target%' -Force;" ^
+  "Remove-Item -Recurse -Force '%TP_DIR%\_boost_extract';"
+if errorlevel 1 (
+    echo [fetch_third_party] 错误: 解压 boost %_ver% 失败 >&2
+    if exist "%TP_DIR%\_boost_extract" rmdir /s /q "%TP_DIR%\_boost_extract" 2>nul
+    del "%_tmp_zip%" 2>nul
+    exit /b 1
+)
+del "%_tmp_zip%" 2>nul
 exit /b 0
 
 REM --- sqlite3 amalgamation 子例程：参数 (子目录, 版本号, 发布年份) ---
@@ -147,20 +159,26 @@ if exist "%_target%\sqlite3.c" (
 )
 
 echo [fetch_third_party] 下载 sqlite3 amalgamation %_ver%（来自 sqlite.org/%_year%）
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ErrorActionPreference='Stop';" ^
-  "$ProgressPreference='SilentlyContinue';" ^
-  "$tmp=[System.IO.Path]::GetTempFileName() + '.zip';" ^
-  "Invoke-WebRequest -Uri '%_url%' -OutFile $tmp;" ^
-  "Expand-Archive -Path $tmp -DestinationPath '%TP_DIR%\_sqlite_extract' -Force;" ^
-  "Move-Item -Path '%TP_DIR%\_sqlite_extract\%_pkgdir%' -Destination '%_target%' -Force;" ^
-  "Remove-Item -Recurse -Force '%TP_DIR%\_sqlite_extract';" ^
-  "Remove-Item $tmp"
+REM 同 boost：curl.exe 下载，Expand-Archive 本地解压。
+set "_tmp_zip=%TP_DIR%\_sqlite_%_ver%.zip"
+curl.exe -L --fail --retry 3 -o "%_tmp_zip%" "%_url%"
 if errorlevel 1 (
-    echo [fetch_third_party] 错误: 下载/解压 sqlite3 amalgamation %_ver% 失败（%_url%） >&2
-    if exist "%TP_DIR%\_sqlite_extract" rmdir /s /q "%TP_DIR%\_sqlite_extract" 2>nul
+    echo [fetch_third_party] 错误: 下载 sqlite3 amalgamation %_ver% 失败（%_url%） >&2
+    del "%_tmp_zip%" 2>nul
     exit /b 1
 )
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "Expand-Archive -Path '%_tmp_zip%' -DestinationPath '%TP_DIR%\_sqlite_extract' -Force;" ^
+  "Move-Item -Path '%TP_DIR%\_sqlite_extract\%_pkgdir%' -Destination '%_target%' -Force;" ^
+  "Remove-Item -Recurse -Force '%TP_DIR%\_sqlite_extract';"
+if errorlevel 1 (
+    echo [fetch_third_party] 错误: 解压 sqlite3 amalgamation %_ver% 失败 >&2
+    if exist "%TP_DIR%\_sqlite_extract" rmdir /s /q "%TP_DIR%\_sqlite_extract" 2>nul
+    del "%_tmp_zip%" 2>nul
+    exit /b 1
+)
+del "%_tmp_zip%" 2>nul
 exit /b 0
 
 :main
@@ -186,6 +204,16 @@ if errorlevel 1 exit /b 1
 
 REM --- boost 1.85.0（header-only；airborne_radar 使用 boost/math 与 boost/pool） ---
 call :fetch_boost boost    1.85.0
+if errorlevel 1 exit /b 1
+
+REM --- VS2013（MSVC<1900）专用降级版本 ---
+REM Eigen 3.4 / boost 1.85 / nanoflann 1.3.x 在 MSVC 2013 上分别触发 ICE(C1001)、
+REM C++14 语法错误、表达式 SFINAE 失败；VendorPackages.cmake 按 MSVC 版本选择下述目录。
+call :fetch_one eigen_vs2013      https://gitlab.com/libeigen/eigen.git        3.3.9
+if errorlevel 1 exit /b 1
+call :fetch_boost boost_vs2013    1.68.0
+if errorlevel 1 exit /b 1
+call :fetch_one nanoflann_vs2013  https://github.com/jlblancoc/nanoflann.git  v1.2.3
 if errorlevel 1 exit /b 1
 
 echo.

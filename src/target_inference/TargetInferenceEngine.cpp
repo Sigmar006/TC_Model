@@ -25,8 +25,8 @@ using oneq::coordinate::LlaPositionDegM;
 
 /** @brief 动力学状态（ECEF 位置 + 速度）。 */
 struct RvState {
-  std::array<double, 3U> r{{0.0, 0.0, 0.0}};
-  std::array<double, 3U> v{{0.0, 0.0, 0.0}};
+  std::array<double, 3U> r = std::array<double, 3U>();
+  std::array<double, 3U> v = std::array<double, 3U>();
 };
 
 double Norm3(const std::array<double, 3U>& a) {
@@ -245,7 +245,8 @@ std::vector<TargetInferenceResult> TargetInferenceEngine::Infer(
 
       /* ---- 发射点回推（大气界面停机门/地表交点/速度停机门；助推段未建模，
               停机点即"助推段上界"估计） ---- */
-      auto backtrack = [this, dt](const RvState& start, double* elapsed, bool* hit_surface) {
+      auto backtrack = [this, dt](const RvState& start, double* elapsed,
+                                  bool* hit_surface) -> RvState {
         RvState state = start;
         double t = 0.0;
         *hit_surface = false;

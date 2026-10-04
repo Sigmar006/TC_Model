@@ -57,9 +57,9 @@ struct RdaDiagnostics {
   double image_entropy_nats{0.0};                         /**< 图像熵（nats） */
   double image_contrast{0.0};                             /**< 图像对比度 */
   std::size_t out_of_bounds_samples{0U};                  /**< 越界样本数 */
-  std::string rcmc_interpolation{"none"};                 /**< RCMC 插值方式描述 */
-  std::string phase_reference_mode{"native"};             /**< 相位参考模式 */
-  std::string image_quality_mainlobe_method{"3db"};       /**< 图像质量主瓣估计方法 */
+  std::string rcmc_interpolation = "none";                 /**< RCMC 插值方式描述 */
+  std::string phase_reference_mode = "native";             /**< 相位参考模式 */
+  std::string image_quality_mainlobe_method = "3db";       /**< 图像质量主瓣估计方法 */
   bool phase_reference_applied{false};                    /**< 是否施加了相位参考 */
   bool range_compression_applied{false};                  /**< 是否执行了距离压缩 */
   bool azimuth_fft_applied{false};                        /**< 是否执行了方位 FFT */

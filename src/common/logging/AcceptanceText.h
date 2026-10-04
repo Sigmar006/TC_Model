@@ -7,6 +7,7 @@
 #define ONEQ_SRC_COMMON_LOGGING_ACCEPTANCE_TEXT_H_
 
 #include <array>
+#include "common/platform/OneqPlatformCompat.h"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -19,32 +20,32 @@ inline std::string FormatF(double value, int precision) {
   char buf[64];
   switch (precision) {
     case 0:
-      std::snprintf(buf, sizeof(buf), "%.0f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.0f", value);
       break;
     case 1:
-      std::snprintf(buf, sizeof(buf), "%.1f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.1f", value);
       break;
     case 2:
-      std::snprintf(buf, sizeof(buf), "%.2f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.2f", value);
       break;
     case 3:
-      std::snprintf(buf, sizeof(buf), "%.3f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.3f", value);
       break;
     case 4:
-      std::snprintf(buf, sizeof(buf), "%.4f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.4f", value);
       break;
     case 5:
-      std::snprintf(buf, sizeof(buf), "%.5f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.5f", value);
       break;
     case 7:
-      std::snprintf(buf, sizeof(buf), "%.7f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.7f", value);
       break;
     case 8:
       // 弧度制小量（如 μrad 级测角残差 ≈1e-6 rad）需要 8 位小数才有有效数字。
-      std::snprintf(buf, sizeof(buf), "%.8f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.8f", value);
       break;
     default:
-      std::snprintf(buf, sizeof(buf), "%.6f", value);
+      ONEQ_SNPRINTF(buf, sizeof(buf), "%.6f", value);
       break;
   }
   return std::string(buf);
@@ -55,7 +56,7 @@ inline std::string FormatSci(double value) {
     return "0.000";  // 零不进科学计数，避免 0.000e+00 与 0.000 混排
   }
   char buf[64];
-  std::snprintf(buf, sizeof(buf), "%.3e", value);
+  ONEQ_SNPRINTF(buf, sizeof(buf), "%.3e", value);
   return std::string(buf);
 }
 

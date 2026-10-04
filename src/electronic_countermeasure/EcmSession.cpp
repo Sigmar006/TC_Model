@@ -47,8 +47,8 @@ struct EcmSession::Impl {
 
 EcmSession::EcmSession() : impl_(new Impl(config::EcmSessionConfig())) {}
 EcmSession::~EcmSession() = default;
-EcmSession::EcmSession(EcmSession&&) noexcept = default;
-EcmSession& EcmSession::operator=(EcmSession&&) noexcept = default;
+EcmSession::EcmSession(EcmSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+EcmSession& EcmSession::operator=(EcmSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 EcmSession::EcmSession(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 
 void EcmSession::SetSensorEntityId(std::uint32_t sensor_entity_id) noexcept {

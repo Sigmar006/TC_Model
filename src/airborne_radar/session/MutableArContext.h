@@ -31,8 +31,14 @@ class ArContextRuntimeState final {
  public:
   ArContextRuntimeState(const ArContextRuntimeState&) = default;
   ArContextRuntimeState& operator=(const ArContextRuntimeState&) = default;
-  ArContextRuntimeState(ArContextRuntimeState&&) noexcept = default;
-  ArContextRuntimeState& operator=(ArContextRuntimeState&&) noexcept = default;
+  // VS2013 不支持 = default 的移动操作（C2610），故显式实现成员级移动。
+  ArContextRuntimeState(ArContextRuntimeState&& other) noexcept
+      : owner_identity_(std::move(other.owner_identity_)), snapshot_(std::move(other.snapshot_)) {}
+  ArContextRuntimeState& operator=(ArContextRuntimeState&& other) noexcept {
+    owner_identity_ = std::move(other.owner_identity_);
+    snapshot_ = std::move(other.snapshot_);
+    return *this;
+  }
 
  private:
   ArContextRuntimeState(std::shared_ptr<const ArContextRuntimeIdentity> owner_identity,

@@ -13,12 +13,13 @@
 
 #include "common/logging/AcceptanceFileLog.h"
 #include "common/logging/AcceptanceRecordFormat.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 namespace remote_identification_radar {
 namespace runtime {
 
 inline bool& RirAcceptanceLogRuntimeFlag() {
-  static thread_local bool enabled = true;
+  static ONEQ_THREAD_LOCAL bool enabled = true;
   return enabled;
 }
 

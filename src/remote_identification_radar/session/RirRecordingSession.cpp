@@ -70,9 +70,8 @@ RirRecordingSession::RirRecordingSession(const config::RirSessionConfig& config,
   }
 }
 
-RirRecordingSession::RirRecordingSession(RirRecordingSession&& other) noexcept = default;
-RirRecordingSession& RirRecordingSession::operator=(RirRecordingSession&& other) noexcept =
-    default;
+RirRecordingSession::RirRecordingSession(RirRecordingSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+RirRecordingSession& RirRecordingSession::operator=(RirRecordingSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 RirRecordingSession::~RirRecordingSession() = default;
 
 RirOutputFrame RirRecordingSession::Step(const RirCycleInput& input) {

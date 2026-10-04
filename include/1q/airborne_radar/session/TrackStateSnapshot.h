@@ -55,7 +55,7 @@ struct ONEQ_API TrackStateSnapshot {
   std::uint32_t miss_count{0};  /**< 连续失配计数 */
 
   /** @brief 决策层填充的目标分类类型（"UNKNOWN"/"LOW_THREAT_TARGET"/"HIGH_THREAT_FIGHTER" 等） */
-  std::string target_type{"UNKNOWN"};
+  std::string target_type = "UNKNOWN";
   /** @brief 决策层填充的目标分类置信度，范围 [0, 1] */
   float target_probability{0.0f};
 

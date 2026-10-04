@@ -12,12 +12,13 @@
 
 #include "common/logging/AcceptanceFileLog.h"
 #include "common/logging/AcceptanceRecordFormat.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 namespace sbirs_sensor {
 namespace pipeline {
 
 inline bool& SbirsAcceptanceLogRuntimeFlag() {
-  static thread_local bool enabled = true;
+  static ONEQ_THREAD_LOCAL bool enabled = true;
   return enabled;
 }
 

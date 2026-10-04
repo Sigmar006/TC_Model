@@ -7,6 +7,7 @@
 #define ONEQ_SRC_SAR_SESSION_SAR_SESSION_COMPOSITION_ROOT_H_
 
 #include <memory>
+#include <utility>
 
 #include "1q/sar/config/SarSessionConfig.h"
 
@@ -26,6 +27,18 @@ namespace session {
  * @note owned_pipeline 与 owned_controller 由组合根拥有；controller 指向 owned_controller。
  */
 struct SarSessionComposition {
+  // VS2013 不生成隐式移动操作（含移动-only 成员时退化为已删除拷贝），显式实现。
+  SarSessionComposition() = default;
+  SarSessionComposition(SarSessionComposition&& other) noexcept
+      : owned_pipeline(std::move(other.owned_pipeline)),
+        owned_controller(std::move(other.owned_controller)),
+        controller(other.controller) {}
+  SarSessionComposition& operator=(SarSessionComposition&& other) noexcept {
+    owned_pipeline = std::move(other.owned_pipeline);
+    owned_controller = std::move(other.owned_controller);
+    controller = other.controller;
+    return *this;
+  }
   std::unique_ptr<pipeline::SarProcessingPipeline> owned_pipeline; /**< 组合根拥有的处理流水线 */
   std::unique_ptr<extension::SarController> owned_controller; /**< 组合根拥有的运行期控制器 */
   extension::SarController* controller{nullptr}; /**< 指向 owned_controller 的便捷句柄 */

@@ -1,4 +1,5 @@
 ﻿#include "sbirs_sensor/pipeline/SbirsPipeline.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -92,13 +93,13 @@ session::SbirsIssueCause ClassifyWfovSnrExclusionCause(double range_m, float tra
 
 std::string FormatFloat(float value) {
   char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%.1f", static_cast<double>(value));
+  ONEQ_SNPRINTF(buffer, sizeof(buffer), "%.1f", static_cast<double>(value));
   return buffer;
 }
 
 std::string FormatSnr(double value) {
   char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%.3e", value);
+  ONEQ_SNPRINTF(buffer, sizeof(buffer), "%.3e", value);
   return buffer;
 }
 

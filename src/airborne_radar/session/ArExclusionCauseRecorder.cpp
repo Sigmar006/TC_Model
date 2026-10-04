@@ -63,9 +63,8 @@ ArExclusionCauseRecorder::ArExclusionCauseRecorder() : impl_(new Impl) {}
 
 ArExclusionCauseRecorder::~ArExclusionCauseRecorder() = default;
 
-ArExclusionCauseRecorder::ArExclusionCauseRecorder(ArExclusionCauseRecorder&&) noexcept = default;
-ArExclusionCauseRecorder& ArExclusionCauseRecorder::operator=(ArExclusionCauseRecorder&&) noexcept =
-    default;
+ArExclusionCauseRecorder::ArExclusionCauseRecorder(ArExclusionCauseRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+ArExclusionCauseRecorder& ArExclusionCauseRecorder::operator=(ArExclusionCauseRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<ArExclusionCauseEvent> ArExclusionCauseRecorder::Update(
     const ArTargetInputList& targets, const ArCycleResult& result) {

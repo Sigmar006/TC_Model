@@ -56,7 +56,7 @@ enum class ONEQ_API FusedTrackLifecycle : std::uint8_t {
  */
 struct ONEQ_API FusedKinematicEstimate {
   oneq::coordinate::LlaPositionDegM position{}; /**< 位置估计（度制 LLA）。 */
-  std::array<double, 3U> velocity_ecef_m_per_s{{0.0, 0.0, 0.0}}; /**< ECEF 速度（m/s）。 */
+  std::array<double, 3U> velocity_ecef_m_per_s = std::array<double, 3U>(); /**< ECEF 速度（m/s）。 */
   std::array<double, 36U> covariance_ecef{}; /**< 6×6 协方差（行主序 [x,vx,y,vy,z,vz]）。 */
 };
 

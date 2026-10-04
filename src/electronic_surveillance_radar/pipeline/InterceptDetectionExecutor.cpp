@@ -1,4 +1,5 @@
 ﻿#include "electronic_surveillance_radar/pipeline/InterceptDetectionExecutor.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -68,7 +69,7 @@ std::string FormatEmissionIdentity(const oneq::electromagnetics::RfEmissionIdent
 /// 格式化量值为两位小数（消息文本稳定，不承诺解析稳定性；规则 13b message 约定）。
 std::string FormatNumber(double value) {
   char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%.2f", value);
+  ONEQ_SNPRINTF(buffer, sizeof(buffer), "%.2f", value);
   return buffer;
 }
 

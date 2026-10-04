@@ -7,6 +7,7 @@
 #define ONEQ_SRC_PRECISION_EVALUATION_PRECISION_ACCEPTANCE_RECORDS_H_
 
 #include <cstdint>
+#include <array>
 #include <map>
 #include <vector>
 
@@ -18,7 +19,7 @@ namespace precision_evaluation {
 struct TargetKeyErrorSnapshot {
   std::uint32_t last_cycle{0U};  /**< 该目标最近一次误差样本周期。 */
   bool has_ecef{false};          /**< 三轴位置误差 ECEF 可用（双星交会解−真值）。 */
-  double ecef_error_m[3]{0.0, 0.0, 0.0}; /**< 三轴位置误差 ECEF（m）。 */
+  std::array<double, 3> ecef_error_m = std::array<double, 3>(); /**< 三轴位置误差 ECEF（m）。 */
   bool has_slant_range{false};   /**< 距离误差可用（交会解斜距−真值斜距）。 */
   double slant_range_error_m{0.0}; /**< 距离误差（m）。 */
   bool has_angular{false};       /**< 方位/俯仰误差可用（输出角−真值角）。 */

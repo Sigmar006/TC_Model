@@ -66,8 +66,8 @@ EosSession::EosSession()
     : impl_(new Impl(EosSessionCompositionRoot::ComposeDefault(config::EosSessionConfig{}))) {}
 
 EosSession::~EosSession() noexcept = default;
-EosSession::EosSession(EosSession&&) noexcept = default;
-EosSession& EosSession::operator=(EosSession&&) noexcept = default;
+EosSession::EosSession(EosSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+EosSession& EosSession::operator=(EosSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 EosSession EosSession::Create(const config::EosSessionConfig& config) {
   return EosSession(std::unique_ptr<EosSession::Impl>(

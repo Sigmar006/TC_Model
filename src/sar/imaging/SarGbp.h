@@ -46,8 +46,8 @@ struct GbpDiagnostics {
   std::size_t accumulated_samples{0U};    /**< 累加样本数 */
   std::size_t out_of_bounds_samples{0U};  /**< 越界样本数 */
   std::size_t max_approved_dimension{128U}; /**< 批准的最大维度上限 */
-  std::string range_interpolation{"linear"}; /**< 距离插值方式 */
-  std::string traversal_order{"pixel_major"}; /**< 遍历顺序 */
+  std::string range_interpolation = "linear"; /**< 距离插值方式 */
+  std::string traversal_order = "pixel_major"; /**< 遍历顺序 */
 };
 
 /**

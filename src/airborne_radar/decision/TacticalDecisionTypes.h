@@ -17,7 +17,7 @@ namespace airborne_radar {
 namespace session {
 
 struct TargetCategory {
-  std::string target_type{"UNKNOWN"};
+  std::string target_type = "UNKNOWN";
   float probability{0.0f};
   std::unordered_map<std::string, double> feature_values;
 

@@ -65,10 +65,8 @@ EosExclusionCauseRecorder::EosExclusionCauseRecorder() : impl_(new Impl) {}
 
 EosExclusionCauseRecorder::~EosExclusionCauseRecorder() = default;
 
-EosExclusionCauseRecorder::EosExclusionCauseRecorder(EosExclusionCauseRecorder&&) noexcept =
-    default;
-EosExclusionCauseRecorder& EosExclusionCauseRecorder::operator=(
-    EosExclusionCauseRecorder&&) noexcept = default;
+EosExclusionCauseRecorder::EosExclusionCauseRecorder(EosExclusionCauseRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+EosExclusionCauseRecorder& EosExclusionCauseRecorder::operator=(EosExclusionCauseRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<EosExclusionCauseEvent> EosExclusionCauseRecorder::Update(
     const EosCycleInput& input, const EosCycleResult& result) {

@@ -7,6 +7,7 @@
 #define AIRBORNE_RADAR_CORE_SESSION_AR_SESSION_COMPOSITION_ROOT_H_
 
 #include <memory>
+#include <utility>
 
 #include "1q/airborne_radar/config/ArSessionConfig.h"
 #include "1q/airborne_radar/session/ArSession.h"
@@ -46,6 +47,41 @@ struct ArSessionComposition {
   environment::IEnvironmentService* environment_service{nullptr};
   extension::ArController* controller{nullptr};
   bool pipeline_config_synced{true};
+
+  // VS2013 不生成隐式移动操作（含移动-only 成员时退化为已删除拷贝），显式实现。
+  ArSessionComposition() = default;
+  ArSessionComposition(ArSessionComposition&& other) noexcept
+      : runtime_hardware(std::move(other.runtime_hardware)),
+        runtime_mission(std::move(other.runtime_mission)),
+        runtime_orientation(std::move(other.runtime_orientation)),
+        runtime_policy(std::move(other.runtime_policy)),
+        runtime_environment_scenario_config(std::move(other.runtime_environment_scenario_config)),
+        owned_ar_context(std::move(other.owned_ar_context)),
+        owned_signal_pipeline(std::move(other.owned_signal_pipeline)),
+        owned_environment_service(std::move(other.owned_environment_service)),
+        owned_controller(std::move(other.owned_controller)),
+        ar_context(other.ar_context),
+        signal_pipeline(other.signal_pipeline),
+        environment_service(other.environment_service),
+        controller(other.controller),
+        pipeline_config_synced(other.pipeline_config_synced) {}
+  ArSessionComposition& operator=(ArSessionComposition&& other) noexcept {
+    runtime_hardware = std::move(other.runtime_hardware);
+    runtime_mission = std::move(other.runtime_mission);
+    runtime_orientation = std::move(other.runtime_orientation);
+    runtime_policy = std::move(other.runtime_policy);
+    runtime_environment_scenario_config = std::move(other.runtime_environment_scenario_config);
+    owned_ar_context = std::move(other.owned_ar_context);
+    owned_signal_pipeline = std::move(other.owned_signal_pipeline);
+    owned_environment_service = std::move(other.owned_environment_service);
+    owned_controller = std::move(other.owned_controller);
+    ar_context = other.ar_context;
+    signal_pipeline = other.signal_pipeline;
+    environment_service = other.environment_service;
+    controller = other.controller;
+    pipeline_config_synced = other.pipeline_config_synced;
+    return *this;
+  }
 };
 
 /**

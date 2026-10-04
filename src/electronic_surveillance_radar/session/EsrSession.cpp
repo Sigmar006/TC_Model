@@ -64,9 +64,9 @@ EsrSession::EsrSession()
 
 EsrSession::~EsrSession() = default;
 
-EsrSession::EsrSession(EsrSession&& other) noexcept = default;
+EsrSession::EsrSession(EsrSession&& other) noexcept : impl_(std::move(other.impl_)) {}
 
-EsrSession& EsrSession::operator=(EsrSession&& other) noexcept = default;
+EsrSession& EsrSession::operator=(EsrSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 session::EsrOutputFrame EsrSession::Step(const session::EsrCycleInput& input) {
   return impl_->RunCycle(input).output_frame;

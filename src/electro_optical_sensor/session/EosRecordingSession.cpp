@@ -63,8 +63,8 @@ EosRecordingSession::EosRecordingSession(config::EosSessionConfig config, EosRec
     : impl_(new Impl(std::move(config), std::move(options))) {}
 
 EosRecordingSession::~EosRecordingSession() = default;
-EosRecordingSession::EosRecordingSession(EosRecordingSession&&) noexcept = default;
-EosRecordingSession& EosRecordingSession::operator=(EosRecordingSession&&) noexcept = default;
+EosRecordingSession::EosRecordingSession(EosRecordingSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+EosRecordingSession& EosRecordingSession::operator=(EosRecordingSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 session::EosOutputFrame EosRecordingSession::Step(const EosCycleInput& input) {
   if (impl_->replay_writer) {

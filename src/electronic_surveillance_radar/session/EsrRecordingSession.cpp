@@ -64,8 +64,8 @@ EsrRecordingSession::EsrRecordingSession(config::EsrSessionConfig config, EsrRec
     : impl_(new Impl(std::move(config), std::move(options))) {}
 
 EsrRecordingSession::~EsrRecordingSession() = default;
-EsrRecordingSession::EsrRecordingSession(EsrRecordingSession&&) noexcept = default;
-EsrRecordingSession& EsrRecordingSession::operator=(EsrRecordingSession&&) noexcept = default;
+EsrRecordingSession::EsrRecordingSession(EsrRecordingSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+EsrRecordingSession& EsrRecordingSession::operator=(EsrRecordingSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 session::EsrOutputFrame EsrRecordingSession::Step(const EsrCycleInput& input) {
   if (impl_->replay_writer) {

@@ -95,9 +95,9 @@ RirAssociationResult RirTrackAssociator::Associate(
   }
 
   struct SeedPrior {
-    std::uint64_t key{0U};
-    Eigen::Vector3f predicted_position{Eigen::Vector3f::Zero()};
-    RirMeasurementCovariance projected_covariance{RirMeasurementCovariance::Zero()};
+    std::uint64_t key;
+    Eigen::Vector3f predicted_position;
+    RirMeasurementCovariance projected_covariance;
   };
   std::vector<SeedPrior> seed_priors;
   seed_priors.reserve(seeds.size());

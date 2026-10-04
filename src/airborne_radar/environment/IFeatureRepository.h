@@ -63,7 +63,7 @@ struct FeatureVector {
  * @brief MatchResult 表示仓储匹配得到的最优结果。
  */
 struct MatchResult {
-  std::string target_type{"UNKNOWN"}; /**< 最优匹配的目标类型标签。 */
+  std::string target_type = "UNKNOWN"; /**< 最优匹配的目标类型标签。 */
   float probability{0.0f};            /**< 归一化匹配概率。 */
   float distance{0.0f};               /**< 最优匹配对应的特征距离。 */
 };

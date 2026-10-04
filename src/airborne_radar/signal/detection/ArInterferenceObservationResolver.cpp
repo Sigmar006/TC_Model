@@ -171,7 +171,7 @@ double Perturb(double truth_value, double std_dev, std::uint32_t base_seed,
   const std::uint32_t seed =
       DeriveStreamSeed(base_seed, domain_tag) ^
       static_cast<std::uint32_t>(emission_tag >> 32U) ^
-      static_cast<std::uint32_t>(emission_tag & 0xFFFF'FFFFU);
+      static_cast<std::uint32_t>(emission_tag & 0xFFFFFFFFU);
   std::mt19937 engine(seed == 0U ? 1U : seed);
   std::normal_distribution<double> distribution(0.0, std_dev);
   return truth_value + distribution(engine);
@@ -337,7 +337,8 @@ bool TryResolveArInterferenceObservations(
     resolved.identity = link.identity;
     candidate.push_back(resolved);
   }
-  std::sort(candidate.begin(), candidate.end(), [](const auto& left, const auto& right) {
+  std::sort(candidate.begin(), candidate.end(),
+            [](const ObservationCandidate& left, const ObservationCandidate& right) {
     const ObservationSortKey left_key = MakeSortKey(left.observation);
     const ObservationSortKey right_key = MakeSortKey(right.observation);
     return left_key != right_key

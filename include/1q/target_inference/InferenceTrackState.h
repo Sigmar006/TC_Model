@@ -43,7 +43,7 @@ struct ONEQ_API InferenceTrackState {
   double sim_time_sec{0.0};               /**< 采样仿真时间（单位：s；0 = 调用方未提供）。 */
   std::uint32_t input_cycle_index{0U};    /**< 采样周期号（0 = 调用方未提供）。 */
   oneq::coordinate::EcefPositionM position{}; /**< ECEF 位置（单位：m）。 */
-  std::array<double, 3U> velocity_ecef_m_per_s{{0.0, 0.0, 0.0}}; /**< ECEF 速度（单位：m/s）。 */
+  std::array<double, 3U> velocity_ecef_m_per_s = std::array<double, 3U>(); /**< ECEF 速度（单位：m/s）。 */
   bool has_covariance{false};             /**< 是否携带状态协方差（影响误差预算出口）。 */
   std::array<double, 36U> covariance_ecef{}; /**< 6×6 协方差（行主序 [x,vx,y,vy,z,vz]）。 */
   bool has_type_evidence{false};          /**< 是否携带外部类型证据（如识别结论）。 */

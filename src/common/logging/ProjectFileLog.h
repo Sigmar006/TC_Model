@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstdio>
+#include "common/platform/OneqPlatformCompat.h"
 #include <cstring>
 #include <string>
 #include <type_traits>
@@ -95,7 +96,7 @@ template <typename T>
 typename std::enable_if<std::is_integral<T>::value && std::is_signed<T>::value, void>::type
 AppendValue(std::string& out, T v) {
   char buf[32];
-  std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v));
+  ONEQ_SNPRINTF(buf, sizeof(buf), "%lld", static_cast<long long>(v));
   out += buf;
 }
 
@@ -103,7 +104,7 @@ template <typename T>
 typename std::enable_if<std::is_integral<T>::value && std::is_unsigned<T>::value, void>::type
 AppendValue(std::string& out, T v) {
   char buf[32];
-  std::snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(v));
+  ONEQ_SNPRINTF(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(v));
   out += buf;
 }
 
@@ -113,7 +114,7 @@ AppendValue(std::string& out, T v) {
   // 默认形态：%g（6 位有效数字）。与 fmt 的"最短往返表示"存在微小差异，
   // 仅影响浮点打印精度，对调试日志可接受（见文档）。
   char buf[64];
-  std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(v));
+  ONEQ_SNPRINTF(buf, sizeof(buf), "%g", static_cast<double>(v));
   out += buf;
 }
 
@@ -127,7 +128,7 @@ AppendValue(std::string& out, T v) {
 template <typename T>
 void AppendValue(std::string& out, const T* v) {
   char buf[32];
-  std::snprintf(buf, sizeof(buf), "%p", static_cast<const void*>(v));
+  ONEQ_SNPRINTF(buf, sizeof(buf), "%p", static_cast<const void*>(v));
   out += buf;
 }
 
@@ -149,7 +150,7 @@ template <typename T>
 typename std::enable_if<std::is_floating_point<T>::value, void>::type
 AppendFixed(std::string& out, T v, int precision) {
   char buf[64];
-  std::snprintf(buf, sizeof(buf), "%.*f", precision, static_cast<double>(v));
+  ONEQ_SNPRINTF(buf, sizeof(buf), "%.*f", precision, static_cast<double>(v));
   out += buf;
 }
 

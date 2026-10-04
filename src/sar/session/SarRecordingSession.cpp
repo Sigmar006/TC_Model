@@ -74,8 +74,8 @@ SarRecordingSession::SarRecordingSession(config::SarSessionConfig config, SarRec
     : impl_(new Impl(std::move(config), std::move(options))) {}
 
 SarRecordingSession::~SarRecordingSession() = default;
-SarRecordingSession::SarRecordingSession(SarRecordingSession&&) noexcept = default;
-SarRecordingSession& SarRecordingSession::operator=(SarRecordingSession&&) noexcept = default;
+SarRecordingSession::SarRecordingSession(SarRecordingSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+SarRecordingSession& SarRecordingSession::operator=(SarRecordingSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 SarCycleProduct SarRecordingSession::Step(const SarCycleInput& input) {
   // 规则 15c：产品层从同一份周期记录移动取出，非第二份副本。

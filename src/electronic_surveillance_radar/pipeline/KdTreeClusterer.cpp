@@ -32,6 +32,17 @@ class KdTreeDatasetAdaptor {
     return features_[idx].values[dim];
   }
 
+  // nanoflann 1.2.3（VS2013 降级版本）的 L2_Simple_Adaptor 经由 kdtree_distance 求
+  // 查询点到数据点的平方距离；1.3.x 改用 kdtree_get_pt，此接口被忽略，故两版本皆安全。
+  inline float kdtree_distance(const float* query, const std::size_t idx, std::size_t size) const {
+    float dist_sq = 0.0f;
+    for (std::size_t i = 0; i < size; ++i) {
+      const float diff = query[i] - features_[idx].values[i];
+      dist_sq += diff * diff;
+    }
+    return dist_sq;
+  }
+
   template <class BBOX>
   bool kdtree_get_bbox(BBOX&) const {
     return false;

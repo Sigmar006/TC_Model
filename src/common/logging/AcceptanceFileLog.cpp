@@ -5,6 +5,7 @@
 
 #include "common/logging/AcceptanceFileLog.h"
 #include "common/logging/LogDirectory.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -347,8 +348,17 @@ ChannelSink& SinkOfPath(AcceptanceChannel channel, const std::string& path) {
 namespace {
 
 std::string& ThreadAcceptanceLogOutputDirectory() {
+#if defined(_MSC_VER) && _MSC_VER < 1900
+  // VS2013 无 thread_local，且 __declspec(thread) 不支持非平凡类型，改以线程局部指针托管。
+  static ONEQ_THREAD_LOCAL std::string* output_directory = nullptr;
+  if (output_directory == nullptr) {
+    output_directory = new std::string();
+  }
+  return *output_directory;
+#else
   static thread_local std::string output_directory;
   return output_directory;
+#endif
 }
 
 }  // namespace

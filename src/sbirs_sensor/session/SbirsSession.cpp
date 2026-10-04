@@ -1,6 +1,7 @@
 ﻿#include "1q/sbirs_sensor/session/SbirsSession.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "1q/sbirs_sensor/session/SbirsDetectionLifecycleRecorder.h"
@@ -39,8 +40,8 @@ SbirsSession::~SbirsSession() noexcept {
     pipeline::FlushSbirsDetectabilityPending();
   }
 }
-SbirsSession::SbirsSession(SbirsSession&&) noexcept = default;
-SbirsSession& SbirsSession::operator=(SbirsSession&&) noexcept = default;
+SbirsSession::SbirsSession(SbirsSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+SbirsSession& SbirsSession::operator=(SbirsSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 SbirsOutputFrame SbirsSession::Step(const SbirsCycleInput& input) {
   return StepWithResult(input).output_frame;

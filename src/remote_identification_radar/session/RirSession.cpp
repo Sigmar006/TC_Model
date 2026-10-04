@@ -219,8 +219,8 @@ struct RirSession::Impl {
 RirSession::RirSession() : impl_(new Impl(config::RirSessionConfig{})) {}
 RirSession::RirSession(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 RirSession::~RirSession() = default;
-RirSession::RirSession(RirSession&&) noexcept = default;
-RirSession& RirSession::operator=(RirSession&&) noexcept = default;
+RirSession::RirSession(RirSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+RirSession& RirSession::operator=(RirSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 RirOutputFrame RirSession::Step(const RirCycleInput& input) {
   return StepWithResult(input).output_frame;

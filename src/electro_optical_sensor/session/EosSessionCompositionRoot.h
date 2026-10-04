@@ -7,6 +7,7 @@
 #define ELECTRO_OPTICAL_SENSOR_SESSION_EOS_SESSION_COMPOSITION_ROOT_H_
 
 #include <memory>
+#include <utility>
 
 #include "1q/electro_optical_sensor/session/EosSession.h"
 #include "electro_optical_sensor/config/EosInternalExecutionConfig.h"
@@ -30,6 +31,20 @@ namespace session {
  *       而非在 Composition 层独立管理。
  */
 struct EosSessionComposition {
+  // VS2013 不生成隐式移动操作（含移动-only 成员时退化为已删除拷贝），显式实现。
+  EosSessionComposition() = default;
+  EosSessionComposition(EosSessionComposition&& other) noexcept
+      : internal_config(std::move(other.internal_config)),
+        initial_reset_scan_phase(other.initial_reset_scan_phase),
+        owned_pipeline(std::move(other.owned_pipeline)),
+        owned_controller(std::move(other.owned_controller)) {}
+  EosSessionComposition& operator=(EosSessionComposition&& other) noexcept {
+    internal_config = std::move(other.internal_config);
+    initial_reset_scan_phase = other.initial_reset_scan_phase;
+    owned_pipeline = std::move(other.owned_pipeline);
+    owned_controller = std::move(other.owned_controller);
+    return *this;
+  }
   config::execution::EosInternalExecutionConfig internal_config{}; /**< 解析后的内部执行配置真值 */
   bool initial_reset_scan_phase{true};                              /**< 初始装配时是否重置扫描相位 */
 

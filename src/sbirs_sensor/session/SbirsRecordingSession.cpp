@@ -63,8 +63,8 @@ SbirsRecordingSession::SbirsRecordingSession(config::SbirsSessionConfig config,
     : impl_(new Impl(std::move(config), std::move(options))) {}
 
 SbirsRecordingSession::~SbirsRecordingSession() = default;
-SbirsRecordingSession::SbirsRecordingSession(SbirsRecordingSession&&) noexcept = default;
-SbirsRecordingSession& SbirsRecordingSession::operator=(SbirsRecordingSession&&) noexcept = default;
+SbirsRecordingSession::SbirsRecordingSession(SbirsRecordingSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+SbirsRecordingSession& SbirsRecordingSession::operator=(SbirsRecordingSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 SbirsOutputFrame SbirsRecordingSession::Step(const SbirsCycleInput& input) {
   if (impl_->replay_writer) {

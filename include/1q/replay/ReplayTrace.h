@@ -27,7 +27,7 @@ struct ONEQ_API ReplayTraceManifest {
   std::string module{};
   std::string scenario_id{};
   int schema_version{1};
-  std::string serializer_version{"replay-flatbuffers-v1"};
+  std::string serializer_version = "replay-flatbuffers-v1";
   std::string git_commit{};
   bool git_dirty{false};
   std::string build_type{};
@@ -36,9 +36,9 @@ struct ONEQ_API ReplayTraceManifest {
   std::string platform{};
   std::string cpu_arch{};
   std::string library_version{};
-  std::string dependency_versions_payload{"{}"};
+  std::string dependency_versions_payload = "{}";
   std::string float_policy{};
-  std::string default_tolerances_payload{"{}"};
+  std::string default_tolerances_payload = "{}";
   std::uint32_t checkpoint_interval_cycles{0U};
   std::uint32_t event_chunk_size{10000U};
   std::uint32_t failure_window_event_count{128U};
@@ -53,8 +53,8 @@ struct ONEQ_API ReplayTraceEvent {
   std::string module{};
   std::string event_type{};
   std::string payload_type{};
-  std::string payload_encoding{"flatbuffers"};
-  std::string payload_inline{"{}"};
+  std::string payload_encoding = "flatbuffers";
+  std::string payload_inline = "{}";
   std::string payload_bytes{};
   bool has_cycle_index{false};
   std::uint32_t cycle_index{0U};
@@ -104,7 +104,7 @@ struct ONEQ_API ReplayTraceScanResult {
  */
 struct ONEQ_API ReplayTraceCompatibilityExpectation {
   std::int32_t schema_version{1};
-  std::string serializer_version{"replay-flatbuffers-v1"};
+  std::string serializer_version = "replay-flatbuffers-v1";
   std::string git_commit{};
   bool require_git_commit_match{false};
   std::string module{};
@@ -167,7 +167,7 @@ struct ONEQ_API ReplayTraceFailure {
   std::uint32_t cycle_index{0U};
   bool has_sim_time_sec{false};
   double sim_time_sec{0.0};
-  std::string diagnostics_payload{"{}"};
+  std::string diagnostics_payload = "{}";
 };
 
 /**

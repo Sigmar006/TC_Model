@@ -123,7 +123,7 @@ struct ONEQ_API TransmitterConfig {
   float maximum_peak_power_w{1.2e6f};  /**< 烧穿等控制不可越过的峰值功率上限。 */
   float maximum_duty_cycle{0.10f};     /**< 允许的最大发射占空比，范围 (0, 1]。 */
   float maximum_pulse_energy_j{20.0f}; /**< 单脉冲能量上限（J）。 */
-  std::vector<double> frequency_plan_hz{3.0e9}; /**< 允许周期执行选择的离散载频表。 */
+  std::vector<double> frequency_plan_hz = std::vector<double>(1U, 3.0e9); /**< 允许周期执行选择的离散载频表。 */
 };
 
 /**

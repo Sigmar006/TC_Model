@@ -38,15 +38,106 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# eigen 3.4.0（header-only）：仓库根目录即 Eigen/ 父目录。
+# VS2013 (MSVC 1800) 兼容补丁：Eigen 3.4.0 的 internal::aligned_storage 用
+# `__declspec(align(<模板非类型参数>))` 强制对齐，而 MSVC 2013 无法解析依赖的
+# 对齐参数（C2059），且没有 alignas 可用。这里仅在 MSVC < 1900 时把它替换为按
+# 字面量对齐值偏特化的等价实现（对齐集合覆盖 Eigen 实际使用的 8/16/32/64）。
+# 仅 SparseRef 使用该结构；本库未用 Eigen Sparse，故语义影响受限。
+# 幂等：补丁写入后不再含原始特征串，重复 configure 不会重复改写。
+# ---------------------------------------------------------------------------
+function(oneq_patch_eigen_vs2013 eigen_include_dir)
+    set(_meta "${eigen_include_dir}/Eigen/src/Core/util/Meta.h")
+    if(NOT EXISTS "${_meta}")
+        return()
+    endif()
+    file(READ "${_meta}" _meta_text)
+    # checkout 后该文件为 CRLF（core.autocrlf），统一转 LF 后再匹配/写回，避免漏配。
+    string(REPLACE "\r\n" "\n" _meta_text "${_meta_text}")
+    set(_orig [=[
+template<unsigned Len, unsigned Align>
+struct aligned_storage {
+  struct type {
+    EIGEN_ALIGN_TO_BOUNDARY(Align) unsigned char data[Len];
+  };
+};]=])
+    string(FIND "${_meta_text}" "${_orig}" _hit)
+    # 幂等：补丁后文件含 aligned_storage_impl 标记；已打过则跳过，否则 #else 分支里
+    # 保留的原文会被反复匹配、层层嵌套。
+    if(NOT _meta_text MATCHES "aligned_storage_impl" AND NOT _hit EQUAL -1)
+    set(_repl [=[
+#if defined(_MSC_VER) && _MSC_VER < 1900
+template<unsigned Len, unsigned Align, unsigned Dummy = 0>
+struct aligned_storage_impl {
+  struct type { unsigned char data[Len]; };
+};
+template<unsigned Len>
+struct aligned_storage_impl<Len, 8> {
+  struct type { __declspec(align(8)) unsigned char data[Len]; };
+};
+template<unsigned Len>
+struct aligned_storage_impl<Len, 16> {
+  struct type { __declspec(align(16)) unsigned char data[Len]; };
+};
+template<unsigned Len>
+struct aligned_storage_impl<Len, 32> {
+  struct type { __declspec(align(32)) unsigned char data[Len]; };
+};
+template<unsigned Len>
+struct aligned_storage_impl<Len, 64> {
+  struct type { __declspec(align(64)) unsigned char data[Len]; };
+};
+template<unsigned Len, unsigned Align>
+struct aligned_storage : aligned_storage_impl<Len, Align> {};
+#else
+template<unsigned Len, unsigned Align>
+struct aligned_storage {
+  struct type {
+    EIGEN_ALIGN_TO_BOUNDARY(Align) unsigned char data[Len];
+  };
+};
+#endif]=])
+    string(REPLACE "${_orig}" "${_repl}" _meta_patched "${_meta_text}")
+    file(WRITE "${_meta}" "${_meta_patched}")
+    message(STATUS "eigen vs2013 compat: patched aligned_storage in ${_meta}")
+    endif()
+
+    # GenericPacketMathFunctions.h：局部缓冲用 __declspec(align(sizeof(Packet)))，
+    # sizeof(Packet) 在 VS2013 下同为不可解析的依赖表达式。这些缓冲只用
+    # pstoreu/ploadu（非对齐读写），故用足够大的字面量 64 对齐替换即可。
+    set(_gpmf "${eigen_include_dir}/Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h")
+    if(EXISTS "${_gpmf}")
+        file(READ "${_gpmf}" _gpmf_text)
+        string(REPLACE "\r\n" "\n" _gpmf_text "${_gpmf_text}")
+        string(REPLACE "EIGEN_ALIGN_TO_BOUNDARY(sizeof(Packet))"
+                       "EIGEN_ALIGN_TO_BOUNDARY(64)"
+                       _gpmf_patched "${_gpmf_text}")
+        if(NOT _gpmf_patched STREQUAL _gpmf_text)
+            file(WRITE "${_gpmf}" "${_gpmf_patched}")
+            message(STATUS "eigen vs2013 compat: patched GenericPacketMathFunctions in ${_gpmf}")
+        endif()
+    endif()
+endfunction()
+
+# ---------------------------------------------------------------------------
+# eigen（header-only）：仓库根目录即 Eigen/ 父目录。
+# VS2013（MSVC<1900）用 3.3.9：Eigen 3.4 在 MSVC 1800 上连基本的矩阵/向量乘积都会
+# 触发编译器内部错误（fatal C1001），3.3.9 是最后正式支持 VS2013 的版本，无需补丁。
+# 3.4 路径若仍面向 MSVC<1900，则走 oneq_patch_eigen_vs2013 补丁（保留以备选用）。
 # ---------------------------------------------------------------------------
 if(NOT TARGET Eigen3::Eigen)
-    set(_oneq_eigen_include_dir "${ONEQ_THIRD_PARTY_DIR}/eigen")
+    if(MSVC AND MSVC_VERSION LESS 1900)
+        set(_oneq_eigen_root "${ONEQ_THIRD_PARTY_DIR}/eigen_vs2013")
+        set(_oneq_eigen_version "3.3.9")
+    else()
+        set(_oneq_eigen_root "${ONEQ_THIRD_PARTY_DIR}/eigen")
+        set(_oneq_eigen_version "3.4.0")
+    endif()
+    set(_oneq_eigen_include_dir "${_oneq_eigen_root}")
     if(NOT EXISTS "${_oneq_eigen_include_dir}/Eigen/Core"
-       AND EXISTS "${ONEQ_THIRD_PARTY_DIR}/eigen/Core")
+       AND EXISTS "${_oneq_eigen_root}/Core")
         # 某些离线包把 Eigen/ 目录内容直接铺在根下。生成仅供构建消费的标准
         # Eigen/<header> + Eigen/src 布局，避免修改 third_party 原始依赖。
-        set(_oneq_eigen_flat_root "${ONEQ_THIRD_PARTY_DIR}/eigen")
+        set(_oneq_eigen_flat_root "${_oneq_eigen_root}")
         set(_oneq_eigen_include_dir "${CMAKE_BINARY_DIR}/third_party/eigen_compat_layout")
         set(_oneq_eigen_compat_root "${_oneq_eigen_include_dir}/Eigen")
         file(MAKE_DIRECTORY "${_oneq_eigen_compat_root}")
@@ -62,30 +153,47 @@ if(NOT TARGET Eigen3::Eigen)
         unset(_oneq_eigen_compat_root)
         unset(_oneq_eigen_flat_root)
     endif()
+    if(MSVC AND MSVC_VERSION LESS 1900 AND _oneq_eigen_version STREQUAL "3.4.0")
+        oneq_patch_eigen_vs2013("${_oneq_eigen_include_dir}")
+    endif()
     add_library(eigen_vendor INTERFACE IMPORTED)
     set_target_properties(eigen_vendor PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_oneq_eigen_include_dir}")
     add_library(Eigen3::Eigen ALIAS eigen_vendor)
-    message(STATUS "eigen 3.4.0: vendored header-only @ ${_oneq_eigen_include_dir}")
+    message(STATUS "eigen ${_oneq_eigen_version}: vendored header-only @ ${_oneq_eigen_include_dir}")
     unset(_oneq_eigen_include_dir)
+    unset(_oneq_eigen_root)
+    unset(_oneq_eigen_version)
 endif()
 
 # ---------------------------------------------------------------------------
-# nanoflann v1.3.2（header-only）：单头 include/nanoflann.hpp。
+# nanoflann（header-only）：单头 include/nanoflann.hpp。
+# VS2013（MSVC<1900）用 v1.2.3：1.3.x 引入的表达式 SFINAE（decltype + declval）
+# 在 MSVC 2013 上不通过（C2228）。v1.2.3 要求数据集提供 kdtree_distance，两个
+# adaptor 已补齐该接口；其余 API（SearchParams.sorted / radiusSearch(pair)）兼容。
 # ---------------------------------------------------------------------------
 if(NOT TARGET nanoflann::nanoflann)
-    set(_oneq_nanoflann_include_dir "${ONEQ_THIRD_PARTY_DIR}/nanoflann/include")
+    if(MSVC AND MSVC_VERSION LESS 1900)
+        set(_oneq_nanoflann_root "${ONEQ_THIRD_PARTY_DIR}/nanoflann_vs2013")
+        set(_oneq_nanoflann_version "v1.2.3")
+    else()
+        set(_oneq_nanoflann_root "${ONEQ_THIRD_PARTY_DIR}/nanoflann")
+        set(_oneq_nanoflann_version "v1.3.2")
+    endif()
+    set(_oneq_nanoflann_include_dir "${_oneq_nanoflann_root}/include")
     if(NOT EXISTS "${_oneq_nanoflann_include_dir}/nanoflann.hpp"
-       AND EXISTS "${ONEQ_THIRD_PARTY_DIR}/nanoflann/nanoflann.hpp")
+       AND EXISTS "${_oneq_nanoflann_root}/nanoflann.hpp")
         # 兼容仅分发单头文件、未保留上游 include/ 目录的离线依赖包。
-        set(_oneq_nanoflann_include_dir "${ONEQ_THIRD_PARTY_DIR}/nanoflann")
+        set(_oneq_nanoflann_include_dir "${_oneq_nanoflann_root}")
     endif()
     add_library(nanoflann_vendor INTERFACE IMPORTED)
     set_target_properties(nanoflann_vendor PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_oneq_nanoflann_include_dir}")
     add_library(nanoflann::nanoflann ALIAS nanoflann_vendor)
-    message(STATUS "nanoflann v1.3.2: vendored header-only @ ${_oneq_nanoflann_include_dir}")
+    message(STATUS "nanoflann ${_oneq_nanoflann_version}: vendored header-only @ ${_oneq_nanoflann_include_dir}")
     unset(_oneq_nanoflann_include_dir)
+    unset(_oneq_nanoflann_root)
+    unset(_oneq_nanoflann_version)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -188,22 +296,33 @@ if(NOT TARGET ZLIB::ZLIB)
 endif()
 
 # ---------------------------------------------------------------------------
-# boost 1.85.0（header-only）：airborne_radar 使用 boost/math/special_functions/gamma.hpp
-# 与 boost/pool/object_pool.hpp。boost 是 modular superproject，源码包（由
-# scripts/win/fetch_third_party.bat 下载解压）自带预合并的 boost/ 头目录，无需 b2 headers。
-# 故 third_party/boost 即 boost/ 头父目录。
+# boost（header-only）：airborne_radar 使用 boost/math/special_functions/gamma.hpp
+# 与 boost/pool/object_pool.hpp，ESR 使用 boost/multiprecision/cpp_int.hpp。boost 是
+# modular superproject，源码包（由 scripts/win/fetch_third_party.bat 下载解压）自带
+# 预合并的 boost/ 头目录，无需 b2 headers。
+# VS2013（MSVC<1900）用 1.68.0：1.85 的 math/multiprecision 要求 C++14（noexcept、
+# constexpr），MSVC 2013 无法编译。故 third_party/boost_vs2013 即该版本 boost/ 头父目录。
 # ---------------------------------------------------------------------------
 if(NOT TARGET Boost::boost)
-    if(NOT EXISTS "${ONEQ_THIRD_PARTY_DIR}/boost/boost")
+    if(MSVC AND MSVC_VERSION LESS 1900)
+        set(_oneq_boost_root "${ONEQ_THIRD_PARTY_DIR}/boost_vs2013")
+        set(_oneq_boost_version "1.68.0")
+    else()
+        set(_oneq_boost_root "${ONEQ_THIRD_PARTY_DIR}/boost")
+        set(_oneq_boost_version "1.85.0")
+    endif()
+    if(NOT EXISTS "${_oneq_boost_root}/boost")
         message(FATAL_ERROR
-            "PACKAGE_MANAGER=none 缺失 boost 头：${ONEQ_THIRD_PARTY_DIR}/boost/boost\n"
+            "PACKAGE_MANAGER=none 缺失 boost 头：${_oneq_boost_root}/boost\n"
             "请重跑 scripts\\win\\fetch_third_party.bat（含 boost 源码包下载步骤）。")
     endif()
     add_library(boost_vendor INTERFACE IMPORTED)
     set_target_properties(boost_vendor PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${ONEQ_THIRD_PARTY_DIR}/boost")
+        INTERFACE_INCLUDE_DIRECTORIES "${_oneq_boost_root}")
     add_library(Boost::boost ALIAS boost_vendor)
-    message(STATUS "boost 1.85.0: vendored header-only @ ${ONEQ_THIRD_PARTY_DIR}/boost")
+    message(STATUS "boost ${_oneq_boost_version}: vendored header-only @ ${_oneq_boost_root}")
+    unset(_oneq_boost_root)
+    unset(_oneq_boost_version)
 endif()
 
 # ---------------------------------------------------------------------------

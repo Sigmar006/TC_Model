@@ -69,10 +69,8 @@ EosDetectionLifecycleRecorder::EosDetectionLifecycleRecorder(EosDetectionLifecyc
 
 EosDetectionLifecycleRecorder::~EosDetectionLifecycleRecorder() = default;
 
-EosDetectionLifecycleRecorder::EosDetectionLifecycleRecorder(EosDetectionLifecycleRecorder&&) noexcept =
-    default;
-EosDetectionLifecycleRecorder& EosDetectionLifecycleRecorder::operator=(
-    EosDetectionLifecycleRecorder&&) noexcept = default;
+EosDetectionLifecycleRecorder::EosDetectionLifecycleRecorder(EosDetectionLifecycleRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+EosDetectionLifecycleRecorder& EosDetectionLifecycleRecorder::operator=(EosDetectionLifecycleRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<EosDetectionLifecycleEvent> EosDetectionLifecycleRecorder::Update(
     const EosCycleInput& input, const EosCycleResult& result) {

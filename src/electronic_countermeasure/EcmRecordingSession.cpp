@@ -39,8 +39,8 @@ EcmRecordingSession::EcmRecordingSession(config::EcmSessionConfig config,
                                  EcmRecordingSessionOptions options)
     : impl_(new Impl(std::move(config), std::move(options))) {}
 EcmRecordingSession::~EcmRecordingSession() = default;
-EcmRecordingSession::EcmRecordingSession(EcmRecordingSession&&) noexcept = default;
-EcmRecordingSession& EcmRecordingSession::operator=(EcmRecordingSession&&) noexcept = default;
+EcmRecordingSession::EcmRecordingSession(EcmRecordingSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+EcmRecordingSession& EcmRecordingSession::operator=(EcmRecordingSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 EcmCycleResult EcmRecordingSession::StepWithResult(const EcmCycleInput& input) {
   if (impl_->replay_writer) {

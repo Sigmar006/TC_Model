@@ -65,10 +65,8 @@ SbirsExclusionCauseRecorder::SbirsExclusionCauseRecorder() : impl_(new Impl) {}
 
 SbirsExclusionCauseRecorder::~SbirsExclusionCauseRecorder() = default;
 
-SbirsExclusionCauseRecorder::SbirsExclusionCauseRecorder(SbirsExclusionCauseRecorder&&) noexcept =
-    default;
-SbirsExclusionCauseRecorder& SbirsExclusionCauseRecorder::operator=(
-    SbirsExclusionCauseRecorder&&) noexcept = default;
+SbirsExclusionCauseRecorder::SbirsExclusionCauseRecorder(SbirsExclusionCauseRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+SbirsExclusionCauseRecorder& SbirsExclusionCauseRecorder::operator=(SbirsExclusionCauseRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<SbirsExclusionCauseEvent> SbirsExclusionCauseRecorder::Update(
     const SbirsCycleInput& input, const SbirsCycleResult& result) {

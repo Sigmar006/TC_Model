@@ -3,6 +3,7 @@
  * @brief 外部集成侧简易测试日志打印实现。
  */
 #include "1q/logging/ExternalTestLogPrinter.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 #include <cstdio>
 #include <fstream>
@@ -25,8 +26,8 @@ std::string FormatLine(double sim_time_sec, std::uint32_t cycle, const char* ite
                        const std::string& content) {
   char time_buffer[32];
   char cycle_buffer[16];
-  std::snprintf(time_buffer, sizeof(time_buffer), "%.3f", sim_time_sec);
-  std::snprintf(cycle_buffer, sizeof(cycle_buffer), "%u", cycle);
+  ONEQ_SNPRINTF(time_buffer, sizeof(time_buffer), "%.3f", sim_time_sec);
+  ONEQ_SNPRINTF(cycle_buffer, sizeof(cycle_buffer), "%u", cycle);
 
   const std::string single_line_content = MakeSingleLine(content);
   std::string line;

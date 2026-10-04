@@ -68,7 +68,7 @@ struct FocusedScanSarSubswath {
  */
 struct FocusedScanSarImage {
   std::vector<FocusedScanSarSubswath> subswaths{}; /**< N_swath 个子带，每个子带是各 burst 拼接后的连续子图像 */
-  std::string failure_stage{"none"};
+  std::string failure_stage = "none";
 };
 
 /**

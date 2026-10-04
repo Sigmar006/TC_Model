@@ -110,10 +110,8 @@ EsrExclusionCauseRecorder::EsrExclusionCauseRecorder() : impl_(new Impl) {}
 
 EsrExclusionCauseRecorder::~EsrExclusionCauseRecorder() = default;
 
-EsrExclusionCauseRecorder::EsrExclusionCauseRecorder(EsrExclusionCauseRecorder&&) noexcept =
-    default;
-EsrExclusionCauseRecorder& EsrExclusionCauseRecorder::operator=(
-    EsrExclusionCauseRecorder&&) noexcept = default;
+EsrExclusionCauseRecorder::EsrExclusionCauseRecorder(EsrExclusionCauseRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+EsrExclusionCauseRecorder& EsrExclusionCauseRecorder::operator=(EsrExclusionCauseRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<EsrExclusionCauseEvent> EsrExclusionCauseRecorder::Update(
     const EsrCycleInput& input, const EsrCycleResult& result) {

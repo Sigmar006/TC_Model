@@ -1,4 +1,5 @@
 ﻿#include "electro_optical_sensor/pipeline/EosPipeline.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -96,7 +97,7 @@ session::EosIssue MakeExclusionIssue(const char* code, const std::string& messag
 /// 格式化量值为一位小数（消息文本稳定，不承诺解析稳定性；规则 13b message 约定）。
 std::string FormatFloat(float value) {
   char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%.1f", static_cast<double>(value));
+  ONEQ_SNPRINTF(buffer, sizeof(buffer), "%.1f", static_cast<double>(value));
   return buffer;
 }
 

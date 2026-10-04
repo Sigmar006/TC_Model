@@ -1,4 +1,5 @@
 ﻿#include "airborne_radar/signal/pipeline/DetectionExecution.h"
+#include "common/platform/OneqPlatformCompat.h"
 
 #include <Eigen/Core>
 #include <algorithm>
@@ -133,7 +134,7 @@ session::ArIssue MakeExclusionIssue(const char* code, const std::string& message
 /// 格式化量值为两位小数（消息文本稳定，不承诺解析稳定性；规则 13b message 约定）。
 std::string FormatFloat(float value) {
   char buffer[32];
-  std::snprintf(buffer, sizeof(buffer), "%.2f", static_cast<double>(value));
+  ONEQ_SNPRINTF(buffer, sizeof(buffer), "%.2f", static_cast<double>(value));
   return buffer;
 }
 

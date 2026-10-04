@@ -8,6 +8,7 @@
 
 #include <Eigen/Core>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "airborne_radar/config/SignalEngineeringConfig.h"
@@ -36,6 +37,22 @@ using ExecutionConfig = ::airborne_radar::config::execution::InternalExecutionCo
  * @brief Pipeline 自持有的核心组件装配产物。
  */
 struct OwnedSignalComponents {
+  // VS2013 不生成隐式移动操作（含移动-only 成员时退化为已删除拷贝），显式实现。
+  OwnedSignalComponents() = default;
+  OwnedSignalComponents(OwnedSignalComponents&& other) noexcept
+      : association_config(std::move(other.association_config)),
+        track_filter_config(std::move(other.track_filter_config)),
+        kalman_predictor(std::move(other.kalman_predictor)),
+        kalman_updater(std::move(other.kalman_updater)),
+        signal_detector(std::move(other.signal_detector)) {}
+  OwnedSignalComponents& operator=(OwnedSignalComponents&& other) noexcept {
+    association_config = std::move(other.association_config);
+    track_filter_config = std::move(other.track_filter_config);
+    kalman_predictor = std::move(other.kalman_predictor);
+    kalman_updater = std::move(other.kalman_updater);
+    signal_detector = std::move(other.signal_detector);
+    return *this;
+  }
   association::DataAssociationConfig association_config{};     /**< 关联配置（由执行配置映射）。 */
   tracking::TrackFilterConfig track_filter_config{};           /**< 轨迹滤波器配置（由执行配置映射）。 */
   std::unique_ptr<tracking::IKalmanPredictor> kalman_predictor; /**< Kalman 预测器（启用时非空）。 */
@@ -47,6 +64,30 @@ struct OwnedSignalComponents {
  * @brief 生命周期装配产物，包含轨迹池、（IMM）预测器/更新器集合与生命周期管理器。
  */
 struct LifecycleAssemblyArtifacts {
+  // VS2013 不生成隐式移动操作（含移动-only 成员时退化为已删除拷贝），显式实现。
+  LifecycleAssemblyArtifacts() = default;
+  LifecycleAssemblyArtifacts(LifecycleAssemblyArtifacts&& other) noexcept
+      : pool(std::move(other.pool)),
+        pool_wrapper(std::move(other.pool_wrapper)),
+        kalman_predictor(std::move(other.kalman_predictor)),
+        kalman_updater(std::move(other.kalman_updater)),
+        imm_predictors_owned(std::move(other.imm_predictors_owned)),
+        imm_updaters_owned(std::move(other.imm_updaters_owned)),
+        imm_predictors(std::move(other.imm_predictors)),
+        imm_updaters(std::move(other.imm_updaters)),
+        lifecycle_manager(std::move(other.lifecycle_manager)) {}
+  LifecycleAssemblyArtifacts& operator=(LifecycleAssemblyArtifacts&& other) noexcept {
+    pool = std::move(other.pool);
+    pool_wrapper = std::move(other.pool_wrapper);
+    kalman_predictor = std::move(other.kalman_predictor);
+    kalman_updater = std::move(other.kalman_updater);
+    imm_predictors_owned = std::move(other.imm_predictors_owned);
+    imm_updaters_owned = std::move(other.imm_updaters_owned);
+    imm_predictors = std::move(other.imm_predictors);
+    imm_updaters = std::move(other.imm_updaters);
+    lifecycle_manager = std::move(other.lifecycle_manager);
+    return *this;
+  }
   std::unique_ptr<tracking::BoostTrackPool> pool;                  /**< 底层轨迹池。 */
   std::unique_ptr<tracking::ITrackPool> pool_wrapper;              /**< 多线程模式下的同步包装器。 */
   std::unique_ptr<tracking::IKalmanPredictor> kalman_predictor;    /**< 单模型 Kalman 预测器。 */

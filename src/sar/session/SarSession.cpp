@@ -28,8 +28,8 @@ SarSession::SarSession()
     : impl_(new Impl(SarSessionCompositionRoot::ComposeDefault(config::SarSessionConfig{}))) {}
 
 SarSession::~SarSession() noexcept = default;
-SarSession::SarSession(SarSession&&) noexcept = default;
-SarSession& SarSession::operator=(SarSession&&) noexcept = default;
+SarSession::SarSession(SarSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+SarSession& SarSession::operator=(SarSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 SarSession SarSession::Create(const config::SarSessionConfig& config) {
   return SarSession(std::unique_ptr<SarSession::Impl>(

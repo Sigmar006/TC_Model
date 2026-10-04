@@ -12,6 +12,7 @@
  */
 
 #include "common/logging/LogDirectory.h"
+#include "common/platform/OneqPlatformCompat.h"
 #include "common/logging/ProjectFileLog.h"
 
 #include <atomic>
@@ -171,7 +172,7 @@ class Sink {
     char date[32];
     std::strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", &tm_buf);
     char prefix[48];
-    std::snprintf(prefix, sizeof(prefix), "[%s.%03lld] [", date, ms);
+    ONEQ_SNPRINTF(prefix, sizeof(prefix), "[%s.%03lld] [", date, ms);
     return std::string(prefix);
   }
 

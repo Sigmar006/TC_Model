@@ -52,6 +52,13 @@ function(apply_msvc_options)
         target_compile_definitions("${_target}" PRIVATE
             EIGEN_PERMANENTLY_DISABLE_STUPID_WARNINGS
             _USE_MATH_DEFINES)
+        # VS2013（MSVC<1900）：noexcept/constexpr 关键字兼容层（见该头注释）。
+        # _ALLOW_KEYWORD_MACROS 关闭 CRT 的禁止宏化关键字检查，/FI 保证先于任何头生效。
+        if(MSVC_VERSION LESS 1900)
+            target_compile_definitions("${_target}" PRIVATE _ALLOW_KEYWORD_MACROS)
+            target_compile_options("${_target}" PRIVATE
+                "/FI${CMAKE_SOURCE_DIR}/cmake/compat/oneq_vs2013_compat.h")
+        endif()
         if(ARG_ENABLE_WARNINGS)
             target_compile_options("${_target}" PRIVATE
                 /W4      # 最高信息级别警告（启用绝大多数警告，含 C4xxx 系列）

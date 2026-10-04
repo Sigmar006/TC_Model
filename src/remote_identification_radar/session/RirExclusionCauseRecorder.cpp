@@ -64,10 +64,8 @@ RirExclusionCauseRecorder::RirExclusionCauseRecorder() : impl_(new Impl) {}
 
 RirExclusionCauseRecorder::~RirExclusionCauseRecorder() = default;
 
-RirExclusionCauseRecorder::RirExclusionCauseRecorder(RirExclusionCauseRecorder&&) noexcept =
-    default;
-RirExclusionCauseRecorder& RirExclusionCauseRecorder::operator=(
-    RirExclusionCauseRecorder&&) noexcept = default;
+RirExclusionCauseRecorder::RirExclusionCauseRecorder(RirExclusionCauseRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+RirExclusionCauseRecorder& RirExclusionCauseRecorder::operator=(RirExclusionCauseRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<RirExclusionCauseEvent> RirExclusionCauseRecorder::Update(
     const RirSceneTargetList& targets, const RirCycleResult& result) {

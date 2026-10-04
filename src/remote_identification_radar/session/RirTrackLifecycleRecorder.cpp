@@ -66,10 +66,8 @@ RirTrackLifecycleRecorder::RirTrackLifecycleRecorder(RirTrackLifecycleRecorderCo
 
 RirTrackLifecycleRecorder::~RirTrackLifecycleRecorder() = default;
 
-RirTrackLifecycleRecorder::RirTrackLifecycleRecorder(RirTrackLifecycleRecorder&&) noexcept =
-    default;
-RirTrackLifecycleRecorder& RirTrackLifecycleRecorder::operator=(
-    RirTrackLifecycleRecorder&&) noexcept = default;
+RirTrackLifecycleRecorder::RirTrackLifecycleRecorder(RirTrackLifecycleRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+RirTrackLifecycleRecorder& RirTrackLifecycleRecorder::operator=(RirTrackLifecycleRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<RirTrackLifecycleEvent> RirTrackLifecycleRecorder::Update(
     const RirSceneTargetList& targets, const RirCycleResult& result) {

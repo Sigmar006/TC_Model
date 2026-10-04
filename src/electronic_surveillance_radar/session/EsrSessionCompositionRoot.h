@@ -7,6 +7,7 @@
 #define ELECTRONIC_SURVEILLANCE_RADAR_SRC_SESSION_ESR_SESSION_COMPOSITION_ROOT_H_
 
 #include <memory>
+#include <utility>
 
 #include "1q/electronic_surveillance_radar/session/EsrSession.h"
 #include "electronic_surveillance_radar/config/EsrInternalExecutionConfig.h"
@@ -30,6 +31,26 @@ namespace session {
  * `controller` 为非 owning 指针，指向 `owned_*` 中的对象，便于按接口传递。
  */
 struct EsrSessionComposition {
+  // VS2013 不生成隐式移动操作（含移动-only 成员时退化为已删除拷贝），显式实现。
+  EsrSessionComposition() = default;
+  EsrSessionComposition(EsrSessionComposition&& other) noexcept
+      : execution_config(std::move(other.execution_config)),
+        owned_pipeline(std::move(other.owned_pipeline)),
+        owned_environment_service(std::move(other.owned_environment_service)),
+        owned_controller(std::move(other.owned_controller)),
+        pipeline(other.pipeline),
+        environment_service(other.environment_service),
+        controller(other.controller) {}
+  EsrSessionComposition& operator=(EsrSessionComposition&& other) noexcept {
+    execution_config = std::move(other.execution_config);
+    owned_pipeline = std::move(other.owned_pipeline);
+    owned_environment_service = std::move(other.owned_environment_service);
+    owned_controller = std::move(other.owned_controller);
+    pipeline = other.pipeline;
+    environment_service = other.environment_service;
+    controller = other.controller;
+    return *this;
+  }
   EsrInternalExecutionConfig execution_config{}; /**< 解析后的内部执行态配置 */
 
   std::unique_ptr<pipeline::InterceptPipeline> owned_pipeline;               /**< 拥有所有权的流水线实例 */

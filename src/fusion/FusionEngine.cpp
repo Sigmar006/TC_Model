@@ -48,10 +48,16 @@ using oneq::common::numerics::RadToDeg;
 
 // 传感器局部 ENU 基（由原点大地法向导出；极点退化时 invalid）。
 struct EnuBasis {
-  double east[3]{0.0, 0.0, 0.0};
-  double north[3]{0.0, 0.0, 0.0};
-  double up[3]{0.0, 0.0, 0.0};
-  bool valid{false};
+  double east[3];
+  double north[3];
+  double up[3];
+  bool valid;
+  // VS2013 不支持成员数组的 NSDMI 花括号初始化（C2536），改由构造函数置零。
+  EnuBasis() : valid(false) {
+    east[0] = east[1] = east[2] = 0.0;
+    north[0] = north[1] = north[2] = 0.0;
+    up[0] = up[1] = up[2] = 0.0;
+  }
 };
 
 EnuBasis MakeEnuBasis(const EcefPositionM& origin) {
@@ -231,6 +237,19 @@ class TrackAnchorAdaptor {
     return anchors_[idx].z_m;
   }
 
+  // nanoflann 1.2.3（VS2013 降级版本）的 L2_Simple_Adaptor 经由 kdtree_distance 求
+  // 查询点到数据点的平方距离；1.3.x 改用 kdtree_get_pt，此接口被忽略，故两版本皆安全。
+  inline double kdtree_distance(const double* query, const std::size_t idx, std::size_t size) const {
+    double dist_sq = 0.0;
+    const EcefPositionM& anchor = anchors_[idx];
+    const double coords[3] = {anchor.x_m, anchor.y_m, anchor.z_m};
+    for (std::size_t i = 0; i < size && i < 3U; ++i) {
+      const double diff = query[i] - coords[i];
+      dist_sq += diff * diff;
+    }
+    return dist_sq;
+  }
+
   template <class BBOX>
   bool kdtree_get_bbox(BBOX&) const {
     return false;
@@ -247,7 +266,7 @@ using TrackKdTree =
 // 半径搜索（兼容 nanoflann 1.3.x 与 1.5+ 的返回类型差异，同 ESR KdTreeClusterer 先例）。
 std::vector<std::size_t> RadiusSearch(const TrackKdTree& index,
                                       const EcefPositionM& query, double radius_m) {
-  using KdDistanceType = typename TrackKdTree::DistanceType;
+  using KdDistanceType = TrackKdTree::DistanceType;
 #if defined(NANOFLANN_VERSION) && (NANOFLANN_VERSION >= 0x150)
   using KdIndexType = typename TrackKdTree::IndexType;
   std::vector<nanoflann::ResultItem<KdIndexType, KdDistanceType>> matches;

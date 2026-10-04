@@ -48,7 +48,8 @@ class RirImmFilter {
   };
 
   /** @brief 构造 IMM；模型数 < 2 时进入惰性状态（IsValid 为 false）。 */
-  explicit RirImmFilter(const Config& config = {});
+  RirImmFilter();
+  explicit RirImmFilter(const Config& config);
 
   /** @return 注入校验是否通过。 */
   bool IsValid() const { return filter_ != nullptr && filter_->IsValid(); }
@@ -96,10 +97,10 @@ class RirImmFilter {
 
  private:
   std::size_t model_count_{0U};
-  std::vector<float> model_noise_diff_coeffs_{}; /**< 解析后的各模型 q（含缺省回填）。 */
-  std::vector<::oneq::common::estimation::KalmanPredictor<6, 3>> predictors_{};
-  std::vector<::oneq::common::estimation::KalmanUpdater<6, 3>> updaters_{};
-  std::unique_ptr<ImmFilterT> filter_{};
+  std::vector<float> model_noise_diff_coeffs_; /**< 解析后的各模型 q（含缺省回填）。 */
+  std::vector<::oneq::common::estimation::KalmanPredictor<6, 3>> predictors_;
+  std::vector<::oneq::common::estimation::KalmanUpdater<6, 3>> updaters_;
+  std::unique_ptr<ImmFilterT> filter_;
 };
 
 }  // namespace tracking

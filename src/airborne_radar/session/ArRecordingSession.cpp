@@ -67,9 +67,8 @@ ArRecordingSession::ArRecordingSession(const config::ArSessionConfig& config,
   }
 }
 
-ArRecordingSession::ArRecordingSession(ArRecordingSession&& other) noexcept = default;
-ArRecordingSession& ArRecordingSession::operator=(ArRecordingSession&& other) noexcept =
-    default;
+ArRecordingSession::ArRecordingSession(ArRecordingSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+ArRecordingSession& ArRecordingSession::operator=(ArRecordingSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 ArRecordingSession::~ArRecordingSession() = default;
 
 TrackOutputFrame ArRecordingSession::Step(const ArCycleInput& input) {

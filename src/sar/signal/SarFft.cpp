@@ -1,5 +1,7 @@
 ﻿#include "sar/signal/SarFft.h"
 
+#include "common/platform/OneqPlatformCompat.h"
+
 #include <algorithm>
 #include <map>
 #include <memory>
@@ -37,8 +39,17 @@ class FftPlanCache {
 };
 
 FftPlanCache& GetFftPlanCache() {
+#if defined(_MSC_VER) && _MSC_VER < 1900
+  // VS2013 无 thread_local，且 __declspec(thread) 不支持非平凡类型，改以线程局部指针托管。
+  static ONEQ_THREAD_LOCAL FftPlanCache* cache = nullptr;
+  if (cache == nullptr) {
+    cache = new FftPlanCache();
+  }
+  return *cache;
+#else
   static thread_local FftPlanCache cache;
   return cache;
+#endif
 }
 
 /**

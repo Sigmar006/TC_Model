@@ -58,9 +58,8 @@ ArTrackLifecycleRecorder::ArTrackLifecycleRecorder(ArTrackLifecycleRecorderConfi
 
 ArTrackLifecycleRecorder::~ArTrackLifecycleRecorder() = default;
 
-ArTrackLifecycleRecorder::ArTrackLifecycleRecorder(ArTrackLifecycleRecorder&&) noexcept = default;
-ArTrackLifecycleRecorder& ArTrackLifecycleRecorder::operator=(ArTrackLifecycleRecorder&&) noexcept =
-    default;
+ArTrackLifecycleRecorder::ArTrackLifecycleRecorder(ArTrackLifecycleRecorder&& other) noexcept : impl_(std::move(other.impl_)) {}
+ArTrackLifecycleRecorder& ArTrackLifecycleRecorder::operator=(ArTrackLifecycleRecorder&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 std::vector<ArTrackLifecycleEvent> ArTrackLifecycleRecorder::Update(
     const ArTargetInputList& targets, const ArCycleResult& result) {

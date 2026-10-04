@@ -6,6 +6,7 @@
 #include "sbirs_sensor/pipeline/SbirsAcceptanceRecords.h"
 
 #include <cmath>
+#include <array>
 #include <cstdint>
 #include <iterator>
 #include <map>
@@ -51,7 +52,7 @@ struct DetectabilityEntry {
   double measured_az_rad{0.0};
   double measured_el_rad{0.0};
   bool narrow_field{false};
-  double satellite_ecef_m[3]{0.0, 0.0, 0.0};
+  std::array<double, 3> satellite_ecef_m = std::array<double, 3>();
   double gmst_rad{0.0};
 };
 

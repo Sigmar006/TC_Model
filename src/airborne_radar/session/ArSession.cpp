@@ -949,7 +949,7 @@ struct ArSession::Impl {
     // 去真值化扰动种子：cycle index + receiver sensor entity id 派生，保证 replay（同 cycle
     // 重放）下扰动可复现，同时跨周期/跨设备互不相关（contract.md:348）。
     const std::uint32_t perturbation_seed =
-        (prepared_token.world_cycle_index & 0xFFFF'FFFFU) ^
+        (prepared_token.world_cycle_index & 0xFFFFFFFFU) ^
         (prepared_operating_state.rf_receiver.sensor_entity_id * 2654435761U);
     if (!signal::detection::TryResolveArInterferenceObservations(
             rf_scene, prepared_operating_state.rf_receiver, prepared_emission.identity,
@@ -1170,8 +1170,8 @@ ArSession::ArSession()
     : impl_(new Impl(ArSessionCompositionRoot::ComposeDefault(config::ArSessionConfig{}))) {}
 
 ArSession::~ArSession() = default;
-ArSession::ArSession(ArSession&&) noexcept = default;
-ArSession& ArSession::operator=(ArSession&&) noexcept = default;
+ArSession::ArSession(ArSession&& other) noexcept : impl_(std::move(other.impl_)) {}
+ArSession& ArSession::operator=(ArSession&& other) noexcept { impl_ = std::move(other.impl_); return *this; }
 
 ArSession ArSession::Create(const config::ArSessionConfig& config) {
   return ArSession(std::unique_ptr<ArSession::Impl>(

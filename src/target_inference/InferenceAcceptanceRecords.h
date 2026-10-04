@@ -57,7 +57,7 @@ struct BurnoutTrackerState {
   std::uint32_t rise_streak{0U};    /**< 连续能量上涨采样数（防抖：≥2 才计助推）。 */
   bool confirmed{false};         /**< 下降沿确认（ε 自峰值累计降幅超 0.1% 势能尺度）。 */
   double first_energy_j_per_kg{0.0}; /**< 首采样比机械能（平稳带锚点）。 */
-  std::array<double, 3U> last_velocity_m_per_s{{0.0, 0.0, 0.0}}; /**< 上一采样速度（加速度通道）。 */
+  std::array<double, 3U> last_velocity_m_per_s = std::array<double, 3U>(); /**< 上一采样速度（加速度通道）。 */
   double last_time_sec{0.0};     /**< 上一采样时刻。 */
   double last_energy_j_per_kg{0.0}; /**< 上一采样比机械能（能量通道比较基准）。 */
 };

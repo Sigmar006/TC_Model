@@ -48,7 +48,7 @@ struct OmegaKDiagnostics {
   OmegaKRelativeDelayResult relative_delay{};      /**< 相对延迟变换结果 */
   OmegaKReferenceMappingResult reference_mapping{};/**< 参考映射结果 */
   OmegaKAzimuthInverseResult azimuth_inverse{};    /**< 方位逆变换结果 */
-  std::string failure_stage{"none"};               /**< 失败阶段标记，"none" 表示无失败 */
+  std::string failure_stage = "none";               /**< 失败阶段标记，"none" 表示无失败 */
 };
 
 /**

@@ -75,7 +75,14 @@ class OneQConan(ConanFile):
     def build_requirements(self):
         if self.options.enable_testing:
             self.test_requires(_GTEST_VERSION)
-            self.test_requires(_RAPIDCHECK_VERSION)
+            # rapidcheck 暂不纳入依赖图：ConanCenter 配方在本机 Windows + VS 生成器下
+            # `cmake.configure()` 失败（生成器未被配方转发），一旦开启 enable_testing
+            # 即整条依赖安装失败，进而 tests/ 无法配置。
+            # 属性测试源（common_property_test / precision_evaluation_metrics_boundary_test）
+            # 已按 `__has_include("rapidcheck.h")` 降级：无依赖时属性用例跳过、边界用例照跑
+            # （见 docs/review/acceptance_log_remaining_work_guide.md §5）。
+            # 若需恢复属性测试，先修配方生成器转发或改走自建包，再恢复下一行。
+            # self.test_requires(_RAPIDCHECK_VERSION)
 
     def generate(self):
         CMakeDeps(self).generate()

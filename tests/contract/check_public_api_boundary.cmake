@@ -318,6 +318,12 @@ set(FOUNDATION_HEADERS
     "replay/ReplayTrace.h"
 )
 
+# 共享域：外部测试日志打印器（135d52fd「feat(logging): add external test log printer」
+# 引入时漏登白名单，守护自 2026-09-28 起一直报 Missing from boundary）。
+set(LOGGING_HEADERS
+    "logging/ExternalTestLogPrinter.h"
+)
+
 set(EXPECTED_PUBLIC_HEADERS
     ${AR_PUBLIC_PRIMARY_HEADERS}
     ${AR_SESSION_HEADERS}
@@ -352,6 +358,7 @@ set(EXPECTED_PUBLIC_HEADERS
     ${ECM_HEADERS}
     ${ENVIRONMENT_HEADERS}
     ${FOUNDATION_HEADERS}
+    ${LOGGING_HEADERS}
 )
 
 set(EXPECTED_DEPRECATED_HEADERS "")

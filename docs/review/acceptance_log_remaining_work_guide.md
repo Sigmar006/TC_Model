@@ -1,5 +1,7 @@
 # 验收日志打印后续开发指导手册
 
+Status: draft
+
 状态：待开发任务清单（2026-09-28）。本文是交接依据，不表示代码已经完成。用例字段、判据和示例以 [验收用例主文档](functional_acceptance_test_criteria_ocr.md) 为准；截图转写见 [输出路径与日志要求](acceptance_output_paths_and_log_requirements_from_screenshots.md)。开发时先核对主文档中每项的“目标输出文件”，不要把旧代码的实际文件名当作目标文件名。
 
 ## 1. 目标输出矩阵
@@ -98,6 +100,7 @@
 | SBIRS 侧端到端核对 | **已完成**（`sbirs_triple_sat_fix_messages`，`--output-dir log/verify_sbirs_20260928`）：产物为 `SatelliteTarget.log`、`IRExternalInterface.log`、`IRInternalInterface.log` + 6 份场景 CSV，旧独立文件全无；48→75 内部接口项分文件正确；第 5/8/9/12/13/14/58/67 项字段实测见下。`sbirs_inframe_dual_target` 未在本 tree 构建（无对应 target） | — |
 | 统一 `SatelliteTarget.log` 的并发与无重复 | 融合/推演/精度同时写入时的并发与去重仍需多模块同场景验证（本 tree 的 FUSION/INFERENCE 开关为 OFF，其路径按宏剪除，无法在本 tree 取证） | 开发 + 需开启全部五个开关的构建 |
 | 单元测试**运行** | **已可运行**（2026-09-28）：原两个互相独立的原因均已用**最小、C++14 兼容**的修复消除，未改动构建标准——① `tests/recognition_feature_database_schema.h.in` 的 `inline constexpr` 改为 `static constexpr`（内联变量是 C++17 特性，工程基线 C++14）；② 两个属性测试文件改为按 `__has_include("rapidcheck.h")` 降级（RapidCheck 为 `conanfile.py` 的 `test_requires`，本 tree 未安装）。实测：RIR 273 例、SBIRS 282 例、common 204 例全过（详见 §5）。<br>仍待构建环境负责人决定：是否把 `rapidcheck` 纳回本 tree 依赖（当前属性用例被跳过，边界用例照常运行），以及是否统一给测试目标加 `/utf-8`（该生成头无 BOM 的问题已由 `static constexpr` 之外的原因掩盖） | 构建环境负责人 |
+| rapidcheck 依赖开关（2026-10-04 收口） | **已按"可选"落地**：① `tests/cmake/TestSupport.cmake` 的 `find_package(rapidcheck CONFIG REQUIRED)` 改为 `QUIET`——与源码侧既有的 `__has_include` 降级口径对齐，消除"代码容忍缺失、构建硬性要求"的自相矛盾；② `conanfile.py` 的 `test_requires(_RAPIDCHECK_VERSION)` 暂注释（ConanCenter 配方在本机 Windows + VS 生成器下 `cmake.configure()` 失败，开启 `enable_testing` 即整条依赖安装失败）。**实测（Windows v141 Release，全树）**：318 个测试源、63 个 ctest 项、**441 个 gtest 用例 100% 通过**（`contract` 27/27、`ci_required` 19/19、`unit` 14/14、全量 63/63）。属性用例按设计跳过，边界用例照常运行。恢复属性测试的路径已写入 `conanfile.py` 注释（修配方生成器转发或改走自建包）。 | 已完成 |
 
 **SBIRS 侧端到端核对结果（`sbirs_triple_sat_fix_messages`，本 tree Release 构建）**
 

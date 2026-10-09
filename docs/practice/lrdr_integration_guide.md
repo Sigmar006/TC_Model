@@ -1,7 +1,7 @@
 # LRDR 集成指南（使用 1q.lib）
 
-Status: active  
-Last-reviewed: 2026-09-21  
+Status: active
+Last-reviewed: 2026-09-21
 Scope: Windows / Visual Studio 消费端，链接已交付的静态库 `1q.lib`。
 
 本文约定：集成方使用同批次公共头文件与 `1q.lib`，通过公开 C++ API 调用 LRDR。

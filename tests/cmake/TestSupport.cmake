@@ -8,7 +8,11 @@ endif()
 
 if(PACKAGE_MANAGER STREQUAL "conan")
     find_package(GTest CONFIG REQUIRED)
-    find_package(rapidcheck CONFIG REQUIRED)
+    # rapidcheck 为可选：属性测试源按 __has_include("rapidcheck.h") 降级，
+    # 未安装时属性用例跳过、边界用例照常编译运行（见 tests/support/rapidcheck_gtest.h
+    # 与 docs/review/acceptance_log_remaining_work_guide.md §5）。不得改为 REQUIRED——
+    # 一处缺失会阻断整个 tests/ 树的配置。
+    find_package(rapidcheck CONFIG QUIET)
     find_package(Boost CONFIG REQUIRED)
     find_package(Eigen3 CONFIG REQUIRED)
     find_package(flatbuffers CONFIG REQUIRED)

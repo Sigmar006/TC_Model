@@ -64,6 +64,8 @@ RIR 是与机载雷达（AR）**相互独立的另一部雷达装备**，不是 
   设计变更规则 → [boundaries.md](boundaries.md)
 - 数据流图与状态所有权（数据库/积累/内部航迹/回滚）→
   [data-flow.md](data-flow.md)
+- 对外交互接口与数据方向（与干扰机 / 外部参数设置系统 / 场景目标三组关系、
+  单周期交互顺序）→ [../practice/rir_lrdr_external_interfaces.md](../practice/rir_lrdr_external_interfaces.md)
 - 算法登记表（观测构造/四提取器/积累/匹配/判定）、反直觉点、刻意不实现清单 →
   [algorithms.md](algorithms.md)
 

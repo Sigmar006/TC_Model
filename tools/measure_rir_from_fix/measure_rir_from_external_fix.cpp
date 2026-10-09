@@ -105,6 +105,12 @@ RunOutcome RunOnce(const std::string& db_path, double range_m, double altitude_m
   const float truth_x = static_cast<float>(range_m);
   const float truth_y = 0.0f;
   const float truth_z = static_cast<float>(altitude_m);
+  // 目标真值按库内模板 BALLISTIC_EXAMPLE_A 反推，使识别链**有据可依**：
+  //   rcs mean -3 dBsm (0.5 m2) / speed 1800 m/s / altitude 50000 m /
+  //   polarization energy_difference 2.0 dB (hh/vv = +2/0 dBsm) /
+  //   aspect 覆盖 >= 15 deg（模板 minimum_aspect_coverage_deg）。
+  constexpr float kRcsM2 = 0.5f;        // 10log10(0.5) = -3.01 dBsm
+  constexpr float kSpeedMps = 1800.0f;  // 模板 speed_mean
 
   // 指向 = 外部给的位置（含横向误差 delta）的方向。
   const double aim_x = range_m;
@@ -138,10 +144,35 @@ RunOutcome RunOnce(const std::string& db_path, double range_m, double altitude_m
     target.position_y = truth_y;
     target.position_z = truth_z;
     target.velocity_x = 0.0f;
-    target.velocity_y = 300.0f;
+    target.velocity_y = kSpeedMps;
     target.velocity_z = 0.0f;
-    target.rcs = 10.0f;
+    target.rcs = kRcsM2;
     target.target_swerling_type = RirSwerlingType::kSwerling0;
+    // 视角 RCS 样本：网格覆盖 20deg x 25deg（>= 模板要求的 15deg 覆盖）
+    for (float az = -10.0f; az <= 10.0f; az += 5.0f) {
+      for (float el = 5.0f; el <= 30.0f; el += 10.0f) {
+        remote_identification_radar::session::RirAspectRcsSample aspect;
+        aspect.aspect_az_deg = az;
+        aspect.aspect_el_deg = el;
+        aspect.rcs_dbsm = -3.0f;  // 模板 rcs mean -3 dBsm
+        target.aspect_rcs_samples.push_back(aspect);
+      }
+    }
+    // 极化散射样本：交叉通道置零，共极化差 2.0 dB（模板 energy_difference 2.0 dB）
+    {
+      remote_identification_radar::session::RirPolSMatrixSample pol;
+      pol.aspect_az_deg = 0.0f;
+      pol.aspect_el_deg = static_cast<float>(std::atan2(altitude_m, range_m) * kRadToDeg);
+      pol.hh_amp_db = 2.0f;
+      pol.hh_phase_deg = 0.0f;
+      pol.hv_amp_db = -30.0f;
+      pol.hv_phase_deg = 0.0f;
+      pol.vh_amp_db = -30.0f;
+      pol.vh_phase_deg = 0.0f;
+      pol.vv_amp_db = 0.0f;
+      pol.vv_phase_deg = 0.0f;
+      target.polarization_samples.push_back(pol);
+    }
     input.scene_targets.push_back(target);
 
     const RirCycleResult result = session.StepWithResult(input);
@@ -245,7 +276,7 @@ int main(int argc, char** argv) {
   }
 
   const double range_m = range_km * 1000.0;
-  const double altitude_m = 200000.0;
+  const double altitude_m = 50000.0;  // 模板 altitude_mean = 50000 m
   const char* mode_name = (mode == AimMode::kSearch) ? "search" : "designate";
 
   std::printf("=== RIR end-to-end driven by external (dual-sat) position ===\n");

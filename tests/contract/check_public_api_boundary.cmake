@@ -299,6 +299,7 @@ set(RIR_SESSION_HEADERS
     "remote_identification_radar/session/RirSceneTypes.h"
     "remote_identification_radar/session/RirSession.h"
     "remote_identification_radar/session/RirTrackLifecycleRecorder.h"
+    "remote_identification_radar/session/RirTrackRequest.h"
 )
 
 set(COORDINATE_HEADERS

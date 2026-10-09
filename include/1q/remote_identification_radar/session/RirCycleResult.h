@@ -14,6 +14,7 @@
 #include "1q/remote_identification_radar/config/RirHardwareConfig.h"
 #include "1q/remote_identification_radar/session/RirOutputTypes.h"
 #include "1q/remote_identification_radar/session/RirRecognitionResult.h"
+#include "1q/remote_identification_radar/session/RirTrackRequest.h"
 
 namespace remote_identification_radar {
 namespace session {
@@ -35,6 +36,21 @@ enum class RirDesignationRevertReason : std::uint8_t {
   kNotRecognized = 1, /**< 指定目标不在场景（驻留期间回扫描等待）。 */
   kAcquisitionTimeout = 2, /**< 限时窗口耗尽仍未识别：任务作废（回到扫描，终态）。 */
   kOutsideSteerableVolume = 3 /**< 目标视线越出 scan_center + 可扫描体积（驻留回扫描；转台重新瞄准后可恢复）。 */
+};
+
+/**
+ * @brief 本周期驻留指向来源（加性字段）。
+ * @note 外部跟踪（`kExternalTrack`）与扫描基准（`scan_center`）是**两种不同语义**：
+ *       前者每周期把首个驻留对准目标方向，后者只是把扫描波位表的方位原点平移。
+ *       实测：仅用扫描基准时零偏移、完美指向下仍 0/25 周期检出（且失败是静默的）；
+ *       用外部跟踪时 25/25 检出。见
+ *       docs/review/ir_external_position_driven_rir_e2e_2026-10-04.md。
+ */
+enum class RirPointingSource : std::uint8_t {
+  kScan = 0,          /**< 扫描波位（区域搜索）。 */
+  kTrack = 1,         /**< 库内确认航迹跟踪驻留。 */
+  kDesignation = 2,   /**< 人工指定识别目标。 */
+  kExternalTrack = 3, /**< 外部跟踪请求（中心 + 邻域窗口）。 */
 };
 
 /**
@@ -69,6 +85,20 @@ struct ONEQ_API RirCycleResult {
   RirDesignationRevertReason designation_revert_reason{RirDesignationRevertReason::kNone};
   /** @brief 本周期驻留波束中心（扫描波位或指定目标指向；雷达局部 az/el，deg）。 */
   config::RirAzimuthElevationDeg dwell_center_deg{};
+
+  /** @brief 本周期驻留指向来源（加性字段；默认扫描）。 */
+  RirPointingSource pointing_source{RirPointingSource::kScan};
+
+  /** @brief 本周期外推后的外部照射中心（雷达局部 ENU az/el，deg）；未启用外部跟踪时为默认值。
+   *  @note 与 `dwell_center_deg` 未必相同：后者是首个非跟踪驻留，本字段是中心本身。
+   *        集成方据此核对自己提交的位置/速度是否被正确消费。 */
+  config::RirAzimuthElevationDeg external_track_center_deg{};
+
+  /** @brief 本周期外部跟踪阶段（加性字段；未启用为 kNone）。 */
+  RirExternalTrackPhase external_track_phase{RirExternalTrackPhase::kNone};
+
+  /** @brief 外部跟踪邻域窗口的波位推进序号（每周期随窗口波位重排而递增）。 */
+  std::uint32_t external_track_sweep_index{0U};
 
   /**
    * @brief 本周期「实际有效目标最大斜距」（m）：本周期持有航迹的目标里最大输入几何斜距。

@@ -17,6 +17,9 @@
 #include <vector>
 
 #include "1q/remote_identification_radar/config/RirRuntimeConfigPatch.h"
+#include "1q/coordinate/position_transform.h"
+#include "1q/coordinate/scene_transform.h"
+#include "1q/coordinate/types.h"
 #include "1q/remote_identification_radar/session/RirExclusionCauseRecorder.h"
 #include "1q/remote_identification_radar/session/RirInputValidation.h"
 #include "1q/remote_identification_radar/session/RirIssueCodes.h"
@@ -24,6 +27,7 @@
 #include "common/logging/ProjectLog.h"
 #include "common/logging/AcceptanceFileLog.h"
 #include "common/numerics/Constants.h"
+#include "common/radar/BeamwidthResolution.h"
 #include "common/radar/ScanScheduleRuntime.h"
 #include "remote_identification_radar/dwell/RirBeamControl.h"
 #include "remote_identification_radar/internal/RirScanVolume.h"
@@ -36,6 +40,14 @@ namespace remote_identification_radar {
 namespace session {
 
 namespace {
+
+/**
+ * 「待处理」请求哨兵：`SubmitExternalTrack` 在周期**之间**被调用，无从得知它属于
+ * 哪一拍，故把「下一拍执行时本请求即为新请求」编码为该哨兵值。周期号从 1 起，
+ * 故哨兵不会与任何真实周期号相撞。用独立常量而非 0，避免与「未提交」语义混淆
+ * （该混淆曾导致首周期被误判为外推保持）。
+ */
+constexpr std::uint32_t kExternalTrackRequestPending = 0xFFFFFFFFU;
 
 /**
  * @brief 指定识别任务生命周期阶段（镜像 AR designation 生命周期骨架；
@@ -139,6 +151,117 @@ config::RirAzimuthElevationDeg TargetLookAngles(const session::RirSceneTarget& t
   return look;
 }
 
+/**
+ * @brief 解析扫描/波束宽度推导用波长（λ = c/f），与 BuildAbsoluteScanWaves 同口径。
+ * @return 发射频率有效时返回波长（m），否则 0（保持"无孔径推导"回退）。
+ */
+float ResolveScanWavelengthM(const ::remote_identification_radar::config::RirSessionConfig& cfg) {
+  return cfg.hardware.transmitter.frequency_hz > 0.0f
+             ? static_cast<float>(oneq::common::numerics::kLightSpeed) /
+                   cfg.hardware.transmitter.frequency_hz
+             : 0.0f;
+}
+
+/**
+ * @brief 生成外部跟踪的邻域窗口波位（中心优先、由近到远）。
+ *
+ * 机理：窗口半宽是「指向误差容限」——中心对应零外推误差，故中心必须排第一；
+ * 其余波位按离中心的归一化距离升序展开，覆盖到窗口边缘，从而对位置误差与
+ * 目标机动提供容错。波位表**每周期随外推中心重建**（区别于全局扫描波位表
+ * 一次建好 + 游标推进：后者在默认体积下目标方向要上千周期才被照到一次）。
+ *
+ * @param[in] center_deg    外推后的照射中心（雷达局部 ENU，deg）。
+ * @param[in] window        邻域半宽（deg，两轴相对中心）。
+ * @param[in] beamwidth_deg 有效波束宽度（决定格点步长）。
+ * @param[in] step_scale    步长系数（mission.step_scale）。
+ * @param[in] max_points    波位点数上限（受本周期可用驻留槽位限制）。
+ * @param[out] out          输出波位列表；首元素恒为中心。
+ */
+void BuildExternalTrackWindowDwells(
+    const ::remote_identification_radar::config::RirAzimuthElevationDeg& center_deg,
+    const ::remote_identification_radar::session::RirTrackWindowDeg& window,
+    const ::remote_identification_radar::dwell::RirEffectiveBeamwidthDeg& beamwidth_deg,
+    float step_scale, std::size_t max_points,
+                                    std::vector<config::RirAzimuthElevationDeg>* out) {
+  out->clear();
+  if (max_points == 0U) {
+    return;
+  }
+  out->push_back(center_deg);
+  if (max_points == 1U) {
+    return;
+  }
+  const float az_step = beamwidth_deg.az_beamwidth_deg * (step_scale > 0.0f ? step_scale : 1.0f);
+  const float el_step = beamwidth_deg.el_beamwidth_deg * (step_scale > 0.0f ? step_scale : 1.0f);
+  if (!(az_step > 0.0f) || !(el_step > 0.0f)) {
+    return;  // 波束宽度不可解析：只留中心，不假装能铺窗口
+  }
+  // 两轴格点幅度：0 与 ±k·step，限制在最外层之内。
+  std::vector<float> az_offsets;
+  std::vector<float> el_offsets;
+  az_offsets.push_back(0.0f);
+  el_offsets.push_back(0.0f);
+  for (float k = 1.0f;; k += 1.0f) {
+    const float a = k * az_step;
+    if (a > window.az_half_deg + 1.0e-4f) {
+      break;
+    }
+    az_offsets.push_back(a);
+    az_offsets.push_back(-a);
+    if (az_offsets.size() > 512U) {
+      break;  // 防御：窗口异常大时不无界展开
+    }
+  }
+  for (float k = 1.0f;; k += 1.0f) {
+    const float e = k * el_step;
+    if (e > window.el_half_deg + 1.0e-4f) {
+      break;
+    }
+    el_offsets.push_back(e);
+    el_offsets.push_back(-e);
+    if (el_offsets.size() > 512U) {
+      break;
+    }
+  }
+  if (az_offsets.size() == 1U && el_offsets.size() == 1U) {
+    return;  // 窗口小于一个波束：只照中心（合法配置，非错误）
+  }
+  // 候选点按离中心的归一化距离升序（近的先照——对应较小的外推误差）。
+  struct Candidate {
+    float az_off;
+    float el_off;
+    float norm;
+  };
+  std::vector<Candidate> candidates;
+  candidates.reserve(az_offsets.size() * el_offsets.size());
+  const float az_half = window.az_half_deg > 0.0f ? window.az_half_deg : 1.0f;
+  const float el_half = window.el_half_deg > 0.0f ? window.el_half_deg : 1.0f;
+  for (float az_off : az_offsets) {
+    for (float el_off : el_offsets) {
+      if (az_off == 0.0f && el_off == 0.0f) {
+        continue;  // 中心已入列
+      }
+      Candidate c;
+      c.az_off = az_off;
+      c.el_off = el_off;
+      c.norm = std::sqrt((az_off / az_half) * (az_off / az_half) +
+                         (el_off / el_half) * (el_off / el_half));
+      candidates.push_back(c);
+    }
+  }
+  std::stable_sort(candidates.begin(), candidates.end(),
+                   [](const Candidate& lhs, const Candidate& rhs) { return lhs.norm < rhs.norm; });
+  for (const Candidate& c : candidates) {
+    if (out->size() >= max_points) {
+      break;
+    }
+    config::RirAzimuthElevationDeg p;
+    p.az_deg = oneq::common::radar::NormalizeAzimuthDeg(center_deg.az_deg + c.az_off);
+    p.el_deg = center_deg.el_deg + c.el_off;
+    out->push_back(p);
+  }
+}
+
 // 可扫描体积判定单源于 internal/RirScanVolume.h（驻留门与检测候选裁剪同口径）。
 
 /** @brief 由相对可扫描体积 + scan_center 构建绝对 ENU 波位序列。 */
@@ -201,6 +324,31 @@ struct RirSession::Impl {
   RirExclusionCauseRecorder* exclusion_cause_recorder{nullptr};
   std::uint32_t sensor_entity_id{0U};
 
+  // ---- 外部跟踪（中心 + 邻域窗口）状态；见 include/.../RirTrackRequest.h ----
+  bool external_track_active{false};
+  session::RirExternalTrackRequest external_track_request{};
+  RirExternalTrackPhase external_track_phase{RirExternalTrackPhase::kNone};
+  /** 请求所属周期号：kExternalTrackRequestPending = 已提交待下一拍消费；
+   *  真实周期号 = 已消化的最近一次新请求；0 = 未提交。
+   *  `external_track_active` 表示「指令仍在有效期内」，到期后置 false，
+   *  但 phase 保持 kExpired 终态直到下一次成功提交。 */
+  std::uint32_t external_track_request_cycle{0U};
+  std::uint32_t external_track_last_request_cycle{0U};
+  std::uint32_t external_track_coast_cycles{0U};
+  std::uint32_t external_track_sweep_index{0U};
+  std::uint32_t external_track_last_seen_cycle{0U};
+  /** 本周期判定标志：有效窗口到期（沿）——用于结果层发一次到期诊断。 */
+  bool external_track_expired_this_cycle{false};
+  /** 本周期判定标志：窗口已超期（电平）——用于抑制同周期的 stale 诊断。 */
+  bool external_track_window_expired_this_cycle{false};
+
+  /** @brief 解析外部跟踪在当前周期是否应产生驻留，并算出外推后的照射中心（局部 ENU）。
+   *  @return 应排外部驻留返回 true，并写出 @p center_deg 与 @p phase。 */
+  bool ResolveExternalTrackCenter(std::uint32_t cycle_index, double sim_time_sec,
+                                  const oneq::coordinate::EcefPositionM& platform_ecef,
+                                  config::RirAzimuthElevationDeg* center_deg,
+                                  RirExternalTrackPhase* phase);
+
   /** @brief 组装单周期聚合结果（早退路径保持非执行语义；不驱动 recorder）。 */
   RirCycleResult RunCycle(const RirCycleInput& input);
 
@@ -249,6 +397,128 @@ void RirSession::AttachTrackLifecycleRecorder(RirTrackLifecycleRecorder* recorde
 
 void RirSession::AttachExclusionCauseRecorder(RirExclusionCauseRecorder* recorder) noexcept {
   impl_->exclusion_cause_recorder = recorder;
+}
+
+bool RirSession::SubmitExternalTrack(const session::RirExternalTrackRequest& request) {
+  // 校验：位置/速度有限、位置非退化、窗口为正。非法则**原子拒绝**（不改状态）。
+  const oneq::coordinate::EcefPositionM& p = request.position_ecef_m;
+  const oneq::coordinate::EcefVelocityMps& v = request.velocity_ecef_mps;
+  const bool pos_finite = std::isfinite(p.x_m) && std::isfinite(p.y_m) && std::isfinite(p.z_m);
+  const bool vel_finite = std::isfinite(v.x_mps) && std::isfinite(v.y_mps) &&
+                          std::isfinite(v.z_mps);
+  const double pos_norm = std::sqrt(p.x_m * p.x_m + p.y_m * p.y_m + p.z_m * p.z_m);
+  const bool window_ok = request.window.az_half_deg > 0.0f && request.window.el_half_deg > 0.0f &&
+                         std::isfinite(request.window.az_half_deg) &&
+                         std::isfinite(request.window.el_half_deg);
+  if (!pos_finite || !vel_finite || !window_ok || !(pos_norm > 1.0)) {
+    return false;
+  }
+  impl_->external_track_request = request;
+  impl_->external_track_active = true;
+  impl_->external_track_phase = RirExternalTrackPhase::kFresh;
+  impl_->external_track_coast_cycles = 0U;
+  impl_->external_track_request_cycle = kExternalTrackRequestPending;
+  impl_->external_track_expired_this_cycle = false;
+  return true;
+}
+
+void RirSession::ClearExternalTrack() {
+  impl_->external_track_active = false;
+  impl_->external_track_phase = RirExternalTrackPhase::kNone;
+  impl_->external_track_coast_cycles = 0U;
+  impl_->external_track_sweep_index = 0U;
+  impl_->external_track_request_cycle = 0U;  // 0 = 未提交（与哨兵语义分离）
+  impl_->external_track_last_request_cycle = 0U;
+  impl_->external_track_expired_this_cycle = false;
+}
+
+session::RirExternalTrackState RirSession::GetExternalTrackState() const {
+  session::RirExternalTrackState state;
+  state.phase = impl_->external_track_phase;
+  state.last_request_cycle_index = impl_->external_track_last_request_cycle;
+  state.coasting_cycles = impl_->external_track_coast_cycles;
+  return state;
+}
+
+/**
+ * @brief 解析外部跟踪在本周期是否产生驻留，并算出外推后的照射中心（局部 ENU）。
+ *
+ * 外推是本设计的关键：外部给的位置对应 `source_time_s` 时刻，而本周期指向应指向
+ * "目标现在在哪"。实测（docs/review/ir_dual_sat_fix_accuracy_measurement_2026-10-04.md）
+ * 表明 1827 m/s 目标上 1 个周期的时延就等于 1827 m 位置偏差，大于测角精度贡献，
+ * 故不外推则时间偏斜直接变成指向误差。
+ */
+bool RirSession::Impl::ResolveExternalTrackCenter(
+    std::uint32_t cycle_index, double sim_time_sec,
+    const oneq::coordinate::EcefPositionM& platform_ecef,
+    config::RirAzimuthElevationDeg* center_deg, RirExternalTrackPhase* phase) {
+  if (center_deg == nullptr || phase == nullptr) {
+    return false;
+  }
+  // 有效期判定必须先于「已释放」早退：否则到期那一周期会把 kExpired 吞掉，
+  // 外部永远看不到释放事件（本函数是该状态的唯一生产者）。
+  // 设计语义：kExpired 是**终态**（保持到外部重新提交），不是一次性事件。
+  // 故「已释放」由 phase == kExpired 表达，而不复位 active —— 复位会让结果层
+  // 退回 kNone，外部就分不清「从未启用」与「曾跟踪但已到期释放」。
+  const bool window_expired = external_track_active &&
+                              external_track_request.valid_until_cycle_index != 0U &&
+                              cycle_index > external_track_request.valid_until_cycle_index;
+  if (window_expired) {
+    external_track_phase = RirExternalTrackPhase::kExpired;
+    external_track_expired_this_cycle = true;
+    external_track_window_expired_this_cycle = true;
+    *phase = external_track_phase;
+    return false;
+  }
+  *phase = external_track_phase;
+  if (!external_track_active || external_track_phase == RirExternalTrackPhase::kExpired) {
+    return false;  // 未启用 / 已到期释放：本周期不排外部驻留（phase 字段仍如实携带终态）。
+  }
+
+  // 时延外推：位置(source_time) -> 位置(本周期)。
+  const double dt_extrapolate = sim_time_sec - external_track_request.source_time_s;
+  oneq::coordinate::EcefPositionM position_at_now;
+  position_at_now.x_m =
+      external_track_request.position_ecef_m.x_m + external_track_request.velocity_ecef_mps.x_mps *
+                                                       dt_extrapolate;
+  position_at_now.y_m =
+      external_track_request.position_ecef_m.y_m + external_track_request.velocity_ecef_mps.y_mps *
+                                                       dt_extrapolate;
+  position_at_now.z_m =
+      external_track_request.position_ecef_m.z_m + external_track_request.velocity_ecef_mps.z_mps *
+                                                       dt_extrapolate;
+
+  // 换系：ECEF -> 平台锚点局部 ENU（与场景目标同源一站式入口）。
+  oneq::coordinate::LlaPositionDegM anchor_lla;
+  if (!oneq::coordinate::TryEcefToLla(platform_ecef, &anchor_lla)) {
+    return false;
+  }
+  oneq::coordinate::ExternalKinematics kinematics;
+  kinematics.position_frame = oneq::coordinate::PositionFrame::kEcef;
+  kinematics.position_ecef_m = position_at_now;
+  kinematics.velocity_mps = external_track_request.velocity_ecef_mps;
+  oneq::coordinate::EnuSceneState enu;
+  if (!oneq::coordinate::TryMakeEnuSceneState(kinematics, anchor_lla, &enu)) {
+    return false;
+  }
+  const double px = enu.position_enu_m.east_m;
+  const double py = enu.position_enu_m.north_m;
+  const double pz = enu.position_enu_m.up_m;
+  const double range_hypot = std::sqrt(px * px + py * py);
+  // 与库内 ComputeLookAngles / TargetLookAngles 同口径：az 自 +x（东）向 +y（北）。
+  center_deg->az_deg = static_cast<float>(oneq::common::numerics::RadToDeg(std::atan2(py, px)));
+  center_deg->el_deg =
+      static_cast<float>(oneq::common::numerics::RadToDeg(std::atan2(pz, range_hypot)));
+
+  // 体积门：越界则本周期不排外部波位（不吸附、如实报告）。
+  if (!internal::TargetWithinSteerableVolume(*center_deg, config.orientation,
+                                             config.mission.scan_center_deg)) {
+    *phase = RirExternalTrackPhase::kCoasting;
+    return false;
+  }
+  external_track_last_seen_cycle = cycle_index;
+  *phase = external_track_phase;
+  return true;
 }
 
 RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
@@ -374,12 +644,55 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     max_dwells = std::max<std::size_t>(1U, static_cast<std::size_t>(dwell_quota));
   }
   std::vector<runtime::RirDwellPlan> dwell_plan;
+  // ⓪ 外部跟踪（位置 + 速度 -> 外推中心 + 邻域窗口）。优先级仅次于人工指定：
+  //    外部跟踪是"实时目标指令"，而库内航迹是自产状态，外部指令应更靠前。
+  //    中心优先、由近到远铺窗口波位；**每周期随外推中心重建**，不依赖扫描游标。
+  //
+  // 阶段判定的顺序要求：必须先判「本周期有没有新请求」，再解析外推中心——
+  // 否则首周期（last_request_cycle 尚为 0）会被误判为 coasting。
+  external_track_window_expired_this_cycle = false;
+  if (external_track_active) {
+    if (external_track_request_cycle == kExternalTrackRequestPending) {
+      // 本拍就是新请求：保持 kFresh，并把请求记账到本拍。
+      external_track_request_cycle = input.input_cycle_index;
+      external_track_last_request_cycle = input.input_cycle_index;
+      external_track_coast_cycles = 0U;
+      external_track_phase = RirExternalTrackPhase::kFresh;
+    } else if (external_track_request_cycle != input.input_cycle_index) {
+      // 请求属于更早的周期、本拍又没有新请求：进入外推保持（窗口继续跟随外推中心）。
+      external_track_phase = RirExternalTrackPhase::kCoasting;
+      ++external_track_coast_cycles;
+    }
+  }
+  config::RirAzimuthElevationDeg external_center_deg;
+  RirExternalTrackPhase external_phase = RirExternalTrackPhase::kNone;
+  const bool has_external_track = ResolveExternalTrackCenter(
+      input.input_cycle_index, static_cast<double>(input.sim_time_sec),
+      input.platform_position, &external_center_deg, &external_phase);
   if (dwelling_on_target) {
     runtime::RirDwellPlan designate_dwell;
     designate_dwell.pointing_deg = TargetLookAngles(*designated_target);
     designate_dwell.kind = runtime::RirDwellKind::kDesignate;
     designate_dwell.external_target_id = designated_external_target_id;
     dwell_plan.push_back(designate_dwell);
+  }
+  if (has_external_track) {
+    // 保底留 1 个搜索槽：外部信息可能出错，自主搜索是兜底（槽位预算保护）。
+    const std::size_t spare = (max_dwells > dwell_plan.size() + 1U)
+                                  ? (max_dwells - dwell_plan.size() - 1U)
+                                  : 0U;
+    std::vector<config::RirAzimuthElevationDeg> window_points;
+    const dwell::RirEffectiveBeamwidthDeg beamwidth = dwell::RirResolveEffectiveBeamwidth(
+        config.hardware.antenna, ResolveScanWavelengthM(config));
+    BuildExternalTrackWindowDwells(external_center_deg, external_track_request.window, beamwidth,
+                                   config.mission.step_scale, spare, &window_points);
+    for (const config::RirAzimuthElevationDeg& pt : window_points) {
+      runtime::RirDwellPlan ext_dwell;
+      ext_dwell.pointing_deg = pt;
+      ext_dwell.kind = runtime::RirDwellKind::kExternalTrack;
+      dwell_plan.push_back(ext_dwell);
+    }
+    ++external_track_sweep_index;
   }
   if (max_dwells > dwell_plan.size() + 1U) {
     std::vector<runtime::RirDwellPlan> track_dwells = controller.CollectTrackDwellRequests(
@@ -484,6 +797,32 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     result.designation_revert_reason = session::RirDesignationRevertReason::kNone;
   }
   result.dwell_center_deg = dwell_center;
+  // 指向来源与外部跟踪可观测面（加性字段）：让集成方能核对自己提交的位置/速度
+  // 是否被正确消费，并区分「外部跟踪指向」与「扫描基准」这两种不同语义。
+  if (has_external_track && !dwelling_on_target) {
+    result.pointing_source = RirPointingSource::kExternalTrack;
+  } else if (dwelling_on_target) {
+    result.pointing_source = RirPointingSource::kDesignation;
+  } else {
+    result.pointing_source = RirPointingSource::kScan;
+  }
+  result.external_track_center_deg = external_center_deg;
+  result.external_track_phase = external_track_phase;
+  result.external_track_sweep_index =
+      has_external_track ? external_track_sweep_index : 0U;
+  // 外部跟踪的如实报告（不吸附、不静默）：到期/保持/越界各自可辨识。
+  if (external_track_expired_this_cycle) {
+    session::RirIssue expired;
+    expired.code = session::codes::kExternalTrackExpired;
+    expired.message = "external track valid window expired; slot released";
+    result.issues.push_back(expired);
+  } else if (external_track_active && !external_track_window_expired_this_cycle &&
+             external_track_phase == RirExternalTrackPhase::kCoasting) {
+    session::RirIssue stale;
+    stale.code = session::codes::kExternalTrackStale;
+    stale.message = "external track coasting on last velocity (no new request this cycle)";
+    result.issues.push_back(stale);
+  }
   // 实际有效目标最大斜距（本周期持航迹目标最大输入斜距）：给外部判断实际探测距离，
   // 与 max_range_m 径向粗筛门区分。
   result.max_detected_slant_range_m = controller.LastMaxDetectedSlantRangeM();

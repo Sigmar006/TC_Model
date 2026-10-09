@@ -18,6 +18,7 @@
 #include "1q/remote_identification_radar/session/RirCycleResult.h"
 #include "1q/remote_identification_radar/session/RirOutputTypes.h"
 #include "1q/remote_identification_radar/session/RirRecognitionResult.h"
+#include "1q/remote_identification_radar/session/RirTrackRequest.h"
 
 namespace remote_identification_radar {
 namespace config {
@@ -99,6 +100,30 @@ class ONEQ_API RirSession {
 
   /** @brief 最近一次识别库加载耗时（毫秒）；未加载过为 0。 */
   double LastRecognitionDatabaseLoadMs() const;
+
+  /**
+   * @brief 提交外部目标跟踪请求：位置 + 速度 + 中心邻域跟踪窗口。
+   *
+   * 机理（本接口不是「改整机扫描基准」）：
+   * 1、库内按速度把位置外推到本周期时刻；
+   * 2、换系到雷达局部 ENU 得照射中心；
+   * 3、以中心为原点按 `window` 铺驻留波位（中心优先、由近到远），逐周期重建；
+   * 4、未收到新请求时按最后速度继续外推，超时释放。
+   *
+   * @param[in] request 外部跟踪请求。
+   * @return 请求合法（位置/速度有限、窗口为正、位置非退化）返回 true；
+   *         非法时**原子拒绝**——不改变当前跟踪状态，并写入统一问题列表。
+   * @note 逐周期提交以持续跟踪；不提交则进入外推保持（kCoasting）。
+   * @note 指向结果经 `RirCycleResult::pointing_source` / `track_center_deg` /
+   *       `external_track_phase` 逐周期暴露。
+   */
+  bool SubmitExternalTrack(const session::RirExternalTrackRequest& request);
+
+  /** @brief 清除外部跟踪，立即回到既定扫描/跟踪调度。 */
+  void ClearExternalTrack();
+
+  /** @brief 获取外部跟踪当前状态（阶段 / 外推时长 / 已外推周期数）。 */
+  session::RirExternalTrackState GetExternalTrackState() const;
 
   /**
    * @brief 注入传感器实体标识（设备 ID / 融合通道）。

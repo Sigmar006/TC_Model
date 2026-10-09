@@ -158,6 +158,20 @@ constexpr char kTargetModeNotIdentify[] = "rir.target_mode_not_identify";
 /** @brief 特征库缺失或加载失败，特征链空（识别积累保持）。 */
 constexpr char kTargetNoFeatureDatabase[] = "rir.target_no_feature_database";
 
+// ===== 外部跟踪请求（中心 + 邻域窗口）=====
+
+/** @brief 外部跟踪请求非法（位置/速度非有限、位置退化、窗口非正）——原子拒绝，状态不变。 */
+constexpr char kExternalTrackRequestInvalid[] = "rir.validation.external_track_request_invalid";
+
+/** @brief 外部跟踪已进入外推保持（无新请求，但仍在保持期内；窗口跟随外推中心）。 */
+constexpr char kExternalTrackStale[] = "rir.external_track_stale";
+
+/** @brief 外部跟踪保持期耗尽，已释放外部槽位并回到既定调度。 */
+constexpr char kExternalTrackExpired[] = "rir.external_track_expired";
+
+/** @brief 外推中心越出可扫描体积：本周期不排外部邻域波位（不吸附、如实报告）。 */
+constexpr char kExternalTrackOutsideVolume[] = "rir.external_track_outside_volume";
+
 }  // namespace codes
 }  // namespace session
 }  // namespace remote_identification_radar

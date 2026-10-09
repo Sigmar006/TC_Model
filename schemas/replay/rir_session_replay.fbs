@@ -199,9 +199,20 @@ root_type RirSessionConfig;
 // 标识符升 RIRF；项目未上线，无兼容分支。
 // v5（2026-09-06 RF 标识统一）：彻底删除 platform_id 及 transmitter/receiver equipment_id；
 // 标识符升 RIRG；项目未上线，无兼容分支。
+// v6（2026-10-04 外部跟踪接口）：RirRuntimeConfigPatch 加性新增外部目标跟踪请求
+// （位置 + 速度 + 中心邻域窗口 + 有效期 + 溯源）。与 has_scan_center 语义不同：
+// 后者只平移扫描波位表方位原点，前者是「以该中心为范围的跟踪」。标识符保持 RIRG
+// （表内加性字段，FlatBuffers 前向/后向兼容；项目未上线，无兼容分支）。
 file_identifier "RIRG";
 
 // ---- runtime_config_patch 载荷 ----
+
+// 三分量向量（ECEF 位置 m / 速度 m/s）；本文件自持，不引入跨文件依赖。
+table RirVec3 {
+  x:double;
+  y:double;
+  z:double;
+}
 
 table RirRuntimeConfigPatch {
   has_mission:bool;
@@ -220,6 +231,21 @@ table RirRuntimeConfigPatch {
   designated_external_target_id:ulong;
   has_designation_duration_cycles:bool;
   designation_duration_cycles:uint;
+  // v6（2026-10-04 外部跟踪接口）：位置 + 速度 + 中心邻域窗口。
+  // 与 has_scan_center 是**两种语义**：后者只平移扫描波位表的方位原点，
+  // 前者是「以该中心为范围的跟踪」（每周期首个驻留对准外推中心）。
+  // 实测：仅用 scan_center 时零偏移、完美指向仍 0/25 周期检出，且失败静默
+  // （见 docs/review/ir_external_position_driven_rir_e2e_2026-10-04.md）。
+  has_external_track:bool;
+  external_track_position_ecef_m:RirVec3;
+  external_track_velocity_ecef_mps:RirVec3;
+  external_track_source_time_s:double;
+  external_track_window_az_half_deg:float;
+  external_track_window_el_half_deg:float;
+  external_track_valid_until_cycle_index:uint;
+  external_track_source_target_id:ulong;
+  external_track_source_entity_id:uint;
+  has_external_track_clear:bool;
 }
 
 // ---- failure_marker 载荷 ----

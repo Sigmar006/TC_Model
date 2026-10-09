@@ -41,7 +41,11 @@ namespace runtime {
 enum class RirDwellKind {
   kSearch = 0,    /**< 搜索波位（扫描光栅推进）。 */
   kDesignate = 1, /**< 指定识别目标驻留（算子导引，真值指向语义）。 */
-  kTrack = 2      /**< 确认航迹跟踪驻留（库内航迹预测指向）。 */
+  kTrack = 2,     /**< 确认航迹跟踪驻留（库内航迹预测指向）。 */
+  /** 外部跟踪驻留（中心 + 邻域窗口；每周期由会话按外推中心重建波位）。
+   *  与 kDesignate 的区别：kDesignate 由人工指定目标 ID 驱动、指向该目标位置；
+   *  kExternalTrack 由外部位置/速度驱动、指向按速度外推后的中心及其邻域。 */
+  kExternalTrack = 3
 };
 
 /**

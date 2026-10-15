@@ -45,6 +45,59 @@
 #endif
 
 namespace oneq {
+
+namespace {
+
+// 本进程内"某验收文件是否已被首次打开"的跨模块共享判定（2026-10-15）。
+//
+// 背景：1q.lib 是静态库，会被分别链进多个模型 DLL（本工程实测 Sensors.dll 与
+// DataProcessors.dll 各含一份本文件的 statics 与 ONEQ_*_LOG_PATH 字面量）。
+// 仅靠 sink 实例上的 opened_in_process_ 判定"首次"，两个模块会各自认为自己是
+// 首次、各自以 trunc 打开同一个文件，后写的一方把先写的一方已落盘的内容整段
+// 抹掉。实证：log/SatelliteTarget.log 的最小周期恒等于融合侧（DataProcessors.dll）
+// 首次写出的周期 234，而 OPIR 侧（Sensors.dll）已写下的周期 1..233 与其中
+// "首个执行周期写一次"的第 10 项「安装矩阵误差」全部消失。
+//
+// 判定分两层：本模块内用进程内静态集合（快路径）；跨模块用 Windows 命名内核
+// 对象（Local\ 命名空间，CreateMutex 返回 ERROR_ALREADY_EXISTS 即已被其它模块
+// 认领）。句柄故意不关闭 —— 由进程退出回收，标记随之消失。非 Windows 平台
+// 退化为模块内判定（当前交付平台为 Windows）。
+bool ClaimFirstOpenForPath(const std::string& path) {
+  static std::mutex claim_mutex;
+  static std::map<std::string, bool> claimed;
+  std::lock_guard<std::mutex> lock(claim_mutex);
+  std::string key;
+  key.reserve(path.size());
+  for (std::size_t i = 0; i < path.size(); ++i) {
+    // Windows 路径大小写不敏感：统一小写，避免同一文件两种写法被当成两个键。
+    const char c = path[i];
+    key += (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+  }
+  if (claimed.find(key) != claimed.end()) {
+    return false;  // 本模块已认领过
+  }
+  claimed[key] = true;
+#if defined(_WIN32)
+  // FNV-1a 32 位散列：只用作内核对象名后缀，碰撞后果仅为"少一次 trunc"，
+  // 不影响正确性（宁可追加也不误截断）。
+  unsigned int hash = 2166136261U;
+  for (std::size_t i = 0; i < key.size(); ++i) {
+    hash ^= static_cast<unsigned char>(key[i]);
+    hash *= 16777619U;
+  }
+  char name[64];
+  // 用 sprintf 而非 snprintf：VS2013 的 <cstdio> 尚未提供 std::snprintf。
+  // 缓冲 64 字节，内容为固定前缀 "Local\oneq_acc_" + 8 位十六进制（约 25 字符），无溢出风险。
+  std::sprintf(name, "Local\\oneq_acc_%08x", hash);
+  HANDLE handle = ::CreateMutexA(nullptr, FALSE, name);
+  if (handle != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS) {
+    return false;  // 本进程内已有其它模块（另一个 DLL）认领过同一路径
+  }
+#endif
+  return true;
+}
+
+}  // namespace
 namespace logging {
 namespace {
 
@@ -284,9 +337,14 @@ class ChannelSink {
     // 同一进程内首次打开截断旧内容（重跑进程重写干净的验收文件，避免向归档
     // 证据目录追加重复行）；进程内再次打开（会话重启等）仍追加，保住本进程
     // 已写下的行。
+    //
+    // "首次"必须跨模块判定：1q.lib 被多个模型 DLL 各链一份，同一文件会被各模块
+    // 分别判定为首次而各做一次 trunc，后写方抹掉先写方（详见 ClaimFirstOpenForPath
+    // 注释里的实证）。故此处叠加跨模块判定，两者都认领为首次才截断。
+    const bool first_open = (path != nullptr) && ClaimFirstOpenForPath(path);
     const std::ios::openmode mode =
-        opened_in_process_ ? (std::ios::out | std::ios::app | std::ios::binary)
-                           : (std::ios::out | std::ios::trunc | std::ios::binary);
+        (opened_in_process_ || !first_open) ? (std::ios::out | std::ios::app | std::ios::binary)
+                                            : (std::ios::out | std::ios::trunc | std::ios::binary);
     stream_.open(path, mode);
     if (stream_.is_open()) {
       open_failed_ = false;

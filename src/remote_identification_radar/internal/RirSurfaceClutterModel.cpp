@@ -81,14 +81,35 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
       oneq::common::numerics::Clamp(raw_grazing_deg, kMinGrazingDeg, kMaxGrazingDeg);
   const float grazing_rad = DegToRad(grazing_deg);
 
+  // 主瓣下沿的地面照射距离（2026-10-15 补）：擦地角只说明"下沿照到地面"，还要确定
+  // 照到多远。此前直接用目标斜距 input.range_m 代入杂波区面积与雷达方程，对远距离
+  // 目标会算出非物理的巨大杂波区（面积 ∝R²，R 可达 10⁶ m 量级；而 300 m 高雷达的
+  // 地平线只有约 62 km，波束下沿在那个距离上根本照不到地面）。
+  // 正确口径：自平台高度 h 以俯角 δ (=raw_grazing) 发出的射线与地球面的交点距离
+  //   s²/(2·Re_eff) + s·sinδ − h = 0  →  s = Re_eff·(√(sin²δ + 2h/Re_eff) − sinδ)
+  // Re_eff 取 4/3 地球半径（标准大气折射等效地球半径）；δ=0 时退化为地平线距离。
+  // 交点距离超过目标斜距时按目标斜距取（目标比地面更近，杂波只可能来自其之前的距离）。
+  const float re_eff_m = 6371000.0f * (4.0f / 3.0f);
+  const float sin_delta = std::sin(DegToRad(raw_grazing_deg));
+  float clutter_range_m =
+      re_eff_m * (std::sqrt(sin_delta * sin_delta +
+                            2.0f * std::max(input.platform_altitude_m, 0.0f) / re_eff_m) -
+                  sin_delta);
+  if (!(clutter_range_m > 0.0f)) {
+    return 0.0f;
+  }
+  if (input.range_m > 0.0f && input.range_m < clutter_range_m) {
+    clutter_range_m = input.range_m;
+  }
+
   // 杂波区面积（脉压后距离单元 δR = c/(2B)，与测距误差模型同源）：
   // 低擦地走脉冲限制（距离向 × 方位向），高擦地走波束限制，取较小者。
   const float range_cell_m = static_cast<float>(oneq::common::numerics::kLightSpeed) /
                              (2.0f * input.transmitter.bandwidth_hz);
   const float pulse_limited_area_m2 =
-      input.range_m * az_beamwidth_rad * range_cell_m / std::cos(grazing_rad);
+      clutter_range_m * az_beamwidth_rad * range_cell_m / std::cos(grazing_rad);
   const float beam_limited_area_m2 =
-      input.range_m * input.range_m * az_beamwidth_rad * el_beamwidth_rad /
+      clutter_range_m * clutter_range_m * az_beamwidth_rad * el_beamwidth_rad /
       std::sin(grazing_rad);
   const float clutter_area_m2 = std::min(pulse_limited_area_m2, beam_limited_area_m2);
 
@@ -107,7 +128,7 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
   // 相对钳制口径）。
   const float clutter_echo_dbw =
       RirRadarEquations::ComputeEchoPower_dBW(input.transmitter, input.antenna, clutter_rcs_m2,
-                                              input.range_m, input.propagation_loss_db) +
+                                              clutter_range_m, input.propagation_loss_db) +
       RirRadarEquations::ComputePulseCompressionGainDb(input.transmitter);
   const float cnr_db =
       clutter_echo_dbw - 10.0f * std::log10(input.thermal_noise_w);

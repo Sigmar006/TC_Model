@@ -30,6 +30,10 @@ struct RirSurfaceClutterInput {
   float range_m{0.0f};             /**< 目标斜距（m）。 */
   float look_el_deg{0.0f};         /**< 目标俯仰视线角（deg，向上为正）。 */
   float thermal_noise_w{0.0f};     /**< 接收机热噪功率（W）。 */
+  float platform_altitude_m{0.0f}; /**< 雷达平台海拔高（m，AGL/椭球高口径由调用方保证一致）；
+                                        主瓣下沿的地面照射距离由该高度与下沿俯角共同决定
+                                        （2026-10-15 补：此前直接用目标斜距，远距离目标会算出
+                                        非物理的巨大杂波区面积）。 */
 };
 
 /**

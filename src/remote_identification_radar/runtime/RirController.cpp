@@ -43,10 +43,6 @@ namespace {
 
 constexpr float kSnrFallbackGateDb = 6.0f;
 constexpr float kCovarianceFloorM2 = 1.0e-6f;
-/** @brief 两点起批速度差分的最小有效时间间隔（s）；间隔不大于此值不做差分。 */
-constexpr float kMinimumTwoPointIntervalSec = 1.0e-3f;
-/** @brief 两点起批速度的物理包线裕量（m/s）：超「量测机动 + 裕量」判定为不可信差分。 */
-constexpr float kTwoPointVelocityMarginMps = 300.0f;
 // 未注入设备号时的缺省值，镜像融合常量 fusion::kRirSourceId（=5U）。分层契约
 // 禁止传感器层引 fusion 头，故在本文件本地对齐取值；两侧若需改号须同步。
 constexpr std::uint32_t kDefaultSensorEntityId = 5U;
@@ -789,11 +785,10 @@ bool RirController::TryBuildMeasurement(
   built.external_target_id = target.external_target_id;
   built.target_name = target.target_name;
   built.position = PositionOf(target);
-  // 速度种子（rir-tracking-realism 契约）：雷达单次检测无速度量测通道，场景真值速度
-  // 种子属泄漏，故不取真值。改为两点起批——同一目标本周期与上一周期**雷达自有量测**
-  // 之差除以实际时间间隔（首次检测仍置零）。字段保留填零以外的合法取值（公开面与回放
-  // 兼容，契约修订 1 第 4 条只禁止真值速度种子）。
-  built.velocity = SeedVelocityFromPriorMeasurement(target, built.position);
+  // 去真值化（rir-tracking-realism 契约）：雷达单次检测无速度量测通道，旧口径的
+  // 真值速度种子属泄漏；滤波速度唯一来源为后验收敛。字段保留填零（公开面与回放
+  // 兼容，契约修订 1 第 4 条）。
+  built.velocity = Eigen::Vector3f::Zero();
   // 评审 2026-08-26 条15：检测概率透传进关联量测（验收旁路字段，不进关联方程）。
   built.detection_pd = detection.detection_prob;
   built.detection_snr_db = detection.snr_db;
@@ -849,33 +844,6 @@ bool RirController::TryBuildMeasurement(
     }
   }
   return true;
-}
-
-Eigen::Vector3f RirController::SeedVelocityFromPriorMeasurement(
-    const session::RirSceneTarget& target, const Eigen::Vector3f& position) const {
-  // external_target_id == 0 是合法的「未知身份」值，不可作跨周期关联键（多个未知目标
-  // 会串成一个）；此类目标退化为首次检测口径（零种子）。
-  if (target.external_target_id == 0U) {
-    return Eigen::Vector3f::Zero();
-  }
-  const std::map<std::uint64_t, RirPriorMeasurement>::const_iterator prior =
-      prior_measurement_by_target_id_.find(target.external_target_id);
-  if (prior == prior_measurement_by_target_id_.end()) {
-    return Eigen::Vector3f::Zero();  // 首次检测：与既有填零行为逐位一致。
-  }
-  const float dt_sec = sim_time_sec_ - prior->second.sim_time_sec;
-  if (!std::isfinite(dt_sec) || dt_sec <= kMinimumTwoPointIntervalSec) {
-    return Eigen::Vector3f::Zero();  // 时间未推进或间隔过短：差分不成立。
-  }
-  const Eigen::Vector3f velocity = (position - prior->second.position) / dt_sec;
-  const Eigen::Vector3f target_velocity(target.velocity_x, target.velocity_y, target.velocity_z);
-  if (!velocity.allFinite() ||
-      velocity.norm() > target_velocity.norm() + kTwoPointVelocityMarginMps) {
-    // 间隔跨越目标段（或量测野值）时差分会给出远超物理包线的速度；此时退回零种子，
-    // 由诚实速度先验承接（速度无知先验使波门放宽，比塞入错误种子安全）。
-    return Eigen::Vector3f::Zero();
-  }
-  return velocity;
 }
 
 recognition::RirObservationContext RirController::MakeObservationContext(
@@ -1216,19 +1184,6 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     cycle_context.dt_sec = static_cast<float>(input.dt_sec);
     lifecycle_->Update(cycle_context, association.measurements);
 
-    // 两点起批记账（2026-10-04 实测驱动）：把本周期**已产出**的量测按目标 ID 记入快照，
-    // 供下一执行周期做位置差分；周期末整体换代，故只保留最近一周期条目。记录条件与
-    // 种子消费均为「目标 ID 非 0」，与检测候选的 ID 门一致。
-    for (const tracking::RirTrackMeasurement& measurement : association.measurements) {
-      if (measurement.external_target_id == 0U) {
-        continue;
-      }
-      RirPriorMeasurement snapshot;
-      snapshot.position = measurement.position;
-      snapshot.sim_time_sec = input.sim_time_sec;
-      current_measurement_by_target_id_[measurement.external_target_id] = snapshot;
-    }
-
     // 验收事件 association（3.2.2.3.1.1）：全局最优关联结果——命中对（键/量测
     // 索引/马氏代价）与漏检航迹键（量测清单经 detection_cell 事件逐目标留痕）。
     if (RIR_ACCEPTANCE_LOG_ENABLED()) {
@@ -1378,14 +1333,6 @@ void RirController::RunCycle(const session::RirCycleInput& input,
               "; work_mode=stby, no recognition observation this cycle",
           session::RirIssueCause::kNone, i));
     }
-  }
-
-  // 量测快照换代（两点起批）：本周期条目成为下一执行周期可消费的「上一周期量测」。
-  // 非识别周期不产出量测，故不换代——快照保留最近一次实际检测，跨模式间隙仍可差分
-  // （时间间隔按真实时刻算，不按周期号推）。
-  if (in_identify) {
-    prior_measurement_by_target_id_.swap(current_measurement_by_target_id_);
-    current_measurement_by_target_id_.clear();
   }
 
   last_track_snapshots_ = track_snapshots;

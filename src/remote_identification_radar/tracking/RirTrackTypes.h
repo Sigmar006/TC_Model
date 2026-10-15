@@ -51,9 +51,11 @@ enum class RirTrackStatus {
 /**
  * @brief RirTrackMeasurement 轻量关联/生命周期消费的单周期量测。
  *
- * `position` 为检测量测位置（已施加量测误差）；`velocity` 为场景目标速度
- * 种子（阶段 2-S 由 `RirSceneTarget` 补充），只用于新航迹/失配重捕获时的
- * KF 状态初始化，不进入量测更新方程。
+ * `position` 为检测量测位置（已施加量测误差）；`velocity` 为**该雷达自身量测序列的
+ * 两点起批差分速度**（本目标上周量测位置到本周量测位置、除以实际时间间隔；
+ * 首次检测/间隔非法时为零），只用于新航迹/失配重捕获时的 KF 状态初始化，
+ * 不进入量测更新方程。场景真值速度**不得**填入该字段
+ * （rir-tracking-realism 契约修订 1 第 4 条：真值速度种子属泄漏）。
  */
 struct RirTrackMeasurement {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -64,7 +66,7 @@ struct RirTrackMeasurement {
   std::uint64_t association_key{0U};                 /**< 关联键；0 为保留值（未关联）。 */
   bool matched_existing_track{false};                /**< 是否命中既有航迹。 */
   Eigen::Vector3f position{Eigen::Vector3f::Zero()}; /**< 量测位置（m）。 */
-  Eigen::Vector3f velocity{Eigen::Vector3f::Zero()}; /**< 速度种子（m/s）。 */
+  Eigen::Vector3f velocity{Eigen::Vector3f::Zero()}; /**< 两点起批速度种子（m/s；首次检测为零）。 */
   float detection_pd{0.0f};   /**< 本量测的检测概率 Pd（检测链透传；验收旁路用，不进关联方程）。 */
   float detection_snr_db{0.0f}; /**< 本量测对应的检测 SNR（dB，外部验收投影用）。 */
   float radial_velocity_m_per_s{0.0f}; /**< 检测链使用的径向速度（m/s，外部验收投影用）。 */

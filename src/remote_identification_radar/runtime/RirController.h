@@ -11,10 +11,13 @@
 #ifndef REMOTE_IDENTIFICATION_RADAR_RUNTIME_RIR_CONTROLLER_H_
 #define REMOTE_IDENTIFICATION_RADAR_RUNTIME_RIR_CONTROLLER_H_
 
+#include <Eigen/Core>
+#include <map>
 #include <memory>
 #include <random>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "1q/remote_identification_radar/config/RirHardwareConfig.h"
@@ -216,6 +219,31 @@ class RirController {
     float carrier_hz{0.0f};
   };
 
+  /**
+   * @brief 逐目标上一周期量测快照（量测位置 + 仿真时刻），两点起批速度种子用。
+   * @note 只承载本雷达自己已产出的量测，不是场景真值；每执行周期整体换代
+   *       （只保留最近一周期条目，目标退场即随换代自然淘汰）。
+   */
+  struct RirPriorMeasurement {
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    Eigen::Vector3f position{Eigen::Vector3f::Zero()}; /**< 量测位置（雷达局部 ENU，m）。 */
+    float sim_time_sec{0.0f};                          /**< 该量测所在周期仿真时刻（s）。 */
+  };
+
+  /**
+   * @brief 两点起批速度种子（2026-10-04 实测驱动，见
+   *        docs/review/ir_external_position_driven_rir_e2e_2026-10-04.md）。
+   *
+   * 雷达单次检测没有速度量测通道（rir-tracking-realism 契约：去真值化），但
+   * **同一目标相邻两次量测之差除以实际时间间隔**是雷达自有信息，可合法给出初速：
+   * 零速初值会让 CV 外推停在原地，高速目标每周期跳出波门 → 每周期新建航迹 →
+   * 滤波速度永远是初值 0。首次检测（或时间间隔非法/推得速度超包线）仍置零，
+   * 与既有行为逐位一致。
+   */
+  Eigen::Vector3f SeedVelocityFromPriorMeasurement(const session::RirSceneTarget& target,
+                                                   const Eigen::Vector3f& position) const;
+
   /** @brief 检测器配置装配。 */
   dwell::RirDetectorConfig MakeDetectorConfig() const;
 
@@ -307,6 +335,10 @@ class RirController {
   float last_max_detected_slant_range_m_{0.0f}; /**< 最近周期持航迹目标最大输入斜距（m）。 */
   /** 本周期逐目标检测 SNR（单脉冲口径）；归属视图与调试视图透出，非验收统计项。 */
   std::unordered_map<std::uint64_t, float> last_cycle_snr_by_target_id_{};
+  /** 上一执行周期逐目标量测快照（两点起批速度种子的唯一输入）。 */
+  std::map<std::uint64_t, RirPriorMeasurement> prior_measurement_by_target_id_{};
+  /** 本周期逐目标量测快照（周期末整体换代为 `prior_measurement_by_target_id_`）。 */
+  std::map<std::uint64_t, RirPriorMeasurement> current_measurement_by_target_id_{};
 };
 
 }  // namespace runtime

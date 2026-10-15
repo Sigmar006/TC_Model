@@ -26,8 +26,15 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   }
 
   observation.valid = true;
-  observation.speed_mps = snapshot.speed;
-  observation.acceleration_mps2 = snapshot.acceleration_mps2;
+  // 标量模长兜底（2026-10-15 实测）：快照的 speed / acceleration_mps2 标量字段在实跑中
+  // 恒为 0（验收行长期打印 速度=0.000m/s 加速度=0.000m/s²，而同一快照的位置与**速度向量**
+  // 均正常——下面横向加速度分解用的就是 vector 字段且工作正常）。标量为 0 时改用向量模长，
+  // 使"运动"分项恢复判别力；若向量同样为 0（未估计出速度），行为与本改动前完全一致。
+  observation.speed_mps =
+      (snapshot.speed > 0.0f) ? snapshot.speed : snapshot.velocity.norm();
+  observation.acceleration_mps2 = (snapshot.acceleration_mps2 > 0.0f)
+                                      ? snapshot.acceleration_mps2
+                                      : snapshot.acceleration.norm();
   observation.altitude_m = platform_altitude_m + snapshot.position.z();
 
   // 横向加速度分解：a_lat = |a - (a·v/|v|²)v|；低速或横向加速度低于阈值记为直线飞行。

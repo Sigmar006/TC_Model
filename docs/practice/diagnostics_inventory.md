@@ -55,6 +55,56 @@ Authority: **本表是清理诊断代码/临时排查物的唯一依据。** 新
 
 ---
 
+## 4. 追加登记：2026-10-15 一轮的集成侧诊断与"不可删"清单
+
+> 依据 §1 注（"`[scene-vel]` / `[feature-pick]` 等是上一轮及更早加的，不在本表范围，需要时另行登记"）
+> 由另一会话补登记。行号为 2026-10-15 当时值，**定位请用搜索标记**。
+
+### 4.1 可删诊断
+
+| 仓库/文件 | 搜索标记 | 大致行号 | 内容 | 处置 |
+|---|---|---|---|---|
+| BJ `…\Sensors\LRDR_SENSOR\lrdr_sensor_1q.cpp` | `feature_pick_logged` | L460–463（成员声明）、L511（构造初始化列表） | `RirRuntime` 里 `std::map<unsigned int, std::string> feature_pick_logged` + 注释 | **可删** |
+| 同上 | `[feature-pick]` | ~L1186–1213 | 特征集选择结果：首次/变化时输出 `idx=/target=/id=/rcs_in=/set='/set_rcs=/out_rcs=/aspect=/pol=/scatterers=` | **可删**（整块含注释） |
+| 同上 | `[scene-vel]` | ~L1178–1204 | 场景目标真值速度与步长：`truth_vel_enu=(…)m/s abs_v=… has_vel=… dt_from_last=…`，节流 `idx<=5 \|\| idx%500==0` | **可删**（整块含注释） |
+| BJ `…\DataProcessors\SBIRSFusionDp\sbirsfusiondp_1q.cpp` | `[init] target inference engine created` / `disabled` | L348 / L352 | 推演引擎创建/关闭确认行 | **可删** |
+| 同上 | `[predict]` | L1012 | 每周期推演概况 `cycle=/tracks=/results=` | **可删** |
+| 同上 | `det_total` / `det_drop_no_id` / `det_drop_stage` / `det_anchor_ok` | 声明 L549–552、自增 L578/583、输出 L1035–1044 | 观测锚点提取层的**丢弃分类计数**；`[verbose]` 行尾追加 `det=/drop_no_id=/drop_stage=/anchor_ok=/anchors=/targets_multi_sat=` 与配套统计循环 | **可删** |
+
+> `verbose_log` 开关（`SBIRSFusionDpData.hpp`，默认 1）只控制上述 `[verbose]`/`[predict]` 输出；
+> 删诊断后可保留参数（无输出）或连参数一起删——**后者需同步四处**：`.hpp` / `.mdef` / `.mui` /
+> `ModelDatabase\Equipment\DataProcessors\红外地面站.mdata`。
+
+### 4.2 **不可删**（产品功能 / 契约 / 配置）
+
+| 位置 | 内容 | 原因 |
+|---|---|---|
+| BJ `lrdr_sensor_features.{h,cpp}` + `lrdr_sensor_1q.cpp` 调用点 | `SelectFeatureSet` 新增入参 `_scene_rcs_m2`（用场景真值 RCS 兜底"就近选档"） | 功能修复：修"导弹被装配成 `air_fighter` ⇒ 识别成 F-16C" |
+| BJ `sbirsfusiondp_1q.cpp` | 三处 `printf` → `FUSION_DIAG_LOG`（`first dual-LOS fix ok` / `first fused track created` / 逐周期概况） | 宿主不落盘 stdout，不改则此类信息永远不可见 |
+| BJ `sbirsfusiondp_1q.cpp` | 推演引擎接入（`TargetInferenceEngine::Infer`） | 驱动验收第 20/21/22/23/25 项 |
+| BJ `SBIRSFusionDpData.hpp` | 11 个参数的 `Serialize`/`Deserialize`（原为空实现） | 参数可配的前提 |
+| BJ `SBIRSFusionDpData.hpp` | `inference_enabled`（默认 1） | 推演开关（功能） |
+| BJ 想定 `20261006-LRDR和SBIRS测试想定.sdata` | 预警雷达站点 300 m AGL | 第 34 项杂波几何窗口 |
+| BJ `bin\App\config\sbirs.json`（+源副本） | 8° 视场 + 3 行俯仰栅格 + `span 360` / `rate 78` | 双星交会成立的前提（配对窗口 35 配套） |
+| BJ `ModelDatabase\…\红外地面站.mdata` | `pair_window_cycles=35`、`narrow_field_stage_min=1` | 同上 |
+| 1q `src/common/logging/AcceptanceFileLog.cpp` | 逐行 `flush()` + `ClaimFirstOpenForPath`（跨模块"首次打开"判定） | 分别修"运行期读不到日志"与"跨 DLL 截断抹掉第 10 项" |
+| 1q `src/remote_identification_radar/internal/RirSurfaceClutterModel.{h,cpp}` + `runtime/RirController.{h,cpp}` | 杂波区面积/回波改用"波束下沿地面交点距离"；输入加 `platform_altitude_m` | 修远距目标杂波 ∝R² 非物理放大 |
+| 1q `src/remote_identification_radar/recognition/MotionFeatureExtractor.cpp` | 标量模长兜底（`speed`/`acceleration_mps2` 为 0 时取向量模长） | 修复；注意其与 §3.1"两点起批已回滚"是两件事 |
+
+> **1q 侧本会话未新增任何纯诊断代码**（避免走 `PROJECT_LOG_*`——Windows 上默认关闭 ⇒ 写了看不到）。
+
+### 4.3 删除操作清单
+
+```
+1) 按 4.1 逐项删除（搜索标记定位，勿按行号硬删）
+2) 重编集成工程（先关宿主：ModelSource\build_x64_v120.cmd）
+3) 跑一轮：验收条目数与内容不应变化；[cue] 引导/推演输出不受影响
+4) 应消失：[feature-pick] / [scene-vel] / [predict] / [verbose] 行尾的 det=… 字段
+5) 提交 BJ 仓库一笔
+```
+
+---
+
 ## 3. 已完成的排查结论（供后续判读，勿重复走）
 
 1. **两点起批速度种子已在 BJ 集成实证为负**：让航迹持续存活后发散，最好航迹由 8.8 km 劣化到 1119 km。已回滚（`ea43e9a7`）。

@@ -487,6 +487,65 @@ $\text{SNR} \propto 1/R^2$ ⇒ **1 MW → 23 kW 的标定仍然偏强**。
 
 ---
 
+## 3j. 准入门是硬编码 6 dB，不是配置里的 −10 dB（2026-10-16 第十轮）
+
+### 3j.1 干扰标定精确命中
+
+17:41 轮（干扰 `TransPowerW` 23150 → 2600 W）实测最优点：
+
+| 干扰发射功率 | 638 km 处 SNR | I/N |
+|---|---|---|
+| 23 150 W | −6.53 dB | +9.5 dB |
+| **2 600 W** | **+2.97 dB** | **+0.0 dB** |
+
+提升 **+9.5 dB**，与预测一致。但 `detection_gate` 仍拒（1092 条，`cause=distance-limited`）。
+
+### 3j.2 真因：准入门是硬编码常量
+
+`RirController.cpp:44` 与 `L698-700`：
+
+```cpp
+constexpr float kSnrFallbackGateDb = 6.0f;
+const bool admitted = policy_.detection.gate_mode == config::RirDetectionGateMode::kSnrFallback
+                          ? detection.snr_db >= kSnrFallbackGateDb   // 需 >= 6.0 dB
+                          : detection.detected;
+```
+
+配置里的 `min_snr_db = −10` **不是**该模式的判据；`kSnrFallback` 用**硬编码 6.0 dB**。
+实测 `snr_db = +2.97` **只差 3.03 dB**。
+
+`RirPolicyConfig.h:20-22`：
+
+```cpp
+enum class RirDetectionGateMode {
+  kDetectorGate = 0,  /**< 检测器模式（默认）*/
+  kSnrFallback  = 1   /**< 回退模式：SNR ≥ 6 dB（旧识别门控口径）*/
+};
+```
+
+### 3j.3 **关键推论：该几何下目标本身不够亮**
+
+由两个实测点反解（$\text{SNR}=C/(1+I/N)$，$I/N \propto$ 辐射功率）：
+
+| 项 | 值 |
+|---|---|
+| 23 150 W 时 | SNR −6.53 dB，I/N **+9.5 dB** |
+| 2 600 W 时 | SNR +2.97 dB，I/N **+0.0 dB** |
+| **无干扰 SNR（C）** | **仅 5.98 dB** |
+
+⇒ **即使干扰全关，无干扰 SNR 也只有 5.98 dB，仍低于 6.0 dB 门 0.02 dB**。
+即 `kSnrFallback` 下**无论怎么调干扰都过不了门** —— 必须改用检测器模式，
+或提高目标 RCS / 缩短距离 / 放宽 `min_snr_db`。
+
+### 3j.4 改动
+
+`config/remote_identification_radar.json`：`gate_mode` 由 `kSnrFallback` 改为
+**`kDetectorGate`**（即**默认**模式，走 `min_snr_db = −10` / `min_detection_margin_db = −2`）。
+
+预期：实测 +2.97 dB 相对 −10 dB 门有 **12.97 dB 余量**，应直接过门进入关联/滤波。
+
+---
+
 ## 4. 根因（按影响排序）
 ### 4.1 加速度维（主因）
 

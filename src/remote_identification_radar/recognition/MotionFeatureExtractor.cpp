@@ -15,6 +15,22 @@ namespace {
 
 float Clamp01(float value) { return std::max(0.0f, std::min(1.0f, value)); }
 
+/**
+ * @brief 速度估计收敛门限（单轴速度方差，m²/s²，2026-10-16）。
+ *
+ * 为什么需要：加速度取后验速度差分，而滤波重置（建轨/失跟重捕）以零速均值 + 速度无知
+ * 先验（方差 9e6）重初始化，首个后验速度直接跳到真值量级，该拍差分基准却是重置前的旧
+ * 速度（≈0），使 `a = Δv/Δt` 数值上约等于速度本身——BJ 集成实测加速度与速度逐分量
+ * 完全相同（模长 5 640 m/s²），而真实加速度只有约 5 m/s²。
+ *
+ * 该伪值经一阶指数平滑（τ=30 周期）只是缓慢衰减，仍会把累积窗的中位数整体抬高，
+ * 令识别"运动"维对正确型号的相似度恒为 0（模板 7.5±3.0，z 达数百）。
+ *
+ * 取 1e5 m²/s²（σ≈316 m/s）：远低于重置后的无知先验 9e6（σ=3000 m/s），
+ * 又高于稳定跟踪后的数值，足以把"刚重置"的伪加速度整段挡掉。
+ */
+constexpr float kMaxVelocityVarianceForAcceleration = 1.0e5f;
+
 }  // namespace
 
 RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrackState& snapshot,
@@ -36,6 +52,18 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
                                       ? snapshot.acceleration_mps2
                                       : snapshot.acceleration.norm();
   observation.altitude_m = platform_altitude_m + snapshot.position.z();
+
+  // 加速度维门控（2026-10-16）：速度尚未收敛时，差分加速度是"重置伪值"而非物理量
+  // （见 kMaxVelocityVarianceForAcceleration 注释）。此时**将加速度置零**而不是压低质量：
+  // 置零后该维对所有型号模板给出同一相似度（对 7.5±3.0 约为 0.04），既不再反向拖累
+  // 正确型号，也不给错误型号额外好处；运动维退化为"速度 + 高度 + 常量"，仍具判别力。
+  // 速度/高度两维来自位置滤波，协方差已收敛，不受该伪值影响，故照常保留。
+  const bool acceleration_trustworthy =
+      snapshot.MaxVelocityVariance() > 0.0f &&
+      snapshot.MaxVelocityVariance() <= kMaxVelocityVarianceForAcceleration;
+  if (!acceleration_trustworthy) {
+    observation.acceleration_mps2 = 0.0f;
+  }
 
   // 横向加速度分解：a_lat = |a - (a·v/|v|²)v|；低速或横向加速度低于阈值记为直线飞行。
   const float speed_sq = snapshot.velocity.squaredNorm();

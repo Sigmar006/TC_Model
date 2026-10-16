@@ -28,6 +28,7 @@ using session::RirPolSMatrixSample;
 using session::RirRangeRcsScatterer;
 using session::RirRecognitionFeatureDimension;
 using session::RirSceneTarget;
+using tracking::RirStateCovariance;
 using tracking::RirTrackState;
 using tracking::RirTrackStatus;
 
@@ -95,6 +96,8 @@ TEST(RirMotionFeatureExtractorTest, ExtractsSpeedAndStraightFlightFromConfirmedT
   snapshot.acceleration.y() = 0.0f;
   snapshot.acceleration.z() = 0.0f;
   snapshot.position.z() = 20000.0f;
+  // 速度已收敛（单轴方差远小于门限）→ 加速度维照常输出。
+  snapshot.gaussian_state.covariance = RirStateCovariance::Identity();
 
   const recognition::RirMotionObservation observation =
       recognition::RirMotionFeatureExtractor::Extract(snapshot, 30000.0f, 2500.0f);
@@ -105,6 +108,55 @@ TEST(RirMotionFeatureExtractorTest, ExtractsSpeedAndStraightFlightFromConfirmedT
   EXPECT_FLOAT_EQ(observation.acceleration_mps2, 12.0f);
   EXPECT_TRUE(observation.is_straight);
   EXPECT_GT(observation.quality, 0.0f);
+}
+
+/// @brief 速度未收敛时加速度维置零（2026-10-16）：滤波重置后首个后验速度会跳到真值
+///        量级，而差分基准是重置前的旧速度（≈0），使 a=Δv/Δt 数值上约等于速度本身
+///        （集成实测出现过加速度与速度逐分量相同、模长 5 640 m/s²，真实值仅约 5 m/s²）。
+///        该伪值经指数平滑仍会污染整窗中位数、令运动维对正确型号相似度恒为 0，
+///        故在识别侧按速度方差门控：置零后该维对所有型号给出同一相似度（不再反向拖累）。
+TEST(RirMotionFeatureExtractorTest, GatesAccelerationWhileVelocityUnconverged) {
+  RirTrackState snapshot;
+  snapshot.status = RirTrackStatus::kConfirmed;
+  snapshot.speed = 5200.0f;
+  snapshot.acceleration_mps2 = 5140.0f;  // 伪值：与速度同量级
+  snapshot.velocity.x() = 5200.0f;
+  snapshot.acceleration.x() = 5140.0f;
+  snapshot.position.z() = 1200000.0f;
+  // 只在速度分块注入重置后的无知先验；位置分块保持收敛（否则运动质量因子也会被压低）。
+  snapshot.gaussian_state.covariance = RirStateCovariance::Identity() * 100.0f;
+  snapshot.gaussian_state.covariance(1, 1) = 9.0e6f;
+  snapshot.gaussian_state.covariance(3, 3) = 9.0e6f;
+  snapshot.gaussian_state.covariance(5, 5) = 9.0e6f;
+
+  const recognition::RirMotionObservation observation =
+      recognition::RirMotionFeatureExtractor::Extract(snapshot, 300.0f, 300.0f);
+
+  ASSERT_TRUE(observation.valid);
+  // 速度与高度来自位置滤波、协方差已收敛，照常保留。
+  EXPECT_FLOAT_EQ(observation.speed_mps, 5200.0f);
+  EXPECT_FLOAT_EQ(observation.altitude_m, 1200300.0f);
+  // 加速度被门控置零。
+  EXPECT_FLOAT_EQ(observation.acceleration_mps2, 0.0f);
+}
+
+/// @brief 协方差未设置（全零）时加速度维同样不输出：零方差不是"已收敛"的证据，
+///        而是"未知"，按不可信处理避免把未经确认的差分当物理量送给识别。
+TEST(RirMotionFeatureExtractorTest, GatesAccelerationWhenCovarianceUnknown) {
+  RirTrackState snapshot;
+  snapshot.status = RirTrackStatus::kConfirmed;
+  snapshot.speed = 1000.0f;
+  snapshot.acceleration_mps2 = 3000.0f;
+  snapshot.acceleration.x() = 3000.0f;
+  snapshot.position.z() = 100000.0f;
+  snapshot.gaussian_state.covariance = RirStateCovariance::Zero();
+
+  const recognition::RirMotionObservation observation =
+      recognition::RirMotionFeatureExtractor::Extract(snapshot, 0.0f, 0.0f);
+
+  ASSERT_TRUE(observation.valid);
+  EXPECT_FLOAT_EQ(observation.speed_mps, 1000.0f);
+  EXPECT_FLOAT_EQ(observation.acceleration_mps2, 0.0f);
 }
 
 TEST(RirMotionFeatureExtractorTest, UnconfirmedTrackIsInvalid) {

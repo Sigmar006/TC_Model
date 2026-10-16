@@ -20,6 +20,7 @@
 #define REMOTE_IDENTIFICATION_RADAR_TRACKING_RIR_TRACK_TYPES_H_
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -118,6 +119,23 @@ struct RirTrackState {
   float EstimationUncertaintyTrace() const {
     const RirStateCovariance& covariance = gaussian_state.covariance;
     return covariance(0, 0) + covariance(2, 2) + covariance(4, 4);
+  }
+
+  /**
+   * @brief 单轴最大速度方差（m²/s²，2026-10-16）：识别侧据此判断加速度差分是否可信。
+   * @details 滤波重置（建轨/失跟重捕）以零速均值 + 速度无知先验重初始化（速度方差 9e6），
+   *   首个后验速度会直接跳到真值量级；而该拍的差分基准是重置前的旧速度（≈0），
+   *   于是 `a = Δv/Δt` 数值上约等于**速度本身**。BJ 集成实测出现过加速度与速度
+   *   逐分量完全相同（模长 5 640 m/s²），而真实加速度只有约 5 m/s²；该伪值经指数平滑
+   *   仍会污染整窗中位数。识别侧按本值门控加速度维（见 MotionFeatureExtractor）。
+   * @return 单轴最大速度方差（m²/s²）；越大表示速度估计越不可信。
+   */
+  float MaxVelocityVariance() const {
+    const RirStateCovariance& covariance = gaussian_state.covariance;
+    const float vx = covariance(1, 1);
+    const float vy = covariance(3, 3);
+    const float vz = covariance(5, 5);
+    return std::max(vx, std::max(vy, vz));
   }
 };
 

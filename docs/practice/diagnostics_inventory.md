@@ -24,6 +24,7 @@ Authority: **本表是清理诊断代码/临时排查物的唯一依据。** 新
 | `[DIAG-2026-10-16-MEAS]` | 量测诊断块 **L1213–L1271**（起止标记各一行，块体连大括号整删） | 每拍算 `|Δp|` 与真实 `dt`，只在刷新该目标历史最大跳变时打印。产出 `[meas-first]`、`[meas-gap]`、`[meas-jump]` 三种行 | **可删**（整块） |
 | `[DIAG-2026-10-16-CUE]` | **L1410–L1427** | 外部跟踪提交结果诊断 `[cue-track]`：打印 `submitted/phase/中心ECEF/速度/窗口/source_time` | **可删**（含 `if` 判断与 `LrdrDiagLog` 调用） |
 | `[DIAG-2026-10-16-CUE]` | **L1442–L1446** | 引导消失诊断行 `[cue-track] … 引导消失，已清除外部跟踪` | **可删**（仅该 `LrdrDiagLog` 调用） |
+| `[DIAG-2026-10-16-RECOG]` | `StepWithResult` 之后紧邻一段（搜 `DIAG-recog`） | 逐航迹打印识别 `best_score` / `runner_up_score` / `confidence` / 型号 / 四维相似度 / 掩码 / 观测数，每 100 周期一条。**为什么不复用库内那条**：`RecognitionTracker` 的 `fell below acceptance` 走 `PROJECT_LOG_INFO`，而 Windows 上 `PROJECT_LOG` 默认关闭、宿主也不捕获 stdout，集成实跑看不到；而这两个分数量是判「得分不够 vs 可分性不够」的唯一入口 | **可删**（整段）；删除时建议顺带评估把库内那条改走验收通道 |
 | — | `cue_center_valid = true;`（**L1142**）一带 | 引导中心收集（**不是诊断**，是产品逻辑） | **保留** |
 | — | **L1349**–L1447 外部跟踪提交整块 | `SubmitExternalTrack` 的**产品实现**（引导只改指向不改位置）；`cue_prev_ecef_*` / `cue_active_id` 等运行态（**L487–L500** 声明）同为产品状态 | **保留** |
 | — | `LRDR_SENSORData.hpp` 的 `cue_track_az_half_deg` / `cue_track_el_half_deg` | 邻域窗口参数（产品配置） | **保留** |

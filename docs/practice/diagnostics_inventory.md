@@ -18,13 +18,14 @@ Authority: **本表是清理诊断代码/临时排查物的唯一依据。** 新
 仓库：`C:\software\workspace\1qfosim\BJ_10Y_WorkSpace`
 文件：`ModelSource\CyModel\Equipment\Sensors\LRDR_SENSOR\lrdr_sensor_1q.cpp`
 
-| 标记 | 位置（2026-10-16 行号） | 大致内容 | 处置 |
+| 标记 | 位置（2026-10-16 行号，即标记所在行） | 大致内容 | 处置 |
 |---|---|---|---|
-| `[DIAG-2026-10-16-MEAS]` | `RirRuntime` 字段与构造初始化：L470–L495（字段）、L508–L520（构造列表） | 逐目标「上一拍喂进 1q 的位置 + 周期号 + 历史最大跳变」6 个 map | **可删**（连同构造列表里对应 6 项） |
-| `[DIAG-2026-10-16-MEAS]` | L1209–L1265 | 量测一致性诊断块：算出 `|Δp|` 与真实 `dt`，只在刷新该目标历史最大跳变时打印。产出 `[meas-first]`（L1229）、`[meas-gap]`（L1242）、`[meas-jump]`（L1250）三种行 | **可删**（整块） |
-| `[DIAG-2026-10-16-CUE]` | L1409、L1432 | 外部跟踪提交结果诊断 `[cue-track]`：打印 `submitted/phase/中心ECEF/速度/窗口/source_time`，以及「引导消失，已清除外部跟踪」 | **可删**（两处 `LrdrDiagLog` 调用即可） |
-| — | L1138 附近 `cue_center_valid = true;` 一带 | 引导中心收集（**不是诊断**，是产品逻辑） | **保留** |
-| — | L1342–L1438 外部跟踪提交整块 | `SubmitExternalTrack` 的**产品实现**（引导只改指向不改位置） | **保留** |
+| `[DIAG-2026-10-16-MEAS]` | `RirRuntime` 字段块 **L470–L486**（起止标记各一行）；构造初始化列表里对应的 **L514–L520** 共 7 行（`meas_last_east()` … `meas_last_cycle()`） | 逐目标"上一拍喂进 1q 的位置 + 周期号 + 历史最大跳变"共 6 个 map（`meas_last_east/north/up/time`、`meas_max_jump`、`meas_max_jump_cycle`、`meas_last_cycle`） | **可删**（字段块 + 构造列表 7 行） |
+| `[DIAG-2026-10-16-MEAS]` | 量测诊断块 **L1213–L1271**（起止标记各一行，块体连大括号整删） | 每拍算 `|Δp|` 与真实 `dt`，只在刷新该目标历史最大跳变时打印。产出 `[meas-first]`、`[meas-gap]`、`[meas-jump]` 三种行 | **可删**（整块） |
+| `[DIAG-2026-10-16-CUE]` | **L1410–L1427** | 外部跟踪提交结果诊断 `[cue-track]`：打印 `submitted/phase/中心ECEF/速度/窗口/source_time` | **可删**（含 `if` 判断与 `LrdrDiagLog` 调用） |
+| `[DIAG-2026-10-16-CUE]` | **L1442–L1446** | 引导消失诊断行 `[cue-track] … 引导消失，已清除外部跟踪` | **可删**（仅该 `LrdrDiagLog` 调用） |
+| — | `cue_center_valid = true;`（**L1142**）一带 | 引导中心收集（**不是诊断**，是产品逻辑） | **保留** |
+| — | **L1349**–L1447 外部跟踪提交整块 | `SubmitExternalTrack` 的**产品实现**（引导只改指向不改位置）；`cue_prev_ecef_*` / `cue_active_id` 等运行态（**L487–L500** 声明）同为产品状态 | **保留** |
 | — | `LRDR_SENSORData.hpp` 的 `cue_track_az_half_deg` / `cue_track_el_half_deg` | 邻域窗口参数（产品配置） | **保留** |
 
 > 说明：`lrdr_sensor_1q.cpp` 里**原有的**诊断体系（`[init]` / `[cycle]` / `[view]` / `[issue]` /

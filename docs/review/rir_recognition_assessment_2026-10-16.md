@@ -681,6 +681,65 @@ idx=300 key=1 best=0.5384 runner_up=0.5120 sims=(rcs=0.882,motion=0.087,pol=0.77
 
 ---
 
+## 3m. 改库"不生效"的定位：库本身正确，是宿主未重载（2026-10-16 第十三轮）
+
+### 3m.1 现象
+
+重标定 `BALLISTIC_EXAMPLE_B` 运动模板后连跑两轮（19:18、19:25），
+`[DIAG-recog]` 与上一轮**逐位相同**（`best=0.5384 motion=0.087`）；
+写入极端探针值（`altitude_mean=100`）后仍是 0.087。
+
+### 3m.2 用真实加载器验证库文件本身
+
+新增排查工具 `tools/db_probe/db_probe.cpp`（只编译加载器 + sqlite3，
+链接 `build/acceptance-v141/Release/sqlite3_vendor.lib`）：
+
+```
+load=1  version='1.1.0'  models=18
+model_id='BALLISTIC_EXAMPLE_B' category='BALLISTIC' profiles=1
+  profile[0] id='nominal' min_snr_db=6.000 max_range_res_m=50.0
+    speed      mean=5000.000 std=800.000
+    altitude   mean=1150000.000 std=600000.000
+```
+
+⇒ **库文件正确、能被真实加载器解析、路径与 `[init]` 打印一致**。
+排除"库没改到 / 加载失败 / 路径不符"。
+
+### 3m.3 反算证实集成用的是旧模板
+
+用库的真实值反算 `motion`（观测 v=5040、h=620 000、a=264，
+`MotionSimilarity` 为 speed/altitude/accel 等权平均）：
+
+| 模板 | 预测 motion | 实测 |
+|---|---|---|
+| 旧（4900/1.4e6/350k/7.5±3.0） | **0.087** | **0.087** |
+| 新（5000/1.15e6/600k/7.5±3.0） | 0.249 | — |
+
+⇒ 集成实际使用的是**旧模板**。
+
+### 3m.4 根因：数据库只在"路径变化"时重载
+
+`RirController.cpp:297-298`：
+
+```cpp
+if (policy_.recognition.enabled && !policy_.recognition.database_path.empty() &&
+    policy_.recognition.database_path != database_path_) {   // 仅比较路径字串
+```
+
+只要 `database_path` 字串不变（本项目恒为 `target_feature_database_v1.1.db`），
+**即使文件内容变了也不会重载**。宿主进程若未重启，第一次加载的旧库一直驻留内存。
+
+> 对照：`remote_identification_radar.json` 每轮重新解析，所以搜索窗/驻留那几轮改动能生效；
+> 而识别库只在进程生命周期内加载一次，两者机制不同。
+
+### 3m.5 处置
+
+- 库已恢复为**重标定值**（`5000/800`、`1150000/600000`），临时探针值已清除。
+- 备份仍在：`target_feature_database_v1.1.db.bak-20261016-191454`。
+- **需完全重启宿主进程后再验证**；仅"重新开始仿真"不够。
+
+---
+
 ## 4. 根因（按影响排序）
 ### 4.1 加速度维（主因）
 

@@ -740,6 +740,65 @@ if (policy_.recognition.enabled && !policy_.recognition.database_path.empty() &&
 
 ---
 
+## 3n. 铁证：识别匹配**不消费**该库文件（2026-10-16 第十四轮）
+
+### 3n.1 判别实验
+
+把**全部 18 个型号**的运动模板设为极端值 `speed=50000±1000`、`altitude=5e6±1e5`
+（库备份于 `.tuned`，跑完已恢复），重启宿主后运行：
+
+```
+[DIAG-recog] idx=300 key=1 best=0.5384 motion=0.087 sims=(rcs=0.882,motion=0.087,...)
+```
+
+`motion` **仍恰为 0.087** ⇒ 库未被消费。
+
+### 3n.2 累计四种库状态，输出逐位相同
+
+| # | 库状态 | `motion` @idx=300 |
+|---|---|---|
+| 1 | 原始 4900±500 / 1.4e6±3.5e5 | 0.087 |
+| 2 | 重标定 5000±800 / 1.15e6±6e5 | 0.087 |
+| 3 | 探针 `altitude_mean=100` | 0.087 |
+| 4 | 探针**全部** `v=50000±1000 / h=5e6±1e5` | **0.087** |
+
+`MotionSimilarity` 是 speed/altitude/accel 的等权高斯相似度（`RecognitionMatcher.cpp:35-37`）。
+把 `altitude_mean` 由 1.4e6 改为 **100**、标准差放到 **20000**、乃至全型号改到 5e6，
+任何消费该库的实现都不可能给出**完全相同**的 0.087。
+
+### 3n.3 已排除的原因（每项均有硬证据）
+
+| 假设 | 排除依据 |
+|---|---|
+| 库没改到 | `tools/db_probe`（真实加载器）读出所写值 |
+| 加载失败 | 探针 `load=1, version='1.1.0', models=18` |
+| 路径不符 | `[init]` 打印的绝对路径 = 所改文件 |
+| 文件被构建覆盖 | 无拷贝步骤；mtime 保持 |
+| 进程内缓存旧库 | 重启宿主后仍逐位相同 |
+| 模板烧死进 DLL | `4900`/`1400000`/`350000` 在 `Sensors.dll` 中不存在 |
+| 内嵌库/生成头 | 无 `.inc`/生成头；`SQLite format 3` 系 sqlite3 源码字面量 |
+| 第二份识别库 | 全盘扫描**所有** SQLite 文件（按文件头），识别库仅此一份 |
+| 改错源码副本 | 三份副本中 `1q/src/...` 与集成 `1q.lib` 一致（`MotionSimilarity@L26`）|
+| 集成 `1q.lib` 非本仓构建 | 与 `build/acceptance-v120-fosim/Release/lib/1q.lib` 字节数/时间戳一致 |
+
+### 3n.4 代码路径上无第二来源
+
+- `RirFeatureDatabase::Load` 全仓仅 `RirController.cpp:303` 与测试调用；
+- `RecognitionTracker`/`RecognitionMatcher` 只从传入的 `database` 取模板
+  （`RecognitionTracker.cpp:328-341`）。
+
+⇒ **矛盾无法在 1q 侧解释**，需在集成侧加运行时诊断（打印 `RirController`
+加载后的 `database.version()` 与 `BALLISTIC_EXAMPLE_B` 的 `altitude_m.mean`），
+或在 `Sensors.vcxproj` 中加入 1q 源码 include 路径以便就地打点。
+
+### 3n.5 另一个待解决的门：可分性
+
+即便 `best_score` 越过 `acceptance_score=0.60`，仍需
+`best − runner_up ≥ minimum_margin=0.05`。实测
+`0.5384 − 0.5120 = 0.0264` **不满足** ⇒ 需同时提高可分性。
+
+---
+
 ## 4. 根因（按影响排序）
 ### 4.1 加速度维（主因）
 

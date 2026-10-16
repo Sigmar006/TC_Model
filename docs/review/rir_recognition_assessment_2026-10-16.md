@@ -364,6 +364,71 @@ $$\text{地面投影距离上限} = \sqrt{2R\cdot 300} + \sqrt{2R\cdot h_{\text{
 
 ---
 
+## 3h. 探测失败真因（2026-10-16 第八轮）：搜索窗方位框架搞错，波束从未指向目标
+
+### 3h.1 决定性证据
+
+17:01 轮**首次**出现 `rir.target_detection_gate`（30 条，此前各轮 0 条）：
+
+```
+idx=1546 code=rir.target_detection_gate cause=distance-limited
+  msg='target_id=101; snr_db=-26.89 range_m=6634775.00 rcs_m2=0.10
+       rejected by detection gate (mode=snr_fallback)'
+```
+
+即目标**已通过遮挡与扇区筛选、进入检测门**，只是被 `min_snr_db = -10` 拒掉。
+
+但 SNR 对不上：由实测锚点（旧位置首见 22.31 dB @ 1619.3 km）按 $1/R^4$ 外推，
+6634 km 处应得 **−2.19 dB**，实测却是 **−26.89 dB**，**差 24.7 dB**
+⇒ 目标**不在主瓣内**（旁瓣 −20 dB 量级）。
+
+### 3h.2 真因（代码单源）
+
+`src/remote_identification_radar/session/RirSession.cpp:295-298`：
+
+```cpp
+absolute.az_deg = NormalizeAzimuthDeg(center.az_deg + wave.az_deg);
+absolute.el_deg  = wave.el_deg;
+```
+
+⇒ `mission.scan_window_deg.az` 在 `scan_center.az = 0` 时**就是绝对 ENU 方位**。
+而我此前按"绝对方位"把它设成了 **`[-30, -10]`**。
+
+由日志反标定框架偏移 **+209.13°** 后，目标真实方位为 **114…146°**（中段 126…135°）
+⇒ **扫描波位 `[-30,-10]` 从未指向目标**。
+
+`log/Rir_scan_pattern.csv` 直接印证：波位 `az_deg` 从 **−30.000** 起、步长 **0.400**。
+
+### 3h.3 修正（`FOSimStudio/bin/App/config/remote_identification_radar.json`）
+
+| 键 | 原值 | 新值 |
+|---|---|---|
+| `mission.scan_center_deg.az_deg` | 0.0 | **300.0** |
+| `mission.scan_window_deg.az` | `[−30, −10]` | **`[330, 350]`** |
+| `mission.scan_window_deg.el` | `[3, 14]` | **`[5, 14]`** |
+
+**为什么必须同时改 `scan_center`**：交集是在**相对 `scan_center` 的域**里算的
+（`IntersectScanSector`）——若只改窗口，`window[330,350]` 与
+`orientation[−110,130]` 交集为**空**，扫描会静默退化为空表。
+
+校验（相对域 az_rel = 绝对 − 300°）：
+
+- 交集 `az_rel [30, 50]`、`el [5, 14]` → **非空**；
+- 波位 `51 × 24 = 1224`，**帧时间 61.2 s ≤ 中段窗口 120 s**（可扫两遍）；
+- 每轴采样 ≤ 4096（上限）。
+
+### 3h.4 覆盖与 SNR 预算
+
+| 项 | 值 |
+|---|---|
+| 目标在窗内 | **296 周期**（331…626），高度 783…1738 km，斜距 2627…3795 km |
+| 中段（1000–1400 km） | **全覆盖 120 周期**（2849…3324 km） |
+| 该段 SNR | **9.8 … 12.5 dB**（门限 `min_snr_db = −10`、`margin = −2`） |
+
+⇒ 首次在**检测门限上有充裕余量**（>17 dB）地覆盖中段。
+
+---
+
 ## 4. 根因（按影响排序）
 ### 4.1 加速度维（主因）
 

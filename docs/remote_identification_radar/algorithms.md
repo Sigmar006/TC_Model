@@ -179,17 +179,25 @@ RIR 识别积累全量挂接于自持雷达链路（自发射 $\to$ 入射 $\to$
 
 ---
 
-### 2.3 物理加速度周期间差分 (Acceleration Posterior Velocity Difference)
-- **算法意图与调用时机**：计算目标运动学加速度，为识别模块中的机动特征提取提供真实物理加速度输入。由 `RirTrackLifecycle::ApplyHitFilter` 计算。
+### 2.3 物理加速度周期间差分 + 一阶平滑 (Acceleration Posterior Velocity Difference)
+- **算法意图与调用时机**：计算目标运动学加速度，为识别模块中的机动特征提取提供真实物理加速度输入。由 `RirTrackLifecycle::ApplyGaussianState` 计算。
 - **数学与物理模型**：
-  - 核心公式：
-    $$\mathbf{a}_k = \frac{\hat{\mathbf{v}}_{k,\text{posterior}} - \hat{\mathbf{v}}_{k-1,\text{posterior}}}{\Delta t_{\text{hit}}}$$
+  - 瞬时差分：
+    $$\mathbf{a}_k^{\text{raw}} = \frac{\hat{\mathbf{v}}_{k,\text{posterior}} - \hat{\mathbf{v}}_{k-1,\text{posterior}}}{\Delta t_{\text{hit}}}$$
     其中 $\Delta t_{\text{hit}} = (k - k_{\text{last\_hit}}) \cdot dt$ 为距上次命中经过的实际物理时间跨度。
+  - **一阶指数平滑（2026-10-16）**：落盘供识别/验收消费的是平滑值
+    $$\mathbf{a}_k = (1-\alpha)\,\mathbf{a}_{k-1} + \alpha\,\mathbf{a}_k^{\text{raw}}, \quad \alpha = 1/\tau,\ \tau = 30\ \text{周期}$$
+    首个差分样本直接起批（$\mathbf{a}_k = \mathbf{a}_k^{\text{raw}}$），不按 $\alpha$ 衰减。
 - **实现边界与工程简化**：
   - 滑行（失配）周期滤波速度保持 CV 外推，重命中差分按实际经过的 $\Delta t_{\text{hit}}$ 折算，机动目标加速度不会因跨周期而虚假放大。
-  - **置零规则**：新航迹初始化周期或失跟重捕周期，无上周期后验速度可供差分，加速度严格置零；miss 周期加速度归零。
-- **反直觉点**：加速度只来源于滤波后验速度的差分，场景速度种子完全不参与差分，避免产生反向滞后伪加速度。
-- **证据链**：[evidence: tests/unit/remote_identification_radar/rir_track_filter_test.cpp]
+  - **置零规则**：新航迹初始化周期或失跟重捕周期，无上周期后验速度可供差分，加速度严格置零，**并复位平滑起批标志**（否则新基准下的差分会被 $\alpha$ 压成 $1/\tau$，重捕后长期低报）。
+  - miss 周期照常走平滑（瞬时差分 ≈0），故平滑值在滑行期自然回落。
+- **反直觉点**：
+  - 加速度只来源于滤波后验速度的差分，场景速度种子完全不参与差分，避免产生反向滞后伪加速度。
+  - **为什么必须平滑**：真值速度只能由量测估计，其单拍噪声 $\sigma_v \approx \sigma_p/dt$ 被 $1/\Delta t$ 直接放大成加速度噪声。BJ 集成实测（弹道目标，$dt = 1\ \text{s}$）：真值加速度仅 $4.4\sim11\ \text{m/s}^2$，报出值却是 $0\sim40$（均值 31.9）。识别库里 `BALLISTIC_EXAMPLE_B` 的加速度模板是 $7.5 \pm 3.0$，于是该维对正确型号相似度 ≈0，而巡航导弹模板（$20 \pm 8$）反而满分 —— **未平滑的加速度维在识别打分里是噪声放大器、且在反向工作**。平滑后噪声 $\sigma$ 降到约 $\sigma_a/\sqrt{\tau/2} \approx 3.6\ \text{m/s}^2$，与模板同量级。
+  - $\tau$ 取 30 的代价是约 $\tau$ 个周期的滞后；弹道段加速度变化率约 $0.05\ \text{m/s}^2$/周期（约 $1.5\ \text{m/s}^2$ / 30 周期），滞后代价小于降噪收益。
+- **证据链**：[evidence: tests/unit/remote_identification_radar/rir_track_lifecycle_test.cpp]
+- **实测记录**：[evidence: docs/review/rir_recognition_assessment_2026-10-16.md]
 
 ---
 

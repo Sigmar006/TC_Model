@@ -240,10 +240,13 @@ TEST(RirTrackLifecycleTest, DegradedZeroVectorVelocityKeepsFilterContinuity) {
   EXPECT_NEAR(track->acceleration_mps2, 0.0f, 1e-4f);
 }
 
-/// @brief 加速度 = 滤波后验速度的周期间差分（物理加速度口径）：匀加速目标
-///        （v0=10 m/s、a=4 m/s²、dt=1 s）建轨周期置零，持续周期差分收敛到
-///        真值加速度且方向一致（旧口径差分基准为本周期速度种子，方向相反）。
-TEST(RirTrackLifecycleTest, AccelerationIsPosteriorVelocityFiniteDifference) {
+/// @brief 加速度 = 后验速度周期间差分再做一阶指数平滑（识别消费口径，2026-10-16）。
+///        匀加速目标（v0=10 m/s、a=4 m/s²、dt=1 s）：建轨周期置零，此后首个差分样本
+///        直接起批，后续按 α=1/30 递推；平滑不改变收敛均值，仍逼近真值 4 m/s² 且方向
+///        为正（旧种子差分口径为负向虚高）。
+///        为什么加平滑：单周期差分的噪声按 1/dt 放大——实测弹道目标真值加速度仅
+///        4.4~11 m/s²，而报出 0~40 m/s²（均值 31.9），该维在识别打分里变成噪声放大器。
+TEST(RirTrackLifecycleTest, AccelerationIsSmoothedPosteriorVelocityDifference) {
   RirLifecycleConfig config;
   config.confirm_hits = 1U;
   config.max_miss_before_lost = 3U;
@@ -251,14 +254,18 @@ TEST(RirTrackLifecycleTest, AccelerationIsPosteriorVelocityFiniteDifference) {
   config.enable_imm_lifecycle = false;  // CV 路径，聚焦差分口径本身
   RirTrackLifecycle lifecycle(config);
 
-  // 真值运动学：p(k)=10k+2k²，v(k)=10+4k。
+  // 真值运动学：p(k)=10k+2k²，v(k)=10+4k（匀加速度真值 4 m/s²）。
   lifecycle.Update(MakeCycle(1U, 2801U), {MakeMeasurement(9U, 12.0f, 14.0f)});
   ASSERT_NE(lifecycle.FindTrack(9U), nullptr);
-  // 建轨周期：滤波速度以速度种子重初始化，无差分基准 → 加速度置零。
+  // 建轨周期：滤波以速度种子重初始化，重置分支清零加速度并复位起批标志。
   EXPECT_FLOAT_EQ(lifecycle.FindTrack(9U)->acceleration.x(), 0.0f);
+  EXPECT_FALSE(lifecycle.FindTrack(9U)->acceleration_smoothed);
 
+  // ---- 短窗：起批一次性 + EMA 递推 + 输出有界 ----
   float previous_velocity = lifecycle.FindTrack(9U)->velocity.x();
-  for (std::uint32_t cycle = 2U; cycle <= 7U; ++cycle) {
+  float previous_smoothed = 0.0f;
+  float peak_instantaneous = 0.0f;
+  for (std::uint32_t cycle = 2U; cycle <= 8U; ++cycle) {
     const float position =
         10.0f * static_cast<float>(cycle) +
         2.0f * static_cast<float>(cycle) * static_cast<float>(cycle);
@@ -267,14 +274,55 @@ TEST(RirTrackLifecycleTest, AccelerationIsPosteriorVelocityFiniteDifference) {
                                       true)});
     const RirTrackState* track = lifecycle.FindTrack(9U);
     ASSERT_NE(track, nullptr);
-    // 逐周期口径自检：加速度等于后验速度差分（速度种子 10+4k 不参与基准）。
-    EXPECT_NEAR(track->acceleration.x(), (track->velocity.x() - previous_velocity) / 1.0f,
-                1e-4f);
+    // 平滑前的瞬时差分 = 后验速度差分（速度种子不参与基准）。
+    const float instantaneous = (track->velocity.x() - previous_velocity) / 1.0f;
+    const float smoothed = track->acceleration.x();
+    peak_instantaneous = std::max(peak_instantaneous, std::fabs(instantaneous));
+    // α<1 的凸组合不含外推 ⇒ 输出幅度不得超过历史瞬时幅度峰值。
+    EXPECT_LE(std::fabs(smoothed), peak_instantaneous + 1.0e-4f);
+    if (cycle == 2U) {
+      // 重置后首个差分样本直接起批（不被 1/τ 衰减）。
+      EXPECT_NEAR(smoothed, instantaneous, 1.0e-4f);
+    } else {
+      // 此后按 α=1/30 递推：a_k = (1-α)·a_{k-1} + α·瞬时差分。
+      EXPECT_NEAR(
+          smoothed,
+          (1.0f - 1.0f / 30.0f) * previous_smoothed + (1.0f / 30.0f) * instantaneous, 1.0e-3f);
+    }
+    previous_smoothed = smoothed;
+    previous_velocity = track->velocity.x();
+  }
+  EXPECT_TRUE(lifecycle.FindTrack(9U)->acceleration_smoothed);
+
+  // ---- 长窗：噪声衰减 + 无偏收敛 ----
+  // 继续跑到周期 120，记录平滑输出与同拍瞬时差分的峰值，并取末段均值。
+  float raw_max = 0.0f;
+  float smooth_max = 0.0f;
+  float tail_sum = 0.0f;
+  std::uint32_t tail_count = 0U;
+  for (std::uint32_t cycle = 9U; cycle <= 120U; ++cycle) {
+    const float position =
+        10.0f * static_cast<float>(cycle) +
+        2.0f * static_cast<float>(cycle) * static_cast<float>(cycle);
+    lifecycle.Update(MakeCycle(cycle, 2800U + cycle),
+                     {MakeMeasurement(9U, position, 10.0f + 4.0f * static_cast<float>(cycle),
+                                      true)});
+    const RirTrackState* track = lifecycle.FindTrack(9U);
+    ASSERT_NE(track, nullptr);
+    const float instantaneous = (track->velocity.x() - previous_velocity) / 1.0f;
+    raw_max = std::max(raw_max, std::fabs(instantaneous));
+    smooth_max = std::max(smooth_max, std::fabs(track->acceleration.x()));
+    if (cycle > 110U) {
+      tail_sum += track->acceleration.x();
+      ++tail_count;
+    }
     previous_velocity = track->velocity.x();
   }
 
-  // 收敛：差分加速度逼近真值 4 m/s²，方向为正（旧种子差口径为负向虚高）。
-  EXPECT_NEAR(lifecycle.FindTrack(9U)->acceleration.x(), 4.0f, 1.5f);
+  // ① 平滑确实压低了幅度峰值（加它进识别的全部理由）。
+  EXPECT_LE(smooth_max, raw_max);
+  // ② 末段收敛到真值 4 m/s² 量级：EMA 不改变均值、只降方差。
+  EXPECT_NEAR(tail_sum / static_cast<float>(tail_count), 4.0f, 1.0f);
 }
 
 /// @brief IMM 模型集锚定滤波配置 q：模型 q = 配置 q 的对数等距张成
@@ -296,26 +344,63 @@ TEST(RirTrackLifecycleTest, ImmModelSetAnchorsConfiguredProcessNoise) {
   EXPECT_NEAR(imm->model_noise_diff_coeffs()[1], 300.0f, 1e-3f);
 }
 
-/// @brief 滑行（失配）后重命中：加速度差分按距上次命中的实际经过时间
-///        （(m+1)·dt）折算，不按单周期 dt 膨胀（滑行周期 CV 外推速度不变）。
+/// @brief 加速度差分的时间基准 = **距上次命中的实际经过时间**，不按单周期 dt 膨胀。
+///        覆盖两条路径：
+///        ① 滑行未失跟（confirmed 保持）→ 走主滤波分支，分母取 (m+1)·dt；
+///        ② 失跟重捕 → 走重置分支，加速度清零并复位起批标志（防重捕后长期低报）。
 TEST(RirTrackLifecycleTest, RehitAfterCoastDividesByElapsedTime) {
-  RirLifecycleConfig config;
-  config.confirm_hits = 1U;
-  config.max_miss_before_lost = 2U;
-  config.max_lost_cycles = 5U;
-  config.enable_imm_lifecycle = false;  // CV 路径，聚焦差分口径本身
-  RirTrackLifecycle lifecycle(config);
+  // ---- ① 滑行 1 拍仍保持 confirmed：分母按 2 s 折算 ----
+  {
+    RirLifecycleConfig config;
+    config.confirm_hits = 1U;
+    config.max_miss_before_lost = 3U;  // 失配 1 拍不失跟
+    config.max_lost_cycles = 5U;
+    config.enable_imm_lifecycle = false;  // CV 路径，聚焦差分口径本身
+    RirTrackLifecycle lifecycle(config);
 
-  // 周期1 命中建轨（后验速度精确=种子 10 m/s）；周期2 失配滑行；周期3 重命中
-  // 加速目标（真值 p3=48、v3=18，速度差跨越 2 个周期）。
-  lifecycle.Update(MakeCycle(1U, 2901U), {MakeMeasurement(9U, 0.0f, 10.0f)});
-  lifecycle.Update(MakeCycle(2U, 2902U), {});
-  lifecycle.Update(MakeCycle(3U, 2903U), {MakeMeasurement(9U, 48.0f, 18.0f, true)});
+    // 周期1 命中建轨；周期2 失配滑行；周期3 重命中加速目标。
+    lifecycle.Update(MakeCycle(1U, 2901U), {MakeMeasurement(9U, 0.0f, 10.0f)});
+    lifecycle.Update(MakeCycle(2U, 2902U), {});
+    const RirTrackState* coasted = lifecycle.FindTrack(9U);
+    ASSERT_NE(coasted, nullptr);
+    ASSERT_EQ(coasted->status, RirTrackStatus::kConfirmed);
+    // 滑行拍也走平滑（瞬时差分 ≈0），故起批标志在重命中前已是 true。
+    ASSERT_TRUE(coasted->acceleration_smoothed);
+    const float velocity_before_rehit = coasted->velocity.x();
+    const float smoothed_before_rehit = coasted->acceleration.x();
 
-  const RirTrackState* track = lifecycle.FindTrack(9U);
-  ASSERT_NE(track, nullptr);
-  // 差分 = 后验速度增量 ÷ 实际经过时间 2s（旧单周期 dt 口径该值膨胀 2 倍 → 失败）。
-  EXPECT_NEAR(track->acceleration.x(), (track->velocity.x() - 10.0f) / 2.0f, 1e-3f);
+    lifecycle.Update(MakeCycle(3U, 2903U), {MakeMeasurement(9U, 48.0f, 18.0f, true)});
+    const RirTrackState* track = lifecycle.FindTrack(9U);
+    ASSERT_NE(track, nullptr);
+    // 瞬时差分分母 = 实际经过时间 2 s（若误用单周期 dt，该值会膨胀 2 倍）。
+    const float instantaneous = (track->velocity.x() - velocity_before_rehit) / 2.0f;
+    EXPECT_NEAR(track->acceleration.x(),
+                (1.0f - 1.0f / 30.0f) * smoothed_before_rehit + (1.0f / 30.0f) * instantaneous,
+                1.0e-3f);
+  }
+
+  // ---- ② 失跟重捕：重置分支清零 + 复位起批标志 ----
+  {
+    RirLifecycleConfig config;
+    config.confirm_hits = 1U;
+    config.max_miss_before_lost = 0U;  // 失配 1 拍即 lost
+    config.max_lost_cycles = 5U;
+    config.enable_imm_lifecycle = false;
+    RirTrackLifecycle lifecycle(config);
+
+    lifecycle.Update(MakeCycle(1U, 2911U), {MakeMeasurement(11U, 0.0f, 10.0f)});
+    lifecycle.Update(MakeCycle(2U, 2912U), {});
+    ASSERT_EQ(lifecycle.FindTrack(11U)->status, RirTrackStatus::kLost);
+    lifecycle.Update(MakeCycle(3U, 2913U), {MakeMeasurement(11U, 48.0f, 18.0f, true)});
+
+    const RirTrackState* track = lifecycle.FindTrack(11U);
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(track->status, RirTrackStatus::kConfirmed);
+    // 重初始化周期：加速度清零、起批标志复位（下次命中重新以瞬时差分起批）。
+    EXPECT_FLOAT_EQ(track->acceleration.x(), 0.0f);
+    EXPECT_FLOAT_EQ(track->acceleration_mps2, 0.0f);
+    EXPECT_FALSE(track->acceleration_smoothed);
+  }
 }
 
 }  // namespace

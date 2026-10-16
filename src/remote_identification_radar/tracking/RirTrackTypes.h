@@ -98,9 +98,16 @@ struct RirTrackState {
   std::uint32_t hit_count{0U};                           /**< 累计命中计数。 */
   Eigen::Vector3f position{Eigen::Vector3f::Zero()};     /**< 滤波位置（m）。 */
   Eigen::Vector3f velocity{Eigen::Vector3f::Zero()};     /**< 滤波速度（m/s）。 */
-  Eigen::Vector3f acceleration{Eigen::Vector3f::Zero()}; /**< 滤波加速度（m/s²）。 */
+  Eigen::Vector3f acceleration{Eigen::Vector3f::Zero()}; /**< 滤波加速度（m/s²，窗内平滑后）。 */
   float speed{0.0f};               /**< 速度模长（m/s），识别运动特征直接消费。 */
   float acceleration_mps2{0.0f};   /**< 加速度模长（m/s²），识别运动特征直接消费。 */
+  /**
+   * @brief 加速度平滑是否已起批（2026-10-16）。
+   * @details 单周期后验速度差分的噪声按 1/dt 放大：dt=1 s 时速度估计每抖 20 m/s 就变成
+   *   20 m/s² 的虚假加速度，而弹道目标真值只有 4.4~11 m/s²。故对该差分做一阶指数平滑
+   *   （时间常数见 `RirTrackLifecycle` 的 `kAccelerationSmoothingCycles`），本标志记录首个样本。
+   */
+  bool acceleration_smoothed{false};
   float rcs{0.0f};                 /**< 最近已知 RCS（m²）。 */
   RirGaussianState gaussian_state; /**< KF 状态与协方差。 */
 

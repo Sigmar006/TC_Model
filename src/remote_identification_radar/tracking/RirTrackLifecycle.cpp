@@ -25,6 +25,23 @@ constexpr std::uint64_t kUnassociatedKey = 0U;
 constexpr float kMinimumAccelerationDtSec = 1.0e-6f;
 
 /**
+ * @brief 加速度一阶指数平滑的时间常数（周期数，2026-10-16）。
+ *
+ * 为什么必须平滑：加速度取**单周期**后验速度差分 `a = Δv/dt`，而真值速度只能由量测估计，
+ * 其单拍噪声 `σ_v ≈ σ_p/dt` 会被 `1/dt` 直接放大成加速度噪声（dt=1 s、σ_p≈10 m 时
+ * σ_a ≈ 10 m/s² 量级）。实测弹道目标真值加速度仅 4.4~11 m/s²，而报出值为 0~40、
+ * 均值 31.9 m/s² —— 该维在识别打分里因此变成噪声放大器：正确型号
+ * `BALLISTIC_EXAMPLE_B`（加速度模板 7.5±3.0）相似度≈0，而巡航导弹模板（20±8）反而满分。
+ *
+ * 取 30 个周期：平滑后加速度噪声 σ 降到约 `σ_a/√(τ/2) ≈ 3.6 m/s²`，与模板 7.5±3.0 同量级；
+ * 引入的滞后 ≈ τ 个周期（1 Hz 下 30 s），而弹道段加速度变化率约 0.05 m/s²/周期（约
+ * 1.5 m/s²/30 周期），滞后代价小于降噪收益。
+ *
+ * 该常数只影响识别/验收消费的加速度，不改变滤波状态本身（KF 不消费加速度）。
+ */
+constexpr float kAccelerationSmoothingCycles = 30.0f;
+
+/**
  * @brief 对数等距 IMM 模型噪声差异系数：以配置 q 为低端锚点，按
  *        q·10^(i/(N-1)) 排列（低噪声到高噪声）；配置 q=1 时退化为
  *        与 AR 缺省口径同源的 {1, 10, ...}。
@@ -382,7 +399,17 @@ void RirTrackLifecycle::ApplyGaussianState(RirTrackState* track, const RirGaussi
   track->velocity = Eigen::Vector3f(state.mean(1), state.mean(3), state.mean(5));
   track->speed = track->velocity.norm();
   if (dt_sec > kMinimumAccelerationDtSec) {
-    track->acceleration = (track->velocity - previous_velocity) / dt_sec;
+    // 瞬时差分（物理口径）→ 一阶指数平滑后再落盘：单周期差分的噪声按 1/dt 放大，
+    // 直接用会把识别"运动"维变成噪声放大器（见 kAccelerationSmoothingCycles 注释）。
+    // 首个样本直接起批（无历史可比，平滑无意义）；此后按时间常数递推。
+    const Eigen::Vector3f instantaneous = (track->velocity - previous_velocity) / dt_sec;
+    if (!track->acceleration_smoothed) {
+      track->acceleration = instantaneous;
+      track->acceleration_smoothed = true;
+    } else {
+      const float alpha = 1.0f / kAccelerationSmoothingCycles;
+      track->acceleration = (1.0f - alpha) * track->acceleration + alpha * instantaneous;
+    }
   }
   track->acceleration_mps2 = track->acceleration.norm();
 }
@@ -405,8 +432,11 @@ void RirTrackLifecycle::ApplyHitFilter(RirTrackState* track, const RirTrackMeasu
       // 与 AR ApplyKalmanHitUpdate 同构。
       ApplyGaussianState(track, filter_.Initialize(measurement), velocity_before_update,
                          acceleration_dt_sec);
+      // 本次是重初始化：加速度清零并**复位起批标志**，使下一次命中重新以瞬时差分起批
+      // （否则新基准下的差分会被 EMA 压成 1/τ，重捕后长期低报）。
       track->acceleration.setZero();
       track->acceleration_mps2 = 0.0f;
+      track->acceleration_smoothed = false;
       return;
     }
     imm_filter->Process(measurement.position, dt_sec, measurement.measurement_covariance);
@@ -419,6 +449,7 @@ void RirTrackLifecycle::ApplyHitFilter(RirTrackState* track, const RirTrackMeasu
                        acceleration_dt_sec);
     track->acceleration.setZero();
     track->acceleration_mps2 = 0.0f;
+    track->acceleration_smoothed = false;
     return;
   }
 
@@ -507,6 +538,9 @@ void RirTrackLifecycle::ResetForReuse(RirTrackState& track) {
   track.acceleration.setZero();
   track.speed = 0.0f;
   track.acceleration_mps2 = 0.0f;
+  // 平滑起批标志随槽位复用清零：否则新航迹首个差分会被当成"已平滑"样本，
+  // 以零为历史做 EMA，首拍加速度被人为压低（池化复用的隐蔽串味）。
+  track.acceleration_smoothed = false;
   track.rcs = 0.0f;
   track.gaussian_state = RirGaussianState();
   // generation 保持不清零：对象复用代次单调递增（与 AR ResetForReuse 一致）。

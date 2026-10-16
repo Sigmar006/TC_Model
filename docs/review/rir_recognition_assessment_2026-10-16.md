@@ -546,6 +546,73 @@ enum class RirDetectionGateMode {
 
 ---
 
+## 3k. `min_snr_db = −10 dB` 是否合理？不合理（2026-10-16 第十一轮）
+
+### 3k.1 CFAR 才是真判据；−10 dB 只是个地板
+
+`min_snr_db` 是**前置硬门**（`StatisticalCfarDetector.cpp:42`），真正判决用
+`ComputeDetectionProbability(snr_db, cfar_pfa, swerling, N)` + `ThresholdDecision`。
+`RadarEquations::ComputeThreshold`：N=1 时 $T=-\ln(\text{Pfa})$，Pfa=1e-6 ⇒ **T=13.816**。
+Swerling1、N=1 时 $P_d=e^{-T/(1+\chi)}$，反解：
+
+| 目标 Pd | 需要的 SNR |
+|---|---|
+| 0.10 | 6.99 dB |
+| 0.30 | 10.20 dB |
+| **0.50** | **12.77 dB** |
+| 0.90 | 21.14 dB |
+
+本场景实测 **+2.97 dB ⇒ Pd = 0.97%**（实际不可检）；而配置的 −10 dB 对应
+**Pd = 3.5e-6**，仅比 1e-6 虚警率高 3.5 倍 ⇒ **该数字没有物理意义，只是宽松地板**。
+**合理值应约 +12.8 dB（Pd=0.5）。**
+
+⇒ 曾提出改 `gate_mode=kDetectorGate` 以"过门"，**该建议是错的并已撤回**：
+那是用不物理的地板凑通过，−10 dB 相对值的所谓"13 dB 余量"是假象。
+
+### 3k.2 目标本身太弱，四条路只有一条有空间
+
+| 路径 | 量化 | 可行性 |
+|---|---|---|
+| ① 缩短距离 | 需到 432 km，而目标全程最近 **638.9 km**（在发射阵地） | ❌ 无空间 |
+| ② 提高目标 RCS | 0.1 → 0.5 m²（+7 dB） | ✅ 但仅够一半 |
+| ③ **脉冲积累** | N=8 → +9.03 dB | ✅ 见 3k.3 |
+| ④ 放宽 Pfa | 即便 Pfa=0.1 也只到 3.66 dB | ❌ 且劣化检测质量 |
+
+### 3k.3 脉冲积累：`pulse_count=1` 是结构性必然
+
+`DetectionCellResolver.cpp:48-70` 的可用回波脉冲数 = 补 zero 到小于
+`receive_window_end_s` 的脉冲数；而 `RirController.cpp:642-643`：
+
+```cpp
+cell_config.receive_window_duration_s = static_cast<double>(mission_.recognition_dwell_sec);
+```
+
+即**接收窗时长 = `recognition_dwell_sec`（原 0.05 s）**。而 PRF=10 Hz ⇒ PRI=100 ms，
+**50 ms 窗内连一个 PRI 都装不下** ⇒ 只能收 1 个脉冲。
+
+时序（R=638 km，回波延迟 4.25 ms，脉宽 16 ms）：
+
+| N | 接收窗需 | 理想积累增益 | 处理后 SNR | 够 12.77 dB？ |
+|---|---|---|---|---|
+| 1（原） | 6 ms | 0 | 2.97 dB | ❌ |
+| 5 | 406 ms | 6.99 dB | 9.96 dB | ❌ |
+| **8**（库上限 `kRepresentativePulseLimit`） | 706 ms | 9.03 dB | **12.00 dB** | 差 0.8 dB |
+| 10 | 906 ms | 10.0 dB | 12.97 dB | ✅ 但超库上限 |
+
+### 3k.4 改动
+
+`config/remote_identification_radar.json`：`mission.recognition_dwell_sec`
+**0.05 → 0.8 s**（N=8 需 706 ms）。
+
+- 代价：单波位驻留 0.8 s，1581 波位整帧 1265 s。**但驻留由引导指向目标方向**，
+  不需要扫完整扇区，故可接受。
+- 预期：638 km 处 SNR **2.97 → 12.00 dB**，跨过 `kSnrFallbackGateDb = 6.0 dB`，
+  且逼近 Pd=0.5 所需的 12.77 dB（差 0.8 dB）。
+- 剩余的 0.8 dB 缺口需靠 ②（RCS）补，或把 `kRepresentativePulseLimit` 由 8 提高
+  （那是代码改动，需另评估）。
+
+---
+
 ## 4. 根因（按影响排序）
 ### 4.1 加速度维（主因）
 

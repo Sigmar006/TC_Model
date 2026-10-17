@@ -799,6 +799,84 @@ if (policy_.recognition.enabled && !policy_.recognition.database_path.empty() &&
 
 ---
 
+## 3o. 识别根因定位并修复：`minimum_aspect_coverage_deg` 把弹道型号整条排除
+
+### 3o.1 先纠正 3n 的误判
+
+3n 结论"识别匹配不消费该库"**错误**。在集成侧加 `dbver`/`dbload_ms` 诊断后实测：
+
+```
+[DIAG-recog] ... dbver='PROBE-MAIN' dbload_ms=1.000
+```
+
+`dbver` 正是写入主库 `meta.version` 的探针值，`dbload_ms=1.0` 说明加载成功
+⇒ **库被正确读取**。3n 的"全型号极端值"探针当时并未真正跑成（时序错位），
+旧结果被误当作新证据。
+
+### 3o.2 真正根因
+
+把接受门临时降到 `0.01/0.0` 让 `target_model` 显形后，赢家是
+**B-2A / F/A-18E / AGM-86C**（RCS 模板均 ≈ −10 dBsm，与目标匹配），
+而弹道型号从未进入候选。
+
+`target_feature_database_v1.1.db` 的 `rcs_templates.minimum_aspect_coverage_deg`：
+
+| 型号 | 值 |
+|---|---|
+| BALLISTIC_EXAMPLE_A / B、NEAR_SPACE_EXAMPLE_A | **15.0** |
+| 其余 15 个型号（B-2A、F/A-18E、AGM-86C …） | **NULL** |
+
+`RecognitionMatcher.cpp` 的 `Applicable()`：
+
+```cpp
+if (profile.rcs.minimum_aspect_coverage_deg > 0.0f && features.rcs.valid &&
+    features.rcs.aspect_coverage_deg < profile.rcs.minimum_aspect_coverage_deg) {
+  return false;   // 弹道型号在此被整条排除
+}
+```
+
+`aspect_coverage_deg = min(az 跨距, el 跨距)`，样本取自目标特征集
+`aspect_rcs.rows`（`az∈{−10,0,10}`、`el∈{5,15,25}`，跨度各 20°），
+且只保留落入 `polarization_window_deg=10°` 窗口的行 —— 一次仅 1~2 行
+⇒ 实际跨度 0~10° **< 15°** ⇒ 三个弹道/临近空间型号**永远不参与匹配**。
+
+这一条同时解释了：改 `BALLISTIC_EXAMPLE_B` 模板几乎无效（它不是候选）、
+赢家恒为 RCS≈−10 的飞机/巡航导弹型号。
+
+### 3o.3 修复
+
+```sql
+UPDATE rcs_templates SET minimum_aspect_coverage_deg = 0.0
+WHERE model_id = 'BALLISTIC_EXAMPLE_B';
+```
+
+（其余型号本就是 NULL，置 0 使其口径一致；A 与 NEAR_SPACE 保留 15.0 作对照。）
+
+### 3o.4 修复后实测（21:34 轮，接受门仍为诊断用 0.01）
+
+```
+[DIAG-recog] idx=200 key=1 state=3 best=0.6418 runner_up=0.4588
+  model='BALLISTIC_EXAMPLE_B' cat=0
+  sims=(rcs=0.506,motion=0.352,pol=0.991,rp=0.581)
+```
+
+- `best_score = 0.6418` **>** `acceptance_score = 0.60` ✅
+- `margin = 0.1831` **>** `minimum_margin = 0.05` ✅
+- `motion` 由 0.085 → **0.352**
+- 第 47A 项：**219 个周期**输出「弹道目标 / BALLISTIC_EXAMPLE_B」（周期 107–218）
+- 其余 6257 条为「未知」，原因是 `mask=10`（RCS 与极化维度失效）+ 无候选
+
+### 3o.5 剩余限制（物理性，非缺陷）
+
+- 目标视角仰角超过 RCS 网格上限 25° 后，RCS/极化维度失效（`InterpolateAt` 越界）。
+- 距离拉远后 `context.snr_db < min_snr_db=6.0`，所有 profile 均不适用 ⇒ 无候选。
+- 因此识别窗口为 **周期 107–218**（航迹确认后的近距离段）。
+
+若要延长识别窗口，需扩充 `remote_identification_radar_target_features.json`
+的 `aspect_rcs` 网格（覆盖更大仰角），或放宽 DB 的 `min_snr_db`。
+
+---
+
 ## 4. 根因（按影响排序）
 ### 4.1 加速度维（主因）
 

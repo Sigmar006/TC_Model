@@ -908,6 +908,41 @@ WHERE model_id = 'BALLISTIC_EXAMPLE_B';
 > JSON 结构校验：64 个键无增无减，`meta`/`units`/`selection`/注释字段全部一致。
 > 备份：`remote_identification_radar_target_features.json.bak`。
 
+### 3o.8 收尾标定验证（21:49 轮）
+
+| 指标 | 21:37 轮 | **21:49 轮（标定后）** |
+|---|---|---|
+| `best_score` @idx=200 | 0.5886 | **0.6879** |
+| `rcs` 相似度 | 0.506 | **0.739** |
+| `runner_up` / margin | 0.4315 / 0.157 | 0.4584 / **0.2295** |
+| 弹道识别周期数 | 184（107–201） | **188（108–202）** |
+
+⇒ 两项标定按预期抬高了分数（`best` 0.5886 → 0.6879），识别已**稳健越过 0.60**。
+
+### 3o.9 识别窗口的真正边界：**检测**而非识别
+
+`idx=203` 起目标 `snr_valid` 由 1 变 0，`[issue]` 转为：
+
+```
+code=rir.target_outside_beam_coverage
+msg='look_az_deg=148.73 look_el_deg=23.75 outside main lobe of all dwells this cycle;
+     half-power gate az_deg=0.20 el_deg=0.20'
+```
+
+`[designation]` 显示指向确实跟随目标，但存在约 **0.3–0.5° 的滞后**（约一个波束宽）：
+
+| idx | dwell(az,el) | look(az,el) | 偏差 |
+|---|---|---|---|
+| 107 | 150.98, 2.90 | 150.98, 2.90 | ~0（`active=1`）|
+| 200 | 149.40, 22.61 | 148.93, 23.07 | 0.47° / 0.46° |
+
+半功率门仅 ±0.2°，滞后一旦超过即判决目标在主瓣外 ⇒ 检测中断 ⇒
+下游 RCS/极化维度同时失效（`snr_db < 6.0`）⇒ 无候选 ⇒ 识别转为未识别。
+
+**另注**：`[designation] active` 在 idx≈150 由 1 变 0（`designated_id` 清空、
+`reverted=0`、`reason=none`），即 SBIRS 融合侧不再指定该目标。若要延长识别窗口，
+应优先查这一点（指示交接），其次才是波束扫描步进/驻留。
+
 ---
 
 ## 4. 根因（按影响排序）

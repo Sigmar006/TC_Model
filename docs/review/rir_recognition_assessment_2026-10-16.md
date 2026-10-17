@@ -875,6 +875,39 @@ WHERE model_id = 'BALLISTIC_EXAMPLE_B';
 若要延长识别窗口，需扩充 `remote_identification_radar_target_features.json`
 的 `aspect_rcs` 网格（覆盖更大仰角），或放宽 DB 的 `min_snr_db`。
 
+### 3o.6 真实门槛下的首轮验证（21:37 轮，`acceptance_score=0.60` / `min_margin=0.05`）
+
+恢复真实门槛后实测：
+
+| 指标 | 值 |
+|---|---|
+| 第 47A 项输出总条数 | 4365 |
+| **弹道目标 / BALLISTIC_EXAMPLE_B** | **184 条（周期 107–201）** |
+| 未知 / 未识别 | 4181 条 |
+
+采样点 `idx=200`：`best=0.5886 runner_up=0.4315`
+`sims=(rcs=0.506, motion=0.207, pol=0.991, rp=0.581)`，`dbver='1.1.0'`。
+
+⇒ 识别**可用但处在临界**（`best` 在 0.59~0.64 之间波动）。两处拖分：
+
+1. `rcs=0.506` —— 观测 RCS 为 −13.5 dBsm，模板均值 −10 dBsm，偏差 3.5 dB，
+   而模板 `std_db=3.0` 偏窄。
+2. 目标仰角超过 RCS 网格上限 25° 后 RCS/极化维度失效（`mask` 由 15 降为 10），
+   且此后无候选。
+
+### 3o.7 收尾标定（已改，待验证）
+
+| 改动 | 内容 | 依据 |
+|---|---|---|
+| `rcs_templates.std_db` | `BALLISTIC_EXAMPLE_B` 3.0 → **4.5** | 弹道目标 RCS 随视角起伏大；B-2A 即用 4.0。3.5 dB 偏差下相似度 0.506 → **0.739** |
+| `aspect_rcs` 网格 | `el` 由 `{5,15,25}` 扩到 `{5,…,85}`（9 行 → 27 行） | 极化网格本就覆盖 `el 0..80`，RCS 网格只到 25 是缺口；25° 以上按"无建模差异"平台化沿用 25° 行值（占位，非真实测量值） |
+
+预计 `best_score` 由 0.59~0.64 提升到 **0.63~0.67**，识别窗口由 107–201 延长。
+
+> 注：`aspect_rcs` 的扩行只改 `ballistic_icbm` 一套；`air_fighter` 未动。
+> JSON 结构校验：64 个键无增无减，`meta`/`units`/`selection`/注释字段全部一致。
+> 备份：`remote_identification_radar_target_features.json.bak`。
+
 ---
 
 ## 4. 根因（按影响排序）

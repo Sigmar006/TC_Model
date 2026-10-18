@@ -1595,6 +1595,9 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       detection_interface +=
           std::string(" SNR门结果=") + (wfov_snr_gate_passed ? "通过" : "拒绝");
       detection_interface += std::string(" 视场门结果=") + (in_wfov ? "通过" : "拒绝");
+      // 第 75 项交换数据要求「稳定帧门结果」恒在；稳定帧是 NFOV 捕获后的判据，
+      // WFOV 阶段无此概念，显式标注"不适用"而非省略（2026-10-18 回归发现缺 69.7%）。
+      detection_interface += " 稳定帧门结果=不适用";
       detection_interface += std::string(" 综合准入结果=") +
                              (in_wfov && wfov_snr_gate_passed ? "通过" : "拒绝");
       SBIRS_INTERNAL_INTERFACE_ITEM(

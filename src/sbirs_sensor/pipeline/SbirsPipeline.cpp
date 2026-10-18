@@ -1407,12 +1407,17 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           session::SbirsIssueCause::kNone,
           static_cast<std::ptrdiff_t>(target_idx)));
       if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
+        std::string occulted_interface =
+            "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
+            std::to_string(target.target_id) + " 门控阶段=地球遮挡 门控结果=排除 排除码=" +
+            session::codes::kTargetOcculted + " 遮挡余量=" +
+            oneq::logging::FormatF(occultation_margin_m, 3) + "m";
+        // 第 74 项交换数据要求对**所有**几何记录给出两端状态；排除记录同样需要，
+        // 否则无法复核"为什么被排除"（2026-10-18 回归发现 55.7% 的几何行缺状态块）。
+        append_geometry_state(target, &occulted_interface);
         SBIRS_INTERNAL_INTERFACE_ITEM(
             sim_time_sec, input.cycle_index, "红外场景几何与视场门控交互接口测试",
-            "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
-                std::to_string(target.target_id) + " 门控阶段=地球遮挡 门控结果=排除 排除码=" +
-                session::codes::kTargetOcculted + " 遮挡余量=" +
-                oneq::logging::FormatF(occultation_margin_m, 3) + "m");
+            occulted_interface);
       }
       ++excluded_occulted;
       log_acceptance_release(target.target_id, "earth_occulted", 0U);
@@ -1443,14 +1448,17 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           session::SbirsIssueCause::kNone,
           static_cast<std::ptrdiff_t>(target_idx)));
       if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
+        std::string out_of_range_interface =
+            "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
+            std::to_string(target.target_id) + " 门控阶段=距离门 斜距=" +
+            oneq::logging::FormatF(range_m, 3) + "m 距离范围=[" +
+            oneq::logging::FormatF(mission.min_range_m, 3) + "," +
+            oneq::logging::FormatF(mission.max_range_m, 3) + "]m 门控结果=排除 排除码=" +
+            session::codes::kTargetOutOfRange;
+        append_geometry_state(target, &out_of_range_interface);
         SBIRS_INTERNAL_INTERFACE_ITEM(
             sim_time_sec, input.cycle_index, "红外场景几何与视场门控交互接口测试",
-            "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
-                std::to_string(target.target_id) + " 门控阶段=距离门 斜距=" +
-                oneq::logging::FormatF(range_m, 3) + "m 距离范围=[" +
-                oneq::logging::FormatF(mission.min_range_m, 3) + "," +
-                oneq::logging::FormatF(mission.max_range_m, 3) + "]m 门控结果=排除 排除码=" +
-                session::codes::kTargetOutOfRange);
+            out_of_range_interface);
       }
       ++excluded_out_of_range;
       log_acceptance_release(target.target_id, "out_of_range", 0U);
@@ -2092,7 +2100,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                 oneq::logging::FormatF(command_azimuth_deg, 6) + "," +
                 oneq::logging::FormatF(command_elevation_deg, 6) + ")deg 指向状态=" +
                 pointing_status + " 剩余角=" +
-                oneq::logging::FormatF(pointing_result.remaining_angle_deg, 6) + "deg");
+                oneq::logging::FormatF(pointing_result.remaining_angle_deg, 6) + "deg" +
+                // 第 76 项要求「候选状态」覆盖调度全程；转向服务目标属已捕获后的
+                // NFOV 跟踪维持段（2026-10-18 回归发现 96.3% 的调度行缺该字段）。
+                " 候选状态=已捕获跟踪 捕获失败原因=none");
       }
     }
   }

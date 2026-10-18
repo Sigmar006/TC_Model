@@ -183,5 +183,21 @@
 | 76 | `候选状态`、`捕获失败原因`；新增 `CaptureFailureReasonName()` 把 6 种失败枚举转可读名 | 调度选中行 + 捕获判决行 + 捕获失败行 |
 | 77 | `量测时刻`、`预测角`、`角速度`（优先角度 CV 后验变化率，退化时给视线角速率）、`输出阶段` | 跟踪滤波记录 |
 
-编译验证：`sbirs_engine.vcxproj` Release x64 编译通过（仅既有 C4456/C4189 告警）。
-**实跑复核待下一轮集成运行**（确认日志出现上述字段且取值合理）。
+编译验证：`sbirs_engine.vcxproj` Release x64 编译通过（仅既有 C4456/C4189 告警）；
+`1q_sbirs_sensor_unit_tests` **281/281 通过**。
+
+集成侧已同步重建并部署：
+
+| 产物 | 时间 | 说明 |
+|---|---|---|
+| `build/acceptance-v120-fosim/Release/lib/1q.lib` | 12:25:44 | v120 版，含本次改动的 `sbirs_engine` |
+| `ModelSource/lib/x64/Release/1q.lib` | 12:25:44 | 已部署（293 493 478 B）|
+| `ModelSource/bin_x64_Release/Sensors.dll` | 12:25:58 | 已重链接（3 123 200 B）|
+| `ModelSource/bin_x64_Release/DataProcessors.dll` | 12:25:55 | 已重链接 |
+
+已在 `Sensors.dll` 中按 **GBK（MSVC 执行字符集）** 逐项确认 15 个新字段字面量全部存在：
+`UTC儒略日`、`卫星ECEF`、`卫星姿态`、`安装角`、`接收孔径`、`光学透过率`、`量子效率`、
+`积分时间`、`背景辐射`、`候选状态`、`捕获失败原因`、`量测时刻`、`预测角`、`角速度`、`输出阶段`。
+
+> 注意：DLL 内中文字面量为 GBK；用 UTF-8 解码搜索会全部落空（本次排查踩过一次）。
+> **实跑复核仍待下一轮集成运行**（确认字段出现在 `IRInternalInterface.log` 且取值合理）。

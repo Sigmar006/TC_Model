@@ -103,6 +103,26 @@ std::string FormatSnr(double value) {
   return buffer;
 }
 
+// 验收第 76 项交换数据「捕获失败原因」的可读名（2026-10-17）。
+// 此前只输出失败原因枚举的整数值，验收方无法直接判读是哪一类失败。
+const char* CaptureFailureReasonName(attribution::SbirsCaptureFailureReason reason) {
+  switch (reason) {
+    case attribution::SbirsCaptureFailureReason::kNone:
+      return "none";
+    case attribution::SbirsCaptureFailureReason::kNfovAcquisitionFailed:
+      return "nfov-acquisition-failed";
+    case attribution::SbirsCaptureFailureReason::kSchedulerSkipped:
+      return "scheduler-skipped";
+    case attribution::SbirsCaptureFailureReason::kEstimationNisGateLost:
+      return "estimation-nis-gate-lost";
+    case attribution::SbirsCaptureFailureReason::kNfovPointingTimeout:
+      return "nfov-pointing-timeout";
+    case attribution::SbirsCaptureFailureReason::kNfovTrackingGateLost:
+      return "nfov-tracking-gate-lost";
+  }
+  return "unknown";
+}
+
 std::uint32_t DeriveMeasurementSeed(std::uint32_t base_seed, std::uint32_t domain_tag) {
   std::uint32_t value = base_seed ^ domain_tag;
   value ^= value >> 16U;
@@ -938,6 +958,64 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       satellite_velocity_eci.x_mps, satellite_velocity_eci.y_mps,
       satellite_velocity_eci.z_mps};
 
+  // 验收第 74 项交换数据补齐（2026-10-17）：UTC 儒略日、卫星/目标 ECEF+ECI 状态、
+  // 卫星姿态与传感器安装角。此前只输出 LOS 方向向量，缺"两端状态"与"姿态/安装"，
+  // 无法从日志复核坐标参考系与指向合成链。
+  const auto append_geometry_state = [&](const SbirsEciSceneTarget& scene_target,
+                                         std::string* out) {
+    out->append(" UTC儒略日=");
+    out->append(oneq::logging::FormatF(input.utc_julian_day, 6));
+    out->append(" 卫星ECEF=(");
+    out->append(oneq::logging::FormatF(satellite_ecef.x_m, 3));
+    out->append(",");
+    out->append(oneq::logging::FormatF(satellite_ecef.y_m, 3));
+    out->append(",");
+    out->append(oneq::logging::FormatF(satellite_ecef.z_m, 3));
+    out->append(")m 卫星ECI=(");
+    out->append(oneq::logging::FormatF(satellite_position_eci_m.x, 3));
+    out->append(",");
+    out->append(oneq::logging::FormatF(satellite_position_eci_m.y, 3));
+    out->append(",");
+    out->append(oneq::logging::FormatF(satellite_position_eci_m.z, 3));
+    out->append(")m 目标ECI=(");
+    out->append(oneq::logging::FormatF(scene_target.position_eci_m.x, 3));
+    out->append(",");
+    out->append(oneq::logging::FormatF(scene_target.position_eci_m.y, 3));
+    out->append(",");
+    out->append(oneq::logging::FormatF(scene_target.position_eci_m.z, 3));
+    out->append(")m");
+    oneq::coordinate::EcefPositionM target_ecef;
+    if (oneq::coordinate::TryEciToEcef(
+            oneq::coordinate::EciPositionM(scene_target.position_eci_m.x,
+                                           scene_target.position_eci_m.y,
+                                           scene_target.position_eci_m.z),
+            gmst_rad, &target_ecef)) {
+      out->append(" 目标ECEF=(");
+      out->append(oneq::logging::FormatF(target_ecef.x_m, 3));
+      out->append(",");
+      out->append(oneq::logging::FormatF(target_ecef.y_m, 3));
+      out->append(",");
+      out->append(oneq::logging::FormatF(target_ecef.z_m, 3));
+      out->append(")m");
+    }
+    out->append(" 卫星姿态=(");
+    out->append(oneq::logging::FormatF(input.satellite_attitude_eci_body_deg.yaw_deg, 6));
+    out->append(",");
+    out->append(oneq::logging::FormatF(input.satellite_attitude_eci_body_deg.pitch_deg, 6));
+    out->append(",");
+    out->append(oneq::logging::FormatF(input.satellite_attitude_eci_body_deg.roll_deg, 6));
+    out->append(")deg 安装角=(");
+    out->append(
+        oneq::logging::FormatF(config_.session.orientation.mount_angles_deg.yaw_deg, 6));
+    out->append(",");
+    out->append(
+        oneq::logging::FormatF(config_.session.orientation.mount_angles_deg.pitch_deg, 6));
+    out->append(",");
+    out->append(
+        oneq::logging::FormatF(config_.session.orientation.mount_angles_deg.roll_deg, 6));
+    out->append(")deg");
+  };
+
   // 规则 13a：周期执行摘要所需四类门控排除计数（按目标循环内累加）。
   std::size_t excluded_occulted = 0U;
   std::size_t excluded_out_of_range = 0U;
@@ -1156,6 +1234,25 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   const double snr_signature_required =
       policy.detection.wide_min_snr_linear * effective_noise_w /
       std::max(0.0f, hw.integration_time_sec);
+
+  // 验收第 75 项交换数据补齐（2026-10-17）：斜距与链路物理量（接收孔径、光学透过率、
+  // 量子效率、积分时间、背景辐射）。此前只输出噪声与 SNR 结果，缺"是谁算出来的"输入侧，
+  // 无法从日志复核 SNR 的量纲与口径。
+  const auto append_detection_physics = [&](double range_m, std::string* out) {
+    out->append(" 斜距=");
+    out->append(oneq::logging::FormatF(range_m, 3));
+    out->append("m 接收孔径=");
+    out->append(oneq::logging::FormatF(hw.optical_aperture_m, 3));
+    out->append("m 光学透过率=");
+    out->append(oneq::logging::FormatF(hw.optical_transmission, 6));
+    out->append(" 量子效率=");
+    out->append(oneq::logging::FormatF(hw.detector_quantum_efficiency, 6));
+    out->append(" 积分时间=");
+    out->append(oneq::logging::FormatF(hw.integration_time_sec, 6));
+    out->append("s 背景辐射=");
+    out->append(oneq::logging::FormatF(hw.background_radiance_w_sr_m2, 6));
+    out->append("W/(sr·m^2)");
+  };
   std::vector<SbirsCandidate> candidates;
   // 锁定目标上下文暂存（单镜筒轮转）：周期前段填充、NFOV 阶段消费。
   std::map<std::uint64_t, LockedTargetContext> locked_contexts;
@@ -1452,6 +1549,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       std::string geometry = "卫星ID=" + std::to_string(satellite_entity_id_);
       geometry += " 目标ID=" + std::to_string(target.target_id);
       geometry += " 阶段=WFOV 斜距=" + oneq::logging::FormatF(range_m, 1) + "m";
+      append_geometry_state(target, &geometry);
       geometry += " LOS(ECI)=(" + oneq::logging::FormatF(los.x, 3) + "," +
                   oneq::logging::FormatF(los.y, 3) + "," +
                   oneq::logging::FormatF(los.z, 3) + ")m";
@@ -1471,6 +1569,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       detection_interface += " 阶段=WFOV 目标辐射强度=" +
                              oneq::logging::FormatSci(target.radiant_intensity_w_per_sr) + "W/sr";
       detection_interface += " 大气透过率=" + oneq::logging::FormatF(path_transmittance, 6);
+      append_detection_physics(range_m, &detection_interface);
       detection_interface += " 接收功率=" + oneq::logging::FormatSci(received_power_w) + "W";
       detection_interface += " 信号能量=" + oneq::logging::FormatSci(signal_energy_j) + "J";
       detection_interface += " 光子噪声=" +
@@ -1834,7 +1933,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           sim_time_sec, input.cycle_index, "红外宽场候选与窄场调度交互接口测试",
           "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
               std::to_string(candidate.target->target_id) + " 捕获结果=失败 失败原因枚举=" +
-              std::to_string(static_cast<int>(reason)));
+              std::to_string(static_cast<int>(reason)) + " 捕获失败原因=" +
+              CaptureFailureReasonName(reason));
     }
   };
 
@@ -1896,6 +1996,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       scheduling += " 调度结果=已选中 指令方位/俯仰=(" +
                     oneq::logging::FormatF(selected->command_azimuth_deg, 6) + "," +
                     oneq::logging::FormatF(selected->command_elevation_deg, 6) + ")deg";
+      // 验收第 76 项交换数据补齐（2026-10-17）：候选状态与捕获失败原因。
+      scheduling += " 候选状态=已入列待捕获 捕获失败原因=none";
       SBIRS_INTERNAL_INTERFACE_ITEM(sim_time_sec, input.cycle_index,
                                     "红外宽场候选与窄场调度交互接口测试", scheduling);
     }
@@ -2035,7 +2137,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
               std::to_string(target_id) + " 捕获判决输入SNR=" +
               oneq::logging::FormatF(selected.snr, 6) + " 捕获门限=" +
               oneq::logging::FormatF(policy.detection.narrow_min_snr_linear, 6) +
-              " 捕获结果=" + (captured ? "成功" : "失败"));
+              " 捕获结果=" + (captured ? "成功" : "失败") +
+              " 候选状态=" + (captured ? "已捕获" : "捕获失败") +
+              " 捕获失败原因=" +
+              (captured ? "none" : "nfov-acquisition-failed"));
     }
     if (SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED()) {
       // 中译：窄视场首次捕获事件（卫星、目标、捕获结论、cue 预测命令角与 SNR）。
@@ -2245,6 +2350,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       std::string geometry = "卫星ID=" + std::to_string(satellite_entity_id_);
       geometry += " 目标ID=" + std::to_string(engaged_id);
       geometry += " 阶段=NFOV 斜距=" + oneq::logging::FormatF(context.range_m, 1) + "m";
+      append_geometry_state(target, &geometry);
       geometry += " 几何输出角(ECI)=(" + oneq::logging::FormatF(context.azimuth_deg, 6) + "," +
                   oneq::logging::FormatF(context.elevation_deg, 6) + ")deg";
       geometry += " 视场门输入角(传感器系)=(" +
@@ -2258,6 +2364,17 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       detection_interface += " 目标ID=" + std::to_string(engaged_id);
       detection_interface += " 阶段=NFOV 接收功率=" +
                              oneq::logging::FormatSci(context.received_power_w) + "W";
+      // 稳定帧路径补齐（2026-10-17）：此前该分支不输出入射辐射强度与大气透过率，
+      // 28.1% 的第 75 项记录因此无法反算链路预算。
+      detection_interface += " 目标辐射强度=" +
+                             oneq::logging::FormatSci(target.radiant_intensity_w_per_sr) + "W/sr";
+      detection_interface += " 大气透过率=" +
+                             oneq::logging::FormatF(
+                                 environment::ResolveGeometricTransmittance(
+                                     environment_config, satellite_position_eci_m,
+                                     target.position_eci_m),
+                                 6);
+      append_detection_physics(context.range_m, &detection_interface);
       detection_interface += " 信号能量=" +
                              oneq::logging::FormatSci(context.signal_energy_j) + "J";
       detection_interface += " 光子噪声=" +
@@ -2288,6 +2405,28 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
 
       std::string tracking_interface = "卫星ID=" + std::to_string(satellite_entity_id_);
       tracking_interface += " 目标ID=" + std::to_string(engaged_id);
+      // 验收第 77 项交换数据补齐（2026-10-17）：量测时刻、预测角、角速度、输出阶段。
+      // 预测角即本周期用于指向的滤波预测（command_* 已按有无滤波预测取值）；
+      // 角速度优先取角度CV滤波后验变化率，否则退化为视线角速率。
+      tracking_interface += " 量测时刻=" +
+                            oneq::logging::FormatF(detection.record.measurement_time_s, 6) + "s";
+      tracking_interface += " 预测角=(" +
+                            oneq::logging::FormatF(command_azimuth_deg, 6) + "," +
+                            oneq::logging::FormatF(command_elevation_deg, 6) + ")deg";
+      if (tracking_result.has_angle_rate) {
+        tracking_interface += " 角速度=(" +
+                              oneq::logging::FormatF(
+                                  tracking_result.azimuth_rate_rad_per_s * 57.29577951308232, 6) +
+                              "," +
+                              oneq::logging::FormatF(
+                                  tracking_result.elevation_rate_rad_per_s * 57.29577951308232,
+                                  6) +
+                              ")deg/s";
+      } else {
+        tracking_interface += " 角速度=(0.000000,0.000000)deg/s 视线角速率=" +
+                              oneq::logging::FormatF(context.omega_deg_per_sec, 6) + "deg/s";
+      }
+      tracking_interface += " 输出阶段=NFOV跟踪";
       tracking_interface += " 帧数=" + std::to_string(nfov_frame_count);
       tracking_interface += " 单帧/融合角噪声=" +
                             oneq::logging::FormatSci(nfov_frame_sigma_deg) + "/" +

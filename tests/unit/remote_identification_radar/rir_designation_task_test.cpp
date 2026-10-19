@@ -446,6 +446,32 @@ TEST(RirDesignationTaskTest, DesignationOutsideVolumeRevertsUntilScanCenterPatch
   EXPECT_EQ(realigned.designation_revert_reason, RirDesignationRevertReason::kNone);
 }
 
+TEST(RirDesignationTaskTest, ExternalScenePositionDrivesDesignatedBeamPointing) {
+  config::RirSessionConfig session_config = MakeIdentifyConfig();
+  session_config.mission.scan_center_deg = config::RirAzimuthElevationDeg{35.0f, 0.0f};
+  RirSession session = RirSession::Create(session_config);
+
+  // 外部接口给出的雷达局部 ENU 目标位置：方位约 45°、俯仰约 8°。
+  RirSceneTarget target;
+  target.external_target_id = 9410U;
+  target.position_x = 10000.0f;
+  target.position_y = 10000.0f;
+  target.position_z = 2000.0f;
+  target.rcs = 0.5f;
+  const config::RirAzimuthElevationDeg target_look = ExpectedTargetLookAngles(target);
+
+  ASSERT_TRUE(session.TryApplyRuntimeConfig(MakeDesignationPatch(target.external_target_id, 5U)));
+  const RirCycleResult result = session.StepWithResult(MakeInput(1U, {target}));
+
+  ASSERT_EQ(result.status, session::RirCycleStatus::kCompleted);
+  EXPECT_TRUE(result.designation_active);
+  EXPECT_EQ(result.designated_target_id, target.external_target_id);
+  EXPECT_TRUE(IsWithinTolerance(result.dwell_center_deg, target_look, 1.0e-3f))
+      << "驻留方向应由外部输入的位置计算，而不是沿用 scan_center";
+  EXPECT_FALSE(IsWithinTolerance(result.dwell_center_deg, session_config.mission.scan_center_deg,
+                                 1.0e-3f));
+}
+
 TEST(RirDesignationTaskTest, CrossBoundaryScanPatternStaysWithinLegalAzimuth) {
   config::RirSessionConfig session_config = MakeIdentifyConfig();
   session_config.mission.scan_center_deg = config::RirAzimuthElevationDeg{170.0f, 0.0f};

@@ -1,6 +1,7 @@
 # 基线对照轮（2026-10-19 19:13 运行）
 
-Status: baseline
+Status: superseded（口径已改为按验收判定标准组织，见
+`docs/review/baseline_round_2026-10-19_1931.md`；本文保留作 19:13 轮的原始读数）
 用途：P0.3 重建部署后的**首轮基线**，供后续每轮"只允许一处差异"比对。
 工具：`tools/acceptance_baseline_scan.py`（流式扫描六份日志，不整文件读入）。
 命令：`python tools/acceptance_baseline_scan.py --out <file> --json <file>`

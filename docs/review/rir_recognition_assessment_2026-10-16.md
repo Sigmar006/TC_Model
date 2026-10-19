@@ -1060,6 +1060,52 @@ NFOV 量测协方差落到下限 `6.187e-15 rad² ≈ (7.9e-8 rad)²`，即**把
 > 缺失即回落到扫描窗 ⇒ 目标在窗外 ⇒ `outside_beam_coverage`。因此**指示连续性**
 > 仍是关键，扫描窗覆盖范围是第二道保险。
 
+#### 3p.4.3 根因（三）：引导查表的键不匹配 —— `TrackKey` vs `UnitID`
+
+11:55 轮（`process_noise_diff_coeff=20`）实测：
+
+| 指标 | 结果 |
+|---|---|
+| NIS 门通过率 | **73.6%**（25.8% → 40.3% → 73.6%）|
+| `[cue-track]` 速度 @idx=200 | **`(-1306.75, 4386.5, 5363.5) m/s`（≈7.0 km/s，真实弹道速度）** |
+| LRDR 检测窗口 | 仍为周期 …254（没有延长）|
+
+`[cue]` 逐段统计暴露了决定性现象：
+
+```
+idx=  106..400   fixes=3~4  matched=1  designate=101   ← 匹配正常
+idx=  454 起     fixes=3~5  matched=0  designate=0     ← 永久失配
+```
+
+原因在 `lrdr_sensor_1q.cpp → PullFusionCues`：融合记录以 **`record.TrackKey`** 为键存入，
+而下发时按 **`target.unit_id_`** 查表：
+
+```cpp
+(*_cues)[static_cast<std::uint64_t>(record.TrackKey)] = cue;      // 存
+cue_fixes.find(static_cast<std::uint64_t>(target.unit_id_));      // 查
+```
+
+两者仅在**融合航迹号恰好等于单元实体 ID** 时相等（初期巧合），航迹一旦重编号即永久失配
+⇒ `matched` 由 1 掉到 0 ⇒ `designate` 归零 ⇒ `SubmitExternalTrack` 不再收到中心 ⇒
+回落到扫描窗 ⇒ 目标已漂出窗（az 141° < 窗下沿 150°、el 34° < 36°）
+⇒ `outside_beam_coverage` ⇒ 检测在周期 254 终止。
+
+**修复**：记录自带 `UnitID`（所属单元实体 ID）。改为优先用 `UnitID` 作键，
+`UnitID==0` 时回退 `TrackKey` 保持兼容：
+
+```cpp
+const std::uint64_t cue_key =
+    record.UnitID != 0U ? static_cast<std::uint64_t>(record.UnitID)
+                        : static_cast<std::uint64_t>(record.TrackKey);
+(*_cues)[cue_key] = cue;
+```
+
+该修复使引导**不再依赖融合航迹号与单元 ID 的巧合相等**，航迹重编号后仍能持续跟随。
+已重编译 `Sensors.dll`（14:01:29）。
+
+> 旁注：`rejected` 计数（融合位置在地平线以下被拒）每周期 2–4 条，来自地面/低速目标
+> 的融合解，属预期行为，与导弹引导无关。
+
 ---
 
 ## 4. 根因（按影响排序）

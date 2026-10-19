@@ -2427,6 +2427,11 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       tracking_interface += " 预测角=(" +
                             oneq::logging::FormatF(command_azimuth_deg, 6) + "," +
                             oneq::logging::FormatF(command_elevation_deg, 6) + ")deg";
+      // 角速度口径（2026-10-19）：三种后端都给值——
+      //   kAngleCvKf 取角度 CV 状态里的速率分量；
+      //   kEkf/kImm 由后验视线角跨拍差分派生（见 SbirsTrackingCoordinator::CorrectTarget）。
+      // 每目标首拍没有历史，此时输出"不适用"而**不**输出 0.000000，
+      // 否则会被误读为"目标无角运动"（此前实测角速度恒 0 而视线角速率非零）。
       if (tracking_result.has_angle_rate) {
         tracking_interface += " 角速度=(" +
                               oneq::logging::FormatF(
@@ -2435,9 +2440,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                               oneq::logging::FormatF(
                                   tracking_result.elevation_rate_rad_per_s * 57.29577951308232,
                                   6) +
-                              ")deg/s";
+                              ")deg/s 视线角速率=" +
+                              oneq::logging::FormatF(context.omega_deg_per_sec, 6) + "deg/s";
       } else {
-        tracking_interface += " 角速度=(0.000000,0.000000)deg/s 视线角速率=" +
+        tracking_interface += " 角速度=不适用(首拍无历史) 视线角速率=" +
                               oneq::logging::FormatF(context.omega_deg_per_sec, 6) + "deg/s";
       }
       tracking_interface += " 输出阶段=NFOV跟踪";
@@ -2562,7 +2568,12 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                                  "宽窄视场联合探测功能测试", joint_track);
       WriteSbirsAngleError(satellite_entity_id_, sim_time_sec, input.cycle_index,
                            engaged_id, az_err, el_err);
-      if (tracking_result.has_angle_rate) {
+      // 用例 16 只针对**角度 CV 后端**的后验状态；EKF/IMM 现在也会携带派生角速率
+      // （has_angle_rate 已不再等价于"角度 CV 后端"），故此处必须按后端门控，
+      // 否则会把 EKF 的差分派生值误标成"角度域 KF 后验"。
+      if (policy.tracking.estimated_backend ==
+              config::SbirsEstimatedTrackingBackend::kAngleCvKf &&
+          tracking_result.has_angle_rate) {
         // 中译：角度域 KF 后验（滤波方位/俯仰及其变化率）；不进公开检测记录。
         // 标识：实验后端 kAngleCvKf 的用例 16 状态估计验收行。
         WriteSbirsAngleStateEstimate(

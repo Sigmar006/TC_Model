@@ -1,6 +1,6 @@
 # 下一步工作计划（2026-10-19 晚起草）
 
-Status: proposal（待批准后按 P0→P5 推进）
+Status: in-progress（P0.1、P0.2 已完成；P0.3 已重建并部署，等待一轮重跑填基线表）
 依据：`docs/review/session_handoff_2026-10-19.md`、`docs/review/acceptance_log_physical_audit_2026-10-19.md`、
 `docs/review/acceptance_log_fix_plan_2026-10-19.md`、`docs/practice/integration_boundary_1q_vs_host_2026-10-19.md`、
 `docs/practice/fosimstudio_host_and_integration_guide.md`，以及 2026-10-19 18:55–19:05 对两个仓库 / 部署目录 / 配置的逐项核对。
@@ -52,6 +52,34 @@ Status: proposal（待批准后按 P0→P5 推进）
 ---
 
 ## 2. P0：先把仓库与部署摆平（今天可完成）
+
+### P0 执行记录（2026-10-19 19:05–19:15）
+
+| 步骤 | 结果 | 证据 |
+|---|---|---|
+| P0.1 配置源副本同步 | ✅ 三份部署副本逐字节复制回源副本 | 三对 SHA256 一致；`sync_config_check.cmd` 三行 `[SAME]`、退出码 0 |
+| P0.1 漂移自检脚本 | ✅ 新增 `ModelSource\sync_config_check.cmd`（无参数=比较，`sync`=源→部署） | 已实跑通过 |
+| P0.1 文档 | ✅ 指南 §2.2/§7-7 指向该脚本并记录漂移事件 | — |
+| P0.2 工作树分流 | ✅ 回退 `.vscode/settings.json`、删除误入的 `.code-workspace`；文档四件一笔、测试两件一笔 | 1q: `915cabb0`、`ed7ef519` |
+| P0.2 BJ 提交 | ✅ 配置三件 + 自检脚本 | BJ: `20fe029` |
+| P0.3 v120 库 | ✅ 重建 `sbirs_engine` + `1q_lib` → 279.9 MB | `build\acceptance-v120-fosim\Release\lib\1q.lib` 19:10 |
+| P0.3 宿主 DLL | ✅ `Sensors.dll` 19:10:28 / `DataProcessors.dll` 19:10:26 | `ModelSource\bin_x64_Release` |
+| P0.3 部署证据 | ✅ 新 DLL 中已含 `不适用(首拍无历史)`（GBK）；`观测性质=`/`候选数=` **不存在** ⇒ A2/A3 仍未做 | 字节扫描 |
+| P0.3 重跑 | ⏳ 宿主已启动，等待重跑并填 §2 基线表 | — |
+| BJ `1q.lib` | ✅ 提交（LFS 指针） | BJ: `7d394db` |
+
+> 重跑前须知：六份验收日志会被**截断重写**；16:22 那轮的证据已由 `FOSimStudio\log.zip`（18:54）保留。
+
+### P0 新增发现：RIR 单测基线不是绿的
+
+`1q_remote_identification_radar_unit_tests` 在 HEAD 上 **289/296 通过，7 项失败**，全部集中在
+`RirSurfaceClutterModelTest`（6 项）与 `RirRfPhysicalParityTest`（1 项），典型报错
+`cnr_db = -inf`（参考几何下杂波功率为 0）。已确认与本轮改动无关：库（18:46）比相关源码（10-15/10-04）新，
+失败用例所在文件本轮未动。
+
+⇒ **P4（B6/B7）与 P5 任何 RIR 改动都不能用"套件全绿"作回归判据**。需在 P4 开工前单独立项：
+①判定是模型缺陷还是用例期望过期（`git log` 显示 `88b465ce`/`e5b4384e` 正在改这两个用例的"账本口径"）；
+②修好或显式 quarantine 并写明理由。
 
 ### P0.1 配置源副本同步 + 单一真相动作
 1. 把三个文件的**部署副本**复制回**源副本**（`sbirs.json`、`remote_identification_radar.json`、

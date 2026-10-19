@@ -5,8 +5,10 @@
 #include <Eigen/Cholesky>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
+#include "sbirs_sensor/pipeline/SbirsTrackingCoordinator.h"
 #include "sbirs_sensor/tracking/SbirsTrackingTypes.h"
 
 namespace {
@@ -183,4 +185,90 @@ TEST(SbirsEkfBaselineTest, ScenarioMatrixSeparatesCvTransientAndSustainedMismatc
   EXPECT_GT(sustained.max_nis, transient.max_nis);
   EXPECT_GT(sustained.gate_exceeded_count, transient.gate_exceeded_count);
   EXPECT_GE(sustained.gate_exceeded_count, 3);
+}
+
+// --- A1 角速率派生（2026-10-19）------------------------------------------------
+// 第 77 项「角速度」此前只在 kAngleCvKf 后端有值；EKF/IMM 的状态里没有角度速率分量，
+// 改为由后验状态（位置+速度）解析派生。以下用例锁定解析式本身与"必须减掉卫星速度"。
+
+TEST(SbirsAngleRateDerivationTest, AzimuthRateComesFromCrossTrackVelocity) {
+  // r_rel = (10 000 km, 0, 0)，v_rel = (0, 100, 0) m/s ⇒ ω_az = 1e-5 rad/s，ω_el = 0。
+  float azimuth_rate = 0.0f;
+  float elevation_rate = 0.0f;
+  ASSERT_TRUE(sbirs_sensor::pipeline::TryDeriveAngleRateRadPerSec(
+      Vector(10000000.0, 0.0, 0.0), Vector(0.0, 100.0, 0.0),
+      Vector(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0), &azimuth_rate, &elevation_rate));
+  EXPECT_NEAR(azimuth_rate, 1.0e-5f, 1.0e-12f);
+  EXPECT_NEAR(elevation_rate, 0.0f, 1.0e-12f);
+}
+
+TEST(SbirsAngleRateDerivationTest, ElevationRateComesFromVerticalVelocity) {
+  // r_rel = (10 000 km, 0, 0)，v_rel = (0, 0, 100) m/s ⇒ ω_el = 1e-5 rad/s，ω_az = 0。
+  float azimuth_rate = 0.0f;
+  float elevation_rate = 0.0f;
+  ASSERT_TRUE(sbirs_sensor::pipeline::TryDeriveAngleRateRadPerSec(
+      Vector(10000000.0, 0.0, 0.0), Vector(0.0, 0.0, 100.0),
+      Vector(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0), &azimuth_rate, &elevation_rate));
+  EXPECT_NEAR(azimuth_rate, 0.0f, 1.0e-12f);
+  EXPECT_NEAR(elevation_rate, 1.0e-5f, 1.0e-12f);
+}
+
+TEST(SbirsAngleRateDerivationTest, SatelliteVelocityIsSubtractedBeforeDeriving) {
+  // 卫星在 ECI 以 3 km/s 运动（GEO 量级）：目标速度 3100 m/s 中只有 100 m/s 是相对运动。
+  const sbirs_sensor::session::SbirsVector3M satellite_position(40000000.0, 0.0, 0.0);
+  const sbirs_sensor::session::SbirsVector3M satellite_velocity(0.0, 3000.0, 0.0);
+  const sbirs_sensor::session::SbirsVector3M target_position(50000000.0, 0.0, 0.0);
+  const sbirs_sensor::session::SbirsVector3M target_velocity(0.0, 3100.0, 0.0);
+
+  float with_satellite_velocity = 0.0f;
+  float unused_elevation = 0.0f;
+  ASSERT_TRUE(sbirs_sensor::pipeline::TryDeriveAngleRateRadPerSec(
+      target_position, target_velocity, satellite_position, satellite_velocity,
+      &with_satellite_velocity, &unused_elevation));
+  EXPECT_NEAR(with_satellite_velocity, 1.0e-5f, 1.0e-12f);
+
+  // 反例：忘记减卫星速度会把派生值放大 31 倍（3100/100），这正是必须在库内减掉的原因。
+  float without_satellite_velocity = 0.0f;
+  ASSERT_TRUE(sbirs_sensor::pipeline::TryDeriveAngleRateRadPerSec(
+      target_position, target_velocity, satellite_position, Vector(0.0, 0.0, 0.0),
+      &without_satellite_velocity, &unused_elevation));
+  EXPECT_GT(std::fabs(without_satellite_velocity), 30.0f * std::fabs(with_satellite_velocity));
+}
+
+TEST(SbirsAngleRateDerivationTest, DegenerateGeometryReportsUnavailable) {
+  // 视轴与天顶重合（ρ = 0）：方位角速率无定义，必须返回 false 让日志输出"不适用"。
+  float azimuth_rate = -1.0f;
+  float elevation_rate = -1.0f;
+  EXPECT_FALSE(sbirs_sensor::pipeline::TryDeriveAngleRateRadPerSec(
+      Vector(0.0, 0.0, 10000000.0), Vector(0.0, 0.0, 100.0),
+      Vector(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0), &azimuth_rate, &elevation_rate));
+  EXPECT_FLOAT_EQ(azimuth_rate, -1.0f);
+  EXPECT_FLOAT_EQ(elevation_rate, -1.0f);
+}
+
+TEST(SbirsAngleRateDerivationTest, EkfCorrectionPublishesDerivedAngleRate) {
+  sbirs_sensor::config::SbirsPolicyConfig policy;
+  policy.tracking.estimated_backend =
+      sbirs_sensor::config::SbirsEstimatedTrackingBackend::kEkf;
+  policy.tracking.process_noise_diff_coeff = 1.0f;
+
+  sbirs_sensor::pipeline::SbirsTrackingCoordinator coordinator;
+  sbirs_sensor::pipeline::SbirsEciSceneTarget target;
+  target.target_id = 7U;
+  target.position_eci_m = Vector(50000000.0, 0.0, 0.0);
+  target.velocity_eci_m_per_s = Vector(0.0, 3100.0, 0.0);
+  target.has_velocity_eci_m_per_s = true;
+
+  const sbirs_sensor::session::SbirsVector3M satellite_position(40000000.0, 0.0, 0.0);
+  const sbirs_sensor::session::SbirsVector3M satellite_velocity(0.0, 3000.0, 0.0);
+
+  coordinator.InitializeTarget(target.target_id, target, policy.tracking, 0.0f, 0.0f);
+  sbirs_sensor::foundation::SbirsRandomSource random_source(1U);
+  const sbirs_sensor::pipeline::SbirsTrackingUpdateResult result = coordinator.CorrectTarget(
+      target.target_id, policy, &random_source, 0.0f, 0.0f, 10000000.0, 0.0f,
+      satellite_position, satellite_velocity, 1);
+
+  ASSERT_TRUE(result.has_angle_rate) << "EKF 后端必须发布派生角速率，而不是留空";
+  EXPECT_NEAR(result.azimuth_rate_rad_per_s, 1.0e-5f, 1.0e-6f);
+  EXPECT_NEAR(result.elevation_rate_rad_per_s, 0.0f, 1.0e-6f);
 }

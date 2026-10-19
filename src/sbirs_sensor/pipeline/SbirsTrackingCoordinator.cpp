@@ -1,6 +1,8 @@
 ﻿#include "sbirs_sensor/pipeline/SbirsTrackingCoordinator.h"
 
 #include <Eigen/Cholesky>
+
+#include <cmath>
 #include <limits>
 
 #include "sbirs_sensor/foundation/SbirsGeometry.h"
@@ -31,6 +33,44 @@ float ComputeNormalizedInnovationSquared(const tracking::SbirsAngleCvUpdateResul
 }
 
 }  // namespace
+
+bool TryDeriveAngleRateRadPerSec(const session::SbirsVector3M& target_position_eci_m,
+                                 const session::SbirsVector3M& target_velocity_eci_m,
+                                 const session::SbirsVector3M& satellite_position_eci_m,
+                                 const session::SbirsVector3M& satellite_velocity_eci_m,
+                                 float* azimuth_rate_rad_per_s,
+                                 float* elevation_rate_rad_per_s) {
+  if (azimuth_rate_rad_per_s == nullptr || elevation_rate_rad_per_s == nullptr) {
+    return false;
+  }
+  // 中译：相对几何 —— 目标相对卫星的位置/速度；卫星自身速度必须减掉，否则 GEO 卫星
+  //       在 ECI 的约 3 km/s 会把派生角速率完全主导。
+  // 标识：第 77 项角速率派生口径（2026-10-19，A1）。
+  const double x = target_position_eci_m.x - satellite_position_eci_m.x;
+  const double y = target_position_eci_m.y - satellite_position_eci_m.y;
+  const double z = target_position_eci_m.z - satellite_position_eci_m.z;
+  const double vx = target_velocity_eci_m.x - satellite_velocity_eci_m.x;
+  const double vy = target_velocity_eci_m.y - satellite_velocity_eci_m.y;
+  const double vz = target_velocity_eci_m.z - satellite_velocity_eci_m.z;
+
+  const double rho_squared = x * x + y * y;
+  const double range_squared = rho_squared + z * z;
+  // 中译：几何退化门 —— 视轴与天顶重合（ρ=0）时方位角速率无定义；距离为零时整式无意义。
+  // 标识：A1 派生的唯一边界条件，退化时由调用方输出"不适用"而不编造数值。
+  if (!(rho_squared > 1.0) || !(range_squared > 1.0)) {
+    return false;
+  }
+  const double rho = std::sqrt(rho_squared);
+  const double azimuth_rate = (x * vy - y * vx) / rho_squared;
+  const double elevation_rate =
+      (rho * vz - z * (x * vx + y * vy) / rho) / range_squared;
+  if (!std::isfinite(azimuth_rate) || !std::isfinite(elevation_rate)) {
+    return false;
+  }
+  *azimuth_rate_rad_per_s = static_cast<float>(azimuth_rate);
+  *elevation_rate_rad_per_s = static_cast<float>(elevation_rate);
+  return true;
+}
 
 void SbirsTrackingCoordinator::InitializeTarget(std::uint64_t target_id,
                                                 const SbirsEciSceneTarget& target,
@@ -84,10 +124,12 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::Update(
     std::uint64_t target_id, const config::SbirsPolicyConfig& policy,
     foundation::SbirsRandomSource* random_source, float azimuth_deg, float elevation_deg,
     double range_m, float relative_angular_rate_deg_per_sec, float dt_sec,
-    const session::SbirsVector3M& satellite_position_eci_m) {
+    const session::SbirsVector3M& satellite_position_eci_m,
+    const session::SbirsVector3M& satellite_velocity_eci_m) {
   PredictTarget(target_id, policy, dt_sec, satellite_position_eci_m);
   return CorrectTarget(target_id, policy, random_source, azimuth_deg, elevation_deg, range_m,
-                       relative_angular_rate_deg_per_sec, satellite_position_eci_m);
+                       relative_angular_rate_deg_per_sec, satellite_position_eci_m,
+                       satellite_velocity_eci_m);
 }
 
 SbirsTrackingPredictionResult SbirsTrackingCoordinator::PredictTarget(
@@ -138,7 +180,8 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     std::uint64_t target_id, const config::SbirsPolicyConfig& policy,
     foundation::SbirsRandomSource* random_source, float azimuth_deg, float elevation_deg,
     double range_m, float relative_angular_rate_deg_per_sec,
-    const session::SbirsVector3M& satellite_position_eci_m, int frame_count) {
+    const session::SbirsVector3M& satellite_position_eci_m,
+    const session::SbirsVector3M& satellite_velocity_eci_m, int frame_count) {
   SbirsTrackingUpdateResult result;
   // 高刷新率多帧融合（2026-08-31 窄场建模）：N 帧独立抽样融合为单周期量测，
   // 随机 1-σ 与量测协方差按 1/N 缩放；frame_count<=1 与既有单帧路径逐位一致。
@@ -230,6 +273,23 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
       foundation::Subtract(estimated_position, satellite_position_eci_m);
   result.output_azimuth_deg = foundation::ComputeAzimuthDeg(estimated_los);
   result.output_elevation_deg = foundation::ComputeElevationDeg(estimated_los);
+  // 中译：EKF/IMM 的状态里没有角度速率分量，但后验同时带位置与速度，故直接解析派生，
+  //       不做跨拍差分（差分需要逐目标历史状态，且重捕后首拍无定义）。
+  // 标识：第 77 项角速度字段的数据源（2026-10-19，A1）；退化时保持 has_angle_rate=false，
+  //       由日志侧输出"不适用"，不得编造 0。
+  session::SbirsVector3M estimated_velocity;
+  estimated_velocity.x = combined.mean(1);
+  estimated_velocity.y = combined.mean(3);
+  estimated_velocity.z = combined.mean(5);
+  float azimuth_rate_rad_per_s = 0.0f;
+  float elevation_rate_rad_per_s = 0.0f;
+  if (TryDeriveAngleRateRadPerSec(estimated_position, estimated_velocity,
+                                  satellite_position_eci_m, satellite_velocity_eci_m,
+                                  &azimuth_rate_rad_per_s, &elevation_rate_rad_per_s)) {
+    result.has_angle_rate = true;
+    result.azimuth_rate_rad_per_s = azimuth_rate_rad_per_s;
+    result.elevation_rate_rad_per_s = elevation_rate_rad_per_s;
+  }
   return result;
 }
 

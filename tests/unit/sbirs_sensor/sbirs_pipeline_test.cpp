@@ -1638,6 +1638,10 @@ TEST(SbirsPipelineTest, ImmKeepsIndependentStateForEachCapturedTarget) {
 TEST(SbirsPipelineTest, ImmMultiTargetUpdatesMatchIndependentRunsAndInputOrder) {
   const sbirs_sensor::config::SbirsSessionConfig config = ImmMultiTargetConfig();
   const sbirs_sensor::session::SbirsVector3M satellite = Vector(7000000.0, 0.0, 0.0);
+  // 中译：卫星速度按 GEO 量级给 3 km/s。本例只比较各目标的后验角是否互相独立，速度本身
+  //       不参与断言，但必须显式给出——角速率派生会减掉它（见 A1）。
+  // 标识：A1 角速率派生引入的入参（2026-10-19）。
+  const sbirs_sensor::session::SbirsVector3M satellite_velocity = Vector(0.0, 3000.0, 0.0);
   // 滤波初始化吃管线内部 ECI 场景目标；GMST=0 时 ECI≡ECEF，几何期望不变。
   const sbirs_sensor::pipeline::SbirsEciSceneTarget first =
       sbirs_sensor::pipeline::RotateSceneTargetToEci(HotTarget(1U, 0.0), 0.0);
@@ -1658,18 +1662,22 @@ TEST(SbirsPipelineTest, ImmMultiTargetUpdatesMatchIndependentRunsAndInputOrder) 
   sbirs_sensor::foundation::SbirsRandomSource first_random(1U);
   sbirs_sensor::foundation::SbirsRandomSource second_random(1U);
   sbirs_sensor::foundation::SbirsRandomSource reversed_random(1U);
-  const auto joint_first =
-      joint.Update(1U, config.policy, &joint_random, 0.0f, 0.0f, 1.0e6, 0.0f, 1.0f, satellite);
-  const auto joint_second =
-      joint.Update(2U, config.policy, &joint_random, 0.3f, 0.1f, 1.0e6, 0.0f, 1.0f, satellite);
+  const auto joint_first = joint.Update(1U, config.policy, &joint_random, 0.0f, 0.0f, 1.0e6, 0.0f,
+                                        1.0f, satellite, satellite_velocity);
+  const auto joint_second = joint.Update(2U, config.policy, &joint_random, 0.3f, 0.1f, 1.0e6, 0.0f,
+                                         1.0f, satellite, satellite_velocity);
   const auto alone_first =
-      only_first.Update(1U, config.policy, &first_random, 0.0f, 0.0f, 1.0e6, 0.0f, 1.0f, satellite);
-  const auto alone_second = only_second.Update(2U, config.policy, &second_random, 0.3f, 0.1f, 1.0e6,
-                                               0.0f, 1.0f, satellite);
-  const auto reversed_second = reversed.Update(2U, config.policy, &reversed_random, 0.3f, 0.1f,
-                                               1.0e6, 0.0f, 1.0f, satellite);
-  const auto reversed_first = reversed.Update(1U, config.policy, &reversed_random, 0.0f, 0.0f,
-                                              1.0e6, 0.0f, 1.0f, satellite);
+      only_first.Update(1U, config.policy, &first_random, 0.0f, 0.0f, 1.0e6, 0.0f, 1.0f, satellite,
+                        satellite_velocity);
+  const auto alone_second =
+      only_second.Update(2U, config.policy, &second_random, 0.3f, 0.1f, 1.0e6, 0.0f, 1.0f,
+                         satellite, satellite_velocity);
+  const auto reversed_second =
+      reversed.Update(2U, config.policy, &reversed_random, 0.3f, 0.1f, 1.0e6, 0.0f, 1.0f, satellite,
+                      satellite_velocity);
+  const auto reversed_first =
+      reversed.Update(1U, config.policy, &reversed_random, 0.0f, 0.0f, 1.0e6, 0.0f, 1.0f, satellite,
+                      satellite_velocity);
   EXPECT_FLOAT_EQ(joint_first.output_azimuth_deg, alone_first.output_azimuth_deg);
   EXPECT_FLOAT_EQ(joint_first.output_elevation_deg, alone_first.output_elevation_deg);
   EXPECT_FLOAT_EQ(joint_second.output_azimuth_deg, alone_second.output_azimuth_deg);

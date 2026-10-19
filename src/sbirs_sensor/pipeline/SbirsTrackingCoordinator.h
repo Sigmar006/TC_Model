@@ -55,6 +55,35 @@ struct SbirsTrackingUpdateResult {
 };
 
 /**
+ * @brief 由目标/卫星的相对几何解析求出视线角速率（rad/s）。
+ *
+ * 与 `SbirsAngleCvKalman` 的后验变化率不同，EKF/IMM 的状态里没有角度速率的显式分量；
+ * 但后验状态同时带位置与速度，故角速率可由相对位置/速度直接解出，
+ * 不需要跨拍差分，也不需要额外的历史状态：
+ *
+ *   r_rel = r_target − r_sat，v_rel = v_target − v_sat
+ *   ω_az = (x·v_y − y·v_x) / (x² + y²)
+ *   ρ = √(x² + y²)
+ *   ω_el = (ρ·v_z − z·(x·v_x + y·v_y)/ρ) / (ρ² + z²)
+ *
+ * @note **必须减掉卫星自身速度**：GEO 卫星在 ECEF 静止、在 ECI 约 3 km/s，
+ *       否则派生值会被卫星运动主导（实测视线角速率量级 0.004–0.013 deg/s）。
+ * @param[in] target_position_eci_m 目标后验位置（ECI，m）。
+ * @param[in] target_velocity_eci_m 目标后验速度（ECI，m/s）。
+ * @param[in] satellite_position_eci_m 卫星位置（ECI，m）。
+ * @param[in] satellite_velocity_eci_m 卫星速度（ECI，m/s）。
+ * @param[out] azimuth_rate_rad_per_s 方位角速率（rad/s）；不可用时保持原值。
+ * @param[out] elevation_rate_rad_per_s 俯仰角速率（rad/s）；不可用时保持原值。
+ * @return 几何退化（|r_rel| 的投影为零、非有限量）时返回 false，调用方应报"不适用"。
+ */
+bool TryDeriveAngleRateRadPerSec(const session::SbirsVector3M& target_position_eci_m,
+                                 const session::SbirsVector3M& target_velocity_eci_m,
+                                 const session::SbirsVector3M& satellite_position_eci_m,
+                                 const session::SbirsVector3M& satellite_velocity_eci_m,
+                                 float* azimuth_rate_rad_per_s,
+                                 float* elevation_rate_rad_per_s);
+
+/**
  * @brief Coordinates EKF/IMM/angle-CV-KF update state for targets already locked by SbirsPipeline.
  * @note Scheduling, target-state transitions, output construction, and snapshot schema remain pipeline-owned.
  */
@@ -72,14 +101,15 @@ class SbirsTrackingCoordinator {
       foundation::SbirsRandomSource* random_source, float azimuth_deg, float elevation_deg,
       double range_m, float relative_angular_rate_deg_per_sec,
       const session::SbirsVector3M& satellite_position_eci_m,
-      int frame_count = 1);
+      const session::SbirsVector3M& satellite_velocity_eci_m, int frame_count = 1);
   void MarkMeasurementUnavailable(std::uint64_t target_id);
   SbirsTrackingUpdateResult Update(std::uint64_t target_id,
                                    const config::SbirsPolicyConfig& policy,
                                    foundation::SbirsRandomSource* random_source,
                                    float azimuth_deg, float elevation_deg, double range_m,
                                    float relative_angular_rate_deg_per_sec, float dt_sec,
-                                   const session::SbirsVector3M& satellite_position_eci_m);
+                                   const session::SbirsVector3M& satellite_position_eci_m,
+                                   const session::SbirsVector3M& satellite_velocity_eci_m);
   void ReleaseTarget(std::uint64_t target_id);
   void ResetNisGateCounts();
   void ClearForStandby();

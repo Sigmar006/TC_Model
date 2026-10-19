@@ -2337,7 +2337,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       tracking_result = tracking_coordinator_.CorrectTarget(
           engaged_id, policy, &estimated_measurement_random_source_, context.azimuth_deg,
           context.elevation_deg, context.range_m, context.omega_deg_per_sec,
-          satellite_position_eci_m, nfov_frame_count);
+          satellite_position_eci_m, satellite_velocity_eci_m, nfov_frame_count);
       detection.record.azimuth_rad = ToEciAzimuthRad(tracking_result.output_azimuth_deg);
       detection.record.elevation_rad = ToEciElevationRad(tracking_result.output_elevation_deg);
       detection.attribution.has_estimation_nis = tracking_result.has_estimation_nis;
@@ -2429,8 +2429,9 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                             oneq::logging::FormatF(command_elevation_deg, 6) + ")deg";
       // 角速度口径（2026-10-19）：三种后端都给值——
       //   kAngleCvKf 取角度 CV 状态里的速率分量；
-      //   kEkf/kImm 由后验视线角跨拍差分派生（见 SbirsTrackingCoordinator::CorrectTarget）。
-      // 每目标首拍没有历史，此时输出"不适用"而**不**输出 0.000000，
+      //   kEkf/kImm 没有角度速率分量，由后验状态（位置+速度）**解析**派生，
+      //   见 SbirsTrackingCoordinator::TryDeriveAngleRateRadPerSec（不跨拍差分）。
+      // 派生失败（几何退化/无后验）时输出"不适用"而**不**输出 0.000000，
       // 否则会被误读为"目标无角运动"（此前实测角速度恒 0 而视线角速率非零）。
       if (tracking_result.has_angle_rate) {
         tracking_interface += " 角速度=(" +
@@ -2443,7 +2444,15 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                               ")deg/s 视线角速率=" +
                               oneq::logging::FormatF(context.omega_deg_per_sec, 6) + "deg/s";
       } else {
-        tracking_interface += " 角速度=不适用(首拍无历史) 视线角速率=" +
+        // 中译：角度 CV 后端首拍没有历史，EKF/IMM 则是没有可派生的后验——两种"无值"的理由
+        //       不同，日志必须区分，否则会被误读为同一个缺陷。
+        // 标识：第 77 项角速度不适用理由（2026-10-19，A1）。
+        const char* const reason =
+            policy.tracking.estimated_backend ==
+                    config::SbirsEstimatedTrackingBackend::kAngleCvKf
+                ? "不适用(首拍无历史)"
+                : "不适用(无滤波后验)";
+        tracking_interface += std::string(" 角速度=") + reason + " 视线角速率=" +
                               oneq::logging::FormatF(context.omega_deg_per_sec, 6) + "deg/s";
       }
       tracking_interface += " 输出阶段=NFOV跟踪";

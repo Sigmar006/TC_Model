@@ -26,3 +26,4 @@ Update the set whenever thresholds, limitations, or veto decisions change.
 ## Integration guides
 
 - [LRDR 集成指南（1q.lib）](practice/lrdr_integration_guide.md) — 静态库交付清单、Visual Studio 配置、会话调用与 BuildScanPattern 链接排障。
+- [评估数据基础信息表（宿主结果表）](review/evaluation_data_foundation_tables_2026-10.md) — 六类 12 张评估表的字段定义、写入来源与当前模型能力缺口。

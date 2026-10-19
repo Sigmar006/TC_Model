@@ -627,10 +627,13 @@ void WriteSbirsExternalObservationOutput(
       }
     }
     // 过滤/角度后端均未持有该目标状态时不伪造估计值（§0 规则3）。
-    if (wrote_state) {
-      SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "红外观测与航迹输出接口测试",
-                                       state_row);
+    // 但第 67 项交换数据要求"状态估计 + 状态协方差"恒在：捕获阶段确实没有滤波器状态，
+    // 故显式声明"未建立/不适用"，既不编造数值也让字段恒在（2026-10-19 回归：421 行缺）。
+    if (!wrote_state) {
+      state_row += " 状态估计来源=未建立(捕获阶段) 状态向量=不适用 状态协方差=不适用";
     }
+    SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "红外观测与航迹输出接口测试",
+                                     state_row);
   }
 }
 

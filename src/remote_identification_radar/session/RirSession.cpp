@@ -50,6 +50,32 @@ namespace {
 constexpr std::uint32_t kExternalTrackRequestPending = 0xFFFFFFFFU;
 
 /**
+ * @brief 每周期**保底**留给自主搜索的驻留数（T-04b，2026-10-20）。
+ *
+ * @details 20 个驻留槽位是硬预算。此前外部引导窗口按「剩余槽位 − 1」铺点，实测吃掉 19/20，
+ *   搜索只剩 1 拍；而波位表有 4,750 个波位、目标在窗内只停留约 1,070 周期，
+ *   1 拍/周期意味着单帧要 4,750 周期（连 0.23 帧都扫不完）——自主搜索实际上不可能发现目标。
+ *   取 4 拍后单帧约 1,188 周期，穿越期内可扫约 0.9 帧，且仍给引导留 13–14 拍。
+ */
+constexpr std::size_t kMinSearchDwells = 4U;
+
+/** @brief 每周期保底留给**库内航迹**的驻留数（T-04b）：自产航迹需要自己的量测。 */
+constexpr std::size_t kMinInternalTrackDwells = 2U;
+
+/**
+ * @brief 外部窗口一次构造的最大点数上限（远大于实际 5×5=25，用于取到完整窗口序列）。
+ *
+ * @details 窗口点数上限只用于截断异常配置；跨周期续扫需要**完整**序列，故给足余量。
+ */
+constexpr std::size_t kExternalWindowMaxPoints = 128U;
+
+/** @brief cue 合理性门：目标可达的最大速度（m/s），用于判定位置跳变是否可信。 */
+constexpr double kCueGateMaxSpeedMps = 10000.0;
+
+/** @brief cue 合理性门：跳变容差（m），覆盖定位刷新间隔内的正常位移。 */
+constexpr double kCueGateSlackM = 50000.0;
+
+/**
  * @brief 指定识别任务生命周期阶段（镜像 AR designation 生命周期骨架；
  *        会话级跨周期状态，随 patch 原子提交）。
  */
@@ -337,6 +363,18 @@ struct RirSession::Impl {
   std::uint32_t external_track_coast_cycles{0U};
   std::uint32_t external_track_sweep_index{0U};
   std::uint32_t external_track_last_seen_cycle{0U};
+  /**
+   * 外部窗口**跨周期续扫**游标（T-04b，2026-10-20）。
+   * @note 窗口序列按「中心优先、由近到远」排好，每周期从游标处取若干点并推进；
+   *       新 cue 到来时归零，保证新数据一到就先照中心。
+   */
+  std::size_t external_window_cursor{0U};
+  /** cue 合理性门：上一次**被接受**的 cue 位置（ECEF）及其周期。 */
+  bool cue_gate_has_last{false};
+  std::uint32_t cue_gate_last_cycle{0U};
+  oneq::coordinate::EcefPositionM cue_gate_last_position{};
+  /** 本周期 cue 被判不可信（位置跳变超物理上限）→ 只照中心 1 拍，其余槽位让给搜索。 */
+  bool external_cue_degraded_this_cycle{false};
   /** 本周期判定标志：有效窗口到期（沿）——用于结果层发一次到期诊断。 */
   bool external_track_expired_this_cycle{false};
   /** 本周期判定标志：窗口已超期（电平）——用于抑制同周期的 stale 诊断。 */
@@ -677,16 +715,61 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     dwell_plan.push_back(designate_dwell);
   }
   if (has_external_track) {
-    // 保底留 1 个搜索槽：外部信息可能出错，自主搜索是兜底（槽位预算保护）。
-    const std::size_t spare = (max_dwells > dwell_plan.size() + 1U)
-                                  ? (max_dwells - dwell_plan.size() - 1U)
-                                  : 0U;
+    // 中译：槽位预算（T-04b，2026-10-20）——先给搜索与库内航迹留保底，剩余才给外部窗口；
+    //       此前是"剩余槽位 − 1"，实测外部吃掉 19/20，搜索只剩 1 拍、库内航迹 0 拍。
+    // 标识：T-04b 预算分配 + cue 合理性门。
+    const std::size_t used_slots = dwell_plan.size();
+    std::size_t budget = (max_dwells > used_slots) ? (max_dwells - used_slots) : 0U;
+    const std::size_t search_slots = std::min(kMinSearchDwells, budget);
+    budget -= search_slots;
+    const std::size_t track_slots = std::min(kMinInternalTrackDwells, budget);
+    budget -= track_slots;
+    const std::size_t external_slots = budget;
+
+    // 中译：cue 合理性门——位置跳变超过"最大速度 × 间隔 + 容差"即判为不可信（融合定位偶发
+    //       大幅偏离，实测有 4,000+ km 的跳变）。不可信时本周期只照中心 1 拍，把槽位让给搜索。
+    // 标识：cue 合理性门（2026-10-20）。
+    external_cue_degraded_this_cycle = false;
+    if (cue_gate_has_last) {
+      const oneq::coordinate::EcefPositionM& previous = cue_gate_last_position;
+      const double dx = external_track_request.position_ecef_m.x_m - previous.x_m;
+      const double dy = external_track_request.position_ecef_m.y_m - previous.y_m;
+      const double dz = external_track_request.position_ecef_m.z_m - previous.z_m;
+      const double jump_m = std::sqrt(dx * dx + dy * dy + dz * dz);
+      const double elapsed_cycles =
+          (external_track_last_request_cycle > cue_gate_last_cycle)
+              ? static_cast<double>(external_track_last_request_cycle - cue_gate_last_cycle)
+              : 1.0;
+      const double allowed_m = kCueGateMaxSpeedMps * elapsed_cycles + kCueGateSlackM;
+      external_cue_degraded_this_cycle = jump_m > allowed_m;
+    }
+    if (!external_cue_degraded_this_cycle) {
+      cue_gate_has_last = true;
+      cue_gate_last_cycle = external_track_last_request_cycle;
+      cue_gate_last_position = external_track_request.position_ecef_m;
+    }
+
     std::vector<config::RirAzimuthElevationDeg> window_points;
     const dwell::RirEffectiveBeamwidthDeg beamwidth = dwell::RirResolveEffectiveBeamwidth(
         config.hardware.antenna, ResolveScanWavelengthM(config));
     BuildExternalTrackWindowDwells(external_center_deg, external_track_request.window, beamwidth,
-                                   config.mission.step_scale, spare, &window_points);
-    for (const config::RirAzimuthElevationDeg& pt : window_points) {
+                                   config.mission.step_scale, kExternalWindowMaxPoints,
+                                   &window_points);
+    // 新 cue 到来：窗口序列按新中心重生，游标归零 ⇒ 先照中心。
+    if (external_phase == RirExternalTrackPhase::kFresh) {
+      external_window_cursor = 0U;
+    }
+    std::size_t take_points = std::min(external_slots, window_points.size());
+    if (external_cue_degraded_this_cycle) {
+      take_points = std::min<std::size_t>(1U, window_points.size());
+    }
+    // 中译：跨周期续扫——按游标从窗口序列中取连续若干点，而不是每周期都从中心重来；
+    //       这样 25 点窗口在 13 槽/周期下 2 个周期即可铺满，外圈点不再永远轮不到。
+    // 标识：T-04b 外部窗口续扫。
+    for (std::size_t index = 0U; index < take_points; ++index) {
+      const std::size_t point_index =
+          (external_window_cursor + index) % window_points.size();
+      const config::RirAzimuthElevationDeg& pt = window_points[point_index];
       runtime::RirDwellPlan ext_dwell;
       ext_dwell.pointing_deg = pt;
       ext_dwell.kind = runtime::RirDwellKind::kExternalTrack;
@@ -696,11 +779,15 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
       ext_dwell.external_target_id = external_track_request.source_target_id;
       dwell_plan.push_back(ext_dwell);
     }
+    if (!external_cue_degraded_this_cycle && !window_points.empty()) {
+      external_window_cursor =
+          (external_window_cursor + take_points) % window_points.size();
+    }
     ++external_track_sweep_index;
   }
-  if (max_dwells > dwell_plan.size() + 1U) {
+  if (max_dwells > dwell_plan.size() + kMinSearchDwells) {
     std::vector<runtime::RirDwellPlan> track_dwells = controller.CollectTrackDwellRequests(
-        max_dwells - dwell_plan.size() - 1U, static_cast<float>(input.dt_sec));
+        max_dwells - dwell_plan.size() - kMinSearchDwells, static_cast<float>(input.dt_sec));
     dwell_plan.insert(dwell_plan.end(), track_dwells.begin(), track_dwells.end());
   }
   const std::vector<oneq::common::radar::AzimuthElevationDeg> scan_pattern =

@@ -1,6 +1,8 @@
 # 相干干扰建模与雷达对抗措施 —— 技术方案（2026-10-20）
 
-Status: proposal（待评审；**当前技术要求未要求相干干扰**，属能力扩展，不作为缺陷修复）
+Status: proposal / **超出当前需求范围**（技术要求未要求相干干扰；模块边界文档
+`docs/remote_identification_radar/algorithms.md:368` 明文把"ECCM 决策、反欺骗"排除在 RIR 之外，
+列为 AR 专属能力）⇒ 本方案按**预研储备**看待，实施前须先做需求变更
 范围：RIR（远程识别雷达）接收/检测链；`RfScene` 干扰输入 → 检测预算 → 航迹输出
 依据：`docs/review/functional_acceptance_test_criteria_ocr.md` 第 29/30/35/63 项、
 `src/common/radar/DetectionCellResolver.cpp:254-260`、`src/common/electromagnetics/RfScene.cpp:282-357`

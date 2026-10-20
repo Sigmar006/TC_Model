@@ -246,6 +246,7 @@ void RirController::ApplyDetectionSeedIfChanged() {
   measurement_rng_.seed(detection_random_seed_);
   applied_detection_seed_ = detection_random_seed_;
   detection_seed_applied_ = true;
+  ++detection_seed_apply_count_;
 }
 
 void RirController::SetSensorEntityId(std::uint32_t sensor_entity_id) {

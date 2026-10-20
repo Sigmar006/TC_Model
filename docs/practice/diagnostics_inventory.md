@@ -68,6 +68,7 @@ Authority: **本表是清理诊断代码/临时排查物的唯一依据。** 新
 | BJ `…\Sensors\LRDR_SENSOR\lrdr_sensor_1q.cpp` | `feature_pick_logged` | L460–463（成员声明）、L511（构造初始化列表） | `RirRuntime` 里 `std::map<unsigned int, std::string> feature_pick_logged` + 注释 | **可删** |
 | 同上 | `[feature-pick]` | ~L1186–1213 | 特征集选择结果：首次/变化时输出 `idx=/target=/id=/rcs_in=/set='/set_rcs=/out_rcs=/aspect=/pol=/scatterers=` | **可删**（整块含注释） |
 | 同上 | `[scene-vel]` | ~L1178–1204 | 场景目标真值速度与步长：`truth_vel_enu=(…)m/s abs_v=… has_vel=… dt_from_last=…`，节流 `idx<=5 \|\| idx%500==0` | **可删**（整块含注释） |
+| 同上 | `[cfar-seed]` | ~L1485–1502（2026-10-20 新增） | 检测链随机数诊断：`idx=/seed=/seed_applied=/decisions=`，节流 `detail_cycle \|\| idx%200==0`。用于自证"CFAR 种子只应在配置变化时施加一次"（`seed_applied` 应恒为 1），配套库侧 `RirSession::GetDetectionRngDiagnostics` | **可删**（整块含注释；库侧计数与接口无害可保留） |
 | BJ `…\DataProcessors\SBIRSFusionDp\sbirsfusiondp_1q.cpp` | `[init] target inference engine created` / `disabled` | L348 / L352 | 推演引擎创建/关闭确认行 | **可删** |
 | 同上 | `[predict]` | L1012 | 每周期推演概况 `cycle=/tracks=/results=` | **可删** |
 | 同上 | `det_total` / `det_drop_no_id` / `det_drop_stage` / `det_anchor_ok` | 声明 L549–552、自增 L578/583、输出 L1035–1044 | 观测锚点提取层的**丢弃分类计数**；`[verbose]` 行尾追加 `det=/drop_no_id=/drop_stage=/anchor_ok=/anchors=/targets_multi_sat=` 与配套统计循环 | **可删** |

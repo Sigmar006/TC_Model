@@ -196,6 +196,14 @@ class RirController {
   /** @brief 当前检测随机种子（供 replay 状态溯源）。 */
   std::uint32_t DetectionRandomSeed() const { return detection_random_seed_; }
 
+  /** @brief 随机种子被实际施加的次数（2026-10-20 诊断用）。 */
+  std::uint32_t DetectionSeedApplyCount() const { return detection_seed_apply_count_; }
+
+  /** @brief 进入检测判决流程的累计次数（2026-10-20 诊断用）。 */
+  std::uint64_t DetectionDecisionCount() const {
+    return detector_ != nullptr ? detector_->DecisionCount() : 0U;
+  }
+
   /** @brief 最近一次识别库加载耗时（毫秒）；未加载过为 0。 */
   double LastDatabaseLoadMs() const { return last_database_load_ms_; }
 
@@ -320,6 +328,8 @@ class RirController {
    */
   std::uint32_t applied_detection_seed_{42U};
   bool detection_seed_applied_{false};
+  /** @brief 运行至今实际施加随机种子的次数（2026-10-20 诊断用，正常应恒为 1）。 */
+  std::uint32_t detection_seed_apply_count_{0U};
 
   std::unique_ptr<dwell::RirSignalDetector> detector_{};
   tracking::RirTrackAssociator associator_{};

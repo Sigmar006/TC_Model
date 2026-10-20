@@ -102,6 +102,28 @@ class ONEQ_API RirSession {
   double LastRecognitionDatabaseLoadMs() const;
 
   /**
+   * @brief 检测链随机数诊断快照（2026-10-20，仅供诊断日志使用）。
+   *
+   * @details 背景：`UpdateRuntime`/`SetHardware` 曾在每次运行时补丁后重设随机种子，
+   *   而宿主几乎每周期都下发补丁 ⇒ CFAR 抽签被冻结、概率判决退化为固定门限。
+   *   本结构把"种子被实际施加的次数"与"进入判决流程的次数"暴露给宿主诊断日志，
+   *   用于**自证**修复是否生效（正常推进时种子只应在配置变化时施加一次）。
+   * @note 不参与任何数值计算，也不写入验收日志。
+   */
+  struct DetectionRngDiagnostics {
+    std::uint32_t applied_seed{0U};      /**< 当前生效的检测随机种子。 */
+    std::uint32_t seed_apply_count{0U};  /**< 运行至今实际调用 SetRandomSeed 的次数。 */
+    std::uint64_t decision_count{0U};    /**< 运行至今进入检测判决流程的次数。 */
+  };
+
+  /**
+   * @brief 读取检测链随机数诊断快照。
+   * @param[out] out 非空时写入快照。
+   * @return 会话已初始化返回 true。
+   */
+  bool GetDetectionRngDiagnostics(DetectionRngDiagnostics* out) const;
+
+  /**
    * @brief 提交外部目标跟踪请求：位置 + 速度 + 中心邻域跟踪窗口。
    *
    * 机理（本接口不是「改整机扫描基准」）：

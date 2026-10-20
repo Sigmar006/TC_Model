@@ -69,9 +69,18 @@ class RirSignalDetector {
                                         const RirDetectionCellResult& cell);
   void SetRandomSeed(unsigned int seed);
 
+  /**
+   * @brief 累计进入判决流程的次数（每次调用最多消耗一次 CFAR 抽签）。
+   *
+   * @details 2026-10-20 诊断用：与"随机种子被重设次数"一起，可在宿主诊断日志里判定
+   *   CFAR 抽签是否真的在推进（抽签冻结时该计数照常增长，但判决结果恒定）。
+   */
+  std::uint64_t DecisionCount() const { return decision_count_; }
+
  private:
   RirDetectorConfig config_;
   oneq::common::radar::StatisticalCfarDetector cfar_;
+  std::uint64_t decision_count_{0U};
 };
 
 }  // namespace dwell

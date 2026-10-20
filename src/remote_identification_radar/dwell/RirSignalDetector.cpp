@@ -57,6 +57,9 @@ void RirSignalDetector::UpdateConfig(const RirDetectorConfig& config) {
 RirDetectionResult RirSignalDetector::Detect(const RirTargetReturn& target,
                                              const RirEnvironmentNoise& env,
                                              float one_way_antenna_gain_db, int pulse_count) {
+  // 中译：诊断计数（2026-10-20）——与"种子重设次数"配对，用于在宿主诊断日志里判定
+  //       CFAR 抽签是否真的在推进；不参与任何数值计算。
+  ++decision_count_;
   if (std::isnan(one_way_antenna_gain_db)) {
     one_way_antenna_gain_db = config_.antenna.main_beam_gain_db;
   }
@@ -77,6 +80,7 @@ RirDetectionResult RirSignalDetector::Detect(const RirTargetReturn& target,
 
 RirDetectionResult RirSignalDetector::DetectResolvedCell(const RirTargetReturn& target,
                                                          const RirDetectionCellResult& cell) {
+  ++decision_count_;
   return FromCommon(cfar_.DetectResolvedCell(
       static_cast<float>(cell.echo_power_w),
       static_cast<float>(cell.processed_single_pulse_sinr_db),

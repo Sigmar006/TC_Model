@@ -939,6 +939,19 @@ double RirSession::LastRecognitionDatabaseLoadMs() const {
   return impl_ != nullptr ? impl_->controller.LastDatabaseLoadMs() : 0.0;
 }
 
+bool RirSession::GetDetectionRngDiagnostics(DetectionRngDiagnostics* out) const {
+  // 中译：仅作诊断——把"种子施加次数"与"判决次数"交给宿主诊断日志，用于自证
+  //       CFAR 抽签没有被每周期重播种冻结。不参与任何数值计算、不写验收日志。
+  // 标识：2026-10-20 选项 C（诊断）。
+  if (out == nullptr || impl_ == nullptr) {
+    return false;
+  }
+  out->applied_seed = impl_->controller.DetectionRandomSeed();
+  out->seed_apply_count = impl_->controller.DetectionSeedApplyCount();
+  out->decision_count = impl_->controller.DetectionDecisionCount();
+  return true;
+}
+
 void RirSession::SetSensorEntityId(std::uint32_t sensor_entity_id) {
   if (impl_ != nullptr) {
     impl_->SetSensorEntityId(sensor_entity_id);

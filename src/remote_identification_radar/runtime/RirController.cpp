@@ -1458,13 +1458,14 @@ void RirController::GateTrackSnapshots(const oneq::coordinate::LlaPositionDegM& 
   if (snapshots == nullptr) {
     return;
   }
-  // 中译：包络阈值——斜距上限直接取任务最大作用距离（与配置同源，避免另立一套数）；
+  // 中译：包络阈值——斜距只拦"两倍最大作用距离"这种物理上不可能是本雷达目标的量
+  //       （单倍超距已由检测准入与候选裁剪各自处理，此处不重复判，以免改变既有契约：
+  //        超距目标仍应产生一条识别输出记录，只是没有特征量测）。
   //       高度上限 3,000 km 覆盖弹道顶点（本场景真值最高约 2,100 km）并留约 40% 余量，
   //       下限取地面以下 1 km。越界即判滤波器发散，不是真实目标。
-  // 标识：B6 包络门（2026-10-20），依据 docs/review/round_analysis_2026-10-20_1006.md §4-S1。
   constexpr double kMaxTrackAltitudeM = 3000000.0;
   constexpr double kMinTrackAltitudeM = -1000.0;
-  const double max_range_m = static_cast<double>(mission_.max_range_m);
+  const double diverged_range_m = 2.0 * static_cast<double>(mission_.max_range_m);
 
   std::vector<tracking::RirTrackState> kept;
   kept.reserve(snapshots->size());
@@ -1472,7 +1473,7 @@ void RirController::GateTrackSnapshots(const oneq::coordinate::LlaPositionDegM& 
     const Eigen::Vector3f& position = track.position;
     const double slant_range_m = static_cast<double>(position.norm());
     bool outside = !std::isfinite(slant_range_m) || slant_range_m <= 0.0;
-    if (!outside && max_range_m > 0.0 && slant_range_m > max_range_m) {
+    if (!outside && diverged_range_m > 0.0 && slant_range_m > diverged_range_m) {
       outside = true;
     }
     if (!outside && has_platform_lla) {

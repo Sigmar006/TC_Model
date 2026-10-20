@@ -690,6 +690,10 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
       runtime::RirDwellPlan ext_dwell;
       ext_dwell.pointing_deg = pt;
       ext_dwell.kind = runtime::RirDwellKind::kExternalTrack;
+      // 中译：外部跟踪驻留必须带上来源目标 ID——否则验收日志只能写"外部跟踪驻留 目标ID=0"，
+      //       既无法归因到目标，也无法与库内跟踪驻留区分（此前 99% 的驻留行都是这种）。
+      // 标识：T-03（2026-10-20）；外部请求本就带 source_target_id（RirTrackRequest.h:83）。
+      ext_dwell.external_target_id = external_track_request.source_target_id;
       dwell_plan.push_back(ext_dwell);
     }
     ++external_track_sweep_index;

@@ -39,6 +39,42 @@
 
 namespace remote_identification_radar {
 namespace runtime {
+
+namespace {
+
+/**
+ * @brief CFAR 概率判决的"等效检测门限"（dB）：使 Pd = 0.5 的输入 SINR。
+ *
+ * @details 概率判决路径没有解析门限——`detected` 由 `Pd(snr, Pfa, Swerling, N)` 抽样得到；
+ *   为了让验收行能自证"判决与门限一致"，这里用二分法反解 Pd=0.5 对应的 SNR，
+ *   Pd 关于 SNR 单调，二分收敛可靠。
+ * @param[in] pfa 虚警概率（必须落在 (0,1)）。
+ * @param[in] model 起伏模型。
+ * @param[in] pulse_count 有效脉冲数（≥1）。
+ * @return 等效门限（dB）；入参非法时返回 0。
+ */
+double EquivalentCfarThresholdDb(double pfa, oneq::common::radar::SwerlingModel model,
+                                 int pulse_count) {
+  if (!(pfa > 0.0) || pfa >= 1.0) {
+    return 0.0;
+  }
+  const int pulses = std::max(1, pulse_count);
+  double low_db = -60.0;
+  double high_db = 90.0;
+  for (int iteration = 0; iteration < 80; ++iteration) {
+    const double mid_db = 0.5 * (low_db + high_db);
+    const float pd = oneq::common::radar::RadarEquations::ComputeDetectionProbability(
+        static_cast<float>(mid_db), static_cast<float>(pfa), model, pulses);
+    if (pd < 0.5f) {
+      low_db = mid_db;
+    } else {
+      high_db = mid_db;
+    }
+  }
+  return 0.5 * (low_db + high_db);
+}
+
+}  // namespace
 namespace {
 
 using oneq::logging::AppendField;
@@ -205,6 +241,11 @@ const char* DwellKindText(RirDwellKind kind) {
       return "指定";
     case RirDwellKind::kTrack:
       return "跟踪";
+    case RirDwellKind::kExternalTrack:
+      // 中译：外部跟踪驻留必须单列——此前落进 default 被当成"搜索"，第 66 项队列里
+      //       19 个外部引导波位全部显示为"搜索"，与"跟踪=19"的计数自相矛盾。
+      // 标识：T-03（2026-10-20）。
+      return "外部跟踪";
     case RirDwellKind::kSearch:
     default:
       return "搜索";
@@ -594,6 +635,38 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     echo += " 噪声功率=" + FormatSci(thermal) + "W";
     echo += " 干扰功率=" +
             FormatSci(input.has_cell ? input.cell.interference_power_w : 0.0) + "W";
+    // 中译：上面三列功率都是**处理前**单脉冲口径，单看它们无法判断"为什么还能检测"——
+    //       回波要吃 +48.6 dB 脉压增益、干扰只吃抑制。故同排补"处理后 SINR / 生效门限 /
+    //       判决"，并注明门限口径（固定 SNR 门限 与 CFAR 概率判决是两套判据）。
+    // 标识：T-01（2026-10-20）；验收判定标准第 29 项。
+    const bool fallback_gate = input.snr_fallback_gate;
+    const double gate_threshold_db =
+        fallback_gate
+            ? static_cast<double>(input.snr_fallback_gate_db)
+            : EquivalentCfarThresholdDb(input.cfar_pfa,
+                                        static_cast<oneq::common::radar::SwerlingModel>(
+                                            input.swerling_model),
+                                        static_cast<int>(pulses));
+    echo += " 处理后SINR=" + FormatF(input.snr_db, 3) + "dB";
+    echo += " 检测门限=" + FormatF(gate_threshold_db, 3) + "dB";
+    echo += std::string(" 门限口径=") + (fallback_gate ? "SNR回退" : "CFAR-Pd50");
+    echo += std::string(" 判决=") + (input.admitted ? "通过" : "拒绝");
+    // 中译：干扰重叠系数 = 落入本分辨单元的那部分 ÷ 同一批外部干扰源的**未加权**到达功率和；
+    //       该系数 ≤ 1，是"第 29 项干扰功率"与"第 30 项到达功率"之间唯一缺失的换算因子。
+    // 标识：T-02（2026-10-20）；验收判定标准第 29/30 项。
+    if (input.has_cell) {
+      double unweighted_jamming_w = 0.0;
+      for (const oneq::electromagnetics::RfIncidentLinkResult& link : input.incident_links) {
+        if (link.received_power_before_overlap_w > 0.0 &&
+            std::isfinite(link.received_power_before_overlap_w)) {
+          unweighted_jamming_w += link.received_power_before_overlap_w;
+        }
+      }
+      if (unweighted_jamming_w > 0.0) {
+        echo += " 干扰重叠系数=" +
+                FormatF(input.cell.interference_power_w / unweighted_jamming_w, 4);
+      }
+    }
     Emit(t, cycle, "回波功率计算功能测试", echo);
   }
 
@@ -816,7 +889,11 @@ void WriteRirInterferenceLinks(
   }
   for (const oneq::electromagnetics::RfIncidentLinkResult& link : external_links) {
     std::string content = "干扰源ID=" + std::to_string(link.identity.sensor_entity_id);
-    content += " 到达雷达功率=" + FormatSci(link.received_power_w) + "W";
+    // 中译：判定标准第 30 项要的是"**到达**雷达接收端"的功率，即**未乘**时频重叠的前端
+    //       功率；此前打印的是 `received_power_w`（已乘场景级重叠），导致与第 29 项的
+    //       "单元内干扰功率"口径不同、且两者不可复算。
+    // 标识：T-02（2026-10-20）。
+    content += " 到达雷达功率=" + FormatSci(link.received_power_before_overlap_w) + "W";
     RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "干扰功率计算功能测试", content);
   }
 }
@@ -1713,8 +1790,14 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
                  FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");
       }
     } else {
+      // 中译：四类驻留各写自己的名字——此前只有"指定/其它"两个分支，外部跟踪驻留被
+      //       打成"跟踪驻留"，而它的目标 ID 组装时未回填，于是出现"跟踪驻留 目标ID=0"
+      //       这种既无法归因、也无法与库内跟踪区分的行。
+      // 标识：T-03（2026-10-20）。
       const char* kind_text =
-          dwell.kind == RirDwellKind::kDesignate ? "指定驻留" : "跟踪驻留";
+          dwell.kind == RirDwellKind::kDesignate
+              ? "指定驻留"
+              : (dwell.kind == RirDwellKind::kExternalTrack ? "外部跟踪驻留" : "跟踪驻留");
       Emit(sim_time_sec, cycle, "波束扫描功能测试",
            "雷达ID=" + std::to_string(radar_id) + " 驻留种类=" + kind_text +
                " 目标ID=" + std::to_string(dwell.external_target_id));

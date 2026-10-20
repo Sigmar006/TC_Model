@@ -714,6 +714,14 @@ bool RirController::TryBuildMeasurement(
     snap.snr_db = detection.snr_db;
     snap.pd = detection.detection_prob;
     snap.detected = detection.detected;
+    // 中译：把控制器**实际**用的准入结果与口径一并带进验收行——`detected` 是 CFAR 概率
+    //       判决，而 kSnrFallback 模式下准入只看固定 6 dB 门限，两者可以不同。
+    // 标识：T-01（2026-10-20）第 29 项"处理后 SINR / 检测门限 / 判决"。
+    snap.admitted = admitted;
+    snap.snr_fallback_gate =
+        policy_.detection.gate_mode == config::RirDetectionGateMode::kSnrFallback;
+    snap.snr_fallback_gate_db = kSnrFallbackGateDb;
+    snap.swerling_model = static_cast<int>(target_return.swerling_type);
     snap.has_cell = resolved_cell;
     snap.peak_gain_dbi = hardware_.antenna.main_beam_gain_db;
     snap.bw_az_deg = beam_state.effective_beamwidth_deg.az_beamwidth_deg;

@@ -63,6 +63,15 @@ struct RirDetectionAcceptInput {
   float snr_db{0.0f};
   float pd{0.0f};
   bool detected{false};
+  /**
+   * @brief 最终准入判决（含 gate_mode 口径，T-01 2026-10-20）。
+   * @note `detected` 是 CFAR 概率判决；本字段是控制器**实际**用的准入结果
+   *       （`kSnrFallback` 下为 `snr_db >= 6.0`，不读 CFAR），两者可能不同。
+   */
+  bool admitted{false};
+  bool snr_fallback_gate{true}; /**< true = 固定 SNR 门限口径；false = CFAR 概率判决口径。 */
+  float snr_fallback_gate_db{6.0f}; /**< 固定 SNR 门限口径的门限值（dB），由控制器注入。 */
+  int swerling_model{0};        /**< 起伏模型（0=kSwerling0 … 4），算 CFAR 等效门限用。 */
   bool has_cell{false};
   float peak_gain_dbi{0.0f};
   float bw_az_deg{0.0f};

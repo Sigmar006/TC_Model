@@ -194,15 +194,22 @@ Status: analysis
 
 | 序 | 动作 | 状态 | 落地位置 |
 |---|---|---|---|
-| 2 | B6 包络门 | ✅ 已实现并部署 | `RirController::GateTrackSnapshots` + `RirTrackLifecycle::DropTrack` |
-| 3 | B7 丢失降级 | ✅ 已实现并部署 | `WriteRirTrackAndId` 对 `kLost` 提前返回，只写 `状态=丢失` |
+| 2 | B6 包络门 | ✅ 已实现并部署 | `RirController::GateTrackSnapshots` + `RirTrackLifecycle::DropTrack` || 3 | B7 丢失降级 | ✅ 已实现并部署 | `WriteRirTrackAndId` 对 `kLost` 提前返回，只写 `状态=丢失` |
 | 4 | 航迹去重 | ✅ 已实现并部署 | 同目标保留"确认优先 → 不确定度小 → 命中多"的一条 |
 | 1 | 重定扫描窗 | ✅ 已改（配置）：`scan_center az 147.5`、`scan_window az ±7.5 / el 5–55`（绝对 az 140–155） | 配置文件（部署副本 + 源副本已同步） |
 | 5 | 13 个零行项确认 | ⏳ 未开始（诊断） | — |
 | 6 | T-01~T-04 日志口径 | ⏳ 未开始 | `todo_item29_power_evidence_2026-10-19.md` |
 
-包络门参数：斜距上限 = `mission.max_range_m`（9,000 km，与配置同源）；高度上限 3,000 km
-（本场景真值最高约 2,100 km，留约 40% 余量）；高度下限 −1 km。
+包络门参数：~~斜距上限 = `mission.max_range_m`（9,000 km，与配置同源）~~ →
+**斜距上限 = 2 × `mission.max_range_m`**（单倍超距已由检测准入与候选裁剪各自处理，
+包络门只拦"物理上不可能是本雷达目标"的状态，例如 12,380 km）；高度上限 3,000 km
+（本场景真值最高约 2,100 km，留约 40% 余量）；高度下限 −1 km；非有限状态直接丢弃。
+
+> ⚠ **构建陷阱（2026-10-20 实测）**：RIR 运行期分属**两个工程**——
+> `RirTrackLifecycle.cpp` 在 `rir_engine.vcxproj`，而 `RirController.cpp`/`RirAcceptanceRecords.cpp`
+> 在 **`rir_core.vcxproj`**。只重编 `rir_engine` 后再编 `1q_lib`，会把**旧对象**打进聚合库，
+> 验收日志描述的就不是新代码（本轮曾因此误判"B7 已生效"）。改动 RIR 运行期后必须
+> **两个工程都重编**，并核对聚合库/ DLL 里是否出现新字面量。
 
 **验证方式**：重跑一轮（10,000+ 周期），预期第 65 项 `Up` 收敛到 ±2,300 km 内、
 同一目标每周期航迹数 = 1、`丢失` 行不再带定位/运动参数。

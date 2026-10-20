@@ -1,6 +1,7 @@
 # 第 48 项「波束扫描功能测试」输出改造方案（2026-10-20）
 
-Status: proposal（**待确认后实施**，不含代码改动）
+Status: **已实施**（2026-10-20，1q `35e8d8ba` / BJ `0cde9a1`）——评审结论：R1 文档同步已做、
+R2 按转台朝向、R4 可反算量不落日志（实施时只回显 8 项静态配置）
 范围：`src/remote_identification_radar/runtime/RirAcceptanceRecords.{h,cpp}`、`src/remote_identification_radar/session/RirSession.cpp`
 依据：`docs/review/functional_acceptance_test_criteria_ocr.md` 第 48 项、
 `include/1q/foundation/scan_schedule_types.h`、`include/1q/remote_identification_radar/config/RirMissionConfig.h`

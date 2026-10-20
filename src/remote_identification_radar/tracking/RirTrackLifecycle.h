@@ -103,6 +103,14 @@ class RirTrackLifecycle {
   /** @brief 查询航迹；不存在返回 nullptr。 */
   const RirTrackState* FindTrack(std::uint64_t association_key) const;
 
+  /**
+   * @brief 丢弃航迹（物理包络越界等不可信情形）：出表、归还对象池、清除 IMM 运行态。
+   * @param[in] association_key 关联键。
+   * @return 航迹存在并被丢弃返回 true；不存在返回 false。
+   * @note 与「失配转 lost」不同：不保留 lost 观察期，之后不再出现在快照中。
+   */
+  bool DropTrack(std::uint64_t association_key);
+
   /** @brief 当前未回收航迹数量。 */
   std::size_t ActiveTrackCount() const { return tracks_.size(); }
 

@@ -262,6 +262,19 @@ RirTrackSnapshotList RirTrackLifecycle::BuildTrackSnapshots() const {
   return snapshots;
 }
 
+bool RirTrackLifecycle::DropTrack(std::uint64_t association_key) {
+  const auto track_it = tracks_.find(association_key);
+  if (track_it == tracks_.end()) {
+    return false;
+  }
+  // 中译：连同 IMM 运行态一起清除——否则下一拍重建航迹时会继承发散的多模型状态。
+  // 标识：B6 包络门丢弃路径（2026-10-20）。
+  imm_filters_by_key_.erase(association_key);
+  RecycleTrack(track_it->second);
+  tracks_.erase(track_it);
+  return true;
+}
+
 std::vector<RirTrackSeed> RirTrackLifecycle::BuildAssociationSeeds() const {
   std::vector<RirTrackSeed> seeds;
   seeds.reserve(tracks_.size());

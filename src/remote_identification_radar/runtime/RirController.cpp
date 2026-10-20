@@ -1212,6 +1212,10 @@ void RirController::RunCycle(const session::RirCycleInput& input,
 
     track_snapshots = lifecycle_->BuildTrackSnapshots();
 
+    // 中译：输出前先过包络门与去重——发散航迹丢弃、同一目标只留最优一条。
+    // 标识：B6 包络门 + 航迹去重（2026-10-20）。
+    GateTrackSnapshots(platform_lla, has_platform_lla, &track_snapshots);
+
     // 实际有效目标最大斜距：本周期持航迹目标的最大输入几何斜距（给外部判断实际
     // 探测距离；仅统计本周期入检测候选且成航迹的目标，出扇区目标不计入）。
     for (const tracking::RirTrackState& track : track_snapshots) {
@@ -1448,8 +1452,93 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       track_snapshots.size());
 }
 
-bool RirController::IsTargetRecognized(std::uint64_t external_target_id) const {
-  if (external_target_id == 0U) {
+void RirController::GateTrackSnapshots(const oneq::coordinate::LlaPositionDegM& platform_lla,
+                                       bool has_platform_lla,
+                                       std::vector<tracking::RirTrackState>* snapshots) {
+  if (snapshots == nullptr) {
+    return;
+  }
+  // 中译：包络阈值——斜距上限直接取任务最大作用距离（与配置同源，避免另立一套数）；
+  //       高度上限 3,000 km 覆盖弹道顶点（本场景真值最高约 2,100 km）并留约 40% 余量，
+  //       下限取地面以下 1 km。越界即判滤波器发散，不是真实目标。
+  // 标识：B6 包络门（2026-10-20），依据 docs/review/round_analysis_2026-10-20_1006.md §4-S1。
+  constexpr double kMaxTrackAltitudeM = 3000000.0;
+  constexpr double kMinTrackAltitudeM = -1000.0;
+  const double max_range_m = static_cast<double>(mission_.max_range_m);
+
+  std::vector<tracking::RirTrackState> kept;
+  kept.reserve(snapshots->size());
+  for (const tracking::RirTrackState& track : *snapshots) {
+    const Eigen::Vector3f& position = track.position;
+    const double slant_range_m = static_cast<double>(position.norm());
+    bool outside = !std::isfinite(slant_range_m) || slant_range_m <= 0.0;
+    if (!outside && max_range_m > 0.0 && slant_range_m > max_range_m) {
+      outside = true;
+    }
+    if (!outside && has_platform_lla) {
+      const oneq::coordinate::EnuPositionM enu(position.x(), position.y(), position.z());
+      oneq::coordinate::EcefPositionM ecef;
+      oneq::coordinate::LlaPositionDegM lla;
+      if (!oneq::coordinate::TryEnuToEcef(enu, platform_lla, &ecef) ||
+          !oneq::coordinate::TryEcefToLla(ecef, &lla) || !std::isfinite(lla.altitude_m)) {
+        outside = true;
+      } else if (lla.altitude_m > kMaxTrackAltitudeM || lla.altitude_m < kMinTrackAltitudeM) {
+        outside = true;
+      }
+    }
+    if (outside) {
+      // 中译：发散航迹直接丢弃（连同 IMM 运行态），而不是标记丢失——否则发散状态会在
+      //       后续周期继续被外推输出，日志里就会出现 ±8,000 km 的"航迹高度"。
+      // 标识：B6 丢弃路径。
+      lifecycle_->DropTrack(track.association_key);
+      continue;
+    }
+    kept.push_back(track);
+  }
+
+  // 中译：同一外部目标只保留最优一条航迹——本轮实测同一目标最多堆 5 条，全部重复输出。
+  //       优先级：已确认 > 待确认 > 丢失；同级比位置不确定度（小者优先），再比命中次数。
+  //       未带外部目标标识（id=0）的航迹不参与去重。
+  // 标识：航迹去重（2026-10-20），依据同一份分析的 §4-S1#1。
+  std::unordered_map<std::uint64_t, std::size_t> best_by_target;
+  std::vector<bool> duplicated(kept.size(), false);
+  for (std::size_t index = 0U; index < kept.size(); ++index) {
+    const std::uint64_t target_id = kept[index].external_target_id;
+    if (target_id == 0U) {
+      continue;
+    }
+    const auto inserted = best_by_target.emplace(target_id, index);
+    if (inserted.second) {
+      continue;
+    }
+    const std::size_t previous = inserted.first->second;
+    const tracking::RirTrackState& candidate = kept[index];
+    const tracking::RirTrackState& incumbent = kept[previous];
+    const bool candidate_wins =
+        (candidate.status < incumbent.status) ||
+        (candidate.status == incumbent.status &&
+         candidate.EstimationUncertaintyTrace() < incumbent.EstimationUncertaintyTrace()) ||
+        (candidate.status == incumbent.status &&
+         candidate.EstimationUncertaintyTrace() == incumbent.EstimationUncertaintyTrace() &&
+         candidate.hit_count > incumbent.hit_count);
+    if (candidate_wins) {
+      duplicated[previous] = true;
+      inserted.first->second = index;
+    } else {
+      duplicated[index] = true;
+    }
+  }
+
+  snapshots->clear();
+  snapshots->reserve(kept.size());
+  for (std::size_t index = 0U; index < kept.size(); ++index) {
+    if (!duplicated[index]) {
+      snapshots->push_back(kept[index]);
+    }
+  }
+}
+
+bool RirController::IsTargetRecognized(std::uint64_t external_target_id) const {  if (external_target_id == 0U) {
     return false;
   }
   for (const tracking::RirTrackState& track : last_track_snapshots_) {

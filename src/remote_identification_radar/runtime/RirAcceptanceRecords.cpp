@@ -1206,6 +1206,20 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   const std::string track_target_id =
       track_id + " 目标ID=" + std::to_string(track.external_target_id);
 
+  // 中译：航迹已判丢失时只报状态，不再输出定位/运动/协方差/识别——这些数值是发散外推
+  //       或纯惯性保持，当成产品输出会误导判读（本轮实测丢失航迹 ENU 上分量可达 +8,390 km，
+  //       而真值只有约 2,100 km）。
+  // 标识：B7 丢失降级（2026-10-20），依据 docs/review/round_analysis_2026-10-20_1006.md §4-S1#3。
+  if (track.status == tracking::RirTrackStatus::kLost) {
+    const std::string lost_state = track_target_id + " 状态=丢失";
+    Emit(sim_time_sec, cycle, "对典型目标/再入目标进行跟踪功能测试", lost_state);
+    Emit(sim_time_sec, cycle, "多目标跟踪功能测试", lost_state);
+    // 内部接口第 73 项保持一行对账（只带状态，不重复发散状态量）。
+    RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "雷达航迹与特征识别交互接口测试",
+                                track_target_id + " 航迹状态=丢失");
+    return;
+  }
+
   // 内部接口第73项：航迹后验与本周期特征快照按关联键对账。
   std::string interface_recognition = track_target_id;
   interface_recognition += " 航迹状态=" + std::string(TrackStatusText(track.status));

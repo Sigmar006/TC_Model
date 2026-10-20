@@ -220,6 +220,24 @@ class RirController {
   dwell::RirDetectorConfig MakeDetectorConfig() const;
 
   /**
+   * @brief 航迹输出门：物理包络过滤 + 同目标去重（B6，2026-10-20）。
+   *
+   * 两步处理只作用于**输出用**的航迹快照（不改变滤波器内部状态，越界航迹由
+   * `RirTrackLifecycle::DropTrack` 真正丢弃）：
+   * 1. 包络门：斜距超过任务最大作用距离、高度超过弹道顶点余量、高度低于地面或
+   *    非有限量 ⇒ 判为滤波器发散，丢弃该航迹并从快照中移除；
+   * 2. 去重：同一 `external_target_id` 只保留最优一条（确认优先 → 位置不确定度小
+   *    → 命中次数多），其余只留在滤波器内部，不再重复输出。
+   *
+   * @param[in] platform_lla 雷达站 LLA 锚点（ENU→ECEF 必需）。
+   * @param[in] has_platform_lla 锚点是否可用；不可用则跳过高度判定、仅按斜距门。
+   * @param[in,out] snapshots 本周期输出用航迹快照（会被就地裁剪）。
+   */
+  void GateTrackSnapshots(const oneq::coordinate::LlaPositionDegM& platform_lla,
+                          bool has_platform_lla,
+                          std::vector<tracking::RirTrackState>* snapshots);
+
+  /**
    * @brief 解析本周期 RF 前端（自发射 + 可选外部 scene）与逐驻留发射记录。
    * @note 接收侧（饱和/入射链/波形/身份）按计划首驻留指向周期级求解一次
    *       （聚合语义）；发射记录逐驻留构建（首条复用周期级自发射，其余驻留

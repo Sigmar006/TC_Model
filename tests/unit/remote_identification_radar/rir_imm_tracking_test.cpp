@@ -72,6 +72,27 @@ TEST(RirImmTrackingTest, DisabledLifecycleKeepsCvPathWithoutImmState) {
   EXPECT_EQ(snapshots[0].status, RirTrackStatus::kConfirmed);
 }
 
+/// @brief B6 包络门的数据侧契约：航迹可被整体丢弃（出表、快照消失、重复丢弃返回 false），
+///        丢弃后同一关联键重建航迹时不带回旧状态。
+TEST(RirImmTrackingTest, DropTrackRemovesTrackAndAllowsCleanRebuild) {
+  RirTrackLifecycle lifecycle(MakeImmConfig());
+
+  lifecycle.Update(MakeCycle(1U), {MakeMeasurement(11U, 1.0e5f, 100.0f, false)});
+  ASSERT_EQ(lifecycle.ActiveTrackCount(), 1U);
+  ASSERT_EQ(lifecycle.BuildTrackSnapshots().size(), 1U);
+
+  EXPECT_TRUE(lifecycle.DropTrack(11U));
+  EXPECT_EQ(lifecycle.ActiveTrackCount(), 0U);
+  EXPECT_TRUE(lifecycle.BuildTrackSnapshots().empty());
+  EXPECT_EQ(lifecycle.FindTrack(11U), nullptr);
+  EXPECT_FALSE(lifecycle.DropTrack(11U)) << "重复丢弃同一关联键必须返回 false";
+
+  lifecycle.Update(MakeCycle(2U), {MakeMeasurement(11U, 5.0e5f, 200.0f, false)});
+  const RirTrackSnapshotList rebuilt = lifecycle.BuildTrackSnapshots();
+  ASSERT_EQ(rebuilt.size(), 1U);
+  EXPECT_NEAR(rebuilt[0].position.x(), 5.0e5f, 1.0e3f);
+}
+
 /// @brief confirmed 命中激活 IMM：运行态按关联键建立，权重归一；
 ///        失配周期对 confirmed 航迹执行 IMM 仅预测（位置按速度推进）。
 TEST(RirImmTrackingTest, ConfirmedMatchBuildsImmAndMissPredictsForward) {

@@ -756,6 +756,11 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   }
   EmitOrNone(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测门限=", has_threshold,
              has_threshold ? FormatF(threshold, 6) : std::string());
+  // 中译：补"实际计算得出的信噪比"——门限与结果之间的判决依据此前缺失，读日志只能看到
+  //       "门限 13.8 / 结果 否"，无法判断差多少。该 SNR 就是 CFAR **实际消费**的那个值：
+  //       cell 路径为处理后单脉冲 SINR，回退路径为雷达方程算出的 SNR。
+  // 标识：2026-10-20 用户要求第 36 项补信噪比。
+  Emit(t, cycle, "恒虚警检测功能测试", id_sp + "信噪比=" + FormatF(input.snr_db, 3) + "dB");
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测结果=" + YesNo(input.detected));
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测概率=" + FormatF(input.pd, 5));
   // 2026-09-28 新增要求：本项还须写「检测概率=90%的最大探测距离」及所依据的 RCS。

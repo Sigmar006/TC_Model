@@ -1461,9 +1461,12 @@ void RirController::GateTrackSnapshots(const oneq::coordinate::LlaPositionDegM& 
   // 中译：包络阈值——斜距只拦"两倍最大作用距离"这种物理上不可能是本雷达目标的量
   //       （单倍超距已由检测准入与候选裁剪各自处理，此处不重复判，以免改变既有契约：
   //        超距目标仍应产生一条识别输出记录，只是没有特征量测）。
-  //       高度上限 3,000 km 覆盖弹道顶点（本场景真值最高约 2,100 km）并留约 40% 余量，
+  //       高度上限取 4,500 km：2026-10-20 15:37 轮实测本场景弹道**真值顶点 2,882 km**、
+  //       航迹最高 2,960 km，原 3,000 km 仅余 40 km（1.3%），正常超调就会被误判发散；
+  //       提到 4,500 km（约 1.5× 顶点）留足余量，仍能拦住 ±8,000 km 级发散。
   //       下限取地面以下 1 km。越界即判滤波器发散，不是真实目标。
-  constexpr double kMaxTrackAltitudeM = 3000000.0;
+  // 标识：B6 包络门（2026-10-20），高度上限按实测顶点修正。
+  constexpr double kMaxTrackAltitudeM = 4500000.0;
   constexpr double kMinTrackAltitudeM = -1000.0;
   const double diverged_range_m = 2.0 * static_cast<double>(mission_.max_range_m);
 

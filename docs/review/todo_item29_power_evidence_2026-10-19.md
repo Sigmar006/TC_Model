@@ -16,9 +16,11 @@ Status: todo（未实施）
 | T-02 | 第 30 项改打印**未加重叠**的到达功率；第 29 项补**重叠系数** | 30 / 29 | `RirAcceptanceRecords.cpp` | **P0** | 否 |
 | T-03 | 外部跟踪驻留回填 `external_target_id`，并独立标签 | 48（兼 37/66） | `RirSession.cpp`、`RirAcceptanceRecords.cpp` | P1 | 否 |
 | T-04 | 第 37/66 项计数拆成 搜索/指定/**外部跟踪**/库内跟踪 | 37 / 66 | `RirController.cpp` | P1 | 否 |
+| T-08 | 相干干扰建模（S1 参数+账本 / S2 假目标 / S3 对抗） | 30 / 35 / 63 | 见 `coherent_jamming_design_2026-10-20.md` | P2（**技术需求未要求 → 扩展**） | **是** |
 
-> 四项都只改"写什么"，不改"算什么"；完成后必须重跑一轮并对比
-> `docs/review/baseline_round_2026-10-19_1931.md` 的基线，只允许出现预期的差异。
+> 前四项只改"写什么"，不改"算什么"；完成后必须重跑一轮并对比基线，只允许出现预期的差异。
+> **T-08 改物理量**，与 T-01 同批改 `DetectionCellResolver` 预算式最省事（一次改动一次回归），
+> 但必须保证 `coherent_jamming_enabled=false` 时与现状逐位一致。
 
 ---
 

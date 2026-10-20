@@ -217,6 +217,46 @@ const char* DwellKindText(RirDwellKind kind) {
   }
 }
 
+/**
+ * @brief 扫描起始象限的日志文本：`枚举名(数值)`。
+ *
+ * @details 判定标准第 48 项要求记录"扫描起始象限 KLeftTop"这类**配置输入**；用
+ *   `名称(数值)` 同时满足人读与机器解析（外部验证程序可按数值比对）。
+ *   枚举定义见 `include/1q/foundation/scan_schedule_types.h:17-22`。
+ * @param[in] position 起始象限。
+ * @return 形如 `kLeftTop(0)` 的静态字符串；未知值返回 `未知(-1)`。
+ */
+std::string ScanStartPositionText(oneq::foundation::ScanStartPosition position) {
+  switch (position) {
+    case oneq::foundation::ScanStartPosition::kLeftTop:
+      return "kLeftTop(0)";
+    case oneq::foundation::ScanStartPosition::kRightTop:
+      return "kRightTop(1)";
+    case oneq::foundation::ScanStartPosition::kRightBottom:
+      return "kRightBottom(2)";
+    case oneq::foundation::ScanStartPosition::kLeftBottom:
+      return "kLeftBottom(3)";
+    default:
+      return "未知(-1)";
+  }
+}
+
+/**
+ * @brief 二维扫描推进顺序的日志文本：`枚举名(数值)`（见 `scan_schedule_types.h:27-29`）。
+ * @param[in] sequence 推进顺序。
+ * @return 形如 `kAzimuthFirst(0)` 的静态字符串；未知值返回 `未知(-1)`。
+ */
+std::string ScanSequenceText(oneq::foundation::ScanSequence sequence) {
+  switch (sequence) {
+    case oneq::foundation::ScanSequence::kAzimuthFirst:
+      return "kAzimuthFirst(0)";
+    case oneq::foundation::ScanSequence::kElevationFirst:
+      return "kElevationFirst(1)";
+    default:
+      return "未知(-1)";
+  }
+}
+
 double HeadingDeg(double ve, double vn) {
   return oneq::common::numerics::RadToDeg(std::atan2(vn, ve));
 }
@@ -1724,17 +1764,17 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
                  FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");
       }
     } else {
-      // 中译：四类驻留各写自己的名字——此前只有"指定/其它"两个分支，外部跟踪驻留被
-      //       打成"跟踪驻留"，而它的目标 ID 组装时未回填，于是出现"跟踪驻留 目标ID=0"
-      //       这种既无法归因、也无法与库内跟踪区分的行。
-      // 标识：T-03（2026-10-20）。
+      // 中译：四类驻留各写自己的名字；目标 ID 已按用户 2026-10-20 要求删除——外部引导
+      //       到位不等于探测到目标，驻留行只回答"扫了哪个方向"，目标归因由第 66 项
+      //       波束任务队列（种类@(az,el)deg/目标ID）承担。
+      // 标识：第 48 项字段改造。
       const char* kind_text =
           dwell.kind == RirDwellKind::kDesignate
               ? "指定驻留"
               : (dwell.kind == RirDwellKind::kExternalTrack ? "外部跟踪驻留" : "跟踪驻留");
       Emit(sim_time_sec, cycle, "波束扫描功能测试",
-           "雷达ID=" + std::to_string(radar_id) + " 驻留种类=" + kind_text +
-               " 目标ID=" + std::to_string(dwell.external_target_id));
+           "雷达ID=" + std::to_string(radar_id) + " 驻留种类=" + kind_text + " 指向=" +
+               FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");
     }
   }
 }
@@ -1814,7 +1854,9 @@ bool TryResolveAzimuthSpanDeg(const std::vector<float>& azimuths_deg, double* ce
 }
 
 void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                              const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern) {
+                              const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern,
+                              const config::RirMissionConfig& mission,
+                              const config::RirOrientationConfig& orientation) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -1850,6 +1892,23 @@ void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::u
   content += " 方位扫描范围=" + FormatF(az_continuous_min_deg, 3) + "/" +
              FormatF(az_continuous_max_deg, 3) + "°";
   content += " 俯仰扫描范围=" + FormatF(el_min, 3) + "/" + FormatF(el_max, 3) + "°";
+  // 中译：追加扫描配置回显（用户 2026-10-20 要求）——阵面朝向、可扫描体积、任务子窗、
+  //       起始象限、推进顺序、波位步长系数。静态配置只在此行回显一次，不逐驻留重复；
+  //       波位总数/间距/单帧时间可由 Rir_scan_pattern.csv 反算，故不落日志。
+  // 标识：第 48 项配置回显。
+  content += " 阵面方位朝向=" + FormatF(mission.scan_center_deg.az_deg, 3) + "°";
+  content += " 阵面俯仰朝向=" + FormatF(mission.scan_center_deg.el_deg, 3) + "°";
+  content += " 可扫描方位范围=" + FormatF(orientation.az_min_deg, 3) + "/" +
+             FormatF(orientation.az_max_deg, 3) + "°(相对朝向)";
+  content += " 可扫描俯仰范围=" + FormatF(orientation.el_min_deg, 3) + "/" +
+             FormatF(orientation.el_max_deg, 3) + "°(绝对)";
+  content += " 任务扫描子窗=az[" + FormatF(mission.scan_window_deg.az_min_deg, 3) + "," +
+             FormatF(mission.scan_window_deg.az_max_deg, 3) + "]el[" +
+             FormatF(mission.scan_window_deg.el_min_deg, 3) + "," +
+             FormatF(mission.scan_window_deg.el_max_deg, 3) + "]°";
+  content += " 扫描起始象限=" + ScanStartPositionText(mission.scan_start_position);
+  content += " 二维扫描推进顺序=" + ScanSequenceText(mission.scan_sequence);
+  content += " 波位步长系数=" + FormatF(mission.step_scale, 3);
   Emit(sim_time_sec, cycle, "波束扫描功能测试", content);
 }
 

@@ -14,6 +14,7 @@
 #include "1q/coordinate/types.h"
 #include "1q/remote_identification_radar/config/RirHardwareConfig.h"
 #include "1q/remote_identification_radar/config/RirMissionConfig.h"
+#include "1q/remote_identification_radar/config/RirOrientationConfig.h"
 #include "1q/remote_identification_radar/config/RirPolicyConfig.h"
 #include "1q/remote_identification_radar/session/RirOutputTypes.h"
 #include "1q/remote_identification_radar/session/RirSceneTypes.h"
@@ -268,13 +269,19 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
                        const std::vector<RirDwellPlan>& dwell_plan);
 
 /**
- * @brief 验收判定标准 第48项：波束扫描范围摘要（方位/俯仰扫描上下限）。
+ * @brief 验收判定标准 第48项：波束扫描范围摘要（扫描上下限 + 扫描配置回显）。
  *
  * 与 `TryExportRirScanPatternCsv` 同源调用（波位表生成处），按实际波位表求方位/俯仰
  * 最小/最大值；空表不写该行（判定字段无有效值）。
+ *
+ * 2026-10-20 追加配置回显（用户要求）：阵面方位/俯仰朝向、可扫描体积、任务扫描子窗、
+ * 扫描起始象限、二维扫描推进顺序、波位步长系数。**静态配置只在本行回显一次**，
+ * 不逐驻留重复；波位总数/间距/单帧扫描时间可由 `Rir_scan_pattern.csv` 反算，故不落日志。
  */
 void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                              const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern);
+                              const std::vector<oneq::common::radar::AzimuthElevationDeg>& pattern,
+                              const config::RirMissionConfig& mission,
+                              const config::RirOrientationConfig& orientation);
 
 /**
  * @brief 导出方向图增益 CSV（列：`az_off_deg,el_off_deg,gain_dbi`）。

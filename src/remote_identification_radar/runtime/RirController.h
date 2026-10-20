@@ -250,6 +250,14 @@ class RirController {
   void ResolveEnvironment(float* propagation_loss_db) const;
 
   /**
+   * @brief 仅在种子**真正变化**时重设检测/量测随机数发生器（2026-10-20）。
+   *
+   * @details 无条件重设会让每周期第一次抽签恒为同一值（CFAR 概率判决退化为固定门限）。
+   *   本函数记住"已施加的种子"，同一 seed 连续下发时保持发生器状态自然推进。
+   */
+  void ApplyDetectionSeedIfChanged();
+
+  /**
    * @brief 逐目标主瓣地杂波等效噪声功率（植被开启时物理求解，关闭恒 0）。
    * @param[in] carrier_hz 周期有效载频（规划频率优先，回退发射机频率）。
    * @param[in] bandwidth_hz 匹配滤波带宽（决定杂波距离单元 c/(2B)）。
@@ -302,6 +310,16 @@ class RirController {
   bool recognition_mode_active_{false};
   float sim_time_sec_{0.0f};
   std::uint32_t detection_random_seed_{42U};
+  /**
+   * @brief 已实际施加到检测/量测随机数发生器的种子（2026-10-20）。
+   *
+   * @details 此前 `UpdateRuntime`/`SetHardware` 无条件重设种子，而宿主每周期下发
+   *   运行时补丁 ⇒ 检测链的 CFAR 抽签**每周期被重置到同一个值**，概率判决退化为
+   *   `Pd >= 首抽值`（实测首抽 ≈ 0.0105，于是 1,334 条"统计检测结果"全是"是"）。
+   *   改为只有种子真正变化时才重设，发生器状态随之自然推进。
+   */
+  std::uint32_t applied_detection_seed_{42U};
+  bool detection_seed_applied_{false};
 
   std::unique_ptr<dwell::RirSignalDetector> detector_{};
   tracking::RirTrackAssociator associator_{};

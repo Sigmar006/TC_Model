@@ -228,8 +228,24 @@ void RirController::SetHardware(const config::RirHardwareConfig& hardware) {
   } else {
     detector_->UpdateConfig(MakeDetectorConfig());
   }
-  detector_->SetRandomSeed(detection_random_seed_);
+  ApplyDetectionSeedIfChanged();
+}
+
+void RirController::ApplyDetectionSeedIfChanged() {
+  // 中译：只有种子真正变化才重设随机数发生器。此前无条件重设，而宿主每周期都会下发
+  //       运行时补丁触发 `UpdateRuntime`，于是 CFAR 每周期第一次抽签恒为同一个值——
+  //       概率判决退化成 "Pd >= 首抽值"（实测首抽约 0.0105，1,334 条结果全是"是"），
+  //       量测噪声也随之每周期重播同一序列。
+  // 标识：2026-10-20 CFAR 抽签冻结修复。
+  if (detection_seed_applied_ && applied_detection_seed_ == detection_random_seed_) {
+    return;
+  }
+  if (detector_ != nullptr) {
+    detector_->SetRandomSeed(detection_random_seed_);
+  }
   measurement_rng_.seed(detection_random_seed_);
+  applied_detection_seed_ = detection_random_seed_;
+  detection_seed_applied_ = true;
 }
 
 void RirController::SetSensorEntityId(std::uint32_t sensor_entity_id) {
@@ -290,8 +306,7 @@ void RirController::UpdateRuntime(const config::RirMissionConfig& mission,
   } else {
     detector_->UpdateConfig(MakeDetectorConfig());
   }
-  detector_->SetRandomSeed(detection_random_seed_);
-  measurement_rng_.seed(detection_random_seed_);
+  ApplyDetectionSeedIfChanged();
 
   // 数据库按需加载：路径变化且已启用时重新加载；失败保持原库（识别降级 kDisabled）。
   if (policy_.recognition.enabled && !policy_.recognition.database_path.empty() &&

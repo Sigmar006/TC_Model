@@ -77,10 +77,19 @@ class RirSignalDetector {
    */
   std::uint64_t DecisionCount() const { return decision_count_; }
 
+  /**
+   * @brief 累计判为"未检测"（`detected == false`）的次数（2026-10-20 诊断用）。
+   *
+   * @details 与 `DecisionCount()` 配对：若判决次数在增长而本计数恒 0，说明抽签值始终
+   *   小于检测概率（发生器未推进），而不是"日志只记了通过项"。
+   */
+  std::uint64_t FalseDecisionCount() const { return false_decision_count_; }
+
  private:
   RirDetectorConfig config_;
   oneq::common::radar::StatisticalCfarDetector cfar_;
   std::uint64_t decision_count_{0U};
+  std::uint64_t false_decision_count_{0U};
 };
 
 }  // namespace dwell

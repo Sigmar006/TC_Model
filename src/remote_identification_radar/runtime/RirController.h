@@ -204,6 +204,11 @@ class RirController {
     return detector_ != nullptr ? detector_->DecisionCount() : 0U;
   }
 
+  /** @brief 判为"未检测"的累计次数（2026-10-20 诊断用）。 */
+  std::uint64_t DetectionFalseDecisionCount() const {
+    return detector_ != nullptr ? detector_->FalseDecisionCount() : 0U;
+  }
+
   /** @brief 最近一次识别库加载耗时（毫秒）；未加载过为 0。 */
   double LastDatabaseLoadMs() const { return last_database_load_ms_; }
 

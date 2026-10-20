@@ -114,6 +114,7 @@ class ONEQ_API RirSession {
     std::uint32_t applied_seed{0U};      /**< 当前生效的检测随机种子。 */
     std::uint32_t seed_apply_count{0U};  /**< 运行至今实际调用 SetRandomSeed 的次数。 */
     std::uint64_t decision_count{0U};    /**< 运行至今进入检测判决流程的次数。 */
+    std::uint64_t false_decision_count{0U}; /**< 其中判为"未检测"的次数。 */
   };
 
   /**

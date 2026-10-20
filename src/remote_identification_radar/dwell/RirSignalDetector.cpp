@@ -73,18 +73,26 @@ RirDetectionResult RirSignalDetector::Detect(const RirTargetReturn& target,
       config_.transmitter);
   echo_power_dbw -= config_.receiver.receive_loss_db;
 
-  return FromCommon(cfar_.DetectFromEchoBudget(echo_power_dbw, env.clutter_noise_w, env.jam_noise_w,
-                                               ToCommonSwerling(target.swerling_type),
-                                               pulse_count));
+  RirDetectionResult result = FromCommon(cfar_.DetectFromEchoBudget(
+      echo_power_dbw, env.clutter_noise_w, env.jam_noise_w, ToCommonSwerling(target.swerling_type),
+      pulse_count));
+  if (!result.detected) {
+    ++false_decision_count_;
+  }
+  return result;
 }
 
 RirDetectionResult RirSignalDetector::DetectResolvedCell(const RirTargetReturn& target,
                                                          const RirDetectionCellResult& cell) {
   ++decision_count_;
-  return FromCommon(cfar_.DetectResolvedCell(
+  RirDetectionResult result = FromCommon(cfar_.DetectResolvedCell(
       static_cast<float>(cell.echo_power_w),
       static_cast<float>(cell.processed_single_pulse_sinr_db),
       ToCommonSwerling(target.swerling_type), static_cast<int>(cell.effective_pulse_count)));
+  if (!result.detected) {
+    ++false_decision_count_;
+  }
+  return result;
 }
 
 void RirSignalDetector::SetRandomSeed(unsigned int seed) { cfar_.SetRandomSeed(seed); }

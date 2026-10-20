@@ -949,6 +949,7 @@ bool RirSession::GetDetectionRngDiagnostics(DetectionRngDiagnostics* out) const 
   out->applied_seed = impl_->controller.DetectionRandomSeed();
   out->seed_apply_count = impl_->controller.DetectionSeedApplyCount();
   out->decision_count = impl_->controller.DetectionDecisionCount();
+  out->false_decision_count = impl_->controller.DetectionFalseDecisionCount();
   return true;
 }
 

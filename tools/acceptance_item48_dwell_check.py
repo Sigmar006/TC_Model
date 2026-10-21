@@ -46,7 +46,10 @@ RE_SEARCH_INDEX = re.compile(r"波位序号=(\d+)")
 RE_LEGACY_INDEX = re.compile(r"本周期序号=(\d+)")
 RE_DECLARED_COUNT = re.compile(r"本周期搜索驻留数=(\d+)")
 RE_DWELL_KIND = re.compile(r"驻留种类=(\S+)")
-RE_SCHEDULE = re.compile(r"扫描调度信息=搜索=(\d+) 指定=(\d+) 跟踪=(\d+)")
+# 2026-10-21 起第 37 项把"跟踪"拆成"外部跟踪 / 库内跟踪"（T-04）；旧格式仍只有"跟踪"。
+RE_SCHEDULE_NEW = re.compile(
+    r"扫描调度信息=搜索=(\d+) 指定=(\d+) 外部跟踪=(\d+) 库内跟踪=(\d+)")
+RE_SCHEDULE_OLD = re.compile(r"扫描调度信息=搜索=(\d+) 指定=(\d+) 跟踪=(\d+)")
 
 KIND_DESIGNATE = "指定驻留"
 KIND_EXTERNAL = "外部跟踪驻留"
@@ -108,13 +111,27 @@ def parse_round(log_path):
         if not match:
           continue
         cycle = int(match.group(1))
-        schedule_match = RE_SCHEDULE.search(line)
+        schedule_match = RE_SCHEDULE_NEW.search(line)
         if schedule_match:
-          schedule[cycle] = (
-              int(schedule_match.group(1)),
-              int(schedule_match.group(2)),
-              int(schedule_match.group(3)),
-          )
+          external = int(schedule_match.group(3))
+          internal = int(schedule_match.group(4))
+          schedule[cycle] = {
+              "search": int(schedule_match.group(1)),
+              "designate": int(schedule_match.group(2)),
+              "external": external,
+              "internal": internal,
+              "track": external + internal,
+          }
+          continue
+        schedule_match = RE_SCHEDULE_OLD.search(line)
+        if schedule_match:
+          schedule[cycle] = {
+              "search": int(schedule_match.group(1)),
+              "designate": int(schedule_match.group(2)),
+              "external": None,
+              "internal": None,
+              "track": int(schedule_match.group(3)),
+          }
   return {
       "lines": total_lines,
       "encoding": encoding,
@@ -188,7 +205,7 @@ def main(argv):
   search_mismatch = []
   for cycle in cycles:
     have = searches.get(cycle, 0)
-    want = schedule[cycle][0]
+    want = schedule[cycle]["search"]
     if have != want:
       search_mismatch.append((cycle, have, want))
 
@@ -196,7 +213,7 @@ def main(argv):
   declared_mismatch = []
   if data["declared_seen"]:
     for cycle in cycles:
-      want = schedule[cycle][0]
+      want = schedule[cycle]["search"]
       have = declared.get(cycle, -1)
       if have != want:
         declared_mismatch.append((cycle, have, want))
@@ -204,25 +221,38 @@ def main(argv):
   # --- non-search dwell kinds -------------------------------------------
   designate_mismatch = []
   track_mismatch = []
+  external_mismatch = []
+  internal_mismatch = []
+  split_available = any(value["external"] is not None for value in schedule.values())
   for cycle in cycles:
     bucket = kinds.get(cycle, {})
     designate = bucket.get(KIND_DESIGNATE, 0)
-    track = bucket.get(KIND_EXTERNAL, 0) + bucket.get(KIND_INTERNAL, 0)
-    if designate != schedule[cycle][1]:
-      designate_mismatch.append((cycle, designate, schedule[cycle][1]))
-    if track != schedule[cycle][2]:
-      track_mismatch.append((cycle, track, schedule[cycle][2]))
+    external = bucket.get(KIND_EXTERNAL, 0)
+    internal = bucket.get(KIND_INTERNAL, 0)
+    track = external + internal
+    if designate != schedule[cycle]["designate"]:
+      designate_mismatch.append((cycle, designate, schedule[cycle]["designate"]))
+    if track != schedule[cycle]["track"]:
+      track_mismatch.append((cycle, track, schedule[cycle]["track"]))
+    if split_available and schedule[cycle]["external"] is not None:
+      if external != schedule[cycle]["external"]:
+        external_mismatch.append((cycle, external, schedule[cycle]["external"]))
+      if internal != schedule[cycle]["internal"]:
+        internal_mismatch.append((cycle, internal, schedule[cycle]["internal"]))
 
   # --- fixed slot budget -------------------------------------------------
-  totals = sorted({sum(value) for value in schedule.values()})
+  totals = sorted({value["search"] + value["designate"] + value["track"]
+                   for value in schedule.values()})
 
-  total_search_37 = sum(value[0] for value in schedule.values())
+  total_search_37 = sum(value["search"] for value in schedule.values())
   total_search_48 = sum(searches.get(cycle, 0) for cycle in cycles)
   total_designate_48 = sum(bucket.get(KIND_DESIGNATE, 0) for bucket in kinds.values())
-  total_designate_37 = sum(value[1] for value in schedule.values())
+  total_designate_37 = sum(value["designate"] for value in schedule.values())
   total_external = sum(bucket.get(KIND_EXTERNAL, 0) for bucket in kinds.values())
   total_internal = sum(bucket.get(KIND_INTERNAL, 0) for bucket in kinds.values())
-  total_track_37 = sum(value[2] for value in schedule.values())
+  total_track_37 = sum(value["track"] for value in schedule.values())
+  total_external_37 = sum(value["external"] or 0 for value in schedule.values())
+  total_internal_37 = sum(value["internal"] or 0 for value in schedule.values())
 
   pattern = read_pattern_size(args.csv)
   frames = None
@@ -232,7 +262,8 @@ def main(argv):
     frame_seconds = pattern[0] * args.dwell_sec
 
   ok = (not search_mismatch and not declared_mismatch and not designate_mismatch
-        and not track_mismatch and len(totals) == 1)
+        and not track_mismatch and not external_mismatch and not internal_mismatch
+        and len(totals) == 1)
 
   print("== 第 48 项（波束扫描）与第 37 项（空域自主搜索）驻留点数量核对 ==")
   print("日志      : %s（编码 %s）" % (args.log, data["encoding"]))
@@ -261,6 +292,13 @@ def main(argv):
        "%d" % total_track_37, verdict(not track_mismatch),
        "%d 处周期不一致" % len(track_mismatch)),
   ]
+  if split_available:
+    rows.append(("外部跟踪驻留", "%d" % total_external, "%d" % total_external_37,
+                 verdict(not external_mismatch),
+                 "%d 处周期不一致" % len(external_mismatch)))
+    rows.append(("库内跟踪驻留", "%d" % total_internal, "%d" % total_internal_37,
+                 verdict(not internal_mismatch),
+                 "%d 处周期不一致" % len(internal_mismatch)))
   if data["declared_seen"]:
     rows.append(("本周期搜索驻留数", "%d 个周期有该行" % len(declared),
                  "%d" % total_search_37, verdict(not declared_mismatch),
@@ -290,7 +328,9 @@ def main(argv):
   for label, mismatch in (("搜索驻留", search_mismatch),
                           ("本周期搜索驻留数", declared_mismatch),
                           ("指定驻留", designate_mismatch),
-                          ("跟踪驻留", track_mismatch)):
+                          ("外部跟踪驻留", external_mismatch),
+                          ("库内跟踪驻留", internal_mismatch),
+                          ("跟踪驻留（合计）", track_mismatch)):
     if not mismatch:
       continue
     print()
@@ -312,6 +352,11 @@ def main(argv):
           "designate_total_37": total_designate_37,
           "track_total_48": total_external + total_internal,
           "track_total_37": total_track_37,
+          "external_total_48": total_external,
+          "external_total_37": total_external_37,
+          "internal_total_48": total_internal,
+          "internal_total_37": total_internal_37,
+          "schedule_has_track_split": split_available,
           "search_mismatch_cycles": [{"cycle": c, "item48": a, "item37": b}
                                      for c, a, b in search_mismatch],
           "declared_count_seen": data["declared_seen"],

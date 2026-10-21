@@ -260,6 +260,21 @@ session::SbirsVector3M LosFromAzimuthElevation(float azimuth_deg, float elevatio
   return los;
 }
 
+/** @brief 两单位向量夹角（deg）；任一向量退化时返回 0。 */
+double LosAngleDeg(const session::SbirsVector3M& left, const session::SbirsVector3M& right) {
+  const double left_norm =
+      std::sqrt(left.x * left.x + left.y * left.y + left.z * left.z);
+  const double right_norm =
+      std::sqrt(right.x * right.x + right.y * right.y + right.z * right.z);
+  if (!(left_norm > 0.0) || !(right_norm > 0.0)) {
+    return 0.0;
+  }
+  double cosine =
+      (left.x * right.x + left.y * right.y + left.z * right.z) / (left_norm * right_norm);
+  cosine = std::max(-1.0, std::min(1.0, cosine));
+  return std::acos(cosine) * 180.0 / oneq::common::numerics::kPi;
+}
+
 bool InRectangularFov(float target_az_deg, float target_el_deg, float center_az_deg,
                       float center_el_deg, float fov_az_deg, float fov_el_deg) {
   return std::fabs(AzimuthDelta(target_az_deg, center_az_deg)) <= 0.5f * fov_az_deg &&
@@ -2109,6 +2124,25 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                        : (pointing_result.status == SbirsPointingAdvanceStatus::kTimedOut
                               ? "超时"
                               : "已拒绝"));
+        // 中译：剩余角要写"实际指向 − 指令指向"的角距（含共模/通道扰动与静态 settle
+        //       误差）。旧值取舵机本步进后的理想残差——只要一步转得到就恒为 0（实测
+        //       91.9%），真没转到位时反而只报舵机缺口（149.85°），两个方向都与"指向
+        //       残差"的语义相反。
+        // 标识：B8 剩余角口径（2026-10-21），依据 round_analysis_2026-10-20_1006.md §4-S1#7。
+        double remaining_angle_deg = static_cast<double>(pointing_result.remaining_angle_deg);
+        if (nfov_pointing_valid) {
+          // 与舵机同一指令向量（已按扫描限位钳制）比较，避免把限位差异重复计入残差。
+          remaining_angle_deg = LosAngleDeg(
+              boresight_chain.EciLosOfSensorPointing(actual_pointing_azimuth_deg,
+                                                     actual_pointing_elevation_deg),
+              command_los);
+        }
+        // 中译：指向没稳定就不许报"已捕获跟踪"——第 76 项判据明确要求"ATP 未稳定的
+        //       目标不得伪装成 NFOV 已捕获输出"，旧实现无条件写"已捕获跟踪"。
+        // 标识：B8 候选状态自洽（2026-10-21）。
+        const char* candidate_state =
+            pointing_result.status == SbirsPointingAdvanceStatus::kSettled ? "已捕获跟踪"
+                                                                          : "指向未稳定";
         SBIRS_INTERNAL_INTERFACE_ITEM(
             sim_time_sec, input.cycle_index, "红外宽场候选与窄场调度交互接口测试",
             "卫星ID=" + std::to_string(satellite_entity_id_) + " 当前服务目标=" +
@@ -2116,10 +2150,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                 oneq::logging::FormatF(command_azimuth_deg, 6) + "," +
                 oneq::logging::FormatF(command_elevation_deg, 6) + ")deg 指向状态=" +
                 pointing_status + " 剩余角=" +
-                oneq::logging::FormatF(pointing_result.remaining_angle_deg, 6) + "deg" +
-                // 第 76 项要求「候选状态」覆盖调度全程；转向服务目标属已捕获后的
-                // NFOV 跟踪维持段（2026-10-18 回归发现 96.3% 的调度行缺该字段）。
-                " 候选状态=已捕获跟踪 捕获失败原因=none");
+                oneq::logging::FormatF(remaining_angle_deg, 6) + "deg" +
+                // 第 76 项要求「候选状态」覆盖调度全程；候选状态随指向是否稳定而变，
+                // 转动中不再冒充"已捕获跟踪"（2026-10-21 B8）。
+                " 候选状态=" + candidate_state + " 捕获失败原因=none");
       }
     }
   }

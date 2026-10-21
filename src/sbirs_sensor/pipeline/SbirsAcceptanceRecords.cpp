@@ -510,7 +510,18 @@ void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environm
                                        target.velocity_ecef_m_per_s.y,
                                        target.velocity_ecef_m_per_s.z, 3) + "m/s";
     }
+    // 中译：辐射强度后面标注**来源**——场景单元目前从不下发红外签名，全部目标落的都是
+    //       库内缺省常量（10388.1146 W/sr），不标注会让读者误以为这是逐目标计算值。
+    //       场景数据补齐后本标注自动变为"场景下发"。
+    // 标识：2026-10-21 红外特性日志修复（第 58 项）。
     row += " 红外辐射强度=" + FormatF(target.radiant_intensity_w_per_sr, 6) + "W/sr";
+    // 与库内缺省值逐位比对：相等即说明场景未下发签名（当前全部目标都是这种情况）。
+    constexpr double kModelDefaultRadiantIntensityWPerSr = 10388.1146065573;
+    row += std::string(" 辐射强度来源=") +
+           (std::fabs(target.radiant_intensity_w_per_sr - kModelDefaultRadiantIntensityWPerSr) <
+                    1.0e-6
+                ? "库内缺省常量(场景未下发)"
+                : "场景下发");
     SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "目标与红外环境场景输入接口测试", row);
   }
 }

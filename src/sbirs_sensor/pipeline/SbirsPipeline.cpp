@@ -1309,6 +1309,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     const session::SbirsVector3M& source_eci =
         external_source_eci_by_target.at(target.target_id);
     SbirsCandidate candidate;
+    // 中译：外部引导候选显式打标——否则日志里 `引导来源卫星ID=-1` 与“SNR 低于宽场门限
+    //       却已选中”看起来矛盾（-1 既可能是自星宽场，也可能是非卫星来源的外部引导）。
+    // 标识：2026-10-21 红外特性日志修复。
+    candidate.from_external_cue = true;
     candidate.target = &target;
     candidate.azimuth_deg = azimuth_deg;
     candidate.elevation_deg = elevation_deg;
@@ -2004,6 +2008,11 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       scheduling += " 连续命中=" + std::to_string(wfov_consecutive_hits_[target_id]);
       scheduling += " 引导来源卫星ID=" +
                     std::to_string(selected->cue_source_satellite_entity_id);
+      // 中译：把候选来源写清楚——自星宽场与外部引导是两条不同通路，前者过宽场 SNR 门，
+      //       后者按设计可低于该门限（cross-cue 旁路），不标注就会被读成自相矛盾。
+      // 标识：2026-10-21 红外特性日志修复。
+      scheduling += std::string(" 候选来源=") +
+                    (selected->from_external_cue ? "外部引导" : "自星宽场");
       scheduling += " 调度结果=已选中 指令方位/俯仰=(" +
                     oneq::logging::FormatF(selected->command_azimuth_deg, 6) + "," +
                     oneq::logging::FormatF(selected->command_elevation_deg, 6) + ")deg";

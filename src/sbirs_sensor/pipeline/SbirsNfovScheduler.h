@@ -38,6 +38,14 @@ struct SbirsCandidate {
   float relative_angular_rate_deg_per_sec{0.0f}; ///< 相对视线角速度（v_target−v_satellite 推导），Sensor-like 成功观测的动态滞后输入
   double snr{0.0};
   int cue_source_satellite_entity_id{-1}; ///< 引导来源星 ID（-1=自星宽场；cross-cue 候选填来源星，只记录不参与排序）
+  /**
+   * @brief 候选来源是否为外部引导（cross-cue 旁路）。
+   *
+   * @details `cue_source_satellite_entity_id == -1` 同时可能是"自星宽场"或"非卫星来源的
+   *   外部引导"（例如雷达引导），日志无法区分，会让"SNR 低于宽场门限却已选中"看起来
+   *   自相矛盾。本字段把两条路径分开标注（2026-10-21 红外特性日志修复）。
+   */
+  bool from_external_cue{false};
   double measurement_time_s{0.0};         ///< 绝对测量时刻（秒）
 };
 

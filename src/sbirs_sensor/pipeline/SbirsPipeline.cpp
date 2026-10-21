@@ -1573,6 +1573,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       geometry += " 扫描中心=(" + oneq::logging::FormatF(actual_scan_azimuth_sensor_deg, 6) +
                   "," + oneq::logging::FormatF(actual_scan_elevation_sensor_deg, 6) + ")deg";
       geometry += std::string(" 视场门结果=") + (in_wfov ? "通过" : "排除");
+      // 中译：被拒时另有"门控阶段/门控结果=排除/排除码"行；通过时也写同名字段，
+      //       否则外部验证程序无法从日志统计通过率，只能数被拒数。
+      // 标识：第 74 项门控口径（2026-10-21）。
+      geometry += std::string(" 门控结果=通过");
       SBIRS_INTERNAL_INTERFACE_ITEM(sim_time_sec, input.cycle_index,
                                     "红外场景几何与视场门控交互接口测试", geometry);
 
@@ -2464,11 +2468,22 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         tracking_interface += std::string(" 角速度=") + reason + " 视线角速率=" +
                               oneq::logging::FormatF(context.omega_deg_per_sec, 6) + "deg/s";
       }
-      tracking_interface += " 输出阶段=NFOV跟踪";
+      // 中译：本周期若没有新的窄场帧（滑行/等首帧），阶段不能写"NFOV跟踪"——否则与
+      //       `帧数=0` 自相矛盾；角噪声也只在存在帧时才有意义。
+      // 标识：第 77 项阶段与帧数一致性（2026-10-21）。
+      if (nfov_frame_count > 0) {
+        tracking_interface += " 输出阶段=NFOV跟踪";
+      } else {
+        tracking_interface += " 输出阶段=滑行(本周期无窄场帧)";
+      }
       tracking_interface += " 帧数=" + std::to_string(nfov_frame_count);
-      tracking_interface += " 单帧/融合角噪声=" +
-                            oneq::logging::FormatSci(nfov_frame_sigma_deg) + "/" +
-                            oneq::logging::FormatSci(nfov_fused_sigma_deg) + "deg";
+      tracking_interface += " 单帧/融合角噪声=";
+      if (nfov_frame_count > 0) {
+        tracking_interface += oneq::logging::FormatSci(nfov_frame_sigma_deg) + "/" +
+                              oneq::logging::FormatSci(nfov_fused_sigma_deg) + "deg";
+      } else {
+        tracking_interface += "不适用(无窄场帧)";
+      }
       if (tracking_result.has_measurement) {
         tracking_interface += " 滤波器量测输入=(" +
                               oneq::logging::FormatF(tracking_result.measurement_azimuth_deg, 6) +

@@ -126,6 +126,21 @@ class RirTrackLifecycle {
   /** @brief 查关联键的 IMM 运行态（诊断/测试消费）；不存在或未启用返回 nullptr。 */
   RirImmFilter* FindImmFilter(std::uint64_t association_key) const;
 
+  /**
+   * @brief 由最近 N 拍**量测位置**做最小二乘拟合，得到速度估计（B3，2026-10-21）。
+   *
+   * @details 与 `track.velocity`（滤波后验）解耦：本估计只供识别"运动特征"使用，
+   *   不修改航迹状态，因此不触碰"速度只来自滤波后验"的去真值化契约。
+   *   单拍位置噪声 σ_p 约 2.7–5.5 km，两拍差分的噪声达 √2·σ_p/Δt ≈ 7 km/s；
+   *   对 N 拍做直线拟合后 σ_v ≈ σ_p·√(12/(N(N²−1)))/Δt（N=20、Δt=1 s 时约 200 m/s，
+   *   足以分辨弹道族模板 σ=500–800 m/s）。
+   * @param[in] association_key 关联键。
+   * @param[out] velocity_mps 拟合速度向量（ENU，m/s）；样本不足时返回 false 不写。
+   * @return 有效样本数 ≥ kVelocityFitMinSamples 时返回 true。
+   */
+  bool TryGetLeastSquaresVelocity(std::uint64_t association_key,
+                                  Eigen::Vector3f* velocity_mps) const;
+
   /** @brief 清空全部航迹并重置内部航迹编号。 */
   void Reset();
 
@@ -189,6 +204,17 @@ class RirTrackLifecycle {
   RirTrackPool pool_{};
   std::map<std::uint64_t, RirTrackState*> tracks_;
   std::unordered_map<std::uint64_t, std::unique_ptr<RirImmFilter>> imm_filters_by_key_{};
+  /**
+   * @brief 识别用速度拟合历史（每航迹最近若干拍的量测时刻与位置）。
+   *
+   * @details 刻意**不放进 `RirTrackState`**：该结构参与回放序列化，加字段会牵动
+   *   flatbuffer schema；本历史纯属识别侧派生量，进程内维护即可。
+   */
+  struct PositionSample {
+    float time_sec{0.0f};
+    Eigen::Vector3f position{0.0f, 0.0f, 0.0f};
+  };
+  std::unordered_map<std::uint64_t, std::vector<PositionSample>> velocity_history_by_key_{};
   bool imm_enabled_{false};
   std::uint64_t next_track_id_{1U};
   std::uint32_t last_cycle_index_{0U};

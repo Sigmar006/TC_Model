@@ -35,7 +35,9 @@ constexpr float kMaxVelocityVarianceForAcceleration = 1.0e5f;
 
 RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrackState& snapshot,
                                                         float platform_altitude_m,
-                                                        float estimation_uncertainty_trace) {
+                                                        float estimation_uncertainty_trace,
+                                                        bool has_velocity_lsq,
+                                                        const Eigen::Vector3f& velocity_lsq_mps) {
   RirMotionObservation observation;
   if (snapshot.status != tracking::RirTrackStatus::kConfirmed) {
     return observation;  // 识别仅以已确认航迹为对象；未确认仅积累不输出
@@ -46,8 +48,14 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   // 恒为 0（验收行长期打印 速度=0.000m/s 加速度=0.000m/s²，而同一快照的位置与**速度向量**
   // 均正常——下面横向加速度分解用的就是 vector 字段且工作正常）。标量为 0 时改用向量模长，
   // 使"运动"分项恢复判别力；若向量同样为 0（未估计出速度），行为与本改动前完全一致。
-  observation.speed_mps =
-      (snapshot.speed > 0.0f) ? snapshot.speed : snapshot.velocity.norm();
+  // 中译：速度优先取**量测多点拟合**结果（B3，2026-10-21）。滤波后验速度在该几何下
+  //       只有约 1.9 km/s（真值约 6 km/s），把弹道族模板全部推到 4σ 之外；拟合速度
+  //       （N=20 拍，误差约 200 m/s）才具备型号分辨力。拟合不可用时行为与改动前一致。
+  // 标识：B3 运动特征速度来源。
+  observation.speed_mps = has_velocity_lsq
+                              ? velocity_lsq_mps.norm()
+                              : ((snapshot.speed > 0.0f) ? snapshot.speed
+                                                         : snapshot.velocity.norm());
   observation.acceleration_mps2 = (snapshot.acceleration_mps2 > 0.0f)
                                       ? snapshot.acceleration_mps2
                                       : snapshot.acceleration.norm();

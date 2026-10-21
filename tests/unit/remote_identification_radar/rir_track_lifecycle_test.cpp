@@ -403,6 +403,43 @@ TEST(RirTrackLifecycleTest, RehitAfterCoastDividesByElapsedTime) {
   }
 }
 
+/// @brief B3（2026-10-21）：量测位置多点最小二乘可还原速度——滤波后验速度在该几何下
+///        收敛不足（实测约 1.9 km/s vs 真值 6 km/s），识别运动特征改用本估计。
+TEST(RirTrackLifecycleTest, LeastSquaresVelocityRecoversSpeedFromNoisyPositions) {
+  RirLifecycleConfig config;
+  config.confirm_hits = 1U;
+  RirTrackLifecycle lifecycle(config);
+
+  const float kSpeedMps = 6000.0f;
+  const float kNoiseM = 1500.0f;
+  // 20 拍：真值匀速 6 km/s + 交替 ±1.5 km 位置噪声（量级与实测量测协方差一致）。
+  for (std::uint32_t cycle = 1U; cycle <= 20U; ++cycle) {
+    const float noise = ((cycle % 2U) == 0U) ? kNoiseM : -kNoiseM;
+    const float px = kSpeedMps * static_cast<float>(cycle) + noise;
+    lifecycle.Update(MakeCycle(cycle, 3000U + cycle),
+                     {MakeMeasurement(9U, px, 0.0f, cycle > 1U, 9001U, "target-lsq")});
+  }
+
+  Eigen::Vector3f velocity = Eigen::Vector3f::Zero();
+  ASSERT_TRUE(lifecycle.TryGetLeastSquaresVelocity(9U, &velocity));
+  EXPECT_NEAR(velocity.x(), kSpeedMps, 200.0f);
+  EXPECT_NEAR(velocity.y(), 0.0f, 1.0f);
+  EXPECT_NEAR(velocity.z(), 0.0f, 1.0f);
+}
+
+/// @brief 样本不足（< 最少拍数）时不给出拟合速度，调用方回退到滤波后验速度。
+TEST(RirTrackLifecycleTest, LeastSquaresVelocityNeedsEnoughSamples) {
+  RirLifecycleConfig config;
+  config.confirm_hits = 1U;
+  RirTrackLifecycle lifecycle(config);
+  for (std::uint32_t cycle = 1U; cycle <= 3U; ++cycle) {
+    lifecycle.Update(MakeCycle(cycle, 4000U + cycle),
+                     {MakeMeasurement(10U, 1000.0f * static_cast<float>(cycle), 0.0f, cycle > 1U)});
+  }
+  Eigen::Vector3f velocity = Eigen::Vector3f::Zero();
+  EXPECT_FALSE(lifecycle.TryGetLeastSquaresVelocity(10U, &velocity));
+}
+
 }  // namespace
 }  // namespace tests
 }  // namespace remote_identification_radar

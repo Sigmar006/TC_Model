@@ -21,6 +21,16 @@ namespace {
 /** @brief 生命周期保留键：未关联量测。 */
 constexpr std::uint64_t kUnassociatedKey = 0U;
 
+/**
+ * @brief 速度拟合窗口长度（拍）与最少样本数（B3，2026-10-21）。
+ *
+ * @details 单拍位置噪声 σ_p≈2.7–5.5 km，两拍差分噪声达 √2·σ_p/Δt≈7 km/s，不可用；
+ *   对 N 拍直线拟合后 σ_v≈σ_p·√(12/(N(N²−1)))/Δt。取 N=20（Δt=1 s）时约 200 m/s，
+ *   足以分辨弹道族模板（σ=500–800 m/s）；更长的窗口会把目标机动抹平。
+ */
+constexpr std::size_t kVelocityFitWindow = 20U;
+constexpr std::size_t kVelocityFitMinSamples = 5U;
+
 /** @brief 加速度估计的最小有效步长（s）。 */
 constexpr float kMinimumAccelerationDtSec = 1.0e-6f;
 
@@ -186,6 +196,21 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
       track.last_update_cycle = cycle.cycle_index;
       track.hit_count += 1U;
       track.miss_count = 0U;
+      // 中译：记录本拍量测位置，供识别侧"多点最小二乘速度"使用（B3，2026-10-21）。
+      //       只保留最近 kVelocityFitWindow 拍：更早的样本对速度拟合贡献极小，且会
+      //       把目标机动抹平。时间基准用 周期序号 × dt，同一航迹内自洽。
+      // 标识：B3 速度拟合历史。
+      {
+        std::vector<PositionSample>& history =
+            velocity_history_by_key_[work_item.association_key];
+        PositionSample sample;
+        sample.time_sec = static_cast<float>(cycle.cycle_index) * cycle.dt_sec;
+        sample.position = measurement.position;
+        history.push_back(sample);
+        if (history.size() > kVelocityFitWindow) {
+          history.erase(history.begin());
+        }
+      }
 
       track.position = measurement.position;
       if (measurement.external_target_id != 0U) {
@@ -270,6 +295,9 @@ bool RirTrackLifecycle::DropTrack(std::uint64_t association_key) {
   // 中译：连同 IMM 运行态一起清除——否则下一拍重建航迹时会继承发散的多模型状态。
   // 标识：B6 包络门丢弃路径（2026-10-20）。
   imm_filters_by_key_.erase(association_key);
+  // 中译：航迹被丢弃时同步清理速度拟合历史，避免同键新航迹继承旧目标的位置序列。
+  // 标识：B3 速度拟合历史清理。
+  velocity_history_by_key_.erase(association_key);
   RecycleTrack(track_it->second);
   tracks_.erase(track_it);
   return true;
@@ -300,6 +328,58 @@ const RirTrackState* RirTrackLifecycle::FindTrack(std::uint64_t association_key)
   return found->second;
 }
 
+bool RirTrackLifecycle::TryGetLeastSquaresVelocity(std::uint64_t association_key,
+                                                   Eigen::Vector3f* velocity_mps) const {
+  if (velocity_mps == nullptr) {
+    return false;
+  }
+  const std::unordered_map<std::uint64_t, std::vector<PositionSample>>::const_iterator found =
+      velocity_history_by_key_.find(association_key);
+  if (found == velocity_history_by_key_.end()) {
+    return false;
+  }
+  const std::vector<PositionSample>& history = found->second;
+  if (history.size() < kVelocityFitMinSamples) {
+    return false;
+  }
+  // 中译：对最近 N 拍位置做"时间—位置"直线拟合，斜率即速度。三轴各自独立拟合；
+  //       时间取相对首个样本的偏移，避免大数相减丢精度。
+  // 标识：B3 速度拟合（最小二乘）。
+  double time_sum = 0.0;
+  double time_sq_sum = 0.0;
+  const double t0 = static_cast<double>(history.front().time_sec);
+  for (std::size_t i = 0U; i < history.size(); ++i) {
+    const double dt = static_cast<double>(history[i].time_sec) - t0;
+    time_sum += dt;
+    time_sq_sum += dt * dt;
+  }
+  const double count = static_cast<double>(history.size());
+  const double time_mean = time_sum / count;
+  const double denom = time_sq_sum - count * time_mean * time_mean;
+  if (!(denom > 0.0)) {
+    return false;
+  }
+  Eigen::Vector3f velocity = Eigen::Vector3f::Zero();
+  for (int axis = 0; axis < 3; ++axis) {
+    double position_sum = 0.0;
+    for (std::size_t i = 0U; i < history.size(); ++i) {
+      position_sum += static_cast<double>(history[i].position[axis]);
+    }
+    const double position_mean = position_sum / count;
+    double covariance = 0.0;
+    for (std::size_t i = 0U; i < history.size(); ++i) {
+      const double dt = static_cast<double>(history[i].time_sec) - t0 - time_mean;
+      covariance += dt * (static_cast<double>(history[i].position[axis]) - position_mean);
+    }
+    velocity[axis] = static_cast<float>(covariance / denom);
+  }
+  if (!velocity.allFinite()) {
+    return false;
+  }
+  *velocity_mps = velocity;
+  return true;
+}
+
 void RirTrackLifecycle::Reset() {
   for (auto& entry : tracks_) {
     ResetForReuse(*entry.second);
@@ -307,6 +387,7 @@ void RirTrackLifecycle::Reset() {
   }
   tracks_.clear();
   imm_filters_by_key_.clear();
+  velocity_history_by_key_.clear();
   next_track_id_ = 1U;
   last_cycle_index_ = 0U;
 }

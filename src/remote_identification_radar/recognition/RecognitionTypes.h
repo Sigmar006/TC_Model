@@ -31,6 +31,20 @@ struct RirObservationContext {
   float platform_altitude_m{0.0f};    /**< 平台绝对高度（m）；用于运动高度换算。 */
   float minimum_aspect_coverage_deg{15.0f}; /**< 视角覆盖下限（deg），低于则 RCS 维度无效。 */
   float max_range_resolution_m{0.0f}; /**< 距离像允许的最大距离分辨率（m）；0 表示不限。 */
+  /**
+   * @brief 由**量测位置**多点最小二乘拟合出的速度（m/s），供运动特征使用（B3，2026-10-21）。
+   *
+   * @details 滤波后验速度在长斜距、低角度精度下收敛不足（实测约 1.9 km/s，真值约 6 km/s），
+   *   而"两拍位置差"的噪声达 σ_p·√2/Δt ≈ 7 km/s，也不可用。对最近 N 拍位置做直线拟合，
+   *   σ_v ≈ σ_p·√(12/(N(N²−1)))/Δt：N=20 时约 200 m/s，足以分辨弹道族模板（σ 500–800 m/s）。
+   *   本字段只服务识别特征，**不修改航迹状态**，不破坏"速度只来自滤波后验"的契约。
+   */
+  bool has_velocity_lsq{false};
+  /** @brief 拟合速度三轴分量（ENU，m/s）。刻意用三个标量而非数组：VS2013 不支持
+   *         数组成员的花括号缺省初始化（C2536），交付工具链必须保持可编译。 */
+  float velocity_lsq_x_mps{0.0f};
+  float velocity_lsq_y_mps{0.0f};
+  float velocity_lsq_z_mps{0.0f};
 };
 
 /**

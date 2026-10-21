@@ -33,9 +33,21 @@ class RirMotionFeatureExtractor {
    * @param[in] estimation_uncertainty_trace 预测协方差 P 的 position 分块迹（m²，三轴之和）。
    * @return 运动观测；快照非已确认时 valid=false。
    */
+  /**
+   * @brief 提取运动特征观测。
+   * @param[in] snapshot 内部航迹状态（须为已确认航迹，否则维度无效）。
+   * @param[in] platform_altitude_m 平台绝对高度（m）。
+   * @param[in] estimation_uncertainty_trace 预测协方差位置迹（质量因子）。
+   * @param[in] has_velocity_lsq 是否提供了最小二乘拟合速度（B3，2026-10-21）。
+   * @param[in] velocity_lsq_mps 拟合速度（ENU，m/s）；has_velocity_lsq 为 true 时优先于
+   *   滤波后验速度——后者在长斜距、低角度精度下收敛不足（实测约 1.9 km/s vs 真值 6 km/s），
+   *   而多点拟合（N=20）误差约 200 m/s，才够分辨弹道族模板（σ=500–800 m/s）。
+   */
   static RirMotionObservation Extract(const tracking::RirTrackState& snapshot,
                                       float platform_altitude_m,
-                                      float estimation_uncertainty_trace);
+                                      float estimation_uncertainty_trace,
+                                      bool has_velocity_lsq = false,
+                                      const Eigen::Vector3f& velocity_lsq_mps = Eigen::Vector3f::Zero());
 };
 
 }  // namespace recognition

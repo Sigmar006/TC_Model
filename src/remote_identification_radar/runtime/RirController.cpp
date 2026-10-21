@@ -1264,6 +1264,20 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       observation.target = scene_found->second;
       observation.context =
           MakeObservationContext(*scene_found->second, platform_altitude_m, snr_db);
+      // 中译：给识别"运动特征"补一个由**量测位置**多点拟合的速度（B3，2026-10-21）。
+      //       滤波后验速度在长斜距、低角度精度下收敛不足（约 1.9 km/s vs 真值 6 km/s），
+      //       而两拍差分噪声达 ~7 km/s；最近 20 拍最小二乘约 200 m/s，足以分辨弹道族。
+      //       该值只进特征，不写航迹状态（不破坏"速度只来自滤波后验"契约）。
+      // 标识：B3 识别侧速度拟合。
+      if (lifecycle_ != nullptr) {
+        Eigen::Vector3f velocity_lsq = Eigen::Vector3f::Zero();
+        if (lifecycle_->TryGetLeastSquaresVelocity(track.association_key, &velocity_lsq)) {
+          observation.context.has_velocity_lsq = true;
+          observation.context.velocity_lsq_x_mps = velocity_lsq.x();
+          observation.context.velocity_lsq_y_mps = velocity_lsq.y();
+          observation.context.velocity_lsq_z_mps = velocity_lsq.z();
+        }
+      }
       observations_by_key[track.association_key] = observation;
     }
 

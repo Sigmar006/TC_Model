@@ -455,6 +455,3 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
 
 }  // namespace target_inference
 
-void WriteSatelliteTargetAcceptanceLine(const std::string& item, const std::string& content) {
-  INFERENCE_ACCEPTANCE_ITEM(0.0f, 0U, item.c_str(), content);
-}

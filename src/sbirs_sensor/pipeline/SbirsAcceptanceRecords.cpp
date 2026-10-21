@@ -510,6 +510,9 @@ void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environm
                                        target.velocity_ecef_m_per_s.y,
                                        target.velocity_ecef_m_per_s.z, 3) + "m/s";
     }
+    // 中译：红外辐射强度是本项的核心字段，2026-10-21 一次回退时被误删，此处恢复。
+    // 标识：第 58 项字段恢复（2026-10-21）。
+    row += " 红外辐射强度=" + FormatF(target.radiant_intensity_w_per_sr, 6) + "W/sr";
     SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "目标与红外环境场景输入接口测试", row);
   }
 }

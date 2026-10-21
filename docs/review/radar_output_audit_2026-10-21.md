@@ -85,3 +85,59 @@ Status: 诊断结论（未改代码）
 | **4** | 干扰峰值增益负值与极化枚举编号 → 改成物理量与名称 | 小（日志/配置） |
 | 5 | 第 37 项"已耗时"改为实测或删除该列 | 小（日志） |
 | 6 | 第 29 项补"处理后 SINR"（此前按用户要求回退，可再议） | 小（日志） |
+
+
+---
+
+## 5. 根因定位：极化特征为何恒为常量（2026-10-21 追查）
+
+### 5.1 数据流
+
+```
+特征库 JSON（remote_identification_radar_target_features.json）
+  └─ sets[].polarization 参数
+        ↓ 宿主开机生成"极化字典"
+  lrdr_sensor_features.cpp::LoadPolarization（无 rows 时按参数铺网格）
+        ↓ 每周期按当前视线角裁 ±polarization_window_deg 的行
+  RirSceneTarget::polarization_samples
+        ↓
+  RirPolarizationStatsExtractor::Extract（均值/标准差）
+        ↓
+  第 46 项「去极化系数 / 本征极化方向角 / 本征极化椭圆率 均值|标准差」
+```
+
+### 5.2 根因
+
+`LoadPolarization` 按参数生成字典时，每个格点的幅度只由**一个形状项**决定：
+
+```cpp
+const float shape = 0.5f * az_variation * (az / (0.5f * (az_max - az_min) + 1e-6f)) +
+                    0.5f * el_variation * ((el - el_center) / (0.5f * (el_max - el_min) + 1e-6f));
+sample.hh_amp_db = hh_amp + shape;   // hv/vh/vv 同样只加 shape
+```
+
+而两个特征集里：
+
+| 特征集 | `azimuth_variation_db` | `elevation_variation_db` |
+|---|---|---|
+| `ballistic_icbm` | **0.0** | **0.0** |
+| `air_fighter` | **0.0** | **0.0** |
+
+⇒ `shape ≡ 0` ⇒ **字典里 657 个格点的 S 矩阵完全相同**（az 73 × el 9）。
+无论窗口裁到哪几行，统计量都相同 ⇒ 均值恒定、**标准差恒为 0**（实测 2.8e−23 即浮点零）。
+
+即：不是"极化不会变"，而是**数据里根本没给方向性**，生成器把每个视角都填成了同一个矩阵。
+
+### 5.3 建议修复（两行配置）
+
+```json
+"azimuth_variation_db": 6.0,
+"elevation_variation_db": 6.0
+```
+
+- 形状项变为 ±3 dB（az）与 ±3 dB（el），窗口 ±10° 内 az 方向跨约 0.33 dB、el 方向跨约 1.5 dB ⇒ 标准差由 0 变为非零，第 46 项的"均值/标准差"才具备区分能力；
+- 交叉极化隔离 `cross_pol_isolation_db` 保持 30 dB，去极化系数仍在 0.1% 量级（物理合理）；
+- 属**特征数据**改动，会影响识别匹配分（当前恒 `未知`，见 §1.1），需重跑一轮观察类别是否落成非"未知"。
+
+> 注：部署副本与源副本当前哈希一致（`420F5569…`），改动需两处同步，改后用
+> `sync_config_check.cmd` 复核，避免又一次配置漂移。

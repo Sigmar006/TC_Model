@@ -11,6 +11,8 @@
 #include <fstream>
 #include <limits>
 #include <numeric>
+#include <set>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -1726,13 +1728,42 @@ void WriteRirExternalResourceStatus(
   summary += " 告警数量=" + std::to_string(issues.size());
   RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, summary);
 
+  // 中译：告警**沿触发**——同一告警（码 + 内容）在状态未变化时不再每周期重复输出。
+  //   实测地球遮挡告警每周期刷 4,000+ 行完全相同的文本（共 1.8 万行），既淹没其他
+  //   证据，也让日志体积翻倍。规则：首次出现必输出、内容变化必输出、消失时输出一条
+  //   "恢复"；此外每 kIssueHeartbeatCycles 周期补一条心跳，保留"持续存在"的证据。
+  // 标识：告警沿触发（2026-10-21）。
+  constexpr std::uint32_t kIssueHeartbeatCycles = 100U;
+  static std::unordered_map<std::uint64_t, std::set<std::string>> last_issue_keys;
+  static std::unordered_map<std::uint64_t, std::uint32_t> last_issue_cycle;
+  std::set<std::string>& previous_keys = last_issue_keys[radar_id];
+  std::set<std::string> current_keys;
+  const std::uint32_t last_cycle = last_issue_cycle[radar_id];
+  const bool heartbeat_due =
+      (last_cycle == 0U) || (cycle < last_cycle) ||
+      (cycle - last_cycle >= kIssueHeartbeatCycles);
   for (const session::RirIssue& issue : issues) {
     std::string content = "雷达ID=" + std::to_string(radar_id);
     content += " 告警码=" + issue.code;
     content += " 严重度=" + std::to_string(static_cast<int>(issue.severity));
     content += " 阶段=" + std::to_string(static_cast<int>(issue.phase));
     content += " 日志内容=" + issue.message;
-    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, content);
+    const std::string key = issue.code + "|" + issue.message;
+    current_keys.insert(key);
+    if (previous_keys.find(key) == previous_keys.end() || heartbeat_due) {
+      RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, content);
+    }
+  }
+  for (const std::string& stale : previous_keys) {
+    if (current_keys.find(stale) != current_keys.end()) {
+      continue;
+    }
+    RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item,
+                                "雷达ID=" + std::to_string(radar_id) + " 告警恢复=" + stale);
+  }
+  previous_keys = current_keys;
+  if (heartbeat_due) {
+    last_issue_cycle[radar_id] = cycle;
   }
 }
 

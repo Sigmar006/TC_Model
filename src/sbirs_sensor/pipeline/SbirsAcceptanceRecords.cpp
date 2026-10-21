@@ -513,7 +513,26 @@ void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environm
     // 中译：红外辐射强度是本项的核心字段，2026-10-21 一次回退时被误删，此处恢复。
     // 标识：第 58 项字段恢复（2026-10-21）。
     row += " 红外辐射强度=" + FormatF(target.radiant_intensity_w_per_sr, 6) + "W/sr";
-    SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "目标与红外环境场景输入接口测试", row);
+    // 中译：目标行**变化沿 + 心跳**——静止目标（阵地/指挥所）的位置与强度整轮不变，但此前
+    //   每卫星每周期都重写一行，实测单目标重复 4,673 次、本文件因此多出十几万行完全相同
+    //   的文本。规则：首次必输出、内容变化必输出、未变化时每 kSceneHeartbeatCycles 周期
+    //   补一条心跳，保留"该目标仍在场景中"的周期性证据。
+    // 标识：第 58 项目标行变化沿（2026-10-21）。
+    constexpr std::uint32_t kSceneHeartbeatCycles = 100U;
+    static std::map<std::string, std::pair<std::string, std::uint32_t>> last_scene_rows;
+    const std::string scene_key =
+        std::to_string(satellite_id) + ":" + std::to_string(target.target_id);
+    std::map<std::string, std::pair<std::string, std::uint32_t>>::iterator cached =
+        last_scene_rows.find(scene_key);
+    const bool changed = cached == last_scene_rows.end() || cached->second.first != row;
+    const bool heartbeat_due =
+        cached == last_scene_rows.end() || cycle < cached->second.second ||
+        (cycle - cached->second.second >= kSceneHeartbeatCycles);
+    if (changed || heartbeat_due) {
+      SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "目标与红外环境场景输入接口测试",
+                                       row);
+      last_scene_rows[scene_key] = std::make_pair(row, cycle);
+    }
   }
 }
 

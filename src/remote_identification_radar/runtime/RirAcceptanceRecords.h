@@ -257,7 +257,8 @@ void WriteRirExternalResourceStatus(
  */
 void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
-                      std::uint32_t designate_count, std::uint32_t track_count,
+                      std::uint32_t designate_count, std::uint32_t external_track_count,
+                      std::uint32_t internal_track_count,
                       std::uint32_t confirmed_tracks);
 
 /**

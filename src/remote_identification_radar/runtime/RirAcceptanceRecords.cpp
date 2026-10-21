@@ -1665,7 +1665,8 @@ void WriteRirExternalResourceStatus(
 
   std::size_t search_count = 0U;
   std::size_t designate_count = 0U;
-  std::size_t track_count = 0U;
+  std::size_t external_track_count = 0U;
+  std::size_t internal_track_count = 0U;
   std::string dwell_queue = "[";
   for (std::size_t i = 0U; i < dwell_plan.size(); ++i) {
     const RirDwellPlan& dwell = dwell_plan[i];
@@ -1673,8 +1674,10 @@ void WriteRirExternalResourceStatus(
       ++search_count;
     } else if (dwell.kind == RirDwellKind::kDesignate) {
       ++designate_count;
+    } else if (dwell.kind == RirDwellKind::kExternalTrack) {
+      ++external_track_count;
     } else {
-      ++track_count;
+      ++internal_track_count;
     }
     if (i != 0U) {
       dwell_queue += ";";
@@ -1699,8 +1702,9 @@ void WriteRirExternalResourceStatus(
   summary += " 航迹状态候选/确认/丢失=" + std::to_string(tentative_count) + "/" +
              std::to_string(confirmed_count) + "/" + std::to_string(lost_count);
   summary += " 波束任务数=" + std::to_string(dwell_plan.size());
-  summary += " 搜索/指定/跟踪任务=" + std::to_string(search_count) + "/" +
-             std::to_string(designate_count) + "/" + std::to_string(track_count);
+  summary += " 搜索/指定/外部跟踪/库内跟踪任务=" + std::to_string(search_count) + "/" +
+             std::to_string(designate_count) + "/" + std::to_string(external_track_count) + "/" +
+             std::to_string(internal_track_count);
   summary += " 波束任务队列=" + dwell_queue;
   summary += " 当前目标数量=" + std::to_string(tracks.size());
   summary += " 当前目标列表=" + target_list;
@@ -1719,8 +1723,8 @@ void WriteRirExternalResourceStatus(
 
 void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
-                      std::uint32_t designate_count, std::uint32_t track_count,
-                      std::uint32_t confirmed_tracks) {
+                      std::uint32_t designate_count, std::uint32_t external_track_count,
+                      std::uint32_t internal_track_count, std::uint32_t confirmed_tracks) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -1730,13 +1734,18 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
-           " 跟踪=" + std::to_string(track_count) +
+           " 外部跟踪=" + std::to_string(external_track_count) +
+           " 库内跟踪=" + std::to_string(internal_track_count) +
            " 预算/已耗时=" + FormatF(budget_sec, 3) + "/" + FormatF(consumed_sec, 3) + "s");
   // 验收判定标准 第49项：调度策略——各类事件的实际执行数量列表。
+  // 中译：第 49 项同批拆分——"跟踪数"此前把外部引导与库内航迹混并，改为分别列出。
+  // 标识：T-04a 计数拆分（2026-10-21）。
   Emit(sim_time_sec, cycle, "调度策略功能测试",
-       "雷达ID=" + std::to_string(radar_id) + " [搜索×" + std::to_string(search_count) +
-           ",指定×" + std::to_string(designate_count) + ",跟踪×" + std::to_string(track_count) +
-           ",确认航迹×" + std::to_string(confirmed_tracks) + "]");
+       "雷达ID=" + std::to_string(radar_id) + " [搜索数" + std::to_string(search_count) +
+           ",指定数" + std::to_string(designate_count) + ",外部跟踪数" +
+           std::to_string(external_track_count) + ",库内跟踪数" +
+           std::to_string(internal_track_count) + ",确认航迹数" +
+           std::to_string(confirmed_tracks) + "]");
 }
 
 void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,

@@ -1321,20 +1321,27 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       }
       std::uint32_t planned_search = 0U;
       std::uint32_t planned_designate = 0U;
-      std::uint32_t planned_track = 0U;
+      std::uint32_t planned_external_track = 0U;
+      std::uint32_t planned_internal_track = 0U;
+      // 中译：四类驻留分别计数（2026-10-21）。此前只分"搜索/指定/跟踪"，而"跟踪"里混着
+      //       外部引导驻留（实测占 99%）与库内航迹驻留，日志看不出雷达有没有在跟自己的目标。
+      // 标识：T-04a 计数拆分。
       for (const RirDwellPlan& dwell : plan) {
         if (dwell.kind == RirDwellKind::kSearch) {
           ++planned_search;
         } else if (dwell.kind == RirDwellKind::kDesignate) {
           ++planned_designate;
+        } else if (dwell.kind == RirDwellKind::kExternalTrack) {
+          ++planned_external_track;
         } else {
-          ++planned_track;
+          ++planned_internal_track;
         }
       }
       WriteRirSchedule(EffectiveSensorEntityId(), input.sim_time_sec, input.input_cycle_index,
                        latest_summary_.dwell_budget.dwell_budget_sec,
                        latest_summary_.dwell_budget.dwell_consumed_sec, planned_search,
-                       planned_designate, planned_track, confirmed);
+                       planned_designate, planned_external_track, planned_internal_track,
+                       confirmed);
     }
   } else {
     track_snapshots = lifecycle_->BuildTrackSnapshots();

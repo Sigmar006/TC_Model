@@ -10,6 +10,7 @@
 #include "1q/fusion/FusionEngine.h"
 #include "1q/precision_evaluation/PrecisionEvaluationInputs.h"
 #include "1q/precision_evaluation/PrecisionEvaluationSession.h"
+#include "1q/precision_evaluation/PrecisionPairingSelector.h"
 #include "1q/precision_evaluation/PrecisionEvaluationTypes.h"
 #include "1q/precision_evaluation/SbirsBearingAdapter.h"
 #include "1q/sbirs_sensor/session/SbirsCycleInput.h"
@@ -662,6 +663,106 @@ TEST(PrecisionEvaluationInputsTest, SessionConsumesBuiltResultAndSamplesAngularE
   EXPECT_EQ(cycle.angular[0].key, 101U);
   EXPECT_LT(std::fabs(cycle.angular[0].azimuth_error_deg), 1.0e-3);
   EXPECT_LT(std::fabs(cycle.angular[0].elevation_error_deg), 1.0e-3);
+}
+
+// --- 双星配对选星（第 26/27 项宿主接线的选星策略） ---
+
+pe::PairingSatelliteInput MakePairingSatellite(
+    std::uint32_t source_id, double x_m, double y_m, std::uint64_t target_id,
+    sbirs_sensor::output::SbirsObservationStage stage =
+        sbirs_sensor::output::SbirsObservationStage::kNarrowFieldTrack) {
+  pe::PairingSatelliteInput satellite;
+  satellite.source_id = source_id;
+  satellite.position_ecef_m = oneq::coordinate::EcefPositionM(x_m, y_m, 0.0);
+  pe::PrecisionDetectionInput detection;
+  detection.detection_id = static_cast<std::uint64_t>(source_id) * 10U + 1U;
+  detection.target_id = target_id;
+  detection.observation_stage = stage;
+  detection.detected = true;
+  satellite.detections.push_back(detection);
+  return satellite;
+}
+
+TEST(PrecisionPairingSelectorTest, FixedSourcesPicksConfiguredPairAndCommonTarget) {
+  std::vector<pe::PairingSatelliteInput> satellites;
+  satellites.push_back(MakePairingSatellite(5U, 7.0e6, 0.0, 101U));
+  satellites.push_back(MakePairingSatellite(9U, 0.0, 7.0e6, 101U));
+  satellites.push_back(MakePairingSatellite(12U, -7.0e6, 0.0, 101U));
+  pe::PrecisionPairingConfig config;
+  config.strategy = pe::PrecisionPairingStrategy::kFixedSources;
+  config.fixed_source_a = 9U;
+  config.fixed_source_b = 5U;
+
+  const pe::PrecisionSatellitePair pair = pe::SelectSatellitePair(config, satellites);
+  ASSERT_TRUE(pair.valid);
+  EXPECT_EQ(pair.source_a, 5U);  // 主星恒为编号较小者
+  EXPECT_EQ(pair.source_b, 9U);
+  EXPECT_EQ(pair.common_target_id, 101U);
+  EXPECT_NEAR(pair.baseline_m, 9.899e6, 2.0e3);
+}
+
+TEST(PrecisionPairingSelectorTest, FixedSourcesWithMissingSourceYieldsNoSample) {
+  std::vector<pe::PairingSatelliteInput> satellites;
+  satellites.push_back(MakePairingSatellite(5U, 7.0e6, 0.0, 101U));
+  satellites.push_back(MakePairingSatellite(9U, 0.0, 7.0e6, 101U));
+  pe::PrecisionPairingConfig config;
+  config.strategy = pe::PrecisionPairingStrategy::kFixedSources;
+  config.fixed_source_a = 5U;
+  config.fixed_source_b = 104U;  // 本周期没推帧
+
+  EXPECT_FALSE(pe::SelectSatellitePair(config, satellites).valid);
+}
+
+TEST(PrecisionPairingSelectorTest, LongestBaselineWinsAmongPairsSharingATarget) {
+  std::vector<pe::PairingSatelliteInput> satellites;
+  satellites.push_back(MakePairingSatellite(5U, 7.0e6, 0.0, 101U));
+  satellites.push_back(MakePairingSatellite(9U, 0.0, 7.0e6, 101U));
+  satellites.push_back(MakePairingSatellite(12U, -7.0e6, 0.0, 101U));
+  pe::PrecisionPairingConfig config;  // 默认 kLongestBaseline
+
+  const pe::PrecisionSatellitePair pair = pe::SelectSatellitePair(config, satellites);
+  ASSERT_TRUE(pair.valid);
+  EXPECT_EQ(pair.source_a, 5U);
+  EXPECT_EQ(pair.source_b, 12U);  // 基线 14,000 km 最长
+  EXPECT_NEAR(pair.baseline_m, 14.0e6, 2.0e3);
+}
+
+TEST(PrecisionPairingSelectorTest, LongestBaselineSkipsPairsWithoutCommonTarget) {
+  std::vector<pe::PairingSatelliteInput> satellites;
+  satellites.push_back(MakePairingSatellite(5U, 7.0e6, 0.0, 101U));
+  satellites.push_back(MakePairingSatellite(9U, 0.0, 7.0e6, 102U));  // 看另一个目标
+  satellites.push_back(MakePairingSatellite(12U, -7.0e6, 0.0, 101U));
+  pe::PrecisionPairingConfig config;
+
+  const pe::PrecisionSatellitePair pair = pe::SelectSatellitePair(config, satellites);
+  ASSERT_TRUE(pair.valid);
+  EXPECT_EQ(pair.source_a, 5U);
+  EXPECT_EQ(pair.source_b, 12U);
+  EXPECT_EQ(pair.common_target_id, 101U);
+}
+
+TEST(PrecisionPairingSelectorTest, WideFieldOnlyDetectionDoesNotPair) {
+  std::vector<pe::PairingSatelliteInput> satellites;
+  satellites.push_back(MakePairingSatellite(5U, 7.0e6, 0.0, 101U));
+  satellites.push_back(MakePairingSatellite(
+      9U, 0.0, 7.0e6, 101U, sbirs_sensor::output::SbirsObservationStage::kWideFieldSearch));
+  pe::PrecisionPairingConfig config;
+
+  EXPECT_FALSE(pe::SelectSatellitePair(config, satellites).valid);
+}
+
+TEST(PrecisionPairingSelectorTest, EqualBaselinesKeepLowestSourcePair) {
+  std::vector<pe::PairingSatelliteInput> satellites;
+  satellites.push_back(MakePairingSatellite(4U, 5.0e6, 0.0, 101U));
+  satellites.push_back(MakePairingSatellite(1U, -5.0e6, 0.0, 101U));
+  satellites.push_back(MakePairingSatellite(8U, 0.0, 5.0e6, 101U));
+  satellites.push_back(MakePairingSatellite(3U, 0.0, -5.0e6, 101U));
+  pe::PrecisionPairingConfig config;  // 1-4 与 3-8 的基线同为 10,000 km
+
+  const pe::PrecisionSatellitePair pair = pe::SelectSatellitePair(config, satellites);
+  ASSERT_TRUE(pair.valid);
+  EXPECT_EQ(pair.source_a, 1U);
+  EXPECT_EQ(pair.source_b, 4U);
 }
 
 }  // namespace

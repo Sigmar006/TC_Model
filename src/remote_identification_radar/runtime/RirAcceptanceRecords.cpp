@@ -1304,14 +1304,11 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                               "雷达航迹与特征识别交互接口测试", interface_recognition);
 
   // 外部导入项：综合特征识别是独立验收用例，与第47项宽带一维像分别记录。
+  // 中译：本项只输出**识别目标类别结果**（用户 2026-10-20 要求）——型号/置信度/
+  //       特征掩码不再写；航迹与目标 ID 保留，否则该结果无法归因到目标。
+  // 标识：47A 输出精简（2026-10-20）。
   if (result != nullptr) {
-    std::string comprehensive = track_target_id;
-    comprehensive += " 目标类别=" + category_text;
-    comprehensive += " 目标型号=" +
-                     (result->target_model.empty() ? std::string("未识别")
-                                                   : result->target_model);
-    comprehensive += " 置信度=" + FormatF(result->confidence, 5);
-    comprehensive += " 特征有效掩码=" + std::to_string(result->valid_feature_mask);
+    std::string comprehensive = track_target_id + " 目标类别=" + category_text;
     Emit(sim_time_sec, cycle, "综合特征识别功能测试", comprehensive);
   }
 

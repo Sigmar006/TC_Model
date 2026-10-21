@@ -52,6 +52,7 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   //       只有约 1.9 km/s（真值约 6 km/s），把弹道族模板全部推到 4σ 之外；拟合速度
   //       （N=20 拍，误差约 200 m/s）才具备型号分辨力。拟合不可用时行为与改动前一致。
   // 标识：B3 运动特征速度来源。
+  observation.speed_from_fit = has_velocity_lsq;
   observation.speed_mps = has_velocity_lsq
                               ? velocity_lsq_mps.norm()
                               : ((snapshot.speed > 0.0f) ? snapshot.speed

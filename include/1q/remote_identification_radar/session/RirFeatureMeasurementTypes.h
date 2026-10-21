@@ -39,6 +39,12 @@ struct ONEQ_API RirRcsFeatureObservation {
 struct ONEQ_API RirMotionFeatureObservation {
   bool valid{false};                 /**< 维度可用性（快照为已确认航迹）。 */
   float speed_m_per_s{0.0f};         /**< 速度模长（m/s）。 */
+  /**
+   * @brief 速度是否来自"量测位置多点最小二乘拟合"（B3，2026-10-21）。
+   * @details true 表示 speed_m_per_s 是拟合值（约 4.2 km/s），false 表示滤波后验值
+   *   （长斜距、低角度精度下仅约 1.9 km/s）。两套口径都写日志时必须标注来源。
+   */
+  bool speed_from_fit{false};
   float altitude_m{0.0f};            /**< 绝对高度（m）= 平台海拔 + 雷达局部 ENU z。 */
   float acceleration_m_per_s2{0.0f}; /**< 加速度模长（m/s²）。 */
   float turn_radius_m{0.0f};         /**< 转弯半径（m）；直线飞行时为 0。 */

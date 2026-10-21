@@ -760,7 +760,11 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   //       "门限 13.8 / 结果 否"，无法判断差多少。该 SNR 就是 CFAR **实际消费**的那个值：
   //       cell 路径为处理后单脉冲 SINR，回退路径为雷达方程算出的 SNR。
   // 标识：2026-10-20 用户要求第 36 项补信噪比。
-  Emit(t, cycle, "恒虚警检测功能测试", id_sp + "信噪比=" + FormatF(input.snr_db, 3) + "dB");
+  // 中译：标注 SNR 口径——CFAR 实际消费的是"处理后"信噪比（含脉压 48.57 dB 与 MTD 增益），
+  //       而第 29 项的六列功率是**处理前**的；不标注会被外部按原始功率复算判为矛盾。
+  // 标识：第 36 项 SNR 口径（2026-10-21）。
+  Emit(t, cycle, "恒虚警检测功能测试",
+       id_sp + "信噪比=" + FormatF(input.snr_db, 3) + "dB 信噪比口径=处理后");
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测结果=" + YesNo(input.detected));
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测概率=" + FormatF(input.pd, 5));
   // 2026-09-28 新增要求：本项还须写「检测概率=90%的最大探测距离」及所依据的 RCS。
@@ -1052,7 +1056,10 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
                  FormatF(measurement_lla.longitude_deg, 6) + "," +
                  FormatF(measurement_lla.altitude_m, 1) + ")";
     }
-    content += " 检测概率=" + FormatF(measurement.detection_pd, 4);
+    // 中译：本项 Pd 与第 36 项的「统计检测概率」同源不同口径（此处按本周期该次量测），
+    //       加限定词避免两处数值被当作互相印证或互相矛盾。
+    // 标识：第 43 项检测概率口径（2026-10-21）。
+    content += " 检测概率=" + FormatF(measurement.detection_pd, 4) + " 检测概率口径=本周期量测";
     content += measurement.matched_existing_track
                    ? " 关联结果=航迹" + std::to_string(measurement.association_key)
                    : " 关联结果=未配到任何已有航迹";
@@ -1363,7 +1370,8 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
     Emit(sim_time_sec, cycle, "跟踪滤波功能测试",
          track_target_id + " 位置（ECEF）=" +
              FormatVec3(pos_ecef.x_m, pos_ecef.y_m, pos_ecef.z_m, 1) + "m 速度=" +
-             FormatVec3(vel_ecef.x_mps, vel_ecef.y_mps, vel_ecef.z_mps, 3) + "m/s 加速度=" +
+             FormatVec3(vel_ecef.x_mps, vel_ecef.y_mps, vel_ecef.z_mps, 3) +
+             "m/s 速度口径=滤波后验 加速度=" +
              FormatVec3(acc_ecef.x_mps, acc_ecef.y_mps, acc_ecef.z_mps, 4) + "m/s^2");
   }
   {
@@ -1415,6 +1423,11 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       motion_text += " 高度=" + FormatF(motion_feature.altitude_m, 1) + "m";
       motion_text += " 加速度=" + FormatF(motion_feature.acceleration_m_per_s2, 3) + "m/s^2";
       motion_text += std::string(" 近似直线=") + YesNo(motion_feature.is_straight);
+      // 中译：标注速度来源——识别侧用的是"量测位置多点最小二乘拟合"（B3），与第 45/65 项
+      //       的滤波后验速度（该几何下仅约 1.9 km/s）是两套口径，必须写明。
+      // 标识：运动特征速度来源（2026-10-21）。
+      motion_text +=
+          motion_feature.speed_from_fit ? " 速度来源=最小二乘拟合" : " 速度来源=滤波后验";
       motion_text += " 识别类别=" + category_text;
       Emit(sim_time_sec, cycle, "运动特征处理功能测试", motion_text);
     }

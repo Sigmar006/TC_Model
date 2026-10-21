@@ -1297,7 +1297,10 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
     interface_recognition += " 型号=" +
                              (result->target_model.empty() ? std::string("未识别")
                                                            : result->target_model);
-    interface_recognition += " 置信度=" + FormatF(result->confidence, 5);
+    // 中译：不再输出"置信度"（用户 2026-10-21 裁定）——该值实为
+    //       best_score/total_score 的"得分份额"（≈1/模型数），不是类别置信概率，
+    //       与"已给出类别"并列会被误读；型号/类别本身仍在同一行输出。
+    // 标识：2026-10-21 删除置信度字段。
     interface_recognition += " 积累观测数=" + std::to_string(result->observation_count);
   }
   RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle,
@@ -1581,9 +1584,8 @@ void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
       content += " 目标型号=" +
                  (recognition->target_model.empty() ? std::string("未识别")
                                                      : recognition->target_model);
-      content += " 置信度=" + FormatF(recognition->confidence, 5);
     } else {
-      content += " 目标类别=未知 目标型号=未识别 置信度=0.00000";
+      content += " 目标类别=未知 目标型号=未识别";
     }
 
     if (feature_record != nullptr) {

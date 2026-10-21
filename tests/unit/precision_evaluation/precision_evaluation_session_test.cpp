@@ -8,6 +8,7 @@
 #include "1q/coordinate/position_transform.h"
 #include "1q/fusion/DetectionRecord.h"
 #include "1q/fusion/FusionEngine.h"
+#include "1q/precision_evaluation/PrecisionEvaluationInputs.h"
 #include "1q/precision_evaluation/PrecisionEvaluationSession.h"
 #include "1q/precision_evaluation/PrecisionEvaluationTypes.h"
 #include "1q/precision_evaluation/SbirsBearingAdapter.h"
@@ -587,6 +588,80 @@ TEST(SbirsBearingAdapterTest, EciBearingMapsToSatelliteLocalEnu) {
   EXPECT_TRUE(precision_evaluation::AdaptSbirsResultToDetectionRecords(result, satellite,
                                                                                 0.0, 7U)
                   .empty());
+}
+
+// --- 宿主检测级输入装配（第 26/27 项现场接入路径） ---
+
+pe::PrecisionDetectionInput MakePrecisionDetection(std::uint64_t detection_id,
+                                                  std::uint64_t target_id, float azimuth_rad) {
+  pe::PrecisionDetectionInput detection;
+  detection.detection_id = detection_id;
+  detection.target_id = target_id;
+  detection.measurement_time_s = 1.0;
+  detection.azimuth_rad = azimuth_rad;
+  detection.elevation_rad = 0.0f;
+  detection.observation_stage = sbirs_sensor::output::SbirsObservationStage::kNarrowFieldTrack;
+  detection.detected = true;
+  return detection;
+}
+
+TEST(PrecisionEvaluationInputsTest, BuildsDetectionAndAttributionRecords) {
+  pe::PrecisionSatelliteCycleInput input;
+  input.cycle_index = 7U;
+  pe::PrecisionDetectionInput attributed = MakePrecisionDetection(11U, 101U, 1.4056f);
+  attributed.has_focal_plane_offset = true;
+  attributed.focal_plane_offset_x_m = 1.5e-3f;
+  attributed.focal_plane_offset_y_m = -2.5e-3f;
+  input.detections.push_back(attributed);
+  // 未归属检测：不建归属记录，会话因此不会把它送进双星交会。
+  input.detections.push_back(MakePrecisionDetection(12U, 0U, 1.5f));
+
+  const sbirs_sensor::session::SbirsCycleResult result =
+      pe::BuildSatelliteCycleResult(input);
+
+  EXPECT_EQ(result.status, sbirs_sensor::session::SbirsCycleStatus::kCompleted);
+  EXPECT_EQ(result.input_cycle_index, 7U);
+  EXPECT_EQ(result.output_frame.cycle_index, 7U);
+  ASSERT_EQ(result.output_frame.detections.size(), 2U);
+  EXPECT_EQ(result.output_frame.detections[0].detection_id, 11U);
+  EXPECT_FLOAT_EQ(result.output_frame.detections[0].azimuth_rad, 1.4056f);
+  EXPECT_EQ(result.output_frame.detections[0].observation_stage,
+            sbirs_sensor::output::SbirsObservationStage::kNarrowFieldTrack);
+  EXPECT_TRUE(result.output_frame.detections[0].detected);
+  ASSERT_EQ(result.detection_attributions.size(), 1U);
+  const sbirs_sensor::attribution::SbirsDetectionAttributionRecord& attribution =
+      result.detection_attributions[0];
+  EXPECT_EQ(attribution.detection_id, 11U);
+  EXPECT_EQ(attribution.target_id, 101U);
+  EXPECT_TRUE(attribution.has_focal_plane_offset);
+  EXPECT_FLOAT_EQ(attribution.focal_plane_offset_x_m, 1.5e-3f);
+  EXPECT_FLOAT_EQ(attribution.focal_plane_offset_y_m, -2.5e-3f);
+}
+
+TEST(PrecisionEvaluationInputsTest, SessionConsumesBuiltResultAndSamplesAngularError) {
+  pe::PrecisionEvaluationSession session{};
+  pe::DualSatEphemerisInput ephemeris;
+  ephemeris.satellite_a_position_ecef_m = oneq::coordinate::EcefPositionM(7.0e6, 0.0, 0.0);
+  ephemeris.satellite_b_position_ecef_m = oneq::coordinate::EcefPositionM(0.0, 7.0e6, 0.0);
+
+  pe::EvaluationTruthTarget truth;
+  truth.key = 101U;
+  truth.position_ecef_m = oneq::coordinate::EcefPositionM(8.0e6, 6.0e6, 0.0);
+
+  pe::PrecisionSatelliteCycleInput input;
+  input.cycle_index = 1U;
+  // 视线精确指向真值：方位 = atan2(6e6, 8e6 − 7e6)，俯仰 0 ⇒ 角度误差应为 0 量级。
+  const float exact_azimuth_rad = static_cast<float>(std::atan2(6.0e6, 1.0e6));
+  input.detections.push_back(MakePrecisionDetection(1U, 101U, exact_azimuth_rad));
+
+  const pe::PrecisionEvaluationCycleResult cycle = session.Step(
+      1U, 1.0f, kUtcJulianDay, ephemeris, std::vector<pe::EvaluationTruthTarget>{truth},
+      pe::BuildSatelliteCycleResult(input), sbirs_sensor::session::SbirsCycleResult{}, {});
+
+  ASSERT_EQ(cycle.angular.size(), 1U);
+  EXPECT_EQ(cycle.angular[0].key, 101U);
+  EXPECT_LT(std::fabs(cycle.angular[0].azimuth_error_deg), 1.0e-3);
+  EXPECT_LT(std::fabs(cycle.angular[0].elevation_error_deg), 1.0e-3);
 }
 
 }  // namespace

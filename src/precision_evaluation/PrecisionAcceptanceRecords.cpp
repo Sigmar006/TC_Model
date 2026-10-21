@@ -57,7 +57,11 @@ void WritePrecisionKeyMetricsUnconditional(const std::map<std::uint64_t, TargetK
                  FormatF(snapshot.focal_y_m, 6) + ")";
     }
     // 会话汇总行语义：周期/时间用 0（与文档示例一致；行内误差为最近一拍快照）。
-    PRECISION_EVAL_ITEM(0.0f, 0U, "关键精度指标提取功能测试", content);
+    // 直接写通道：`PRECISION_EVAL_ITEM` 在编译期开关关闭时会展开成空语句，
+  // 现场因此出现"会话跑通、样本有、日志 0 行"（2026-10-21）。
+  oneq::logging::WriteAcceptanceLog(
+      oneq::logging::AcceptanceChannel::kSatelliteTarget,
+      oneq::logging::FormatAcceptanceLine(0.0f, 0U, "关键精度指标提取功能测试", content));
   }
 }
 
@@ -83,7 +87,9 @@ void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
   content += " 底层分=" + scores;
   content += " 综合分=" + FormatF(report.composite_score, 3);
   content += std::string(" 等级=") + GradeOf(report.composite_score);
-  PRECISION_EVAL_ITEM(0.0f, 0U, "层次分析法功能测试", content);
+  oneq::logging::WriteAcceptanceLog(
+      oneq::logging::AcceptanceChannel::kSatelliteTarget,
+      oneq::logging::FormatAcceptanceLine(0.0f, 0U, "层次分析法功能测试", content));
 }
 
 void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {

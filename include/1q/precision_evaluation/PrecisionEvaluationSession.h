@@ -6,6 +6,7 @@
 #ifndef ONEQ_PRECISION_EVALUATION_PRECISION_EVALUATION_SESSION_H_
 #define ONEQ_PRECISION_EVALUATION_PRECISION_EVALUATION_SESSION_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -74,6 +75,9 @@ class ONEQ_API PrecisionEvaluationSession {
    *         （零证据=零分，不因空序列 rmse=0 而得满分）。
    */
   PrecisionEvaluationReport Summarize() const;
+
+  /** @brief 诊断用：当前已缓存"最近一拍误差快照"的目标数（只读，不改会话状态）。 */
+  std::size_t DebugLatestErrorCount() const;
 
  private:
   struct Impl;

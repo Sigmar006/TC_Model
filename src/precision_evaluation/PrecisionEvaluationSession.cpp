@@ -527,8 +527,11 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
   return cycle_result;
 }
 
-PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {
-  PrecisionEvaluationReport report;
+std::size_t PrecisionEvaluationSession::DebugLatestErrorCount() const {
+  return impl_->latest_errors.size();
+}
+
+PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {  PrecisionEvaluationReport report;
   const std::vector<double>* series[kPrecisionMetricCount] = {
       &impl_->angular_series, &impl_->dual_sat_series, &impl_->velocity_series,
       &impl_->impact_series, &impl_->launch_series};

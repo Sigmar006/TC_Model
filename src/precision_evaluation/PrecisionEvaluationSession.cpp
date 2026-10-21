@@ -556,18 +556,16 @@ PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {  Preci
   AhpEvaluation ahp;
   if (!TryEvaluateAhp(impl_->config.ahp, &ahp)) {
     report.ahp_valid = false;
-    if (PRECISION_EVAL_LOG_ENABLED()) {
-      WritePrecisionAhp(report);
-    }
+    WritePrecisionAhpUnconditional(report);  // 内部按 ahp_valid 决定是否写
     return report;
   }
   report.ahp = ahp;
   report.ahp_valid = true;
   ComposePrecisionScore(ahp.weights, rmse, references, &report);
-  if (PRECISION_EVAL_LOG_ENABLED()) {
-    WritePrecisionKeyMetrics(impl_->latest_errors);
-    WritePrecisionAhp(report);
-  }
+  // 2026-10-21：写盘走无闸门接口——开关在 PrecisionAcceptanceRecords.cpp 那一 TU 里的
+  // 求值与本 TU 不一致时，第 26/27 项会静默为空（现场已复现：会话跑通、样本有、日志 0 行）。
+  WritePrecisionKeyMetricsUnconditional(impl_->latest_errors);
+  WritePrecisionAhpUnconditional(report);
   return report;
 }
 

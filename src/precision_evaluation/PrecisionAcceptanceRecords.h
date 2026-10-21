@@ -36,6 +36,13 @@ void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapsh
 
 void WritePrecisionAhp(const PrecisionEvaluationReport& report);
 
+// 无编译期闸门的写出接口（2026-10-21）：现场宿主用"总是写"的路径，避免写盘宏在
+// 不同编译单元里求值不一致；是否调用由会话/宿主决定。
+void WritePrecisionKeyMetricsUnconditional(
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest);
+
+void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report);
+
 }  // namespace precision_evaluation
 
 #endif

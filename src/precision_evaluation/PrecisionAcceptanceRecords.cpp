@@ -33,10 +33,7 @@ const char* GradeOf(double score) {
 
 }  // namespace
 
-void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
-  if (!PRECISION_EVAL_LOG_ENABLED()) {
-    return;
-  }
+void WritePrecisionKeyMetricsUnconditional(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
   // 验收判定标准 第26项（修改）：逐目标一行，只写误差本身（估计−真值/输出角−真值角/
   // 焦平面脱靶量），不写 RMSE/CEP50/CI 等派生统计；无样本的字段省略。
   for (const auto& entry : latest) {
@@ -64,10 +61,7 @@ void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapsh
   }
 }
 
-void WritePrecisionAhp(const PrecisionEvaluationReport& report) {
-  if (!PRECISION_EVAL_LOG_ENABLED()) {
-    return;
-  }
+void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
   if (!report.ahp_valid) {
     return;
   }
@@ -90,6 +84,20 @@ void WritePrecisionAhp(const PrecisionEvaluationReport& report) {
   content += " 综合分=" + FormatF(report.composite_score, 3);
   content += std::string(" 等级=") + GradeOf(report.composite_score);
   PRECISION_EVAL_ITEM(0.0f, 0U, "层次分析法功能测试", content);
+}
+
+void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
+  if (!PRECISION_EVAL_LOG_ENABLED()) {
+    return;
+  }
+  WritePrecisionKeyMetricsUnconditional(latest);
+}
+
+void WritePrecisionAhp(const PrecisionEvaluationReport& report) {
+  if (!PRECISION_EVAL_LOG_ENABLED()) {
+    return;
+  }
+  WritePrecisionAhpUnconditional(report);
 }
 
 }  // namespace precision_evaluation

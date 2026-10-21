@@ -1746,18 +1746,31 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
   }
   // 验收判定标准 第48项：逐驻留扫描轨迹序号（2026-08-29 TAS：一周期多驻留）。
   // 波位排列表/扫描轨迹全量在 Rir_scan_pattern.csv（index,az_deg,el_deg）；日志不再
-  // 重复当前波束指向，搜索驻留只写本周期序号（=波位表游标，可索引 CSV）。
+  // 重复当前波束指向，搜索驻留只写波位序号（=波位表游标，可索引 CSV）。
   // 指定/跟踪驻留带种类与目标 ID 标记。
   // 2026-09-28 追加：本模型无独立地平线搜索模式，故以波位表内俯仰接近 0°（|el| ≤
   // 半波束宽）的搜索驻留作为地平线波位，按其实际指向独立写出第 37A 项「方位/俯仰
   // 指向信息」行；该项的扫描调度信息行随 WriteRirSchedule 一并写出。
   const std::string scan_csv_path = ResolveRirScanPatternCsvPath();
   constexpr double kHorizonElevationToleranceDeg = 0.5;
+  std::size_t search_dwell_count = 0U;
+  for (const RirDwellPlan& dwell : dwell_plan) {
+    if (dwell.kind == RirDwellKind::kSearch) {
+      ++search_dwell_count;
+    }
+  }
+  // 中译：每周期先写一行"本周期搜索驻留数"，让"驻留点数量"在第 48 项自身可读，
+  //       不必数逐驻留行、也不必再对照第 37 项的搜索计数。
+  // 标识：第 48 项驻留点计数（2026-10-21，核对第 37/48 项驻留数一致性后新增；此前
+  //       `本周期序号` 实为波位表游标，容易被误读成周期内序号且总数无从自证）。
+  Emit(sim_time_sec, cycle, "波束扫描功能测试",
+       "雷达ID=" + std::to_string(radar_id) +
+           " 本周期搜索驻留数=" + std::to_string(search_dwell_count));
   for (const RirDwellPlan& dwell : dwell_plan) {
     if (dwell.kind == RirDwellKind::kSearch) {
       Emit(sim_time_sec, cycle, "波束扫描功能测试",
            "雷达ID=" + std::to_string(radar_id) +
-               " 本周期序号=" + std::to_string(dwell.scan_pattern_index) +
+               " 波位序号=" + std::to_string(dwell.scan_pattern_index) +
                " 波位排列表已输出至" + scan_csv_path);
       if (std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
           kHorizonElevationToleranceDeg) {

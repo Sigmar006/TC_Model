@@ -262,8 +262,10 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
 
 /**
  * @brief 验收判定标准 第48项：逐驻留波束指向行（2026-08-29 TAS：一周期多驻留）。
- * @note 搜索驻留每条一行（保"本周期序号/波位"既有字段语义）；指定/跟踪驻留
- *       各一行，带驻留种类与目标 ID 标记。
+ * @note 每周期先写一行 `本周期搜索驻留数=N`，再逐驻留写指向行：搜索驻留每条一行，
+ *       字段 `波位序号=`（波位表游标，可索引 `Rir_scan_pattern.csv`）；指定/跟踪驻留
+ *       各一行，带驻留种类与指向。2026-10-21 起原名 `本周期序号` 更名 `波位序号`，
+ *       消除"周期内序号"的误读（该值跨周期连续递增并在波位表长度处回绕）。
  */
 void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                        const std::vector<RirDwellPlan>& dwell_plan);

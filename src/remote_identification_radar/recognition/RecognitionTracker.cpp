@@ -318,8 +318,13 @@ void RirTracker::UpdateCycle(
 
     const RirFeatureSet aggregate = AggregateWindow(state.window);
     if (aggregate.valid_feature_mask == 0U) {
-      judgement.state = session::RirRecognitionState::kUnknown;
-      state.result = judgement;
+      // 中译：本拍没有可用的特征维度（窗口被裁空/全部维度失效）**不等于**"目标类别未知"，
+      //       已有结论时保持上一次结论，不覆盖成未知。
+      // 标识：识别结论保持（2026-10-21，A-补充）。
+      if (!state.has_conclusion) {
+        judgement.state = session::RirRecognitionState::kUnknown;
+        state.result = judgement;
+      }
       continue;
     }
 
@@ -335,7 +340,15 @@ void RirTracker::UpdateCycle(
     judgement.feature_scores.range_profile_quality = aggregate.range_profile.quality;
 
     if (!match.has_candidates) {
-      judgement.state = session::RirRecognitionState::kUnknown;
+      // 中译：本拍所有模板 profile 都不可适用（视角/量程落在 profile 适用域之外）时，
+      //       同样保持上一次结论——单拍"无适用模板"不代表目标类别应回退为未知。
+      // 标识：识别结论保持（2026-10-21，A-补充）。
+      if (!state.has_conclusion) {
+        judgement.state = session::RirRecognitionState::kUnknown;
+        state.result = judgement;
+        continue;
+      }
+      continue;
     } else {
       // 分项相似度：与最佳候选模板比对（best model 的适用 profile）。
       const RirModel* best_model = nullptr;

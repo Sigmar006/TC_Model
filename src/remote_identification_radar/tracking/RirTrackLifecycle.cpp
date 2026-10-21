@@ -450,7 +450,7 @@ void RirTrackLifecycle::ApplyHitFilter(RirTrackState* track, const RirTrackMeasu
   // RirTrackLifecycleTest.LostTrackRehitResetsFilterAndConfirms）。
   const bool has_two_point_velocity =
       reset_filter_on_hit && measurement.matched_existing_track &&
-      status_before == RirTrackStatus::kTentative && track->hit_count == 2U && dt_sec > 0.0f;
+      status_before != RirTrackStatus::kLost && track->hit_count == 2U && dt_sec > 0.0f;
   if (has_two_point_velocity) {
     two_point_velocity = (measurement.position - track->position) / dt_sec;
   }

@@ -439,11 +439,29 @@ void RirTrackLifecycle::ApplyHitFilter(RirTrackState* track, const RirTrackMeasu
   const Eigen::Vector3f velocity_before_update = track->velocity;
   const bool reset_filter_on_hit =
       !measurement.matched_existing_track || status_before == RirTrackStatus::kLost;
+  // 中译：**速度两点初始化**（2026-10-21，B）——量测不携带真值速度（去真值化契约），
+  //       但航迹此前已有命中时，可用"(本次量测位置 − 上次位置) / 间隔"给出与测量自洽的
+  //       初速，避免零速先验在长斜距、低角度精度下收敛过慢（实测滤波速度约 1.6 km/s，
+  //       而真值约 6 km/s，弹道族模型因此分不开）。
+  // 标识：B 速度两点初始化（仅用测量，不含真值）。
+  Eigen::Vector3f two_point_velocity = Eigen::Vector3f::Zero();
+  // 仅用于**新建航迹的第二次命中**：此时两次量测间隔短、位置差可信；失跟重捕
+  // （kLost）不适用——重捕间隔长、目标可能已机动，仍按零速无知先验重置（既有契约
+  // RirTrackLifecycleTest.LostTrackRehitResetsFilterAndConfirms）。
+  const bool has_two_point_velocity =
+      reset_filter_on_hit && measurement.matched_existing_track &&
+      status_before == RirTrackStatus::kTentative && track->hit_count == 2U && dt_sec > 0.0f;
+  if (has_two_point_velocity) {
+    two_point_velocity = (measurement.position - track->position) / dt_sec;
+  }
+  const RirGaussianState reset_state =
+      has_two_point_velocity ? filter_.Initialize(measurement.position, two_point_velocity)
+                             : filter_.Initialize(measurement);
   if (imm_filter != nullptr && imm_filter->IsValid()) {
     if (reset_filter_on_hit) {
       // 防御分支（confirmed-only 激活策略下不可达）：IMM 命中重置退化为 CV 初始化，
       // 与 AR ApplyKalmanHitUpdate 同构。
-      ApplyGaussianState(track, filter_.Initialize(measurement), velocity_before_update,
+      ApplyGaussianState(track, reset_state, velocity_before_update,
                          acceleration_dt_sec);
       // 本次是重初始化：加速度清零并**复位起批标志**，使下一次命中重新以瞬时差分起批
       // （否则新基准下的差分会被 EMA 压成 1/τ，重捕后长期低报）。
@@ -458,7 +476,7 @@ void RirTrackLifecycle::ApplyHitFilter(RirTrackState* track, const RirTrackMeasu
     return;
   }
   if (reset_filter_on_hit) {
-    ApplyGaussianState(track, filter_.Initialize(measurement), velocity_before_update,
+    ApplyGaussianState(track, reset_state, velocity_before_update,
                        acceleration_dt_sec);
     track->acceleration.setZero();
     track->acceleration_mps2 = 0.0f;

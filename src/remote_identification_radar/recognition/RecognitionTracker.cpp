@@ -231,8 +231,22 @@ void RirTracker::UpdateCycle(
 
     // 键重分配检测：hit_count 回落视为新目标，清空旧状态。
     if (state.last_seen_hit_count > 0U && snapshot.hit_count < state.last_seen_hit_count) {
+      // 中译：槽位复用导致 hit_count 回退时，只清空累积窗口与计数，**保留上一次结论**
+      //       （类别/型号/结论时刻）——否则漏检后重捕会把已确认类别抹成“未知”，
+      //       长滑行段更会把结论整段丢失；若新目标不同，重新积累后会覆盖旧结论。
+      // 标识：识别结论保持（2026-10-21，A）。
+      const session::RirRecognitionResult previous_result = state.result;
+      const float previous_conclusion_time = state.conclusion_time_sec;
+      const float previous_first_conclusion = state.first_conclusion_time_sec;
+      const bool previous_has_conclusion = state.has_conclusion;
       state = RirTrackState{};
       state.association_key = key;
+      if (previous_has_conclusion) {
+        state.result = previous_result;
+        state.conclusion_time_sec = previous_conclusion_time;
+        state.first_conclusion_time_sec = previous_first_conclusion;
+        state.has_conclusion = true;
+      }
     }
     state.last_seen_hit_count = snapshot.hit_count;
 

@@ -115,10 +115,13 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
                               std::vector<TargetInferenceResult>& results,
                               const TargetInferenceConfig& config);
 
+// 借道写出（2026-10-21）：其它模块借用推演模块已验证可用的 SatelliteTarget 写盘路径。
+void WriteSatelliteTargetAcceptanceLine(const std::string& item, const std::string& content);
+
 }  // namespace target_inference
 
 // 借道写出（2026-10-21）：其它模块借用推演模块已验证可用的 SatelliteTarget 写盘路径，
 // 用于本模块通道未初始化时仍能落盘（第 26/27 项现场问题）。
-void WriteSatelliteTargetAcceptanceLine(const std::string& item, const std::string& content);
+
 
 #endif

@@ -11,8 +11,6 @@
 #include <vector>
 
 #include "1q/coordinate/types.h"
-#include <string>
-#include "target_inference/InferenceAcceptanceLog.h"
 #include "1q/target_inference/InferenceResult.h"
 #include "1q/target_inference/InferenceTrackState.h"
 #include "1q/target_inference/TargetInferenceConfig.h"
@@ -117,17 +115,6 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
                               std::vector<TargetInferenceResult>& results,
                               const TargetInferenceConfig& config);
 
-// 借道写出（2026-10-21）：其它模块借用推演模块已验证可用的 SatelliteTarget 写盘路径。
-// 借道写出（2026-10-21）：其它模块借用推演模块已验证可用的 SatelliteTarget 写盘路径。
-// 头文件内联定义：避免跨目标链接依赖（现场 1q_lib 归档边界上曾出现未解析符号）。
-inline void WriteSatelliteTargetAcceptanceLine(const std::string& item, const std::string& content) {
-  INFERENCE_ACCEPTANCE_ITEM(0.0f, 0U, item.c_str(), content);
-}
-
 }  // namespace target_inference
-
-// 借道写出（2026-10-21）：其它模块借用推演模块已验证可用的 SatelliteTarget 写盘路径，
-// 用于本模块通道未初始化时仍能落盘（第 26/27 项现场问题）。
-
 
 #endif

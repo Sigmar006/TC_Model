@@ -8,9 +8,10 @@
 #include <string>
 #include <utility>
 
+#include "common/logging/AcceptanceFileLog.h"
+#include "common/logging/AcceptanceRecordFormat.h"
 #include "common/logging/AcceptanceText.h"
 #include "precision_evaluation/PrecisionEvaluationLog.h"
-#include "target_inference/InferenceAcceptanceRecords.h"
 
 namespace precision_evaluation {
 namespace {
@@ -30,6 +31,19 @@ const char* GradeOf(double score) {
     return "C";
   }
   return "D";
+}
+
+// 第26/27 项落盘（2026-10-21 现场修正）：本模块直接写 SatelliteTarget 通道。
+// 此前借用推演模块 `InferenceAcceptanceRecords.h` 里的头文件内联包装，那层包装的
+// 宏闸门求值取的是**推演模块**的编译选项（`ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG`
+// 只加在 target_inference_core 上），在精度模块的编译单元里恒为关，调用被编译成
+// 空语句——这就是"会话跑通、ahp_valid=1、日志 0 行"的真因（1q.lib 内
+// PrecisionAcceptanceRecords.obj 无任何 WriteAcceptanceLog 引用，dumpbin 已证实）。
+// 通道选择仍按验收判定标准 §0：第26/27 项写 log/SatelliteTarget.log。
+void WriteSatelliteTargetLine(const char* item, const std::string& content) {
+  oneq::logging::WriteAcceptanceLog(
+      oneq::logging::AcceptanceChannel::kSatelliteTarget,
+      oneq::logging::FormatAcceptanceLine(0.0f, 0U, item, content));
 }
 
 }  // namespace
@@ -58,9 +72,8 @@ void WritePrecisionKeyMetricsUnconditional(const std::map<std::uint64_t, TargetK
                  FormatF(snapshot.focal_y_m, 6) + ")";
     }
     // 会话汇总行语义：周期/时间用 0（与文档示例一致；行内误差为最近一拍快照）。
-    // 直接写通道：`PRECISION_EVAL_ITEM` 在编译期开关关闭时会展开成空语句，
-  // 现场因此出现"会话跑通、样本有、日志 0 行"（2026-10-21）。
-  target_inference::WriteSatelliteTargetAcceptanceLine("关键精度指标提取功能测试", content);
+    // 通道见 WriteSatelliteTargetLine 注释：不借用推演模块的宏闸门（2026-10-21）。
+    WriteSatelliteTargetLine("关键精度指标提取功能测试", content);
   }
 }
 
@@ -86,7 +99,7 @@ void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
   content += " 底层分=" + scores;
   content += " 综合分=" + FormatF(report.composite_score, 3);
   content += std::string(" 等级=") + GradeOf(report.composite_score);
-  target_inference::WriteSatelliteTargetAcceptanceLine("层次分析法功能测试", content);
+  WriteSatelliteTargetLine("层次分析法功能测试", content);
 }
 
 void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {

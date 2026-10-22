@@ -49,9 +49,11 @@ void WriteSatelliteTargetLine(const char* item, const std::string& content) {
 
 }  // namespace
 
-void WritePrecisionKeyMetricsUnconditional(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
-  // 验收判定标准 第26项（修改）：逐目标一行，只写误差本身（估计−真值/输出角−真值角/
+std::vector<std::string> BuildPrecisionKeyMetricsLines(
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
+  // 验收判定标准 第26项（修改）：逐目标一行，只写误差本身（估计-真值/输出角-真值角/
   // 焦平面脱靶量），不写 RMSE/CEP50/CI 等派生统计；无样本的字段省略。
+  std::vector<std::string> lines;
   for (const auto& entry : latest) {
     const TargetKeyErrorSnapshot& snapshot = entry.second;
     std::string content = "目标ID=" + std::to_string(entry.first);
@@ -66,21 +68,22 @@ void WritePrecisionKeyMetricsUnconditional(const std::map<std::uint64_t, TargetK
     }
     if (snapshot.has_angular) {
       content += " 方位/俯仰误差=" + FormatPairDeg(snapshot.az_error_deg, snapshot.el_error_deg, 4) +
-                 "°";
+                 "\u00b0";
     }
     if (snapshot.has_focal) {
       content += " 脱靶量m=(" + FormatF(snapshot.focal_x_m, 6) + "," +
                  FormatF(snapshot.focal_y_m, 6) + ")";
     }
     // 会话汇总行语义：周期/时间用 0（与文档示例一致；行内误差为最近一拍快照）。
-    // 通道见 WriteSatelliteTargetLine 注释：借推演验收通道写出（2026-10-22）。
-    WriteSatelliteTargetLine("关键精度指标提取功能测试", content);
+    lines.push_back(oneq::logging::FormatAcceptanceLine(
+        0.0f, 0U, "关键精度指标提取功能测试", content));
   }
+  return lines;
 }
 
-void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
+std::string BuildPrecisionAhpLine(const PrecisionEvaluationReport& report) {
   if (!report.ahp_valid) {
-    return;
+    return std::string();
   }
   std::string weights = "(";
   std::string scores = "(";
@@ -100,21 +103,23 @@ void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
   content += " 底层分=" + scores;
   content += " 综合分=" + FormatF(report.composite_score, 3);
   content += std::string(" 等级=") + GradeOf(report.composite_score);
-  WriteSatelliteTargetLine("层次分析法功能测试", content);
+  return oneq::logging::FormatAcceptanceLine(0.0f, 0U, "层次分析法功能测试", content);
 }
 
-void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
-  if (!PRECISION_EVAL_LOG_ENABLED()) {
-    return;
+void WritePrecisionKeyMetricsUnconditional(
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
+  const std::vector<std::string> lines = BuildPrecisionKeyMetricsLines(latest);
+  for (const std::string& line : lines) {
+    oneq::logging::WriteAcceptanceLog(oneq::logging::AcceptanceChannel::kSatelliteTarget, line);
   }
-  WritePrecisionKeyMetricsUnconditional(latest);
 }
 
-void WritePrecisionAhp(const PrecisionEvaluationReport& report) {
-  if (!PRECISION_EVAL_LOG_ENABLED()) {
+void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
+  const std::string line = BuildPrecisionAhpLine(report);
+  if (line.empty()) {
     return;
   }
-  WritePrecisionAhpUnconditional(report);
+  oneq::logging::WriteAcceptanceLog(oneq::logging::AcceptanceChannel::kSatelliteTarget, line);
 }
 
 }  // namespace precision_evaluation

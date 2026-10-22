@@ -43,6 +43,24 @@ void WritePrecisionKeyMetricsUnconditional(
 
 void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report);
 
+/**
+ * @brief 只格式化不写盘：第26 项验收行（逐目标一行，无样本目标不产出）。
+ *
+ * @note 2026-10-22 现场定案：宿主进程里由评估线程调用 `WriteAcceptanceLog` 写出的行
+ *       始终不可见（写调用确实执行、sink 指向现场日志、流 healthy、tellp 增长；同目录
+ *       另开文件正常、同一 DLL 的推演行正常）。故把"算/格式化"与"写"拆开：库只出字符串，
+ *       由集成方在**自己确认可写盘的线程**上落盘（见 PrecisionEvaluationSession::
+ *       LastAcceptanceLines 与宿主 `sbirsfusiondp_1q.cpp` 的写出分支）。
+ */
+std::vector<std::string> BuildPrecisionKeyMetricsLines(
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest);
+
+/**
+ * @brief 只格式化不写盘：第27 项验收行（AHP 非法时返回空串）。
+ * @note 拆分理由同 BuildPrecisionKeyMetricsLines。
+ */
+std::string BuildPrecisionAhpLine(const PrecisionEvaluationReport& report);
+
 }  // namespace precision_evaluation
 
 #endif

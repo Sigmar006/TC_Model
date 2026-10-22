@@ -66,6 +66,14 @@ bool IsAcceptanceLogOpen(AcceptanceChannel channel);
  *       了哪儿"时需要本访问器（2026-10-22 第 26/27 项空行排查）。
  */
 std::string CurrentAcceptanceLogPath(AcceptanceChannel channel);
+/**
+ * @brief 把一行验收文本转成落盘编码（Windows: ANSI -> UTF-8；其它平台原样）。
+ *
+ * @note 供"库出字符串、集成方落盘"的用法：集成方在 WriteAcceptanceLog 之外自己写文件时，
+ *       必须先用本函数转码，否则文件会是宿主 ANSI 编码、与验收日志的 UTF-8 约定不符。
+ *       与 WriteAcceptanceLog 内部用的是同一个转换，不会重复转码。
+ */
+std::string EncodeAcceptanceTextForFile(const std::string& text);
 /** @brief 只读诊断：通道流的 open/good/fail/bad 与 tellp（排查"行写不进去"）。 */
 std::string CurrentAcceptanceLogStateText(AcceptanceChannel channel);
 void WriteAcceptanceLog(AcceptanceChannel channel, const char* text);

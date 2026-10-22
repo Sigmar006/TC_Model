@@ -493,6 +493,11 @@ std::string CurrentAcceptanceLogPath(AcceptanceChannel channel) {
   return SinkOf(channel).OpenedPath();
 }
 
+std::string EncodeAcceptanceTextForFile(const std::string& text) {
+  return EncodeAcceptanceText(text);
+}
+
+
 std::string CurrentAcceptanceLogStateText(AcceptanceChannel channel) {
   return SinkOf(channel).StateText();
 }

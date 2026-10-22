@@ -9,6 +9,7 @@
 
 #include "precision_evaluation/PrecisionAcceptanceRecords.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -49,6 +50,60 @@ class PrecisionAcceptanceRecordsTest : public ::testing::Test {
     return ReadAll(kPath);
   }
 };
+
+
+// 只格式化不写盘（2026-10-22 现场定案）：库出字符串，集成方在自己确认可写盘的线程落盘。
+// 这里锚定"格式化结果与库内写盘逐字节一致"，以及 AHP 非法时第 27 项不产出行。
+TEST_F(PrecisionAcceptanceRecordsTest, BuildLinesMatchesTheWrittenRows) {
+  std::map<std::uint64_t, precision_evaluation::TargetKeyErrorSnapshot> latest;
+  precision_evaluation::TargetKeyErrorSnapshot snapshot;
+  snapshot.has_ecef = true;
+  snapshot.ecef_error_m[0] = 12.5;
+  snapshot.ecef_error_m[1] = -3.5;
+  snapshot.ecef_error_m[2] = 0.5;
+  snapshot.has_slant_range = true;
+  snapshot.slant_range_error_m = -18.0;
+  latest[99U] = snapshot;
+
+  const std::vector<std::string> lines =
+      precision_evaluation::BuildPrecisionKeyMetricsLines(latest);
+  ASSERT_EQ(lines.size(), 1U);
+  EXPECT_NE(lines[0].find("[关键精度指标提取功能测试] 目标ID=99"), std::string::npos)
+      << lines[0];
+
+  precision_evaluation::WritePrecisionKeyMetricsUnconditional(latest);
+  const std::string written = FlushAndRead();
+  // 落盘时内容按 UTF-8 编码写出（AcceptanceFileLog 内部 ANSI->UTF-8），故只比对
+  // 与编码无关的 ASCII 尾部：同一行内容、同一字段顺序，证明两条路径产出同一行。
+  const std::string ascii_fields[] = {"ID=99", "ECEF=(12.5,-3.5,0.5)m", "-18.0m"};
+  for (const std::string& fragment : ascii_fields) {
+    EXPECT_NE(lines[0].find(fragment), std::string::npos) << fragment;
+    EXPECT_NE(written.find(fragment), std::string::npos)
+        << "写盘行必须与只格式化产出的行同内容：" << fragment;
+  }
+  EXPECT_EQ(std::count(written.begin(), written.end(), '\n'), 1)
+      << "一次调用只应落一行";
+}
+
+TEST_F(PrecisionAcceptanceRecordsTest, AhpLineIsEmptyWhenAhpInvalid) {
+  precision_evaluation::PrecisionEvaluationReport invalid;
+  invalid.ahp_valid = false;
+  EXPECT_TRUE(precision_evaluation::BuildPrecisionAhpLine(invalid).empty())
+      << "AHP 非法时第 27 项不产出行（不静默退化为等权）";
+
+  precision_evaluation::PrecisionEvaluationReport valid;
+  valid.ahp_valid = true;
+  valid.composite_score = 0.8;
+  for (std::size_t i = 0U; i < precision_evaluation::kPrecisionMetricCount; ++i) {
+    valid.ahp.weights[i] = 0.2;
+    valid.metric_scores[i] = 0.8;
+  }
+  const std::string line = precision_evaluation::BuildPrecisionAhpLine(valid);
+  EXPECT_NE(line.find("[层次分析法功能测试] 准则层权重=(0.200,0.200,0.200,0.200,0.200)"),
+            std::string::npos)
+      << line;
+  EXPECT_NE(line.find(" 等级="), std::string::npos) << line;
+}
 
 }  // namespace
 

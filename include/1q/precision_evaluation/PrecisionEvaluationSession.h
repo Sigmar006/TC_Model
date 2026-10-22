@@ -20,6 +20,16 @@
 namespace precision_evaluation {
 
 /**
+ * @brief 把一条验收行转成落盘编码（Windows：ANSI -> UTF-8；其它平台原样返回）。
+ *
+ * @note 供"库出字符串、集成方落盘"的用法：集成方自己写文件时先过本函数，落盘字节才与
+ *       库内 `WriteAcceptanceLog` 写出的一致（UTF-8）。与库内用的是同一个转换，重复调用
+ *       不会二次转码已有 UTF-8 的风险由调用方保证（每行只调一次）。
+ */
+std::string EncodeAcceptanceLineForFile(const std::string& line);
+
+
+/**
  * @brief 精度评估会话（评估层入口）。
  * @details 不驱动传感器、不握融合引擎。每周期 Step 消费调用方已产出的双星
  *          SBIRS 周期结果与融合航迹：① 红外定位角度误差；② 双星双视线交会
@@ -78,6 +88,21 @@ class ONEQ_API PrecisionEvaluationSession {
 
   /** @brief 诊断用：当前已缓存"最近一拍误差快照"的目标数（只读，不改会话状态）。 */
   std::size_t DebugLatestErrorCount() const;
+
+  /**
+   * @brief 最近一次 `Summarize()` 产生的第 26/27 项验收行（完整行，已含前四段格式）。
+   *
+   * @return 行列表：第 26 项逐目标各一行（无样本目标不产生），随后第 27 项一行
+   *         （AHP 非法时该行不产生）。未被 `Summarize()` 调用过时为空。
+   *
+   * @note 为什么单独暴露：2026-10-22 现场定位确认，宿主进程里由评估线程直接
+   *       `WriteAcceptanceLog` 写出的行始终不可见（写调用确实执行、sink 指向现场日志、
+   *       流 healthy、tellp 增长；同目录另开文件正常、同一 DLL 的推演行正常），而
+   *       `Summarize()` 本身是纯计算。故把"算/格式化"与"写"拆开：库出字符串，
+   *       集成方在**自己确认可写盘的线程**上按原样落盘即可，行内容与库内写盘逐字节一致。
+   *       库内仍保留原写盘路径（单 DLL 场景/示例程序不受影响）。
+   */
+  const std::vector<std::string>& LastAcceptanceLines() const;
 
  private:
   struct Impl;

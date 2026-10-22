@@ -1,5 +1,7 @@
 ﻿#include "1q/precision_evaluation/PrecisionEvaluationSession.h"
 
+#include "common/logging/AcceptanceFileLog.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -149,6 +151,8 @@ struct PrecisionEvaluationSession::Impl {
   std::vector<double> launch_series;    // 发射点误差，m
   // 验收判定标准 第26项：逐目标最新一拍误差快照（误差本身，非统计）。
   std::map<std::uint64_t, TargetKeyErrorSnapshot> latest_errors;
+  /** 最近一次 Summarize 产生的第26/27 项验收行（只格式化、不写盘，供库外落盘）。 */
+  std::vector<std::string> last_acceptance_lines;
   std::map<std::uint64_t, TruthKeyPoints> truth_keypoints;
   // 双星检出锚点缓存（窗口配对用）：每星逐目标最近一次检出及其测量周期锚点。
   std::map<std::uint64_t, DualSatDetectionAnchor> last_anchor_a;
@@ -531,8 +535,17 @@ std::size_t PrecisionEvaluationSession::DebugLatestErrorCount() const {
   return impl_->latest_errors.size();
 }
 
+std::string EncodeAcceptanceLineForFile(const std::string& line) {
+  return oneq::logging::EncodeAcceptanceTextForFile(line);
+}
+
+const std::vector<std::string>& PrecisionEvaluationSession::LastAcceptanceLines() const {
+  return impl_->last_acceptance_lines;
+}
+
 PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {
   PrecisionEvaluationReport report;
+  impl_->last_acceptance_lines.clear();
   const std::vector<double>* series[kPrecisionMetricCount] = {
       &impl_->angular_series, &impl_->dual_sat_series, &impl_->velocity_series,
       &impl_->impact_series, &impl_->launch_series};
@@ -558,6 +571,12 @@ PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {
   if (!TryEvaluateAhp(impl_->config.ahp, &ahp)) {
     report.ahp_valid = false;
     WritePrecisionAhpUnconditional(report);  // 内部按 ahp_valid 决定是否写
+    // 缓存本拍验收行（只格式化，不写盘）：库外集成方在可靠线程落盘用。
+    impl_->last_acceptance_lines = BuildPrecisionKeyMetricsLines(impl_->latest_errors);
+    const std::string ahp_line = BuildPrecisionAhpLine(report);
+    if (!ahp_line.empty()) {
+      impl_->last_acceptance_lines.push_back(ahp_line);
+    }
     return report;
   }
   report.ahp = ahp;
@@ -567,6 +586,12 @@ PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {
   // 求值与本 TU 不一致时，第 26/27 项会静默为空（现场已复现：会话跑通、样本有、日志 0 行）。
   WritePrecisionKeyMetricsUnconditional(impl_->latest_errors);
   WritePrecisionAhpUnconditional(report);
+  // 缓存本拍验收行（只格式化，不写盘）：库外集成方在可靠线程落盘用。
+  impl_->last_acceptance_lines = BuildPrecisionKeyMetricsLines(impl_->latest_errors);
+  const std::string ahp_line = BuildPrecisionAhpLine(report);
+  if (!ahp_line.empty()) {
+    impl_->last_acceptance_lines.push_back(ahp_line);
+  }
   return report;
 }
 

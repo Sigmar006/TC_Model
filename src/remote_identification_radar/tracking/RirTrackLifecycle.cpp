@@ -30,6 +30,15 @@ constexpr std::uint64_t kUnassociatedKey = 0U;
  */
 constexpr std::size_t kVelocityFitWindow = 20U;
 constexpr std::size_t kVelocityFitMinSamples = 5U;
+/**
+ * @brief 加速度斜率拟合窗口与最少样本（2026-10-22）。
+ *
+ * @details 对"逐拍拟合速度"做直线拟合取斜率作为加速度。σ_a ≈ √12·σ_v/(N^1.5·Δt)：
+ *   σ_v≈200 m/s（B3 拟合误差约 6%）、Δt=1 s 时，N=40 约 2.7 m/s²、N=20 约 7.7 m/s²；
+ *   取 40 拍兼顾噪声（目标加速度约 5 m/s²）与机动时间尺度。
+ */
+constexpr std::size_t kVelocityTrendWindow = 40U;
+constexpr std::size_t kVelocityTrendMinSamples = 10U;
 
 /** @brief 加速度估计的最小有效步长（s）。 */
 constexpr float kMinimumAccelerationDtSec = 1.0e-6f;
@@ -298,6 +307,7 @@ bool RirTrackLifecycle::DropTrack(std::uint64_t association_key) {
   // 中译：航迹被丢弃时同步清理速度拟合历史，避免同键新航迹继承旧目标的位置序列。
   // 标识：B3 速度拟合历史清理。
   velocity_history_by_key_.erase(association_key);
+  velocity_trend_by_key_.erase(association_key);
   RecycleTrack(track_it->second);
   tracks_.erase(track_it);
   return true;
@@ -380,6 +390,70 @@ bool RirTrackLifecycle::TryGetLeastSquaresVelocity(std::uint64_t association_key
   return true;
 }
 
+void RirTrackLifecycle::RecordLeastSquaresVelocity(std::uint64_t association_key,
+                                                  float time_sec,
+                                                  const Eigen::Vector3f& velocity_mps) {
+  std::vector<VelocitySample>& trend = velocity_trend_by_key_[association_key];
+  VelocitySample sample;
+  sample.time_sec = time_sec;
+  sample.velocity = velocity_mps;
+  trend.push_back(sample);
+  if (trend.size() > kVelocityTrendWindow) {
+    trend.erase(trend.begin());
+  }
+}
+
+bool RirTrackLifecycle::TryGetLeastSquaresAcceleration(std::uint64_t association_key,
+                                                       Eigen::Vector3f* acceleration_mps2) const {
+  if (acceleration_mps2 == nullptr) {
+    return false;
+  }
+  const std::unordered_map<std::uint64_t, std::vector<VelocitySample>>::const_iterator found =
+      velocity_trend_by_key_.find(association_key);
+  if (found == velocity_trend_by_key_.end()) {
+    return false;
+  }
+  const std::vector<VelocitySample>& trend = found->second;
+  if (trend.size() < kVelocityTrendMinSamples) {
+    return false;
+  }
+  // 中译：对"时间—拟合速度"做直线拟合，斜率即加速度；时间取相对首样本的偏移。
+  // 标识：加速度斜率拟合（2026-10-22）。
+  const double t0 = static_cast<double>(trend.front().time_sec);
+  double time_sum = 0.0;
+  double time_sq_sum = 0.0;
+  for (std::size_t i = 0U; i < trend.size(); ++i) {
+    const double dt = static_cast<double>(trend[i].time_sec) - t0;
+    time_sum += dt;
+    time_sq_sum += dt * dt;
+  }
+  const double count = static_cast<double>(trend.size());
+  const double time_mean = time_sum / count;
+  const double denom = time_sq_sum - count * time_mean * time_mean;
+  if (!(denom > 0.0)) {
+    return false;
+  }
+  Eigen::Vector3f acceleration = Eigen::Vector3f::Zero();
+  for (int axis = 0; axis < 3; ++axis) {
+    double value_sum = 0.0;
+    for (std::size_t i = 0U; i < trend.size(); ++i) {
+      value_sum += static_cast<double>(trend[i].velocity[axis]);
+    }
+    const double value_mean = value_sum / count;
+    double covariance = 0.0;
+    for (std::size_t i = 0U; i < trend.size(); ++i) {
+      const double dt = static_cast<double>(trend[i].time_sec) - t0 - time_mean;
+      covariance += dt * (static_cast<double>(trend[i].velocity[axis]) - value_mean);
+    }
+    acceleration[axis] = static_cast<float>(covariance / denom);
+  }
+  if (!acceleration.allFinite()) {
+    return false;
+  }
+  *acceleration_mps2 = acceleration;
+  return true;
+}
+
 void RirTrackLifecycle::Reset() {
   for (auto& entry : tracks_) {
     ResetForReuse(*entry.second);
@@ -388,6 +462,7 @@ void RirTrackLifecycle::Reset() {
   tracks_.clear();
   imm_filters_by_key_.clear();
   velocity_history_by_key_.clear();
+  velocity_trend_by_key_.clear();
   next_track_id_ = 1U;
   last_cycle_index_ = 0U;
 }

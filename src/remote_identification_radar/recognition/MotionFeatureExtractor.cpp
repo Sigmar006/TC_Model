@@ -37,7 +37,9 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
                                                         float platform_altitude_m,
                                                         float estimation_uncertainty_trace,
                                                         bool has_velocity_lsq,
-                                                        const Eigen::Vector3f& velocity_lsq_mps) {
+                                                        const Eigen::Vector3f& velocity_lsq_mps,
+                                                        bool has_acceleration_lsq,
+                                                        const Eigen::Vector3f& acceleration_lsq_mps2) {
   RirMotionObservation observation;
   if (snapshot.status != tracking::RirTrackStatus::kConfirmed) {
     return observation;  // 识别仅以已确认航迹为对象；未确认仅积累不输出
@@ -70,6 +72,17 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   const bool acceleration_trustworthy =
       snapshot.MaxVelocityVariance() > 0.0f &&
       snapshot.MaxVelocityVariance() <= kMaxVelocityVarianceForAcceleration;
+  // 中译：**加速度来源优先级**（2026-10-22）——先用"逐拍拟合速度的斜率"（物理量正确，
+  //   能还原约 5 m/s² 的重力分量）；不可用时退回滤波后验速度差分（幅值仅真值 1/3）。
+  //   两条通路都要求量级合理（1–50 m/s²），越界视为不可信并按既有规则置零。
+  // 标识：加速度来源优先级（2026-10-22）。
+  if (has_acceleration_lsq) {
+    const float magnitude = acceleration_lsq_mps2.norm();
+    if (std::isfinite(magnitude) && magnitude >= 1.0f && magnitude <= 50.0f) {
+      observation.acceleration_mps2 = magnitude;
+      observation.turn_radius_m = 0.0f;
+    }
+  }
   if (!acceleration_trustworthy) {
     observation.acceleration_mps2 = 0.0f;
   }

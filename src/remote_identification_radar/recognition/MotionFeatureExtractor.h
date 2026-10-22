@@ -47,7 +47,10 @@ class RirMotionFeatureExtractor {
                                       float platform_altitude_m,
                                       float estimation_uncertainty_trace,
                                       bool has_velocity_lsq = false,
-                                      const Eigen::Vector3f& velocity_lsq_mps = Eigen::Vector3f::Zero());
+                                      const Eigen::Vector3f& velocity_lsq_mps = Eigen::Vector3f::Zero(),
+                                      bool has_acceleration_lsq = false,
+                                      const Eigen::Vector3f& acceleration_lsq_mps2 =
+                                          Eigen::Vector3f::Zero());
 };
 
 }  // namespace recognition

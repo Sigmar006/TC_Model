@@ -45,6 +45,15 @@ struct RirObservationContext {
   float velocity_lsq_x_mps{0.0f};
   float velocity_lsq_y_mps{0.0f};
   float velocity_lsq_z_mps{0.0f};
+  /**
+   * @brief 由拟合速度序列斜率得到的加速度（m/s²，ENU），供运动特征使用（2026-10-22）。
+   * @details CV 滤波器的后验速度差分无法反映真实加速度（幅值仅真值 1/3、且随滑行抖动），
+   *   而"逐拍拟合速度的斜率"能还原约 5 m/s² 的重力分量，误差约 2.7 m/s²（N=40）。
+   */
+  bool has_acceleration_lsq{false};
+  float acceleration_lsq_x_mps2{0.0f};
+  float acceleration_lsq_y_mps2{0.0f};
+  float acceleration_lsq_z_mps2{0.0f};
 };
 
 /**

@@ -61,9 +61,13 @@ RirFeatureSet RirObservationBuilder::Build(const session::RirSceneTarget& target
   // 标识：B3 运动特征速度来源。
   const Eigen::Vector3f velocity_lsq(context.velocity_lsq_x_mps, context.velocity_lsq_y_mps,
                                     context.velocity_lsq_z_mps);
+  const Eigen::Vector3f acceleration_lsq(context.acceleration_lsq_x_mps2,
+                                        context.acceleration_lsq_y_mps2,
+                                        context.acceleration_lsq_z_mps2);
   set.motion = RirMotionFeatureExtractor::Extract(snapshot, context.platform_altitude_m,
                                                   snapshot.EstimationUncertaintyTrace(),
-                                                  context.has_velocity_lsq, velocity_lsq);
+                                                  context.has_velocity_lsq, velocity_lsq,
+                                                  context.has_acceleration_lsq, acceleration_lsq);
   set.polarization = RirPolarizationFeatureExtractor::Extract(
       target.polarization_samples, context.look_az_deg, context.look_el_deg, context.snr_db,
       context.range_m);

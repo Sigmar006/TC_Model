@@ -141,6 +141,29 @@ class RirTrackLifecycle {
   bool TryGetLeastSquaresVelocity(std::uint64_t association_key,
                                   Eigen::Vector3f* velocity_mps) const;
 
+  /**
+   * @brief 记录本拍由量测位置拟合出的速度，供**加速度趋势拟合**使用（2026-10-22）。
+   *
+   * @details 加速度无法从 CV 滤波器的后验速度差分得到：后验速度本身被平滑，差分幅值只有
+   *   真值的 1/3（实测 1.5 vs 5.1 m/s²），且随滑行周期抖动到 0 或 60 m/s²。改为对
+   *   "逐拍拟合速度"序列做直线拟合，斜率即加速度：σ_a ≈ √12·σ_v/(N^1.5·Δt)，
+   *   σ_v≈200 m/s、N=40、Δt=1 s 时约 2.7 m/s²，足以还原约 5 m/s² 的重力分量。
+   * @param[in] association_key 关联键。
+   * @param[in] time_sec 本拍时刻（s）。
+   * @param[in] velocity_mps 本拍拟合速度（m/s，ENU）。
+   */
+  void RecordLeastSquaresVelocity(std::uint64_t association_key, float time_sec,
+                                  const Eigen::Vector3f& velocity_mps);
+
+  /**
+   * @brief 由拟合速度序列的斜率给出加速度估计（2026-10-22）。
+   * @param[in] association_key 关联键。
+   * @param[out] acceleration_mps2 加速度向量（m/s²，ENU）；样本不足时不写。
+   * @return 有效样本数 ≥ kVelocityTrendMinSamples 时返回 true。
+   */
+  bool TryGetLeastSquaresAcceleration(std::uint64_t association_key,
+                                      Eigen::Vector3f* acceleration_mps2) const;
+
   /** @brief 清空全部航迹并重置内部航迹编号。 */
   void Reset();
 
@@ -215,6 +238,12 @@ class RirTrackLifecycle {
     Eigen::Vector3f position{0.0f, 0.0f, 0.0f};
   };
   std::unordered_map<std::uint64_t, std::vector<PositionSample>> velocity_history_by_key_{};
+  /** @brief 逐拍拟合速度序列（用于加速度斜率拟合，容量 kVelocityTrendWindow）。 */
+  struct VelocitySample {
+    float time_sec{0.0f};
+    Eigen::Vector3f velocity{0.0f, 0.0f, 0.0f};
+  };
+  std::unordered_map<std::uint64_t, std::vector<VelocitySample>> velocity_trend_by_key_{};
   bool imm_enabled_{false};
   std::uint64_t next_track_id_{1U};
   std::uint32_t last_cycle_index_{0U};

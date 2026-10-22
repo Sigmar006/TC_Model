@@ -1287,6 +1287,18 @@ void RirController::RunCycle(const session::RirCycleInput& input,
           observation.context.velocity_lsq_x_mps = velocity_lsq.x();
           observation.context.velocity_lsq_y_mps = velocity_lsq.y();
           observation.context.velocity_lsq_z_mps = velocity_lsq.z();
+          // 中译：把本拍拟合速度记入趋势序列，并用其斜率给出加速度（2026-10-22）。
+          //       滤波器后验速度的差分只有真值 1/3（实测 1.5 vs 5.1 m/s²），不能直接当加速度。
+          // 标识：加速度斜率拟合（2026-10-22）。
+          lifecycle_->RecordLeastSquaresVelocity(track.association_key, sim_time_sec_,
+                                                 velocity_lsq);
+          Eigen::Vector3f acceleration_lsq = Eigen::Vector3f::Zero();
+          if (lifecycle_->TryGetLeastSquaresAcceleration(track.association_key, &acceleration_lsq)) {
+            observation.context.has_acceleration_lsq = true;
+            observation.context.acceleration_lsq_x_mps2 = acceleration_lsq.x();
+            observation.context.acceleration_lsq_y_mps2 = acceleration_lsq.y();
+            observation.context.acceleration_lsq_z_mps2 = acceleration_lsq.z();
+          }
         }
       }
       observations_by_key[track.association_key] = observation;

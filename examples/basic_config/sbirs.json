@@ -36,7 +36,7 @@
   "policy": {
     "detection": {
       "wide_min_snr_linear": 4.0,
-      "narrow_min_snr_linear": 6.0
+      "narrow_min_snr_linear": 5.0
     },
     "error_model": {
       "range_fraction_sigma": 0.001,

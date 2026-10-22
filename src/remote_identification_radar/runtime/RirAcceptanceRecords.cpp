@@ -641,7 +641,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   {
     std::string echo = id;
     echo += " 斜距=" + FormatF(input.range_m, 1) + "m";
-    echo += " 目标RCS=" + FormatF(input.rcs_m2, 3) + "m^2";
+    echo += " 目标RCS=" + FormatF(input.rcs_m2, 3) + "m^2 目标RCS口径=有效(含视角)";
     // 中译：本行三项**全部是处理前（进入信号处理链之前）的单元级功率**，口径必须写明，
     //   否则会与第 33 项"脉冲压缩后的噪声功率"（处理后）只差一个脉压增益而被误读为矛盾。
     //   回波：目标回波在单元内的接收功率；噪声：匹配滤波带宽内的接收机热噪声；干扰：进入
@@ -814,8 +814,8 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   // 仅有 detection cell 有效时输出，不伪造缺失分量。
   if (input.has_cell) {
     std::string interface_power = "雷达ID=" + std::to_string(input.radar_id) + " " + id;
-    interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m";
-    interface_power += " RCS=" + FormatF(input.rcs_m2, 3) + "m^2";
+    interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m 斜距口径=检测单元量测";
+    interface_power += " RCS=" + FormatF(input.rcs_m2, 3) + "m^2 RCS口径=有效(含视角)";
     interface_power += " 波束离轴增益=" + FormatF(input.one_way_antenna_gain_dbi, 3) + "dBi";
     interface_power += " 回波计算输出功率=" + FormatSci(input.cell.echo_power_w) + "W";
     interface_power += " 处理入口回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
@@ -844,7 +844,11 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   interface_detection += " 检测器输入SNR=" + FormatF(detector_snr_db, 3) + "dB";
   interface_detection += " 积累SNR=" + FormatF(accumulated_snr_db, 3) + "dB";
   if (input.has_cell) {
-    interface_detection += " 总噪声功率=" + FormatSci(total_noise_w) + "W";
+    // 中译：这里的"总噪声功率"是**热噪声 + 杂波 + 干扰**的处理前合计（SINR 分母），
+    //   不是单一"噪声"；与第 29 项的单列噪声功率、第 33 项的脉压后噪声都不同口径。
+    // 标识：第 71 项噪声合计口径（2026-10-22）。
+    interface_detection += " 总噪声功率=" + FormatSci(total_noise_w) +
+                           "W 噪声口径=热噪声+杂波+干扰(处理前合计)";
   }
   interface_detection += " 脉压/MTI/MTD增益=" +
                          FormatF(pc_db, 3) + "/" +
@@ -956,7 +960,11 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
     content += " 目标ID=" + std::to_string(target.external_target_id);
     content += " 目标名称=" + (target.target_name.empty() ? std::string("未提供")
                                                            : target.target_name);
-    content += " 位置ENU=" + FormatVec3(target.position_x, target.position_y, target.position_z, 3) +
+    // 中译：场景接口的 ENU 位置/速度是**场景真值**（来自想定），与第 73 项的航迹估计同名不同源，
+    //   必须标注，否则会被当成同一量的两个互相矛盾的估计。
+    // 标识：场景接口真值口径（2026-10-22）。
+    content += " 位置ENU口径=场景真值 位置ENU=" +
+               FormatVec3(target.position_x, target.position_y, target.position_z, 3) +
                "m";
     content += " 速度ENU=" + FormatVec3(target.velocity_x, target.velocity_y, target.velocity_z, 3) +
                "m/s";
@@ -1084,7 +1092,8 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
     // 中译：本项 Pd 与第 36 项的「统计检测概率」同源不同口径（此处按本周期该次量测），
     //       加限定词避免两处数值被当作互相印证或互相矛盾。
     // 标识：第 43 项检测概率口径（2026-10-21）。
-    content += " 检测概率=" + FormatF(measurement.detection_pd, 4) + " 检测概率口径=本周期量测";
+    content += " 检测概率=" + FormatF(measurement.detection_pd, 4) +
+               " 检测概率口径=输出量测";
     content += measurement.matched_existing_track
                    ? " 关联结果=航迹" + std::to_string(measurement.association_key)
                    : " 关联结果=未配到任何已有航迹";
@@ -1147,7 +1156,7 @@ void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
     }
     content += " 径向速度(远离为正)=" +
                FormatF(measurement.radial_velocity_m_per_s, 3) + "m/s";
-    content += " SNR=" + FormatF(measurement.detection_snr_db, 3) + "dB";
+    content += " SNR=" + FormatF(measurement.detection_snr_db, 3) + "dB SNR口径=输出量测";
     content += " 检测概率=" + FormatF(measurement.detection_pd, 5);
     content += " 量测协方差ENU_m2[x,y,z]=[";
     for (int row = 0; row < 3; ++row) {
@@ -1440,7 +1449,8 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   // 第43项 根据目标 RCS 实时计算目标探测结果：本周期RCS + 定位信息 + 运动参数
   //（判定句未点名 RCS 属存疑项，示例按项名写 RCS 并带定位/运动）。
   Emit(sim_time_sec, cycle, "根据目标RCS实时计算目标探测结果功能测试",
-       "目标ID=" + std::to_string(track.external_target_id) + " 本周期RCS=" +
+       "目标ID=" + std::to_string(track.external_target_id) +
+       " 本周期RCS口径=量测(航迹) 本周期RCS=" +
            FormatF(track.rcs, 3) + "m^2 " + positioning);
   Emit(sim_time_sec, cycle, "根据目标RCS实时计算目标探测结果功能测试",
        "目标ID=" + std::to_string(track.external_target_id) + " " + motion);

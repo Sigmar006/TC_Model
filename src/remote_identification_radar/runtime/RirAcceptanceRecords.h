@@ -252,8 +252,10 @@ void WriteRirExternalResourceStatus(
     std::size_t track_pool_free_count, const session::RirIssueList& issues);
 
 /**
- * @brief 验收判定标准 第37项·其二：扫描调度信息行（搜索/指定/跟踪分项计数 +
+ * @brief 验收判定标准 第37项·其二：扫描调度信息行（搜索/指定/驻留分项计数 +
  *        预算/已耗时；2026-08-30 核查 9.1 删除恒等的计划/实际驻留数字段）。
+ * @note 2026-10-22 用户要求：库内跟踪与外部跟踪合并为一项 `驻留=` 输出（内部仍按
+ *       kTrack / kExternalTrack 两种调度语义分别排波位，仅日志措辞统一）。
  */
 void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
@@ -264,8 +266,9 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
 /**
  * @brief 验收判定标准 第48项：逐驻留波束指向行（2026-08-29 TAS：一周期多驻留）。
  * @note 每周期先写一行 `本周期搜索驻留数=N`，再逐驻留写指向行：搜索驻留每条一行，
- *       字段 `波位序号=`（波位表游标，可索引 `Rir_scan_pattern.csv`）；指定/跟踪驻留
- *       各一行，带驻留种类与指向。2026-10-21 起原名 `本周期序号` 更名 `波位序号`，
+ *       字段 `波位序号=`（波位表游标，可索引 `Rir_scan_pattern.csv`）；非搜索驻留各
+ *       一行，`驻留种类=` 只取 `指定驻留` / `驻留` 两种取值（2026-10-22 合并命名）。
+ *       2026-10-21 起原名 `本周期序号` 更名 `波位序号`，
  *       消除"周期内序号"的误读（该值跨周期连续递增并在波位表长度处回绕）。
  */
 void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,

@@ -207,12 +207,11 @@ const char* DwellKindText(RirDwellKind kind) {
     case RirDwellKind::kDesignate:
       return "指定";
     case RirDwellKind::kTrack:
-      return "跟踪";
     case RirDwellKind::kExternalTrack:
-      // 中译：外部跟踪驻留必须单列——此前落进 default 被当成"搜索"，第 66 项队列里
-      //       19 个外部引导波位全部显示为"搜索"，与"跟踪=19"的计数自相矛盾。
-      // 标识：T-03（2026-10-20）。
-      return "外部跟踪";
+      // 中译：库内跟踪驻留与外部跟踪驻留合并为"驻留"（2026-10-22 用户要求统一命名）——
+      //       两者都是对已知目标的照射，只是指向来源不同（库内航迹预测 / 外部引导窗口）。
+      // 标识：第 66 项波束任务队列措辞合并。
+      return "驻留";
     case RirDwellKind::kSearch:
     default:
       return "搜索";
@@ -680,12 +679,19 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
              has_bank ? FormatF(bank.mti_gain_db, 3) + "dB" : std::string());
   EmitOrNone(t, cycle, "目标信号增益功能测试", id_sp + "MTD增益=", has_bank,
              has_bank ? FormatF(bank.mtd_gain_db, 3) + "dB" : std::string());
-  // 中译：同时列出跨 bin 损耗（恒 ≤0）与相干积累项，避免把"总增益为正"误解为"没有损耗"。
-  // 标识：MTD 分项（2026-10-22）。
-  EmitOrNone(t, cycle, "目标信号增益功能测试", id_sp + "MTD跨bin损耗=", has_bank,
-             has_bank ? FormatF(bank.mtd_bin_loss_db, 3) + "dB" : std::string());
-  EmitOrNone(t, cycle, "目标信号增益功能测试", id_sp + "MTD相干积累=", has_bank,
-             has_bank ? FormatF(bank.mtd_coherent_gain_db, 3) + "dB" : std::string());
+  // 中译：**处理后雷达回波信号**（判据第 32 项原文要求记录"经处理后的雷达回波信号"）——
+  //   等于处理前回波功率乘上处理链全部功率增益（脉压 + MTI + MTD，其中 MTD 含相干积累）。
+  //   与第 29 项的 `回波功率=`（处理前）成对出现，便于外部核对"增益乘完是否等于处理后电平"。
+  // 标识：第 32 项处理后回波（2026-10-23）。
+  {
+    const double chain_gain_db = pc_db + (has_bank ? bank.mti_gain_db + bank.mtd_gain_db : 0.0);
+    const double echo_before_w = FromDb(input.echo_power_dbw);
+    std::string processed = id + " 处理后回波功率=" + FormatSci(echo_before_w * FromDb(chain_gain_db)) + "W";
+    processed += std::string(" 处理链路=") +
+                 (has_bank ? "脉压+MTI+MTD" : "脉压");
+    processed += " 处理前回波功率=" + FormatSci(echo_before_w) + "W";
+    Emit(t, cycle, "目标信号增益功能测试", processed);
+  }
 
   // 验收判定标准 第33项：噪声增益四子项（各多普勒通道/MTD 等效无 cell 时省略）。
   if (input.has_cell) {
@@ -1818,14 +1824,14 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
-  // 验收判定标准 第37项·其二：扫描调度信息（搜索/指定/跟踪/预算/已耗时；
+  // 验收判定标准 第37项·其二：扫描调度信息（搜索/指定/驻留/预算/已耗时；
   // 2026-08-30 核查 9.1：删除"计划驻留/实际执行"字段——库内逐驻留执行，实际数
-  // 恒等于计划数，无信息量；按类分项计数与时间预算保留）。
+  // 恒等于计划数，无信息量；按类分项计数与时间预算保留。
+  // 2026-10-22：库内跟踪与外部跟踪合并为"驻留"一项输出（用户要求统一命名）。
   Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
-           " 外部跟踪=" + std::to_string(external_track_count) +
-           " 库内跟踪=" + std::to_string(internal_track_count) +
+           " 驻留=" + std::to_string(external_track_count + internal_track_count) +
            " 预算/已耗时=" + FormatF(budget_sec, 3) + "/" + FormatF(consumed_sec, 3) + "s");
   // 验收判定标准 第49项：调度策略——各类事件的实际执行数量列表。
   // 中译：第 49 项同批拆分——"跟踪数"此前把外部引导与库内航迹混并，改为分别列出。
@@ -1878,14 +1884,12 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
                  FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");
       }
     } else {
-      // 中译：四类驻留各写自己的名字；目标 ID 已按用户 2026-10-20 要求删除——外部引导
-      //       到位不等于探测到目标，驻留行只回答"扫了哪个方向"，目标归因由第 66 项
-      //       波束任务队列（种类@(az,el)deg/目标ID）承担。
-      // 标识：第 48 项字段改造。
+      // 中译：驻留种类只分两类——"指定驻留"（算子/任务点名）与"驻留"（一切跟踪类照射：
+      //       库内航迹预测指向与外部引导窗口波位都归此，2026-10-22 用户要求合并命名）。
+      //       内部仍按 kTrack / kExternalTrack 两种调度语义分别排波位，仅日志措辞统一。
+      // 标识：第 48 项字段改造（2026-10-22 合并命名）。
       const char* kind_text =
-          dwell.kind == RirDwellKind::kDesignate
-              ? "指定驻留"
-              : (dwell.kind == RirDwellKind::kExternalTrack ? "外部跟踪驻留" : "跟踪驻留");
+          dwell.kind == RirDwellKind::kDesignate ? "指定驻留" : "驻留";
       Emit(sim_time_sec, cycle, "波束扫描功能测试",
            "雷达ID=" + std::to_string(radar_id) + " 驻留种类=" + kind_text + " 指向=" +
                FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");

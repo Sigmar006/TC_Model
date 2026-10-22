@@ -14,8 +14,8 @@ What is checked, per cycle:
   `扫描调度信息=搜索=N`;
 * the declared count line `本周期搜索驻留数=N` (2026-10-21 build onwards),
   which must equal both of the above;
-* non-search dwells: 48's `驻留种类=` lines (指定驻留 / 外部跟踪驻留 /
-  跟踪驻留) vs 37's 指定 / 跟踪 counters;
+* non-search dwells: 48's `驻留种类=` lines (2026-10-22 起只有 指定驻留 / 驻留
+  两种；旧日志里的 外部跟踪驻留 / 跟踪驻留 仍兼容) vs 37's 指定 / 驻留 counters;
 * the fixed slot budget: 搜索 + 指定 + 跟踪 must be the same on every cycle.
 
 The beam-position table itself lives in `Rir_scan_pattern.csv`; when it is
@@ -46,30 +46,36 @@ RE_SEARCH_INDEX = re.compile(r"波位序号=(\d+)")
 RE_LEGACY_INDEX = re.compile(r"本周期序号=(\d+)")
 RE_DECLARED_COUNT = re.compile(r"本周期搜索驻留数=(\d+)")
 RE_DWELL_KIND = re.compile(r"驻留种类=(\S+)")
-# 2026-10-21 起第 37 项把"跟踪"拆成"外部跟踪 / 库内跟踪"（T-04）；旧格式仍只有"跟踪"。
+# 2026-10-22 起第 37 项把"库内跟踪 + 外部跟踪"合并成一项 `驻留`（用户要求统一命名）；
+# 2026-10-21 的拆分格式（外部跟踪 / 库内跟踪）与更早的单一"跟踪"格式仍兼容解析。
+RE_SCHEDULE_MERGED = re.compile(r"扫描调度信息=搜索=(\d+) 指定=(\d+) 驻留=(\d+)")
 RE_SCHEDULE_NEW = re.compile(
     r"扫描调度信息=搜索=(\d+) 指定=(\d+) 外部跟踪=(\d+) 库内跟踪=(\d+)")
 RE_SCHEDULE_OLD = re.compile(r"扫描调度信息=搜索=(\d+) 指定=(\d+) 跟踪=(\d+)")
 
 KIND_DESIGNATE = "指定驻留"
+KIND_DWELL = "驻留"
+# 旧标签（2026-10-21 拆分口径）：仅用于解析历史日志。
 KIND_EXTERNAL = "外部跟踪驻留"
 KIND_INTERNAL = "跟踪驻留"
 
 
-def detect_encoding(log_path, probe_bytes=65536):
-  """Pick the log encoding: UTF-8 when it decodes cleanly, else GBK (host builds)."""
+def detect_encoding(log_path, probe_bytes=1 << 20):
+  """Pick the log encoding: UTF-8 when the marker decodes, else GBK (host builds).
+
+  多写者并发的验收日志存在被撕开的行（半个汉字），整段严格解码会失败并被误判成 GBK；
+  因此用 `errors="replace"` 解码 1 MB 探针，谁解出 `仿真周期` 就是谁。
+  """
   with open(log_path, "rb") as stream:
     probe = stream.read(probe_bytes)
-  # 探针可能正好切在汉字中间：去掉末尾几字节再试一次，避免把 UTF-8 误判成 GBK。
-  for tail in (0, 4):
-    chunk = probe[:len(probe) - tail] if tail else probe
-    try:
-      text = chunk.decode("utf-8")
-    except UnicodeDecodeError:
-      continue
-    if "仿真周期" in text:
-      return "utf-8"
-  return "gbk"
+  if probe.startswith(b"\xef\xbb\xbf"):
+    return "utf-8-sig"
+  marker = "仿真周期"
+  if marker in probe.decode("utf-8", errors="replace"):
+    return "utf-8"
+  if marker in probe.decode("gbk", errors="replace"):
+    return "gbk"
+  return "utf-8"
 
 
 def parse_round(log_path):
@@ -111,6 +117,16 @@ def parse_round(log_path):
         if not match:
           continue
         cycle = int(match.group(1))
+        schedule_match = RE_SCHEDULE_MERGED.search(line)
+        if schedule_match:
+          schedule[cycle] = {
+              "search": int(schedule_match.group(1)),
+              "designate": int(schedule_match.group(2)),
+              "external": None,
+              "internal": None,
+              "track": int(schedule_match.group(3)),
+          }
+          continue
         schedule_match = RE_SCHEDULE_NEW.search(line)
         if schedule_match:
           external = int(schedule_match.group(3))
@@ -227,8 +243,9 @@ def main(argv):
   for cycle in cycles:
     bucket = kinds.get(cycle, {})
     designate = bucket.get(KIND_DESIGNATE, 0)
+    # 2026-10-22 起 48 项只写 `驻留`（库内跟踪与外部跟踪合并命名）；旧日志仍是两个标签。
     external = bucket.get(KIND_EXTERNAL, 0)
-    internal = bucket.get(KIND_INTERNAL, 0)
+    internal = bucket.get(KIND_INTERNAL, 0) + bucket.get(KIND_DWELL, 0)
     track = external + internal
     if designate != schedule[cycle]["designate"]:
       designate_mismatch.append((cycle, designate, schedule[cycle]["designate"]))
@@ -249,7 +266,8 @@ def main(argv):
   total_designate_48 = sum(bucket.get(KIND_DESIGNATE, 0) for bucket in kinds.values())
   total_designate_37 = sum(value["designate"] for value in schedule.values())
   total_external = sum(bucket.get(KIND_EXTERNAL, 0) for bucket in kinds.values())
-  total_internal = sum(bucket.get(KIND_INTERNAL, 0) for bucket in kinds.values())
+  total_internal = sum(bucket.get(KIND_INTERNAL, 0) + bucket.get(KIND_DWELL, 0)
+                       for bucket in kinds.values())
   total_track_37 = sum(value["track"] for value in schedule.values())
   total_external_37 = sum(value["external"] or 0 for value in schedule.values())
   total_internal_37 = sum(value["internal"] or 0 for value in schedule.values())
@@ -287,16 +305,16 @@ def main(argv):
        verdict(not search_mismatch), "%d 处周期不一致" % len(search_mismatch)),
       ("指定驻留", "%d" % total_designate_48, "%d" % total_designate_37,
        verdict(not designate_mismatch), "%d 处周期不一致" % len(designate_mismatch)),
-      ("跟踪驻留", "%d（外部 %d / 库内 %d）" % (total_external + total_internal,
-                                              total_external, total_internal),
+      ("驻留", "%d（外部 %d / 库内 %d）" % (total_external + total_internal,
+                                          total_external, total_internal),
        "%d" % total_track_37, verdict(not track_mismatch),
        "%d 处周期不一致" % len(track_mismatch)),
   ]
   if split_available:
-    rows.append(("外部跟踪驻留", "%d" % total_external, "%d" % total_external_37,
+    rows.append(("外部跟踪驻留（旧口径）", "%d" % total_external, "%d" % total_external_37,
                  verdict(not external_mismatch),
                  "%d 处周期不一致" % len(external_mismatch)))
-    rows.append(("库内跟踪驻留", "%d" % total_internal, "%d" % total_internal_37,
+    rows.append(("库内跟踪驻留（旧口径）", "%d" % total_internal, "%d" % total_internal_37,
                  verdict(not internal_mismatch),
                  "%d 处周期不一致" % len(internal_mismatch)))
   if data["declared_seen"]:
@@ -310,7 +328,7 @@ def main(argv):
     print("| %s | %s | %s | %s | %s |" % (name, left, right, state, note))
 
   print()
-  print("每周期驻留总数（搜索+指定+跟踪）: %s  %s"
+  print("每周期驻留总数（搜索+指定+驻留）: %s  %s"
         % ("/".join(str(value) for value in totals),
            "OK（与预算 %d 槽一致）" % args.slots if totals == [args.slots]
            else "MISMATCH（预期恒为 %d）" % args.slots))
@@ -330,7 +348,7 @@ def main(argv):
                           ("指定驻留", designate_mismatch),
                           ("外部跟踪驻留", external_mismatch),
                           ("库内跟踪驻留", internal_mismatch),
-                          ("跟踪驻留（合计）", track_mismatch)):
+                          ("驻留（合计）", track_mismatch)):
     if not mismatch:
       continue
     print()

@@ -122,6 +122,29 @@ cmd /c 'call "C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall.b
 > 该构建目录已开启验收日志（`ONEQ_ENABLE_*_ACCEPTANCE_LOG=ON`），**不要改配置**。
 > 1q 单元/集成测试走另一条路径：Git Bash 里 `scripts/1q.sh build/test VisualStudio.15.0-amd64-release`（依赖机器本地 `CMakeUserPresets.json`）。
 
+#### 4.2.1 换 `1q.lib` 后必须核对宿主 DLL 真的重链了（2026-10-22 教训）
+
+MSBuild 的增量构建**可能不把"静态库被替换"当作链接输入变化**：`build_x64_v120.cmd` 里 `StardandModels.sln`
+的 `/t:Build` 会跳过 DataProcessors/Sensors 的链接步骤，DLL 时间戳甚至可能被更新，但内容仍是旧的。
+后果非常隐蔽——库里有改动、DLL 也"刚构建过"，现场日志却完全没有新行为（10-22 红外第 26/27 项
+就是因此空了两轮）。
+
+**做法：每次换库后比对各 DLL 的哈希，而不是只看时间戳。**
+
+```powershell
+$d = 'C:\software\workspace\1qfosim\BJ_10Y_WorkSpace\ModelSource\bin_x64_Release'
+Get-ChildItem $d -Filter "DataProcessors.dll" , "Sensors.dll" |
+  ForEach-Object { "{0}  {1}  {2}" -f $_.Name, $_.Length, (Get-FileHash $_.FullName).Hash }
+```
+
+- 哈希没变 ⇒ 没真正重链。删掉目标 DLL（`Remove-Item $d\DataProcessors.dll` 等）再跑
+  `build_x64_v120.cmd`，或用 `MSBuild StardandModels.sln /t:Rebuild`；
+- ⚠ 不要对单个 `.vcxproj` 直接 `/t:Rebuild`：它缺少解决方案级属性表，会因 `CyberDataProcessorImpl`
+  等 SDK 头找不到而**先删后建失败**，把 DLL 弄丢（10-22 已踩过，恢复靠方案级 `build_x64_v120.cmd`）；
+- 验收类日志的现场复核，先确认"库—DLL—运行目录配置"三者都到位，再看数：
+  `ModelSource\sync_config_check.cmd`（比对）/ `… sync`（同步）负责把 `cyModel\Equipment\*` 的配置
+  同步到宿主真正读取的 `FOSimStudio\bin\App\config\`。
+
 ---
 
 ## 5. 怎么运行仿真

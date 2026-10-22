@@ -1,5 +1,6 @@
 ﻿// 验证 algorithms.md Foundation 物理链路条目：sbirs_noise_model_test
-// 覆盖 NEP+光子+热+读出 RSS 合成（能量分母口径，2026-09-02 修订）与全退化回退。
+// 覆盖 NEP+光子+读出 RSS 合成（能量分母口径，2026-09-02 修订；2026-10-21 移除温度反解
+// 的热噪声项）与全退化回退。
 #include <cmath>
 
 #include <gtest/gtest.h>
@@ -77,16 +78,32 @@ TEST(SbirsNoiseModelTest, PixelPitchScalesPhotonNoiseBySquareRoot) {
   EXPECT_NEAR(doubled_photon, base_photon * 2.0, base_photon * 1.0e-9);
 }
 
-TEST(SbirsNoiseModelTest, HigherDetectorTemperatureRaisesThermalNoise) {
+// 热噪声不再由探测器温度反解（2026-10-21 修订）：温度不进噪声合成。
+// 原实现 √(4·k_B·T·t) 的量纲是 √(J·s)，T=80 K/t=1 s 给出 6.6e-11 J，比 NEP 折算能量大
+// 4 个数量级、比物理热噪声能量（~k_B·T≈1e-21 J）大 10 个数量级，把 SNR 从 +18 dB 压到 −20 dB。
+TEST(SbirsNoiseModelTest, ThermalNoiseIsNotDerivedFromTemperature) {
   SbirsHardwareConfig cold;
   cold.detector_temperature_k = 40.0f;
-  cold.integration_time_sec = 0.02f;
-  SbirsHardwareConfig hot;
+  cold.integration_time_sec = 1.0f;
+  SbirsHardwareConfig hot = cold;
   hot.detector_temperature_k = 300.0f;
-  hot.integration_time_sec = 0.02f;
   const SbirsNoiseStatistics cold_stats = ComputeBackgroundNoiseStatistics(cold);
   const SbirsNoiseStatistics hot_stats = ComputeBackgroundNoiseStatistics(hot);
-  EXPECT_GT(hot_stats.thermal_noise_w, cold_stats.thermal_noise_w);
+  EXPECT_DOUBLE_EQ(cold_stats.total_noise_w, hot_stats.total_noise_w);
+}
+
+// 现场工作点回归（sbirs.json：NEP=1e-14、T=80 K、t=1 s、背景 1.2）：
+// 噪声底必须由 NEP 主导（≈1e-14 J），不得被温度项抬到 6.6e-11 J 那种量级。
+TEST(SbirsNoiseModelTest, FieldWorkingPointNoiseFloorIsNepDominated) {
+  SbirsHardwareConfig hardware;
+  hardware.noise_equivalent_power_w = 1.0e-14f;
+  hardware.detector_temperature_k = 80.0f;
+  hardware.integration_time_sec = 1.0f;
+  hardware.readout_noise_rms_w = 0.0f;
+  hardware.background_radiance_w_sr_m2 = 1.2f;
+  const SbirsNoiseStatistics stats = ComputeBackgroundNoiseStatistics(hardware);
+  EXPECT_GT(stats.total_noise_w, 1.0e-14);   // NEP 项在 RSS 里
+  EXPECT_LT(stats.total_noise_w, 1.1e-14);   // 只剩光子项 1.45e-15 的贡献
 }
 
 // 读出噪声远大于其他项时，总噪声趋近读出项（RMS×t）；关闭 NEP/热/背景以隔离。

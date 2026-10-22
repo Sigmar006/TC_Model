@@ -1,16 +1,20 @@
 ﻿/**
  * @file SbirsNoiseModel.h
- * @brief SBIRS-inspired 红外噪声分解（design 2.8；口径修订 2026-09-02）。
+ * @brief SBIRS-inspired 红外噪声分解（design 2.8；口径修订 2026-09-02 / 2026-10-21）。
  *
  * 噪声分母统一"积分时间内噪声能量"口径，供 SNR = P_sig·t_int / N_eff 使用：
- *   N_total = sqrt((NEP·t)² + N_photon² + N_thermal² + (N_readout·t)²)
+ *   N_total = sqrt((NEP·t)² + N_photon² + (N_readout·t)²)
  * 其中：
  *   - 探测器 NEP：noise_equivalent_power_w 直接计入合成（而非仅回退项）。
  *   - 光子噪声：√(P_bg·t·E_ph)，P_bg=背景亮度×孔径×光学透过率×像元视场
  *     （Ω=(像元间距/焦距)²），E_ph=hc/λ_center（波段中心单色近似）。
- *   - 热噪声：显式选配——仅探测器温度 > 0 计入（默认 0 关闭），√(4 k_B T t)。
  *   - 读出噪声：readout_noise_rms_w × t_int。
- * 全部分量退化（NEP=0 且三项全关）时回退 NEP 标量下限 1e-18。
+ *   - **热噪声不再由探测器温度反解**（2026-10-21 修订）：原式 √(4·k_B·T·t) 的量纲是
+ *     √(J·s)，不是能量；T=80 K、t=1 s 时给出 6.6e-11 J，比 NEP 折算能量大约 4 个数量级、
+ *     比物理热噪声能量（~k_B·T≈1e-21 J）大 10 个数量级，实测把 SNR 从 +18 dB 压到 −20 dB
+ *     （现场 `有效噪声能量` 与 `热噪声` 逐位相等即此项所致）。探测器噪声由 NEP 承担；
+ *     若确需显式热噪声，应以 NEP 类配置（如 thermal_nep_w）给出，而不是由温度推能量。
+ * 全部分量退化（NEP=0 且光子/读出全关）时回退 NEP 标量下限 1e-18。
  */
 
 #ifndef ONEQ_SRC_SBIRS_SENSOR_FOUNDATION_SBIRS_NOISE_MODEL_H_
@@ -28,16 +32,15 @@ namespace foundation {
  */
 struct SbirsNoiseStatistics {
   double photon_noise_w{0.0};    /**< 光子（散粒）噪声分量，能量分母口径 */
-  double thermal_noise_w{0.0};   /**< 热噪声分量（仅温度>0 时非零），能量分母口径 */
   double readout_noise_w{0.0};   /**< 读出噪声分量（RMS×t_int），能量分母口径 */
-  double total_noise_w{0.0};     /**< NEP+光子+热+读出 RSS 合成，能量分母口径 */
+  double total_noise_w{0.0};     /**< NEP+光子+读出 RSS 合成，能量分母口径 */
 };
 
 /**
  * @brief 计算背景噪声统计。
  *
  * 光子噪声由背景亮度、孔径、光学透过率、像元视场与波段中心光子能量按散粒统计
- * 合成；探测器 NEP 直接计入 RSS；热噪声仅温度>0 计入；读出噪声按积分时间折算。
+ * 合成；探测器 NEP 直接计入 RSS；读出噪声按积分时间折算。
  * @param[in] hardware 硬件配置
  * @return 噪声分量统计
  */

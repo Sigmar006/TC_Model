@@ -8,7 +8,6 @@ namespace sbirs_sensor {
 namespace foundation {
 namespace {
 
-using oneq::common::numerics::kBoltzmann;
 using oneq::common::numerics::kLightSpeed;
 using oneq::common::numerics::kPi;
 using oneq::common::numerics::kPlanck;
@@ -42,21 +41,18 @@ SbirsNoiseStatistics ComputeBackgroundNoiseStatistics(const config::SbirsHardwar
     stats.photon_noise_w = std::sqrt(std::max(0.0, background_power_w * t_int * photon_energy_j));
   }
 
-  // 热噪声（显式选配，修订 1/3）：仅探测器温度 > 0 计入；NEP_thermal ~ sqrt(4 k_B T Δf)
-  // （简化量纲），Δf 由积分时间倒数近似，折算能量口径 ×t_int = sqrt(4 k_B T t)。
-  if (hardware.detector_temperature_k > 0.0f && t_int > 0.0) {
-    stats.thermal_noise_w =
-        std::sqrt(4.0 * kBoltzmann * static_cast<double>(hardware.detector_temperature_k) * t_int);
-  }
+  // 热噪声：不再由探测器温度反解（2026-10-21 修订）。原实现 sqrt(4·k_B·T·t_int) 的量纲是
+  // √(J·s) 而非能量，T=80 K/t=1 s 时得 6.6e-11 J，压过 NEP 折算能量 4 个数量级，把 SNR
+  // 从 +18 dB 拉到 −20 dB（现场“有效噪声能量”与“热噪声”逐位相等即此项所致）。
+  // 探测器噪声由 NEP 承担；需要显式热噪声时应以 NEP 类配置给出，不能由温度推能量。
 
   // 读出噪声：配置 RMS 折算到能量口径（×t_int）。
   stats.readout_noise_w = std::max(0.0f, hardware.readout_noise_rms_w) * t_int;
 
-  // 探测器 NEP 计入合成（修订 1）：同样折算能量口径（NEP·t_int）；四项 RSS。
+  // 探测器 NEP 计入合成（修订 1）：同样折算能量口径（NEP·t_int）；三项 RSS。
   const double nep_energy = std::max(0.0f, hardware.noise_equivalent_power_w) * t_int;
   const double sum_sq = nep_energy * nep_energy +
                         stats.photon_noise_w * stats.photon_noise_w +
-                        stats.thermal_noise_w * stats.thermal_noise_w +
                         stats.readout_noise_w * stats.readout_noise_w;
   stats.total_noise_w = std::sqrt(std::max(0.0, sum_sq));
   return stats;

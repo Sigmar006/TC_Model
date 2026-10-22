@@ -22,6 +22,7 @@
 #include "sbirs_sensor/foundation/SbirsRadiometry.h"
 #include "sbirs_sensor/pipeline/SbirsAcceptanceLog.h"
 #include "sbirs_sensor/pipeline/SbirsAcceptanceRecords.h"
+#include "sbirs_sensor/pipeline/SbirsAcceptanceSemantics.h"
 #include "sbirs_sensor/pipeline/SbirsBoresightChain.h"
 #include "sbirs_sensor/pipeline/SbirsEciScene.h"
 #include "sbirs_sensor/pipeline/SbirsNfovAcquisition.h"
@@ -1527,7 +1528,19 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       //       故跟踪期不再缺行；d_max 为宽场门限反解值，不含窄场门限口径。
       std::string dmax = "相对卫星ID=" + std::to_string(satellite_entity_id_);
       dmax += " 目标ID=" + std::to_string(target.target_id);
-      dmax += " 相对卫星最大探测距离=" + oneq::logging::FormatF(max_detection_range_m, 1) + "m";
+      // 三种事实不得都写成 0（2026-10-21 体检：现场 66% 写 0 m、6.4% 写死上限）：
+      // 视场外/辐射链路不可解 → 不适用；被任务上限钳位 → 标注；否则写物理值。
+      const SbirsDetectionRangeKind range_kind = ClassifyDetectionRange(
+          radiometric_max_detection_range_m, fov_max_detection_range_m,
+          static_cast<double>(mission.max_range_m));
+      if (range_kind == SbirsDetectionRangeKind::kOutOfFieldOfView) {
+        dmax += " 相对卫星最大探测距离=不适用(目标不在本星宽场视场内)";
+      } else if (range_kind == SbirsDetectionRangeKind::kClampedToMissionMax) {
+        dmax += " 相对卫星最大探测距离=" +
+                oneq::logging::FormatF(max_detection_range_m, 1) + "m(上限钳位)";
+      } else {
+        dmax += " 相对卫星最大探测距离=" + oneq::logging::FormatF(max_detection_range_m, 1) + "m";
+      }
       SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "最大探测距离计算功能测试", dmax);
     }
 
@@ -1605,16 +1618,17 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       detection_interface += " 信号能量=" + oneq::logging::FormatSci(signal_energy_j) + "J";
       detection_interface += " 光子噪声=" +
                              oneq::logging::FormatSci(noise_statistics.photon_noise_w) + "J";
-      detection_interface += " 热噪声=" +
-                             oneq::logging::FormatSci(noise_statistics.thermal_noise_w) + "J";
-      detection_interface += " 读出噪声=" +
-                             oneq::logging::FormatSci(noise_statistics.readout_noise_w) + "J";
+      // 热噪声不再由温度反解（2026-10-21）：未建模时写“未建模”，不得写 0.000J 冒充分量。
+      detection_interface += " 热噪声=未建模(由NEP承担)";
+      detection_interface += " 读出噪声=";
+      detection_interface += IsNoiseComponentModeled(hw.readout_noise_rms_w)
+                                 ? oneq::logging::FormatSci(noise_statistics.readout_noise_w) + "J"
+                                 : std::string("未建模(readout_noise_rms_w=0)");
       detection_interface +=
           " 有效噪声能量=" + oneq::logging::FormatSci(effective_noise_w) + "J";
       detection_interface += " 辐射噪声模块输出SNR=" + oneq::logging::FormatF(snr, 6);
       detection_interface += " 判决模块输入SNR=" + oneq::logging::FormatF(snr, 6);
-      detection_interface += " 门限=" +
-                             oneq::logging::FormatF(policy.detection.wide_min_snr_linear, 6);
+      detection_interface += " 门限=" + DetectionThresholdText(policy.detection.wide_min_snr_linear);
       detection_interface +=
           std::string(" SNR门结果=") + (wfov_snr_gate_passed ? "通过" : "拒绝");
       detection_interface += std::string(" 视场门结果=") + (in_wfov ? "通过" : "拒绝");
@@ -1823,14 +1837,20 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       energy += " 接收功率=" + oneq::logging::FormatSci(received_power_w) + "W";
       energy += " 信号能量=" + oneq::logging::FormatSci(signal_energy_j) + "J";
       energy += " SNR=" + oneq::logging::FormatF(snr_db_wide, 3) + "dB";
-      const double pfa_wide =
-          0.5 * std::erfc(static_cast<double>(policy.detection.wide_min_snr_linear) /
-                          std::sqrt(2.0));
+      // Pfa 由归一化门限 k 反推：k 是"归一化 SNR 倍数"（设计值≈4），必须 ≥1 才有意义。
+      // 现场把 k 配成 0.001 → Pfa=0.5·erfc(k/√2)≈0.4996 → Pd 恒 ≈0.5（2026-10-21 体检）。
+      // 这里对 k<1 取 k=1 兜底（Pfa≈0.159），并在门限字段显式标注"不合物理"，
+      // 保证日志里的 Pd 至少随 SNR 单调，不再是一个与 SNR 无关的常数。
+      const double k_effective =
+          std::max(static_cast<double>(policy.detection.wide_min_snr_linear), 1.0);
+      const double pfa_wide = 0.5 * std::erfc(k_effective / std::sqrt(2.0));
       const double pd_wide = oneq::common::radar::RadarEquations::ComputeDetectionProbability(
           static_cast<float>(snr_db_wide), static_cast<float>(pfa_wide),
           oneq::common::radar::SwerlingModel::kSwerling0, 1);
       energy += " 探测概率=" + oneq::logging::FormatF(pd_wide, 4);
-      energy += " 检测标志=是";
+      // 检测标志由两道门派生（2026-10-21）：此前是写死的“是”，与 SNR/视场门无关。
+      energy += std::string(" 检测标志=") +
+                DetectionFlagText(wfov_snr_gate_passed, in_wfov);
       SBIRS_DUAL_ACCEPTANCE_ITEM(
           sim_time_sec, input.cycle_index, "红外预警卫星大幅面扫描与探测功能测试", energy);
       WriteSbirsAngleError(satellite_entity_id_, sim_time_sec, input.cycle_index,
@@ -2025,8 +2045,11 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                     "," + oneq::logging::FormatF(selected->measured_elevation_deg, 6) + ")deg";
       scheduling += " SNR=" + oneq::logging::FormatF(selected->snr, 6);
       scheduling += " 连续命中=" + std::to_string(wfov_consecutive_hits_[target_id]);
-      scheduling += " 引导来源卫星ID=" +
-                    std::to_string(selected->cue_source_satellite_entity_id);
+      // 自星宽场没有引导来源：旧实现写 -1，与"来源实体 ID"混淆（2026-10-21 体检）。
+      scheduling += " 引导来源卫星ID=";
+      scheduling += selected->from_external_cue
+                        ? std::to_string(selected->cue_source_satellite_entity_id)
+                        : std::string("无(自星宽场)");
       // 中译：把候选来源写清楚——自星宽场与外部引导是两条不同通路，前者过宽场 SNR 门，
       //       后者按设计可低于该门限（cross-cue 旁路），不标注就会被读成自相矛盾。
       // 标识：2026-10-21 红外特性日志修复。
@@ -2440,10 +2463,12 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                              oneq::logging::FormatSci(context.signal_energy_j) + "J";
       detection_interface += " 光子噪声=" +
                              oneq::logging::FormatSci(noise_statistics.photon_noise_w) + "J";
-      detection_interface += " 热噪声=" +
-                             oneq::logging::FormatSci(noise_statistics.thermal_noise_w) + "J";
-      detection_interface += " 读出噪声=" +
-                             oneq::logging::FormatSci(noise_statistics.readout_noise_w) + "J";
+      // 热噪声不再由温度反解（2026-10-21），见 WFOV 分支同名字段说明。
+      detection_interface += " 热噪声=未建模(由NEP承担)";
+      detection_interface += " 读出噪声=";
+      detection_interface += IsNoiseComponentModeled(hw.readout_noise_rms_w)
+                                 ? oneq::logging::FormatSci(noise_statistics.readout_noise_w) + "J"
+                                 : std::string("未建模(readout_noise_rms_w=0)");
       detection_interface +=
           " 有效噪声能量=" + oneq::logging::FormatSci(effective_noise_w) + "J";
       detection_interface += " 辐射噪声模块输出SNR=" +
@@ -2451,7 +2476,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       detection_interface += " 判决模块输入SNR=" +
                              oneq::logging::FormatF(context.snr, 6);
       detection_interface += " 门限=" +
-                             oneq::logging::FormatF(policy.detection.narrow_min_snr_linear, 6);
+                             DetectionThresholdText(policy.detection.narrow_min_snr_linear);
       detection_interface +=
           std::string(" SNR门结果=") + (snr_gate_passed ? "通过" : "拒绝");
       detection_interface +=
@@ -2537,10 +2562,18 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       tracking_interface += " 滤波输出角=(" +
                             oneq::logging::FormatF(detection.record.azimuth_rad, 8) + "," +
                             oneq::logging::FormatF(detection.record.elevation_rad, 8) + ")rad";
-      if (tracking_result.has_estimation_nis) {
+      // NIS 字段恒在且必须可判：创新协方差非正定时 NIS 无定义（旧实现写 1.#INF00，
+      // 现场 4,508 行），离群量测被丢弃时也必须标注（2026-10-21）。
+      if (tracking_result.state_diverged) {
+        tracking_interface += " NIS=不适用(状态发散) NIS门结果=发散(状态已丢弃)";
+      } else if (tracking_result.innovation_covariance_singular) {
+        tracking_interface += " NIS=不适用(协方差奇异) NIS门结果=超门(量测已丢弃)";
+      } else if (tracking_result.has_estimation_nis) {
         tracking_interface += " NIS=" + oneq::logging::FormatF(tracking_result.estimation_nis, 6);
         tracking_interface += std::string(" NIS门结果=") +
-                              (tracking_result.estimation_nis_gate_exceeded ? "超门" : "通过");
+                              (tracking_result.estimation_nis_gate_exceeded
+                                   ? "超门(量测已丢弃)"
+                                   : "通过");
       }
       tracking_interface += std::string(" 跟踪状态=") +
                             (detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪");
@@ -2590,7 +2623,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           static_cast<float>(detection.record.elevation_rad * 57.29577951308232) - context.elevation_deg;
       std::string nfov = "卫星ID=" + std::to_string(satellite_entity_id_);
       nfov += " 目标ID=" + std::to_string(engaged_id);
-      if (focal_valid) {
+      // 滑行周期没有窄场帧，焦平面脱靶量与融合 σ 都无定义：写"不适用"，不得写 0.00000
+      //（2026-10-21 体检：1,555 行滑行拍写 脱靶量模=0，被读成"脱靶量恰好为零"）。
+      const bool coasting_cycle = detection.attribution.nfov_tracking_coasting;
+      if (focal_valid && !coasting_cycle) {
         nfov += " 脱靶量m=(" + oneq::logging::FormatF(focal_offset.x_m, 6) + "," +
                 oneq::logging::FormatF(focal_offset.y_m, 6) + ")";
         // 2026-09-28 按主文档补全（第13项）：脱靶量模（<50 m 判据的量），由同一焦平面
@@ -2601,6 +2637,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         nfov += " 脱靶量模=" + oneq::logging::FormatF(focal_offset_norm_m, 5) + "m";
         nfov += " 脱靶量像素=(" + oneq::logging::FormatF(focal_offset.x_pixels, 2) + "," +
                 oneq::logging::FormatF(focal_offset.y_pixels, 2) + ")";
+      } else if (coasting_cycle) {
+        nfov += " 脱靶量m=不适用(滑行无窄场帧) 脱靶量模=不适用 脱靶量像素=不适用";
       }
       nfov += " 窄视场目标视线方位/俯仰(ECI)=(" +
               oneq::logging::FormatF(detection.record.azimuth_rad, 8) + "," +
@@ -2617,8 +2655,16 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       nfov += " SNR=" + oneq::logging::FormatF(snr_db, 3) + "dB";
       // 高刷新率高精度数据输出（单镜筒轮转口径）：本周期实际帧数 + 单帧/融合 1-σ。
       nfov += " 帧数=" + std::to_string(nfov_frame_count);
+      // 帧数=0 而跟踪状态=跟踪 的周期（现场 144 行）实为几何/SNR 门未过、尚未丢锁：
+      // 显式给出帧门结果，避免"跟踪却零帧"读成自相矛盾（2026-10-21）。
+      nfov += nfov_frame_count >= 1 ? " 帧门结果=通过" : " 帧门结果=未通过(几何/SNR门)";
       nfov += " 单帧σ=" + oneq::logging::FormatSci(nfov_frame_sigma_deg) + "deg";
-      nfov += " 融合σ=" + oneq::logging::FormatSci(nfov_fused_sigma_deg) + "deg";
+      // 融合 σ 需要至少一帧，滑行/轮空周期无定义（2026-10-21 体检：1,699 行写 0.000deg）。
+      if (nfov_frame_count > 0) {
+        nfov += " 融合σ=" + oneq::logging::FormatSci(nfov_fused_sigma_deg) + "deg";
+      } else {
+        nfov += " 融合σ=不适用(本周期无窄场帧)";
+      }
       SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "窄视场跟踪探测功能测试",
                                  nfov);
       // 规范口径（验收判定标准 第14项·其三）：窄视场精确状态序列——同一目标逐周期

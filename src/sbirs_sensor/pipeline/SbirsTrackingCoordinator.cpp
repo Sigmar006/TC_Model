@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "sbirs_sensor/foundation/SbirsGeometry.h"
+#include "sbirs_sensor/pipeline/SbirsStateSanity.h"
 #include "common/numerics/Constants.h"
 
 namespace sbirs_sensor {
@@ -13,6 +14,26 @@ namespace pipeline {
 namespace {
 
 constexpr float kSbirsNisChiSquare2Dof95 = 5.99f;
+/**
+ * @brief 离群量测门限（2 维 NIS，≈31σ）：超过即丢弃量测，后验保持预测。
+ * @note 与统计门（95%，5.99）分开：95% 门按定义就有 5% 的正常量测越界，只能用于计数/丢锁
+ *       策略；现场真正的毒数据是 2.5° 级离群角（NIS~1e7）与协方差奇异（NIS=inf），用 1000
+ *       作阈值既挡得住毒数据，也不会把正常量测当离群丢掉（2026-10-21）。
+ */
+constexpr float kSbirsNisOutlierChiSquare = 1000.0f;
+/** @brief 离群量测连续被拒的最大拍数（配置 nis_gate_loss_cycles=0 时的兜底丢锁判据）。 */
+constexpr unsigned int kSbirsMaxConsecutiveRejections = 3U;
+
+/**
+ * @brief 丢锁判据：配置 >0 按配置；=0（"禁用 NIS 丢锁"）时仍保留 3 拍保护。
+ * @note 2026-10-21：现场 nis_gate_loss_cycles=0 且离群量测照旧进入状态，导致状态发散。
+ *       现在离群量测被丢弃、状态保持预测，但若一直丢弃就会带着预测态无限滑行——
+ *       故 0 不再等于"永不丢锁"，而是回到 3 拍的量测-状态失配保护。
+ */
+unsigned int ConsecutiveRejectionThreshold(const config::SbirsPolicyConfig& policy) {
+  return policy.tracking.nis_gate_loss_cycles > 0U ? policy.tracking.nis_gate_loss_cycles
+                                                   : kSbirsMaxConsecutiveRejections;
+}
 
 float ComputeNormalizedInnovationSquared(const tracking::SbirsKalmanUpdateResult& update_result) {
   const Eigen::LLT<tracking::SbirsMeasurementCovariance> llt(update_result.innovation_covariance);
@@ -212,15 +233,34 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     const tracking::SbirsAngleCvUpdater updater;
     const tracking::SbirsAngleCvUpdateResult update_result =
         updater.Update(state_it->second, measurement_rad, measurement_covariance);
-    state_it->second = update_result.posterior;
     result.has_estimation_nis = true;
     result.estimation_nis = ComputeNormalizedInnovationSquared(update_result);
-    result.estimation_nis_gate_exceeded = result.estimation_nis > kSbirsNisChiSquare2Dof95;
-    if (policy.tracking.nis_gate_loss_cycles > 0U && result.estimation_nis_gate_exceeded) {
-      const unsigned int exceeded_count = ++nis_gate_exceeded_counts_[target_id];
-      result.lost_due_to_estimation_nis = exceeded_count >= policy.tracking.nis_gate_loss_cycles;
+    result.innovation_covariance_singular = !std::isfinite(result.estimation_nis);
+    result.estimation_nis_gate_exceeded =
+        result.innovation_covariance_singular ||
+        result.estimation_nis > kSbirsNisChiSquare2Dof95;
+    // 离群量测不得进入状态（2026-10-21）：此前"先更新、后计数"，超门的量测照样改写后验，
+    // 把 ±2.5° 的离群角写进状态并逐拍放大（现场第 9 项残差超 ±360″ 的行有 95% 落在
+    // NIS=inf 的同期）。这里按离群门（≠ 统计门，见 kSbirsNisOutlierChiSquare）丢弃量测。
+    const bool outlier = result.innovation_covariance_singular ||
+                         result.estimation_nis > kSbirsNisOutlierChiSquare;
+    if (outlier) {
+      result.measurement_discarded = true;
+    } else {
+      state_it->second = update_result.posterior;
+    }
+    if (result.estimation_nis_gate_exceeded) {
+      ++nis_gate_exceeded_counts_[target_id];
+      result.lost_due_to_estimation_nis =
+          nis_gate_exceeded_counts_[target_id] >= ConsecutiveRejectionThreshold(policy);
     } else {
       nis_gate_exceeded_counts_[target_id] = 0U;
+    }
+    if (!IsSaneSbirsAngleState(state_it->second.mean, state_it->second.covariance)) {
+      result.state_diverged = true;
+      result.lost_due_to_estimation_nis = true;
+      angle_kf_states_.erase(state_it);
+      return result;
     }
     const SbirsTrackingPredictionResult angles = BuildAnglePredictionResult(state_it->second);
     result.output_azimuth_deg = angles.output_azimuth_deg;
@@ -238,7 +278,6 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     tracking::SbirsImmFilter* const imm_filter = filter_it->second.get();
     imm_filter->Correct(measurement_rad, measurement_covariance);
     combined = imm_filter->GetCombinedState();
-    filter_states_[target_id] = combined;
 
     result.has_estimation_nis = true;
     const auto& imm_results = imm_filter->GetModelUpdateResults();
@@ -247,21 +286,56 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
       if (model_nis > result.estimation_nis) result.estimation_nis = model_nis;
       if (model_nis > kSbirsNisChiSquare2Dof95) result.estimation_nis_gate_exceeded = true;
     }
+    result.innovation_covariance_singular = !std::isfinite(result.estimation_nis);
+    result.estimation_nis_gate_exceeded =
+        result.estimation_nis_gate_exceeded || result.innovation_covariance_singular;
+    // IMM 的更新发生在滤波器内部，无法"只丢弃后验"——离群或发散时整条状态作废，
+    // 由宽场重新捕获（与 NIS 连续超门同一释放路径，避免把发散状态发到日志）。
+    const bool outlier = result.innovation_covariance_singular ||
+                         result.estimation_nis > kSbirsNisOutlierChiSquare;
+    const bool sane = IsSaneSbirsState(combined.mean, combined.covariance);
+    if (outlier || !sane) {
+      result.measurement_discarded = true;
+      result.state_diverged = !sane;
+      result.lost_due_to_estimation_nis = true;
+      imm_filters_by_target_.erase(filter_it);
+      filter_states_.erase(target_id);
+      return result;
+    }
+    filter_states_[target_id] = combined;
   } else {
     angle_measurement_model_.SetSatellitePosition(satellite_position_eci_m);
     const tracking::SbirsEkfUpdater updater(&angle_measurement_model_);
     const tracking::SbirsKalmanUpdateResult update_result =
         updater.Update(filter_states_[target_id], measurement_rad, measurement_covariance);
-    combined = update_result.posterior;
-    filter_states_[target_id] = combined;
     result.has_estimation_nis = true;
     result.estimation_nis = ComputeNormalizedInnovationSquared(update_result);
-    result.estimation_nis_gate_exceeded = result.estimation_nis > kSbirsNisChiSquare2Dof95;
+    result.innovation_covariance_singular = !std::isfinite(result.estimation_nis);
+    result.estimation_nis_gate_exceeded =
+        result.innovation_covariance_singular ||
+        result.estimation_nis > kSbirsNisChiSquare2Dof95;
+    const bool outlier = result.innovation_covariance_singular ||
+                         result.estimation_nis > kSbirsNisOutlierChiSquare;
+    if (outlier) {
+      // 离群量测丢弃：后验保持预测（2026-10-21，见 kAngleCvKf 分支注释）。
+      result.measurement_discarded = true;
+      combined = filter_states_[target_id];
+    } else {
+      combined = update_result.posterior;
+    }
+    if (!IsSaneSbirsState(combined.mean, combined.covariance)) {
+      result.state_diverged = true;
+      result.lost_due_to_estimation_nis = true;
+      filter_states_.erase(target_id);
+      return result;
+    }
+    filter_states_[target_id] = combined;
   }
 
-  if (policy.tracking.nis_gate_loss_cycles > 0U && result.estimation_nis_gate_exceeded) {
-    const unsigned int exceeded_count = ++nis_gate_exceeded_counts_[target_id];
-    result.lost_due_to_estimation_nis = exceeded_count >= policy.tracking.nis_gate_loss_cycles;
+  if (result.estimation_nis_gate_exceeded) {
+    ++nis_gate_exceeded_counts_[target_id];
+    result.lost_due_to_estimation_nis =
+        nis_gate_exceeded_counts_[target_id] >= ConsecutiveRejectionThreshold(policy);
   } else {
     nis_gate_exceeded_counts_[target_id] = 0U;
   }

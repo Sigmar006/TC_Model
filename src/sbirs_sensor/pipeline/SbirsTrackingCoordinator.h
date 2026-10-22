@@ -49,6 +49,9 @@ struct SbirsTrackingUpdateResult {
   float estimation_nis{0.0f};
   bool estimation_nis_gate_exceeded{false};
   bool lost_due_to_estimation_nis{false};
+  bool innovation_covariance_singular{false}; /**< 创新协方差非正定 → NIS 无定义（不写 inf）。 */
+  bool measurement_discarded{false};          /**< 本拍量测被判离群并丢弃（后验保持预测）。 */
+  bool state_diverged{false};                 /**< 后验发散（非有限/量级越界），已丢弃该目标状态。 */
   bool has_angle_rate{false};              /**< kAngleCvKf 后验变化率是否有效 */
   float azimuth_rate_rad_per_s{0.0f};      /**< 方位变化率（rad/s），仅 kAngleCvKf */
   float elevation_rate_rad_per_s{0.0f};    /**< 俯仰变化率（rad/s），仅 kAngleCvKf */

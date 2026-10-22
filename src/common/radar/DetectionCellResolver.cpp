@@ -45,6 +45,51 @@ double IntervalOverlap(double left_center_hz, double left_bandwidth_hz, double r
   return std::max(0.0, std::min(left_high, right_high) - std::max(left_low, right_low));
 }
 
+/**
+ * @brief 把多普勒折进 ±PRF/2（2026-10-22，MTI/MTD 联算）。
+ */
+double FoldIntoPrf(double frequency_hz, double prf_hz) {
+  const double half = 0.5 * prf_hz;
+  double folded = std::fmod(frequency_hz + half, prf_hz);
+  if (folded < 0.0) {
+    folded += prf_hz;
+  }
+  return folded - half;
+}
+
+/**
+ * @brief 2 脉冲对消器功率响应 4·sin²(πf/PRF)（∈[0,4]，盲速处为 0）。
+ */
+double MtiPowerResponse(double frequency_hz, double prf_hz) {
+  const double folded = FoldIntoPrf(frequency_hz, prf_hz);
+  const double sine = std::sin(kPi * folded / prf_hz);
+  return 4.0 * sine * sine;
+}
+
+/**
+ * @brief 归一化 DFT 通道响应 |sin(Nθ/2)/(N·sin(θ/2))|²（∈[0,1]，即跨 bin 损耗）。
+ */
+double DftBinPower(double frequency_hz, std::uint32_t channel, double prf_hz,
+                   std::uint32_t channel_count) {
+  if (channel_count == 0U) {
+    return 1.0;
+  }
+  const double center_hz =
+      static_cast<double>(channel) * prf_hz / static_cast<double>(channel_count);
+  const double delta_hz = FoldIntoPrf(frequency_hz - center_hz, prf_hz);
+  const double theta = 2.0 * kPi * delta_hz / prf_hz;
+  if (std::abs(theta) < 1.0e-14) {
+    return 1.0;
+  }
+  const double numerator = std::sin(0.5 * static_cast<double>(channel_count) * theta);
+  const double denominator = std::sin(0.5 * theta);
+  if (std::abs(denominator) < 1.0e-18) {
+    return 1.0;
+  }
+  const double magnitude = numerator / (static_cast<double>(channel_count) * denominator);
+  return magnitude * magnitude;
+}
+
 bool TryCountAvailableEchoPulses(const oneq::electromagnetics::RfWaveformSchedule& waveform,
                                  double echo_delay_s, double receive_window_end_s,
                                  std::uint32_t requested_count, std::uint32_t* available_count) {
@@ -251,13 +296,43 @@ bool TryResolveDetectionCell(
       GainFactorFromDb(config.signal_processing.jamming_suppression_gain_db);
   const double clutter_suppression_linear =
       GainFactorFromDb(config.signal_processing.clutter_suppression_gain_db);
+  // 中译：**MTI/MTD 联算**（2026-10-22）。开启且有效脉冲数 N≥2 时，把三件事并入 SINR：
+  //   ① 2 脉冲对消器对目标的功率响应 H_mti = 4sin²(πf_fold/PRF)（盲速处→0）；
+  //   ② MTD 选中通道的跨 bin 损耗 H_bin（≤1，恒为"损耗"）；
+  //   ③ **相干积累增益 N**（N 个脉冲相干积累，信号功率 ×N）。
+  //   对消器同时作用于干扰与杂波（同一响应），故分母两项乘以 H_mti。
+  //   未开启或 N<2 时三者取 1，行为与改动前逐位一致。
+  // 标识：MTI/MTD 联算（2026-10-22）。
+  double mti_linear = 1.0;
+  double mtd_bin_linear = 1.0;
+  double coherent_linear = 1.0;
+  double folded_hz = 0.0;
+  if (config.enable_mti_mtd_effects && candidate.effective_pulse_count >= 2U &&
+      own_waveform.pulse_repetition_interval_s > 0.0) {
+    const double prf_hz = 1.0 / own_waveform.pulse_repetition_interval_s;
+    const double doppler_hz = candidate.two_way_doppler_shift_hz;
+    folded_hz = FoldIntoPrf(doppler_hz, prf_hz);
+    mti_linear = std::max(MtiPowerResponse(doppler_hz, prf_hz), 1.0e-30);
+    double best_bin = 0.0;
+    for (std::uint32_t k = 0U; k < config.mtd_channel_count; ++k) {
+      best_bin = std::max(best_bin, DftBinPower(doppler_hz, k, prf_hz, config.mtd_channel_count));
+    }
+    mtd_bin_linear = std::max(best_bin, 1.0e-30);
+    coherent_linear = static_cast<double>(candidate.effective_pulse_count);
+  }
   const double denominator = std::max(
       candidate.thermal_noise_power_w * noise_gain_linear +
-          candidate.interference_power_w / jamming_suppression_linear +
-          candidate.clutter_power_w / clutter_suppression_linear,
+          (candidate.interference_power_w * mti_linear) / jamming_suppression_linear +
+          (candidate.clutter_power_w * mti_linear) / clutter_suppression_linear,
       kLinearFloor);
-  candidate.processed_single_pulse_sinr_linear =
-      candidate.echo_power_w * candidate.pulse_compression_gain * target_gain_linear / denominator;
+  candidate.processed_single_pulse_sinr_linear = candidate.echo_power_w *
+                                                 candidate.pulse_compression_gain *
+                                                 target_gain_linear * mti_linear *
+                                                 mtd_bin_linear * coherent_linear / denominator;
+  candidate.folded_doppler_hz = folded_hz;
+  candidate.mti_response_db = 10.0 * std::log10(mti_linear);
+  candidate.mtd_bin_response_db = 10.0 * std::log10(mtd_bin_linear);
+  candidate.coherent_integration_db = 10.0 * std::log10(coherent_linear);
   candidate.processed_single_pulse_sinr_db =
       10.0 * std::log10(std::max(candidate.processed_single_pulse_sinr_linear, kLinearFloor));
   if (!std::isfinite(candidate.echo_power_w) || candidate.echo_power_w < 0.0 ||

@@ -668,6 +668,11 @@ bool RirController::TryBuildMeasurement(
     cell_config.receiver_loss_db = static_cast<double>(hardware_.receiver.receive_loss_db);
     cell_config.receiver_noise_figure_db = static_cast<double>(hardware_.receiver.noise_figure_db);
     cell_config.signal_processing = hardware_.signal_processing;
+    // 中译：自 2026-10-22 起 RIR 检测链**启用 MTI/MTD 联算**——对消器响应、MTD 跨 bin 损耗
+    //   与相干积累增益 N 并入 SINR（N 由 RF 波形与接收窗决定，PRF=200 Hz、驻留 0.05 s 时为 10）。
+    //   回退：把本行改成 false 即恢复"单脉冲账本"口径。
+    // 标识：MTI/MTD 联算开关（2026-10-22）。
+    cell_config.enable_mti_mtd_effects = true;
 
     dwell::RirDetectionCellTarget cell_target;
     cell_target.range_m = static_cast<double>(slant_range_m);

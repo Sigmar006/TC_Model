@@ -30,6 +30,7 @@ oneq::common::radar::DetectionCellConfig ToCommon(const RirDetectionCellConfig& 
       static_cast<double>(config.signal_processing.clutter_suppression_gain_db);
   out.signal_processing.jamming_suppression_gain_db =
       static_cast<double>(config.signal_processing.jamming_suppression_gain_db);
+  out.enable_mti_mtd_effects = config.enable_mti_mtd_effects;
   return out;
 }
 
@@ -54,6 +55,10 @@ void FromCommon(const oneq::common::radar::DetectionCellResult& in, RirDetection
   out->processed_single_pulse_sinr_linear = in.processed_single_pulse_sinr_linear;
   out->processed_single_pulse_sinr_db = in.processed_single_pulse_sinr_db;
   out->effective_pulse_count = in.effective_pulse_count;
+  out->folded_doppler_hz = in.folded_doppler_hz;
+  out->mti_response_db = in.mti_response_db;
+  out->mtd_bin_response_db = in.mtd_bin_response_db;
+  out->coherent_integration_db = in.coherent_integration_db;
 }
 
 }  // namespace

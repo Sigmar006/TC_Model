@@ -33,6 +33,11 @@ struct RirDetectionCellConfig {
   double receiver_noise_figure_db{0.0};
   double reference_temperature_k{290.0};
   config::hardware::RirSignalProcessingConfig signal_processing{}; /**< 四增益偏置。 */
+  /**
+   * @brief 是否把 MTI/MTD 响应与相干积累并入检测 SINR（2026-10-22）。
+   * @details 由控制器显式开启；关闭时行为与改动前逐位一致。
+   */
+  bool enable_mti_mtd_effects{false};
 };
 
 /** @brief 一个目标在本周期 detection cell 中的物理事实。 */
@@ -56,6 +61,10 @@ struct RirDetectionCellResult {
   double processed_single_pulse_sinr_linear{0.0};
   double processed_single_pulse_sinr_db{0.0};
   std::uint32_t effective_pulse_count{1U};
+  double folded_doppler_hz{0.0};        /**< 折叠到 PRF 内的目标多普勒（Hz）。 */
+  double mti_response_db{0.0};          /**< MTI 功率响应（dB，可为负=盲速）。 */
+  double mtd_bin_response_db{0.0};      /**< MTD 跨 bin 响应（dB，恒 ≤0）。 */
+  double coherent_integration_db{0.0};  /**< MTD 相干积累增益（dB）。 */
 };
 
 /**

@@ -411,3 +411,18 @@ cmd /c "..\BJ_10Y_WorkSpace\ModelSource\build_x64_v120.cmd"
 自检是临时诊断，定位后删除（连同 `SelfCheckOnce`）。
 
 3. P2（宿主目标速度/落地终止/辐射强度表）、P3（判定标准补配置前提）未动。
+
+---
+
+## 13. 2026-10-22 处置记录（P2 前两项 + 26/27 分工）
+
+| 问题 | 处置 | 状态 |
+|---|---|---|
+| 关机点被定到地下（目标键 99 的 −53,349 m） | `UpdateBurnoutTracker` 增加 `earth_radius_m` 入参，`radius ≤ R` 的采样不进入峰值累计、不推进相态，已确认结论不改判；单测 `BurnoutIgnoresBelowSurfaceSamples` | ✅ 1q 侧闭环（`b4cd5ab6`） |
+| 第 26/27 项在宿主里空行 | 库拆出"算/格式化"（`BuildPrecisionKeyMetricsLines` / `BuildPrecisionAhpLine` / `LastAcceptanceLines` / `EncodeAcceptanceLineForFile`），宿主在引擎线程用 `fopen/fwrite` 追加落盘 | ⏳ 已实现并部署（1q `ea7f14f8` + 宿主 `ae3f265`），待现场复跑确认 |
+| 窄场捕获持续失败（卫星 105 对目标 103，SNR 4.55 < k=6） | 判定为**正确负判决**，不改门限；验收报告按"SNR 不足、判决失败、符合物理"记录 | ✅ 口径已定（不改代码） |
+| 目标速度恒 0 / 落地后继续外推 / 辐射强度恒定 | 需改宿主场景（`ModelDatabase/弹道弹.dscript`）；该文件当前有他人未提交改动，暂不动 | ⏳ 阻塞（等场景编辑权） |
+
+**关键教训（写盘相关）**：宿主模型源文件是 UTF-8 无 BOM + 中文注释，cp936 下会报 C4819，
+在某些编辑后触发 C2447 连锁语法错误、且报错行号与真实位置不对应；改这类文件后要加 BOM 再
+编译，否则会把"编码吞行"误判成代码错误（本轮踩过一次，浪费了数轮定位）。

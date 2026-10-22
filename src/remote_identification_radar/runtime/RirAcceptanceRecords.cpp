@@ -304,6 +304,10 @@ bool TryBuildAcceptanceBank(const RirDetectionAcceptInput& input,
   bank_input.two_way_doppler_shift_hz = input.cell.two_way_doppler_shift_hz;
   bank_input.prf_hz = input.prf_hz;
   bank_input.center_frequency_hz = input.center_frequency_hz;
+  // 中译：把本拍检测单元的相干积累脉冲数传给旁路，使 `MTD增益` 输出**真实相干增益**
+  //   （10log10(N) + 跨 bin 损耗），而不是仅归一化 bin 响应（恒 ≤0）。
+  // 标识：MTD 真实增益（2026-10-22）。
+  bank_input.coherent_pulse_count = input.cell.effective_pulse_count;
   if (!tones.empty()) {
     bank_input.tones = tones.data();
     bank_input.tone_count = tones.size();
@@ -670,6 +674,12 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
              has_bank ? FormatF(bank.mti_gain_db, 3) + "dB" : std::string());
   EmitOrNone(t, cycle, "目标信号增益功能测试", id_sp + "MTD增益=", has_bank,
              has_bank ? FormatF(bank.mtd_gain_db, 3) + "dB" : std::string());
+  // 中译：同时列出跨 bin 损耗（恒 ≤0）与相干积累项，避免把"总增益为正"误解为"没有损耗"。
+  // 标识：MTD 分项（2026-10-22）。
+  EmitOrNone(t, cycle, "目标信号增益功能测试", id_sp + "MTD跨bin损耗=", has_bank,
+             has_bank ? FormatF(bank.mtd_bin_loss_db, 3) + "dB" : std::string());
+  EmitOrNone(t, cycle, "目标信号增益功能测试", id_sp + "MTD相干积累=", has_bank,
+             has_bank ? FormatF(bank.mtd_coherent_gain_db, 3) + "dB" : std::string());
 
   // 验收判定标准 第33项：噪声增益四子项（各多普勒通道/MTD 等效无 cell 时省略）。
   if (input.has_cell) {

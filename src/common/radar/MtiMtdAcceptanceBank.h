@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace oneq {
 namespace common {
@@ -35,12 +36,23 @@ struct MtiMtdAcceptanceInput {
   double center_frequency_hz{0.0};
   const MtiMtdInterferenceTone* tones{nullptr};
   std::size_t tone_count{0U};
+  /**
+   * @brief 相干积累脉冲数 N（2026-10-22）。
+   * @details N≥2 时 `mtd_gain_db` 给出**真实 MTD 增益** = 10·log10(N) + 跨 bin 损耗；
+   *   缺省 1 表示不做相干积累，此时 `mtd_gain_db` 退化为纯跨 bin 损耗（≤0 dB，与旧行为一致）。
+   */
+  std::uint32_t coherent_pulse_count{1U};
 };
 
 /** @brief 验收旁路 MTI/MTD 输出。 */
 struct MtiMtdAcceptanceResult {
   double mti_gain_db{0.0};
+  /** @brief MTD 总增益（dB）= 相干积累 10·log10(N) + 跨 bin 损耗；N=1 时仅损耗。 */
   double mtd_gain_db{0.0};
+  /** @brief MTD 跨 bin 损耗（dB，恒 ≤0）：目标偏离通道中心造成的匹配损失。 */
+  double mtd_bin_loss_db{0.0};
+  /** @brief 相干积累增益（dB）= 10·log10(N)；N=1 时为 0。 */
+  double mtd_coherent_gain_db{0.0};
   std::size_t selected_channel{0U};
   std::array<double, kMtiMtdChannelCount> target_w{};
   std::array<double, kMtiMtdChannelCount> noise_w{};

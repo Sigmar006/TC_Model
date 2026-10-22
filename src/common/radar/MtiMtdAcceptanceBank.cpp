@@ -102,8 +102,17 @@ bool TryResolveMtiMtdAcceptanceBank(const MtiMtdAcceptanceInput& input,
       candidate.selected_channel = k;
     }
   }
-  candidate.mtd_gain_db =
-      ToDecibels(DftBinPower(fd_hz, candidate.selected_channel, input.prf_hz));
+  // 中译：**MTD 增益口径**（2026-10-22）——真实 MTD 增益 = 相干积累 10·log10(N) +
+  //   跨 bin 损耗（≤0）。此前只输出归一化 bin 响应（恒 ≤0），会被误读成"MTD 永远是负增益"；
+  //   N=1（不做相干积累）时退化为纯损耗，与旧行为逐位一致。
+  // 标识：MTD 真实增益（2026-10-22）。
+  const double bin_response = DftBinPower(fd_hz, candidate.selected_channel, input.prf_hz);
+  candidate.mtd_bin_loss_db = ToDecibels(bin_response);
+  const std::uint32_t coherent_pulses =
+      input.coherent_pulse_count >= 2U ? input.coherent_pulse_count : 1U;
+  candidate.mtd_coherent_gain_db =
+      coherent_pulses >= 2U ? 10.0 * std::log10(static_cast<double>(coherent_pulses)) : 0.0;
+  candidate.mtd_gain_db = candidate.mtd_coherent_gain_db + candidate.mtd_bin_loss_db;
   candidate.mtd_equivalent_noise_w = candidate.noise_w[candidate.selected_channel];
 
   const double wavelength_m = kLightSpeed / input.center_frequency_hz;

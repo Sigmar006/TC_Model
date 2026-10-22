@@ -1288,11 +1288,14 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   // 内部接口第73项：航迹后验与本周期特征快照按关联键对账。
   std::string interface_recognition = track_target_id;
   interface_recognition += " 航迹状态=" + std::string(TrackStatusText(track.status));
+  // 中译：**来源标注**（2026-10-22）——速度/位置与第 42、65 项同源（同一航迹快照），
+  //   此处标注坐标系与口径，避免"同一拍多处速度数值几乎相同"被误读为重复测量。
+  // 标识：第 73 项速度来源（2026-10-22）。
   interface_recognition += " 位置ENU=" +
                            FormatVec3(track.position.x(), track.position.y(), track.position.z(), 3) +
                            "m 速度ENU=" +
                            FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
-                           "m/s";
+                           "m/s 坐标系=ENU 速度口径=滤波后验";
   if (features != nullptr) {
     interface_recognition += " SNR=" + FormatF(features->snr_db, 3) + "dB";
     interface_recognition += " 特征有效掩码=" + std::to_string(features->valid_feature_mask);
@@ -1347,9 +1350,14 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   // 三分量，锚点不可用时退 ENU）。第40项另由控制器写 本周期航迹数= 汇总行。
   // 2026-09-28 按更新后的规范：定位信息固定为 斜距 + 方位/俯仰（角定位），不再追加
   // 高度= 代替俯仰；无有效角距时整行以「定位信息=缺失」如实标记，不写高度占位。
+  // 中译：**来源标注**（2026-10-22）——同一定位/运动量在多项中重复出现是判据要求，
+  //   为避免把"同一值多处出现"误读成"多处独立测量"，在复合字段尾部标注取值来源与口径：
+  //   定位=航迹快照（斜距/角度同源于本拍航迹），运动=滤波后验（速度/加速度来自滤波器，
+  //   不是量测差分）。判据要求的分项保持原样，不删任何字段。
+  // 标识：复合字段来源标注（2026-10-22）。
   const std::string positioning =
       has_polar ? ("定位信息=斜距=" + FormatF(range_m, 1) + "m 方位/俯仰=" +
-                   FormatPairDeg(az_deg, el_deg, 3) + "°")
+                   FormatPairDeg(az_deg, el_deg, 3) + "° 来源=航迹快照")
                 : std::string("定位信息=缺失");
   const std::string motion =
       std::string("运动参数=速度=") + FormatF(track.speed, 3) + "m/s 航向=" +
@@ -1357,7 +1365,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       (have_frame ? FormatVec3(acc_ecef.x_mps, acc_ecef.y_mps, acc_ecef.z_mps, 4)
                   : FormatVec3(track.acceleration.x(), track.acceleration.y(),
                                track.acceleration.z(), 4)) +
-      "m/s^2";
+      "m/s^2 来源=滤波后验";
   const char* kReentryItem = "对典型目标/再入目标进行跟踪功能测试";
   const char* kMultiItem = "多目标跟踪功能测试";
   Emit(sim_time_sec, cycle, kReentryItem,
@@ -1572,13 +1580,16 @@ void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
     content += " 生命周期状态=" + std::string(TrackStatusText(track.status));
     content += " 目标状态ENU_位置=" +
                FormatVec3(track.position.x(), track.position.y(), track.position.z(), 3) + "m";
+    // 中译：**来源标注**（2026-10-22）——位置/速度/加速度均取自同一航迹快照，与第 42 项
+    //   （ECEF）和第 73 项（ENU）同源；速度与加速度是滤波后验（不是量测差分）。
+    // 标识：第 65 项速度来源（2026-10-22）。
     content += " 速度=" +
                FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
-               "m/s";
+               "m/s 坐标系=ENU 速度口径=滤波后验";
     content += " 加速度=" +
                FormatVec3(track.acceleration.x(), track.acceleration.y(), track.acceleration.z(),
                           3) +
-               "m/s^2";
+               "m/s^2 加速度口径=后验速度差分";
     content += " 状态协方差ENU[x,vx,y,vy,z,vz]=[";
     for (int row = 0; row < 6; ++row) {
       if (row != 0) {

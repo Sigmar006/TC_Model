@@ -348,6 +348,80 @@ TEST(RirDetectionCellTest, CustomerDetectionRangeRequirementsHoldWithMargin) {
   }
 }
 
+
+/// @brief MTI/MTD 联算（2026-10-22）：开启后 SINR 相对"单脉冲账本"的变化必须等于
+///        MTI 响应 + 相干积累 10log10(N) + MTD 跨 bin 响应的代数和。
+TEST(RirDetectionCellMtiMtdTest, SinrChangeMatchesMtiCoherentAndBinTerms) {
+  RirDetectionCellConfig config = MakeConfig();
+  config.signal_processing.target_processing_gain_db = 0.0f;
+  config.signal_processing.noise_processing_gain_db = 0.0f;
+  config.signal_processing.clutter_suppression_gain_db = 0.0f;
+  config.signal_processing.jamming_suppression_gain_db = 0.0f;
+
+  RirDetectionCellTarget target;
+  target.range_m = 1.0e6;
+  target.rcs_m2 = 1.0;
+  target.effective_pulse_count = 10U;
+  target.closing_radial_velocity_mps = 750.0;
+
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 1U};
+  std::vector<oneq::electromagnetics::RfIncidentLinkResult> none;
+  RirDetectionCellResult baseline;
+  ASSERT_TRUE(TryResolveRirDetectionCell(config, target, own, none, 0.0, &baseline));
+
+  config.enable_mti_mtd_effects = true;
+  config.signal_processing.enable_mti_mtd_effects = true;
+  RirDetectionCellResult integrated;
+  ASSERT_TRUE(TryResolveRirDetectionCell(config, target, own, none, 0.0, &integrated));
+
+  ASSERT_GE(integrated.effective_pulse_count, 2U);
+  const double delta_db =
+      integrated.processed_single_pulse_sinr_db - baseline.processed_single_pulse_sinr_db;
+  const double expected_db = integrated.mti_response_db + integrated.coherent_integration_db +
+                             integrated.mtd_bin_response_db;
+  EXPECT_NEAR(delta_db, expected_db, 1.0e-6);
+  EXPECT_NEAR(integrated.coherent_integration_db, 10.0, 1.0e-6);   // N=10
+  EXPECT_LE(integrated.mtd_bin_response_db, 0.0);                  // 恒为损耗
+  EXPECT_LT(integrated.mti_response_db, 6.1);                      // 上限 10log10(4)
+}
+
+/// @brief 零径向速度 = 盲速：MTI 响应应落到地板（远低于 -100 dB）。
+TEST(RirDetectionCellMtiMtdTest, ZeroRadialVelocityHitsMtiBlindSpeed) {
+  RirDetectionCellConfig config = MakeConfig();
+  config.enable_mti_mtd_effects = true;
+  config.signal_processing.enable_mti_mtd_effects = true;
+  RirDetectionCellTarget target;
+  target.range_m = 1.0e6;
+  target.rcs_m2 = 1.0;
+  target.closing_radial_velocity_mps = 0.0;
+  target.effective_pulse_count = 10U;
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 1U};
+  std::vector<oneq::electromagnetics::RfIncidentLinkResult> none;
+  RirDetectionCellResult result;
+  ASSERT_TRUE(TryResolveRirDetectionCell(config, target, own, none, 0.0, &result));
+  EXPECT_LT(result.mti_response_db, -100.0);
+  EXPECT_NEAR(result.coherent_integration_db, 10.0, 1.0e-6);
+}
+
+/// @brief 脉冲数 < 2 时不启用联算：行为与关闭开关逐位一致。
+TEST(RirDetectionCellMtiMtdTest, SinglePulseKeepsLegacyLedger) {
+  RirDetectionCellConfig config = MakeConfig();
+  config.enable_mti_mtd_effects = true;
+  config.signal_processing.enable_mti_mtd_effects = true;
+  RirDetectionCellTarget target;
+  target.range_m = 1.0e6;
+  target.rcs_m2 = 1.0;
+  target.closing_radial_velocity_mps = 100.0;
+  target.effective_pulse_count = 1U;
+  const oneq::electromagnetics::RfEmissionIdentity own{1U, 1U};
+  std::vector<oneq::electromagnetics::RfIncidentLinkResult> none;
+  RirDetectionCellResult result;
+  ASSERT_TRUE(TryResolveRirDetectionCell(config, target, own, none, 0.0, &result));
+  EXPECT_DOUBLE_EQ(result.mti_response_db, 0.0);
+  EXPECT_DOUBLE_EQ(result.coherent_integration_db, 0.0);
+  EXPECT_DOUBLE_EQ(result.mtd_bin_response_db, 0.0);
+}
+
 }  // namespace
 }  // namespace tests
 }  // namespace remote_identification_radar

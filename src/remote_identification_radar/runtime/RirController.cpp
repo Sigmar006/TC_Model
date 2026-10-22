@@ -668,11 +668,14 @@ bool RirController::TryBuildMeasurement(
     cell_config.receiver_loss_db = static_cast<double>(hardware_.receiver.receive_loss_db);
     cell_config.receiver_noise_figure_db = static_cast<double>(hardware_.receiver.noise_figure_db);
     cell_config.signal_processing = hardware_.signal_processing;
-    // 中译：自 2026-10-22 起 RIR 检测链**启用 MTI/MTD 联算**——对消器响应、MTD 跨 bin 损耗
-    //   与相干积累增益 N 并入 SINR（N 由 RF 波形与接收窗决定，PRF=200 Hz、驻留 0.05 s 时为 10）。
-    //   回退：把本行改成 false 即恢复"单脉冲账本"口径。
-    // 标识：MTI/MTD 联算开关（2026-10-22）。
-    cell_config.enable_mti_mtd_effects = true;
+    // 中译：**MTI/MTD 联算启用判据**（2026-10-22）——当且仅当"四个标量处理增益里的目标增益
+    //   与杂波抑制都被置 0"（意味着不再用标量占位、改用显式模型）且检测积累脉冲数≥2 时启用。
+    //   这样产品基线配置（3 dB / 10 dB 标量）保持单脉冲账本口径，逐位不变；只有 LRDR 工作点
+    //   配置（两标量置 0 + pulse_count=10）才真正并入 MTI/MTD。
+    //   回退：把这两个标量恢复为非 0 即可。
+    // 标识：MTI/MTD 联算启用判据（2026-10-22）。
+    cell_config.enable_mti_mtd_effects =
+        hardware_.signal_processing.enable_mti_mtd_effects && policy_.detection.pulse_count >= 2;
 
     dwell::RirDetectionCellTarget cell_target;
     cell_target.range_m = static_cast<double>(slant_range_m);

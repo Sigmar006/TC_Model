@@ -127,6 +127,13 @@ struct ONEQ_API RirSignalProcessingConfig {
   float noise_processing_gain_db{1.0f}; /**< 噪声代价；正 = 抬高噪声底。 */
   float clutter_suppression_gain_db{10.0f}; /**< 杂波抑制（MTI 改善因子）；正 = 抑制杂波。 */
   float jamming_suppression_gain_db{8.0f}; /**< 干扰抑制；正 = 抑制干扰。 */
+  /**
+   * @brief 是否把 MTI/MTD 响应与相干积累并入检测 SINR（2026-10-22）。
+   * @details 缺省 false：沿用"四标量处理增益"的单脉冲账本，行为与改动前逐位一致。
+   *   置 true 且检测积累脉冲数≥2 时，2 脉冲 MTI 响应、MTD 跨 bin 损耗与相干积累增益 N
+   *   一并进入 SINR（盲速处如实丢检测）。本字段不进回放序列化，回放默认为 false。
+   */
+  bool enable_mti_mtd_effects{false};
 };
 
 }  // namespace hardware

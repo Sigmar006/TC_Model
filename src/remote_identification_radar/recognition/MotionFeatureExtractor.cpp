@@ -86,6 +86,12 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   if (!acceleration_trustworthy) {
     observation.acceleration_mps2 = 0.0f;
   }
+  // 中译：最终钳制——物理上 4–10 m/s² 量级，任何超过 50 m/s² 的来源（重捕瞬态、退化几何）
+  //   都不写入特征，避免一票否决运动维。
+  // 标识：加速度量级钳制（2026-10-22）。
+  if (!(observation.acceleration_mps2 <= 50.0f)) {
+    observation.acceleration_mps2 = 0.0f;
+  }
 
   // 横向加速度分解：a_lat = |a - (a·v/|v|²)v|；低速或横向加速度低于阈值记为直线飞行。
   const float speed_sq = snapshot.velocity.squaredNorm();

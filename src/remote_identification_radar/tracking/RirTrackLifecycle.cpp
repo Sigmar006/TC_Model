@@ -39,6 +39,14 @@ constexpr std::size_t kVelocityFitMinSamples = 5U;
  */
 constexpr std::size_t kVelocityTrendWindow = 40U;
 constexpr std::size_t kVelocityTrendMinSamples = 10U;
+/**
+ * @brief 单周期瞬时加速度的物理可信上限（m/s²，2026-10-22）。
+ *
+ * @details 航迹失跟重捕/重初始化时，后验速度会跳变，(Δv/Δt) 会算出上千 m/s² 的伪值
+ *   （实测最大 3471.8 m/s²）。弹道/再入目标的真实加速度在 10 m/s² 量级（重力），
+ *   机动目标也很少超过几十；超过该门限的瞬时值视为"重置伪值"，不进入 EMA。
+ */
+constexpr float kMaxPlausibleAccelerationMps2 = 100.0f;
 
 /** @brief 加速度估计的最小有效步长（s）。 */
 constexpr float kMinimumAccelerationDtSec = 1.0e-6f;
@@ -572,6 +580,13 @@ void RirTrackLifecycle::ApplyGaussianState(RirTrackState* track, const RirGaussi
     // 直接用会把识别"运动"维变成噪声放大器（见 kAccelerationSmoothingCycles 注释）。
     // 首个样本直接起批（无历史可比，平滑无意义）；此后按时间常数递推。
     const Eigen::Vector3f instantaneous = (track->velocity - previous_velocity) / dt_sec;
+    // 中译：重置/重捕周期的速度跳变会产生上千 m/s² 的伪加速度，超过可信门限时**不更新**，
+    //   保留上一次的有效值（而不是把伪值写进识别特征）。
+    // 标识：加速度瞬态门（2026-10-22）。
+    if (!(instantaneous.norm() <= kMaxPlausibleAccelerationMps2)) {
+      track->acceleration_mps2 = track->acceleration.norm();
+      return;
+    }
     if (!track->acceleration_smoothed) {
       track->acceleration = instantaneous;
       track->acceleration_smoothed = true;

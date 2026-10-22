@@ -229,7 +229,7 @@ RIR 识别积累全量挂接于自持雷达链路（自发射 $\to$ 入射 $\to$
   - 指定识别任务如果超出物理转向体积，立即回退扫描并报错 `kOutsideSteerableVolume`；指定目标在硬件体积内豁免任务子窗裁剪（确认航迹目标同豁免）。
   - 非法体积/步长/空交集回退 `scan_center`。
 - **反直觉点**：子窗裁剪只作用于搜索候选——指定目标与已确认航迹在体积内可越出子窗被服务（角域豁免），这是 TAS 边搜边跟的几何前提。
-- **外部优先预算（2026-10-22 用户裁定，取代 T-04b 的"搜索保底 4 + 库内跟踪保底 2"）**：有外部引导（`SubmitExternalTrack` 生效）的周期，**全部剩余槽位给外部窗口**，固定扫描光栅与库内跟踪驻留本周期不排。理由：来袭方向随目标变化，按预设光栅补扫既浪费槽位、检测效果也差。唯一例外是 cue 合理性门降级（位置跳变 > 10 km/s × 间隔 + 50 km）：此时只照中心 1 拍，剩余槽位退回搜索，避免坏引导带偏整周期。周期槽位数 $N = \lfloor \Delta t / T_{\text{dwell}} \rfloor$，结果层以 `search/designate/internal_track/external_track_dwell_count` 四项计数自证分配。
+- **外部优先预算（2026-10-22 用户裁定，取代 T-04b 的"搜索保底 4 + 库内跟踪保底 2"）**：有外部引导（`SubmitExternalTrack` 生效）的周期，**全部剩余槽位给外部窗口**，固定扫描光栅与库内跟踪驻留本周期不排。理由：来袭方向随目标变化，按预设光栅补扫既浪费槽位、检测效果也差。cue 合理性门（位置跳变 > 10 km/s × 间隔 + 50 km）**只标注不改分配**：降级周期仍吃满窗口，仅置 `external_cue_degraded`（远距目标的位置噪声 0.5°~1° 折合数十至上百公里，该门会频繁触发，现场实测 893/1156 个引导周期处于该状态，故不能当"引导不可用"判据）。周期槽位数 $N = \lfloor \Delta t / T_{\text{dwell}} \rfloor$，结果层以 `search/designate/internal_track/external_track_dwell_count` 四项计数自证分配。
 - **证据链**：[evidence: tests/unit/remote_identification_radar/rir_search_sector_test.cpp]、[evidence: tests/unit/remote_identification_radar/rir_external_track_test.cpp]
 
 ---

@@ -323,6 +323,31 @@ TEST(RirExternalTrackTest, WithoutExternalCueSearchStillRuns) {
   EXPECT_EQ(result.external_track_dwell_count, 0U);
 }
 
+/// @brief cue 合理性门"只标注不改分配"（2026-10-22）：跳变再大也照常吃满窗口。
+///
+/// 现场实测（19:35 轮）：数千公里外目标的位置噪声 0.5°~1° 折合数十至上百公里，
+/// 60 km/周期 的门在 893/1156 个引导周期触发；若降级就退回固定光栅，等于把 8~9 拍
+/// 白扔在找不回目标的区域——故降级仅置 `external_cue_degraded`，槽位分配不变。
+TEST(RirExternalTrackTest, DegradedCueStillTakesAllSlots) {
+  RirSession session = RirSession::Create(MakeConfig());
+  ASSERT_TRUE(session.SubmitExternalTrack(MakeRequestFromEnu(100000.0, 0.0, 20000.0, 0.0, 0.0, 0.0, 0.0)));
+  const RirCycleResult first = session.StepWithResult(MakeInput(1U, 0.5));
+  ASSERT_EQ(first.status, RirCycleStatus::kCompleted);
+  ASSERT_FALSE(first.external_cue_degraded) << "首周期没有历史位置，不应判降级";
+
+  // 下一周期把 cue 挪 200 km（> 10 km/s × 1 + 50 km = 60 km）→ 判降级。
+  ASSERT_TRUE(session.SubmitExternalTrack(MakeRequestFromEnu(300000.0, 0.0, 20000.0, 0.0, 0.0, 0.0, 0.0)));
+  const RirCycleResult second = session.StepWithResult(MakeInput(2U, 0.5));
+  ASSERT_EQ(second.status, RirCycleStatus::kCompleted);
+  EXPECT_TRUE(second.external_cue_degraded) << "200 km 跳变应触发合理性门";
+  EXPECT_EQ(second.search_dwell_count, 0U) << "降级不得把槽位退回固定光栅";
+  EXPECT_EQ(second.internal_track_dwell_count, 0U);
+  EXPECT_EQ(second.external_track_dwell_count, 10U) << "降级周期仍吃满全部槽位";
+  EXPECT_EQ(second.search_dwell_count + second.designate_dwell_count +
+                second.internal_track_dwell_count + second.external_track_dwell_count,
+            10U);
+}
+
 }  // namespace
 }  // namespace tests
 }  // namespace remote_identification_radar

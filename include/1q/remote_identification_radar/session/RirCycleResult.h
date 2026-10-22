@@ -114,6 +114,15 @@ struct ONEQ_API RirCycleResult {
   std::uint32_t external_track_dwell_count{0U};
 
   /**
+   * @brief 本周期外部 cue 被合理性门判为不可信（位置跳变 > 10 km/s × 间隔 + 50 km）。
+   *
+   * @note 只作标注：降级**不改变**槽位分配（外部窗口照样吃满预算，见 2026-10-22 外部优先
+   *       策略）。现场据此判断引导质量——数千公里外的目标，融合位置噪声 0.5°~1° 就折合
+   *       数十至上百公里，会频繁触发本条，故不能拿它当"引导不可用"的判据。
+   */
+  bool external_cue_degraded{false};
+
+  /**
    * @brief 本周期「实际有效目标最大斜距」（m）：本周期持有航迹的目标里最大输入几何斜距。
    *
    * 与 `mission.max_range_m`（径向粗筛门，仅过滤超远候选）语义不同：本量反映

@@ -209,11 +209,14 @@ RIR 遵守 `docs/common/contract.md` 与 `docs/common/session_contract.md`：
    指定 → 外部窗口 → 库内跟踪 → 搜索 的顺序装填；**有外部引导生效时不再给固定扫描
    光栅与库内跟踪留保底槽位**——外部窗口吃掉全部剩余槽位（每周期从窗口序列按游标取
    连续若干点，窗口重建时游标归零、先照中心）。理由：来袭方向随目标变化，按预设光栅
-   补扫既浪费槽位、检测效果也差。唯一例外是 cue 合理性门降级（位置跳变 >
-   `10 km/s × 间隔 + 50 km`）：该周期只照中心 1 拍，剩余槽位退回搜索，避免坏引导
-   带偏整周期。结果层 `RirCycleResult::search_dwell_count` /
-   `designate_dwell_count` / `internal_track_dwell_count` /
-   `external_track_dwell_count` 四项计数自证分配（四项之和 = 本周期驻留数）。
+   补扫既浪费槽位、检测效果也差。cue 合理性门（位置跳变 >
+   `10 km/s × 间隔 + 50 km`）**只标注不改分配**：降级周期仍照常吃满窗口，仅置
+   `RirCycleResult::external_cue_degraded`——既然本周期唯一指向来源就是这条引导，
+   退回光栅既找不回目标、又白扔大部分槽位；远距目标（数千公里）的位置噪声 0.5°~1°
+   就折合数十至上百公里，该门因此会频繁触发，不能当作"引导不可用"的判据。结果层
+   `RirCycleResult::search_dwell_count` / `designate_dwell_count` /
+   `internal_track_dwell_count` / `external_track_dwell_count` 四项计数自证分配
+   （四项之和 = 本周期驻留数）。
 
 ## 指定识别任务（限时锁定，镜像 AR designation 语义）
 

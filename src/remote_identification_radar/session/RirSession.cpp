@@ -761,10 +761,11 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     if (external_phase == RirExternalTrackPhase::kFresh) {
       external_window_cursor = 0U;
     }
-    std::size_t take_points = std::min(external_slots, window_points.size());
-    if (external_cue_degraded_this_cycle) {
-      take_points = std::min<std::size_t>(1U, window_points.size());
-    }
+    // 中译：降级仍照常吃满窗口——引导可信度只作标注（写进结果层供现场核对），不再把
+    //       槽位退回固定光栅：既然本周期唯一的指向来源就是这条引导，退回光栅既找不回
+    //       目标、又白扔 8~9 拍（2026-10-22 用户裁定：有外部信息时全部槽位都给外部）。
+    // 标识：外部优先（2026-10-22 修订）。
+    const std::size_t take_points = std::min(external_slots, window_points.size());
     // 中译：跨周期续扫——按游标从窗口序列中取连续若干点，而不是每周期都从中心重来；
     //       这样 25 点窗口在 13 槽/周期下 2 个周期即可铺满，外圈点不再永远轮不到。
     // 标识：T-04b 外部窗口续扫。
@@ -781,12 +782,13 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
       ext_dwell.external_target_id = external_track_request.source_target_id;
       dwell_plan.push_back(ext_dwell);
     }
-    if (!external_cue_degraded_this_cycle && !window_points.empty()) {
+    // 中译：窗口游标无论 cue 是否被判降级都推进——降级只影响标注，不再改变照射范围。
+    if (!window_points.empty()) {
       external_window_cursor =
           (external_window_cursor + take_points) % window_points.size();
     }
-    // 外部窗口已吃满预算（未降级且窗口有波位）⇒ 本周期不再排库内跟踪与固定光栅。
-    external_monopolizes_budget = !external_cue_degraded_this_cycle && !window_points.empty();
+    // 外部窗口吃满预算（窗口有波位）⇒ 本周期不再排库内跟踪与固定光栅。
+    external_monopolizes_budget = !window_points.empty();
     ++external_track_sweep_index;
   }
   if (!external_monopolizes_budget && max_dwells > dwell_plan.size() + kMinSearchDwells) {
@@ -934,6 +936,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   result.external_track_dwell_count = static_cast<std::uint32_t>(external_track_dwell_count);
   result.external_track_sweep_index =
       has_external_track ? external_track_sweep_index : 0U;
+  result.external_cue_degraded = has_external_track && external_cue_degraded_this_cycle;
   // 外部跟踪的如实报告（不吸附、不静默）：到期/保持/越界各自可辨识。
   if (external_track_expired_this_cycle) {
     session::RirIssue expired;

@@ -60,6 +60,14 @@ void CloseAcceptanceLog(AcceptanceChannel channel);
 // 刷出当前目录作用域的通道；无目录作用域时刷出默认通道。
 void FlushAcceptanceLog(AcceptanceChannel channel);
 bool IsAcceptanceLogOpen(AcceptanceChannel channel);
+/**
+ * @brief 只读诊断：该通道当前实际打开的文件路径（未打开返回空串）。
+ * @note `IsAcceptanceLogOpen` 只知道开没开、不知道开的是哪个文件；验收排查"行写到
+ *       了哪儿"时需要本访问器（2026-10-22 第 26/27 项空行排查）。
+ */
+std::string CurrentAcceptanceLogPath(AcceptanceChannel channel);
+/** @brief 只读诊断：通道流的 open/good/fail/bad 与 tellp（排查"行写不进去"）。 */
+std::string CurrentAcceptanceLogStateText(AcceptanceChannel channel);
 void WriteAcceptanceLog(AcceptanceChannel channel, const char* text);
 void WriteAcceptanceLog(AcceptanceChannel channel, const std::string& text);
 /** @brief 将通道日志写入指定目录；目录为空时沿用环境变量/编译期默认路径。 */

@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <sstream>
 
 #if defined(_MSC_VER)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -299,6 +300,26 @@ class ChannelSink {
     return stream_.is_open();
   }
 
+  /** @brief 只读诊断：当前实际打开的文件路径（未打开时为空串）。 */
+  std::string OpenedPath() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return opened_path_;
+  }
+
+  /** @brief 只读诊断：流状态与写入位置（"open=1 good=1 fail=0 tellp=123"）。 */
+  std::string StateText() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::string text;
+    text += stream_.is_open() ? "open=1 " : "open=0 ";
+    text += stream_.good() ? "good=1 " : "good=0 ";
+    text += stream_.fail() ? "fail=1 " : "fail=0 ";
+    text += stream_.bad() ? "bad=1 " : "bad=0 ";
+    std::ostringstream position;
+    position << "tellp=" << static_cast<long long>(stream_.tellp());
+    text += position.str();
+    return text;
+  }
+
   void Write(const std::string& text) {
     if (text.empty()) {
       return;
@@ -350,8 +371,10 @@ class ChannelSink {
       open_failed_ = false;
       warned_ = false;
       opened_in_process_ = true;
+      opened_path_ = path;
     } else {
       open_failed_ = true;
+      opened_path_.clear();
       if (!warned_) {
         warned_ = true;
         std::fprintf(stderr, "[1q %s acceptance log] cannot open log file: %s\n",
@@ -368,6 +391,7 @@ class ChannelSink {
   bool open_failed_ = false;
   bool warned_ = false;
   bool opened_in_process_ = false;
+  std::string opened_path_; /**< 诊断：实际打开的文件路径（空 = 未打开）。 */
 };
 
 ChannelSink& SinkOf(AcceptanceChannel channel) {
@@ -464,6 +488,14 @@ void FlushAcceptanceLog(AcceptanceChannel channel) {
 }
 
 bool IsAcceptanceLogOpen(AcceptanceChannel channel) { return SinkOf(channel).IsOpen(); }
+
+std::string CurrentAcceptanceLogPath(AcceptanceChannel channel) {
+  return SinkOf(channel).OpenedPath();
+}
+
+std::string CurrentAcceptanceLogStateText(AcceptanceChannel channel) {
+  return SinkOf(channel).StateText();
+}
 
 void WriteAcceptanceLog(AcceptanceChannel channel, const char* text) {
   if (text == nullptr || *text == '\0') {

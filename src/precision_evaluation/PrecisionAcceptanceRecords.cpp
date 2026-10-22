@@ -33,13 +33,14 @@ const char* GradeOf(double score) {
   return "D";
 }
 
-// 第26/27 项落盘（2026-10-21 现场修正）：本模块直接写 SatelliteTarget 通道。
-// 此前借用推演模块 `InferenceAcceptanceRecords.h` 里的头文件内联包装，那层包装的
-// 宏闸门求值取的是**推演模块**的编译选项（`ONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG`
-// 只加在 target_inference_core 上），在精度模块的编译单元里恒为关，调用被编译成
-// 空语句——这就是"会话跑通、ahp_valid=1、日志 0 行"的真因（1q.lib 内
-// PrecisionAcceptanceRecords.obj 无任何 WriteAcceptanceLog 引用，dumpbin 已证实）。
-// 通道选择仍按验收判定标准 §0：第26/27 项写 log/SatelliteTarget.log。
+// 第26/27 项落盘（2026-10-22 定案）：借道推演模块的验收写出通道。
+//
+// 尚未闭环的现场问题（详见 docs/review/ir_log_audit_2026-10-21.md §10/§12）：
+//   宿主进程里本函数确实被执行（探针证实 N 次调用）、sink 指向现场日志、流 good、
+//   tellp 增长，但行仍不出现在 log/SatelliteTarget.log；同一目录另开文件与"借道推演
+//   验收通道/入队由引擎线程写"两种绕行方案同样不落盘。成因待定，故保留最朴素的
+//   直接写盘口径（不引入绕行路径），日志缺失按"待定位"记账，不假装已修好。
+
 void WriteSatelliteTargetLine(const char* item, const std::string& content) {
   oneq::logging::WriteAcceptanceLog(
       oneq::logging::AcceptanceChannel::kSatelliteTarget,
@@ -72,7 +73,7 @@ void WritePrecisionKeyMetricsUnconditional(const std::map<std::uint64_t, TargetK
                  FormatF(snapshot.focal_y_m, 6) + ")";
     }
     // 会话汇总行语义：周期/时间用 0（与文档示例一致；行内误差为最近一拍快照）。
-    // 通道见 WriteSatelliteTargetLine 注释：不借用推演模块的宏闸门（2026-10-21）。
+    // 通道见 WriteSatelliteTargetLine 注释：借推演验收通道写出（2026-10-22）。
     WriteSatelliteTargetLine("关键精度指标提取功能测试", content);
   }
 }

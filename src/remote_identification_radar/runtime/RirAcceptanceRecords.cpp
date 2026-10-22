@@ -642,10 +642,16 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     std::string echo = id;
     echo += " 斜距=" + FormatF(input.range_m, 1) + "m";
     echo += " 目标RCS=" + FormatF(input.rcs_m2, 3) + "m^2";
+    // 中译：本行三项**全部是处理前（进入信号处理链之前）的单元级功率**，口径必须写明，
+    //   否则会与第 33 项"脉冲压缩后的噪声功率"（处理后）只差一个脉压增益而被误读为矛盾。
+    //   回波：目标回波在单元内的接收功率；噪声：匹配滤波带宽内的接收机热噪声；干扰：进入
+    //   本单元的外部干扰功率。脉压/MTI/MTD 等处理增益均不计入本行。
+    // 标识：第 29 项口径标注（2026-10-22）。
     echo += " 回波功率=" + FormatSci(FromDb(input.echo_power_dbw)) + "W";
     echo += " 噪声功率=" + FormatSci(thermal) + "W";
     echo += " 干扰功率=" +
             FormatSci(input.has_cell ? input.cell.interference_power_w : 0.0) + "W";
+    echo += " 功率口径=处理前(检测单元)";
     Emit(t, cycle, "回波功率计算功能测试", echo);
   }
 
@@ -683,7 +689,14 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
 
   // 验收判定标准 第33项：噪声增益四子项（各多普勒通道/MTD 等效无 cell 时省略）。
   if (input.has_cell) {
-    Emit(t, cycle, "噪声增益功能测试", id_sp + "脉冲压缩后的噪声功率=" + FormatSci(thermal) + "W");
+    // 中译：**脉压后的噪声功率**（2026-10-22 修正数值口径）——匹配滤波器按"单位峰值增益"
+    //   归一（信号峰值不变、噪声按 ∫h²=1/τ 收缩），故压缩后噪声 = 输入噪声 /(B·τ)。
+    //   与模型的 SINR 记账等价：SNR = 回波 /(N/(Bτ)) = 回波·Bτ/N，两条口径给出同一 SNR。
+    //   此前该字段误写为压缩前的 N，与第 29 项同值，属口径错误。
+    // 标识：第 33 项脉压后噪声（2026-10-22）。
+    const double noise_after_pc = pc > 0.0 ? thermal / pc : thermal;
+    Emit(t, cycle, "噪声增益功能测试",
+         id_sp + "脉冲压缩后的噪声功率=" + FormatSci(noise_after_pc) + "W 噪声口径=压缩后(单位峰值增益)");
   }
   EmitOrNone(t, cycle, "噪声增益功能测试", id_sp + "各多普勒滤波器通道噪声功率=", has_bank,
              has_bank ? FormatChannelWatts(bank.noise_w) + "W" : std::string());

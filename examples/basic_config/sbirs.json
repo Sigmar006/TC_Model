@@ -5,11 +5,11 @@
     "optical_aperture_m": 0.5,
     "optical_transmission": 0.8,
     "detector_quantum_efficiency": 0.7,
-    "integration_time_sec": 1.0,
+    "integration_time_sec": 0.02,
     "noise_equivalent_power_w": 1.0e-12,
     "background_radiance_w_sr_m2": 0.0,
     "detector_temperature_k": 80.0,
-    "readout_noise_rms_w": 0.0,
+    "readout_noise_rms_w": 2.0e-15,
     "focal_length_m": 2.0,
     "detector_pixel_pitch_m": 3.0e-5
   },
@@ -29,7 +29,7 @@
     "max_range_m": 5.0e7,
     "frame_rate_hz": 10.0,
     "narrow_cue_latency_s": 0.0,
-    "narrow_pointing_settle_error_deg": 0.0,
+    "narrow_pointing_settle_error_deg": 0.0002,
     "narrow_pointing_max_slew_rate_deg_per_sec": 30.0,
     "narrow_pointing_settle_tolerance_deg": 0.01
   },
@@ -39,7 +39,7 @@
       "narrow_min_snr_linear": 6.0
     },
     "error_model": {
-      "range_fraction_sigma": 0.0,
+      "range_fraction_sigma": 0.001,
       "random_seed": 1,
       "orbit_sigma_deg": 0.0,
       "attitude_sigma_deg": 0.0,
@@ -47,12 +47,12 @@
       "detector_bandwidth_hz": 100.0
     },
     "pointing_disturbance": {
-      "common_attitude_sigma_deg": 0.0,
+      "common_attitude_sigma_deg": 0.0005,
       "common_attitude_correlation_time_s": 1.0,
-      "channel_pointing_sigma_deg": 0.0,
+      "channel_pointing_sigma_deg": 0.0003,
       "channel_pointing_correlation_time_s": 1.0,
-      "channel_vibration_amplitude_deg": 0.0,
-      "channel_vibration_frequency_hz": 0.0,
+      "channel_vibration_amplitude_deg": 0.0001,
+      "channel_vibration_frequency_hz": 0.3,
       "random_seed": 1
     },
     "scheduler": {

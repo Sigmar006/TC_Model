@@ -5,7 +5,7 @@
     "optical_aperture_m": 0.5,
     "optical_transmission": 0.8,
     "detector_quantum_efficiency": 0.7,
-    "integration_time_sec": 0.02,
+    "integration_time_sec": 0.10,
     "noise_equivalent_power_w": 1.0e-12,
     "background_radiance_w_sr_m2": 0.0,
     "detector_temperature_k": 80.0,

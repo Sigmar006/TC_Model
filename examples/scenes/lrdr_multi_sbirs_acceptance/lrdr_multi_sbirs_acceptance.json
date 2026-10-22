@@ -26,7 +26,7 @@
       "wide_field_fov_az_deg": 20.0, "wide_field_fov_el_deg": 20.0,
       "narrow_field_fov_az_deg": 8.0, "narrow_field_fov_el_deg": 8.0,
       "wide_min_snr_linear": 4.0, "narrow_min_snr_linear": 6.0,
-      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 0.02,
+      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 0.10,
       "frame_rate_hz": 10.0, "fov_sigma_deg": 0.0001
     },
     {
@@ -40,7 +40,7 @@
       "wide_field_fov_az_deg": 20.0, "wide_field_fov_el_deg": 20.0,
       "narrow_field_fov_az_deg": 8.0, "narrow_field_fov_el_deg": 8.0,
       "wide_min_snr_linear": 4.0, "narrow_min_snr_linear": 6.0,
-      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 0.02,
+      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 0.10,
       "frame_rate_hz": 10.0, "fov_sigma_deg": 0.0001
     },
     {
@@ -54,7 +54,7 @@
       "wide_field_fov_az_deg": 20.0, "wide_field_fov_el_deg": 20.0,
       "narrow_field_fov_az_deg": 8.0, "narrow_field_fov_el_deg": 8.0,
       "wide_min_snr_linear": 4.0, "narrow_min_snr_linear": 6.0,
-      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 0.02,
+      "noise_equivalent_power_w": 1e-14, "integration_time_sec": 0.10,
       "frame_rate_hz": 10.0, "fov_sigma_deg": 0.0001
     }
   ],

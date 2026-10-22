@@ -288,6 +288,41 @@ TEST(RirExternalTrackTest, PointingFollowsSubmittedPosition) {
       << "位置变了指向必须跟着变（否则外部位置没被真正消费）";
 }
 
+/// @brief 外部优先调度（2026-10-22 用户裁定）：有外部引导时全部槽位给外部窗口。
+///
+/// 判定：外部窗口吃满预算的周期里，本周期**不排**固定扫描光栅驻留与库内跟踪驻留
+/// （`search_dwell_count == 0` 且 `internal_track_dwell_count == 0`），
+/// 外部驻留条数 = 周期槽位数（dt / recognition_dwell_sec，本用例 0.5/0.05 = 10）。
+TEST(RirExternalTrackTest, ExternalCueTakesAllDwellSlots) {
+  RirSession session = RirSession::Create(MakeConfig());
+  ASSERT_TRUE(session.SubmitExternalTrack(MakeRequestFromEnu(100000.0, 0.0, 20000.0, 0.0, 0.0, 0.0, 0.0)));
+
+  const RirCycleResult result = session.StepWithResult(MakeInput(1U, 0.5));
+  ASSERT_EQ(result.status, RirCycleStatus::kCompleted);
+  EXPECT_EQ(result.pointing_source, RirPointingSource::kExternalTrack);
+  EXPECT_EQ(result.search_dwell_count, 0U)
+      << "有外部引导时不再按预设扫描光栅补扫（来袭方向随目标变，固定光栅是浪费）";
+  EXPECT_EQ(result.internal_track_dwell_count, 0U)
+      << "外部窗口吃满槽位，库内跟踪驻留本周期不排";
+  EXPECT_EQ(result.search_dwell_count + result.designate_dwell_count +
+                result.internal_track_dwell_count + result.external_track_dwell_count,
+            10U)
+      << "本周期驻留总数应等于槽位数 floor(dt / recognition_dwell_sec) = 10";
+  EXPECT_GE(result.external_track_dwell_count, 1U);
+  // 窗口半宽 8°/4°、波束 4° ⇒ 窗口波位数（15）足以覆盖 10 个槽位。
+  EXPECT_EQ(result.external_track_dwell_count, 10U)
+      << "槽位数 = floor(dt / recognition_dwell_sec) = floor(0.5 / 0.05) = 10";
+}
+
+/// @brief 无外部引导时仍按既有调度：固定光栅搜索照常（回归，避免策略改动外溢）。
+TEST(RirExternalTrackTest, WithoutExternalCueSearchStillRuns) {
+  RirSession session = RirSession::Create(MakeConfig());
+  const RirCycleResult result = session.StepWithResult(MakeInput(1U, 0.5));
+  ASSERT_EQ(result.status, RirCycleStatus::kCompleted);
+  EXPECT_GT(result.search_dwell_count, 0U) << "无外部引导时搜索驻留必须照排";
+  EXPECT_EQ(result.external_track_dwell_count, 0U);
+}
+
 }  // namespace
 }  // namespace tests
 }  // namespace remote_identification_radar

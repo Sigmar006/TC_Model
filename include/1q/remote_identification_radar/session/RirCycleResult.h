@@ -101,6 +101,19 @@ struct ONEQ_API RirCycleResult {
   std::uint32_t external_track_sweep_index{0U};
 
   /**
+   * @brief 本周期驻留计划的种类计数（加性字段，四项之和 = 本周期实际驻留数）。
+   *
+   * @note 用途：① 验收第 37/66 项"搜索/指定/跟踪"分布可由结果层直接读出，不必再数日志；
+   *       ② 回归"有外部引导时全部槽位给外部窗口"的调度策略（2026-10-22 外部优先）：
+   *       外部跟踪窗口吃满预算的周期里 `search_dwell_count == 0` 且
+   *       `internal_track_dwell_count == 0`。
+   */
+  std::uint32_t search_dwell_count{0U};
+  std::uint32_t designate_dwell_count{0U};
+  std::uint32_t internal_track_dwell_count{0U};
+  std::uint32_t external_track_dwell_count{0U};
+
+  /**
    * @brief 本周期「实际有效目标最大斜距」（m）：本周期持有航迹的目标里最大输入几何斜距。
    *
    * 与 `mission.max_range_m`（径向粗筛门，仅过滤超远候选）语义不同：本量反映

@@ -229,7 +229,8 @@ RIR 识别积累全量挂接于自持雷达链路（自发射 $\to$ 入射 $\to$
   - 指定识别任务如果超出物理转向体积，立即回退扫描并报错 `kOutsideSteerableVolume`；指定目标在硬件体积内豁免任务子窗裁剪（确认航迹目标同豁免）。
   - 非法体积/步长/空交集回退 `scan_center`。
 - **反直觉点**：子窗裁剪只作用于搜索候选——指定目标与已确认航迹在体积内可越出子窗被服务（角域豁免），这是 TAS 边搜边跟的几何前提。
-- **证据链**：[evidence: tests/unit/remote_identification_radar/rir_search_sector_test.cpp]
+- **外部优先预算（2026-10-22 用户裁定，取代 T-04b 的"搜索保底 4 + 库内跟踪保底 2"）**：有外部引导（`SubmitExternalTrack` 生效）的周期，**全部剩余槽位给外部窗口**，固定扫描光栅与库内跟踪驻留本周期不排。理由：来袭方向随目标变化，按预设光栅补扫既浪费槽位、检测效果也差。唯一例外是 cue 合理性门降级（位置跳变 > 10 km/s × 间隔 + 50 km）：此时只照中心 1 拍，剩余槽位退回搜索，避免坏引导带偏整周期。周期槽位数 $N = \lfloor \Delta t / T_{\text{dwell}} \rfloor$，结果层以 `search/designate/internal_track/external_track_dwell_count` 四项计数自证分配。
+- **证据链**：[evidence: tests/unit/remote_identification_radar/rir_search_sector_test.cpp]、[evidence: tests/unit/remote_identification_radar/rir_external_track_test.cpp]
 
 ---
 
@@ -239,7 +240,7 @@ RIR 识别积累全量挂接于自持雷达链路（自发射 $\to$ 入射 $\to$
   1. 优先级规则：未识别目标优先于已识别目标，同等状态下斜距较近者优先；威胁等级不参与排序。
   2. 指定识别任务生命周期：外部指定目标 ID 及限时窗口周期数。识别达成（`kCategoryConfirmed` 或 `kModelConfirmed`）时任务立即圆满完成并恢复空闲扫描；限时窗口耗尽仍未识别则超时作废（`kAcquisitionTimeout`）。
   3. **检测候选主瓣覆盖门**：检测候选须落在本周期某驻留指向的半功率宽内，否则不入候选（候选生成前置几何门）。
-  4. **TAS 边搜边跟**：已确认航迹每周期保留专用跟踪驻留，与搜索驻留并存。
+  4. **TAS 边搜边跟**：已确认航迹每周期保留专用跟踪驻留，与搜索驻留并存；但**外部引导生效的周期**例外——外部窗口吃满全部槽位，库内跟踪与搜索驻留本周期不排（见 3.1「外部优先预算」）。
 - **反直觉点**：识别是离散结论，识别完成即释放指向，不持续独占波束跟随（与 AR 捕获后持续跟随航迹不同）。
 - **证据链**：[evidence: tests/unit/remote_identification_radar/rir_self_contained_validation_test.cpp]
 

@@ -682,6 +682,9 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     max_dwells = std::max<std::size_t>(1U, static_cast<std::size_t>(dwell_quota));
   }
   std::vector<runtime::RirDwellPlan> dwell_plan;
+  // 外部窗口是否吃满本周期全部槽位（2026-10-22 外部优先策略）：为 true 时本周期不排
+  // 库内跟踪驻留与固定扫描光栅驻留。cue 合理性门降级或窗口无波位时不置位（退回原调度）。
+  bool external_monopolizes_budget = false;
   // ⓪ 外部跟踪（位置 + 速度 -> 外推中心 + 邻域窗口）。优先级仅次于人工指定：
   //    外部跟踪是"实时目标指令"，而库内航迹是自产状态，外部指令应更靠前。
   //    中心优先、由近到远铺窗口波位；**每周期随外推中心重建**，不依赖扫描游标。
@@ -715,15 +718,14 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     dwell_plan.push_back(designate_dwell);
   }
   if (has_external_track) {
-    // 中译：槽位预算（T-04b，2026-10-20）——先给搜索与库内航迹留保底，剩余才给外部窗口；
-    //       此前是"剩余槽位 − 1"，实测外部吃掉 19/20，搜索只剩 1 拍、库内航迹 0 拍。
-    // 标识：T-04b 预算分配 + cue 合理性门。
+    // 中译：有外部引导时**整个周期都照外部窗口**（2026-10-22 用户裁定，取代 T-04b 的
+    //       "搜索保底 4 + 库内跟踪保底 2"分配）——来袭方向随目标变化，按预设扫描光栅
+    //       补扫既浪费槽位、检测效果也不好；外部窗口吃掉全部剩余槽位，固定光栅与库内
+    //       跟踪本周期不排。
+    // 标识：外部优先预算（2026-10-22）。唯一例外是下方 cue 合理性门降级：
+    //       cue 判为不可信时只照中心 1 拍，剩余槽位退回搜索，避免坏引导带偏整周期。
     const std::size_t used_slots = dwell_plan.size();
-    std::size_t budget = (max_dwells > used_slots) ? (max_dwells - used_slots) : 0U;
-    const std::size_t search_slots = std::min(kMinSearchDwells, budget);
-    budget -= search_slots;
-    const std::size_t track_slots = std::min(kMinInternalTrackDwells, budget);
-    budget -= track_slots;
+    const std::size_t budget = (max_dwells > used_slots) ? (max_dwells - used_slots) : 0U;
     const std::size_t external_slots = budget;
 
     // 中译：cue 合理性门——位置跳变超过"最大速度 × 间隔 + 容差"即判为不可信（融合定位偶发
@@ -783,16 +785,18 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
       external_window_cursor =
           (external_window_cursor + take_points) % window_points.size();
     }
+    // 外部窗口已吃满预算（未降级且窗口有波位）⇒ 本周期不再排库内跟踪与固定光栅。
+    external_monopolizes_budget = !external_cue_degraded_this_cycle && !window_points.empty();
     ++external_track_sweep_index;
   }
-  if (max_dwells > dwell_plan.size() + kMinSearchDwells) {
+  if (!external_monopolizes_budget && max_dwells > dwell_plan.size() + kMinSearchDwells) {
     std::vector<runtime::RirDwellPlan> track_dwells = controller.CollectTrackDwellRequests(
         max_dwells - dwell_plan.size() - kMinSearchDwells, static_cast<float>(input.dt_sec));
     dwell_plan.insert(dwell_plan.end(), track_dwells.begin(), track_dwells.end());
   }
   const std::vector<oneq::common::radar::AzimuthElevationDeg> scan_pattern =
       BuildAbsoluteScanWaves(config);
-  while (dwell_plan.size() < max_dwells) {
+  while (!external_monopolizes_budget && dwell_plan.size() < max_dwells) {
     runtime::RirDwellPlan search_dwell;
     if (!scan_pattern.empty()) {
       scan_wave_cursor_ %= scan_pattern.size();
@@ -804,6 +808,30 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
       search_dwell.pointing_deg = config.mission.scan_center_deg;
     }
     dwell_plan.push_back(search_dwell);
+  }
+  // 结果层驻留种类计数（2026-10-22）：让"外部窗口吃满预算"这一策略在结果层可验证，
+  // 同时给验收第 37/66 项一个与计划同源的口径。
+  std::size_t search_dwell_count = 0U;
+  std::size_t designate_dwell_count = 0U;
+  std::size_t internal_track_dwell_count = 0U;
+  std::size_t external_track_dwell_count = 0U;
+  for (const runtime::RirDwellPlan& dwell : dwell_plan) {
+    switch (dwell.kind) {
+      case runtime::RirDwellKind::kSearch:
+        ++search_dwell_count;
+        break;
+      case runtime::RirDwellKind::kDesignate:
+        ++designate_dwell_count;
+        break;
+      case runtime::RirDwellKind::kTrack:
+        ++internal_track_dwell_count;
+        break;
+      case runtime::RirDwellKind::kExternalTrack:
+        ++external_track_dwell_count;
+        break;
+      default:
+        break;
+    }
   }
   // 结果层主驻留指向：首个非跟踪驻留（指定优先，其次搜索）——与单驻留时代语义对齐。
   config::RirAzimuthElevationDeg dwell_center = config.mission.scan_center_deg;
@@ -900,6 +928,10 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   }
   result.external_track_center_deg = external_center_deg;
   result.external_track_phase = external_track_phase;
+  result.search_dwell_count = static_cast<std::uint32_t>(search_dwell_count);
+  result.designate_dwell_count = static_cast<std::uint32_t>(designate_dwell_count);
+  result.internal_track_dwell_count = static_cast<std::uint32_t>(internal_track_dwell_count);
+  result.external_track_dwell_count = static_cast<std::uint32_t>(external_track_dwell_count);
   result.external_track_sweep_index =
       has_external_track ? external_track_sweep_index : 0U;
   // 外部跟踪的如实报告（不吸附、不静默）：到期/保持/越界各自可辨识。

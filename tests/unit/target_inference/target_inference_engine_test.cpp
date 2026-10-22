@@ -96,18 +96,18 @@ TEST(TargetInferenceEngineTest, BurnoutBoostThenCoastConfirmsAtLastBoostSample) 
   const double boost_dv = 3.0 * kBurnoutGravity;  // 3g > 2.5g 加速度门
 
   // 首拍无通道：观测中。
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu), BurnoutPhase::kObserving);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kObserving);
   // 两拍助推：助推中。
   const std::array<double, 3U> v1 = BurnoutBoostStep(v0, boost_dv);
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 1.0, kEarthMu), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 1.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kBoosting);
   const std::array<double, 3U> v2 = BurnoutBoostStep(v1, boost_dv);
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v2, 2.0, kEarthMu), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v2, 2.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kBoosting);
   // 首拍滑行（coast=1）：仍助推中——单拍不确认。
   const std::array<double, 3U> v3 = BurnoutCoastStep(v2, 1.0);
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v3, 3.0, kEarthMu), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v3, 3.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kBoosting);
   // 次拍滑行（coast=2）：确认关机，关机时刻=最后一个助推采样（第 2 拍）。
   const std::array<double, 3U> v4 = BurnoutCoastStep(v3, 1.0);
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v4, 4.0, kEarthMu), BurnoutPhase::kConfirmed);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v4, 4.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kConfirmed);
   EXPECT_DOUBLE_EQ(state.time_sec, 2.0);
   EXPECT_NEAR(state.speed_mps, 1500.0 + 2.0 * boost_dv, 1.0e-6);
   EXPECT_TRUE(state.ever_boosted);
@@ -115,18 +115,54 @@ TEST(TargetInferenceEngineTest, BurnoutBoostThenCoastConfirmsAtLastBoostSample) 
   // 锚点冻结守护：确认后缓升（巡航爬升场景，单拍增量低于通道门）不得使关机
   // 时刻漂移——峰值累计被确认态冻结。
   const std::array<double, 3U> v5 = BurnoutBoostStep(v4, 0.3);  // dε≈467 < 噪声尺度门
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v5, 5.0, kEarthMu), BurnoutPhase::kConfirmed);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v5, 5.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kConfirmed);
   EXPECT_DOUBLE_EQ(state.time_sec, 2.0);
 
   // 再次助推重开（多脉冲/再次加速语义）：撤销结论回助推中，随后连续滑行重新
   // 确认，关机时刻更新为最后助推采样。
   const std::array<double, 3U> v6 = BurnoutBoostStep(v5, boost_dv);
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v6, 6.0, kEarthMu), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v6, 6.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kBoosting);
   const std::array<double, 3U> v7 = BurnoutCoastStep(v6, 1.0);
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v7, 7.0, kEarthMu), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v7, 7.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kBoosting);
   const std::array<double, 3U> v8 = BurnoutCoastStep(v7, 1.0);
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v8, 8.0, kEarthMu), BurnoutPhase::kConfirmed);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v8, 8.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kConfirmed);
   EXPECT_DOUBLE_EQ(state.time_sec, 6.0);
+}
+
+/// @brief 地表以下采样不得成为关机点候选（2026-10-22 现场：关机点被定到 -53,349 m）。
+///
+/// 机理：落地之后的航迹点速度估计失真时 ε 会被抬到超过真实关机点，若参与峰值累计，
+/// 关机点就被定到地下。护栏要求：`radius <= earth_radius_m` 的采样既不进入峰值累计，
+/// 也不推进相态；已确认结论保持不改判（不因落地后的坏采样把已确认的关机点丢掉）。
+TEST(TargetInferenceEngineTest, BurnoutIgnoresBelowSurfaceSamples) {
+  BurnoutTrackerState state;
+  const oneq::coordinate::EcefPositionM pos = BurnoutTestPosition();
+  const std::array<double, 3U> v0{{0.0, 1500.0, 0.0}};
+  const double boost_dv = 3.0 * kBurnoutGravity;
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu, kEarthRadiusM),
+            BurnoutPhase::kObserving);
+  const std::array<double, 3U> v1 = BurnoutBoostStep(v0, boost_dv);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 1.0, kEarthMu, kEarthRadiusM),
+            BurnoutPhase::kBoosting);
+  const std::array<double, 3U> v2 = BurnoutBoostStep(v1, boost_dv);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v2, 2.0, kEarthMu, kEarthRadiusM),
+            BurnoutPhase::kBoosting);
+  const std::array<double, 3U> v3 = BurnoutCoastStep(v2, 1.0);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v3, 3.0, kEarthMu, kEarthRadiusM),
+            BurnoutPhase::kBoosting)
+      << "单拍滑行不确认";
+  const std::array<double, 3U> v4 = BurnoutCoastStep(v3, 1.0);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v4, 4.0, kEarthMu, kEarthRadiusM),
+            BurnoutPhase::kConfirmed);
+  ASSERT_DOUBLE_EQ(state.time_sec, 2.0) << "关机时刻应为最后一个助推采样";
+
+  // 落地之后的采样（半径小于地表）配一个失真的大速度：能量远超真实关机点。
+  const oneq::coordinate::EcefPositionM underground(kEarthRadiusM - 53000.0, 0.0, 0.0);
+  const std::array<double, 3U> v_fast{{0.0, 20000.0, 0.0}};
+  EXPECT_EQ(UpdateBurnoutTracker(state, underground, v_fast, 5.0, kEarthMu, kEarthRadiusM),
+            BurnoutPhase::kConfirmed)
+      << "已确认的关机点不得被地下采样改判";
+  EXPECT_DOUBLE_EQ(state.time_sec, 2.0) << "峰值锚点不得被地下采样覆盖";
 }
 
 TEST(TargetInferenceEngineTest, BurnoutFlatFromStartDeclaresBeforeWindow) {
@@ -135,12 +171,12 @@ TEST(TargetInferenceEngineTest, BurnoutFlatFromStartDeclaresBeforeWindow) {
   const std::array<double, 3U> v{{0.0, 1500.0, 0.0}};
   // ε 恒定、无加速度特征：前 4 拍证据不足观测中，第 5 拍起判窗口外。
   for (int i = 0; i < 4; ++i) {
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, static_cast<double>(i), kEarthMu),
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, static_cast<double>(i), kEarthMu, kEarthRadiusM),
               BurnoutPhase::kObserving)
         << "采样 " << i;
   }
   for (int i = 4; i < 6; ++i) {
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, static_cast<double>(i), kEarthMu),
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, static_cast<double>(i), kEarthMu, kEarthRadiusM),
               BurnoutPhase::kBeforeWindow)
         << "采样 " << i;
   }
@@ -153,12 +189,12 @@ TEST(TargetInferenceEngineTest, BurnoutFirstSampleDeclineKeepsBeforeTrackStart) 
   // dt=10 s：降速 100 m/s（|a|=10 < 2.5g 不触发加速度门）但 Δε ≈ −1.45e5
   // 超下降沿门——能量自首采样即下降 ⟹ 关机早于跟踪起点（旧分支语义保留）。
   const std::array<double, 3U> v0{{0.0, 1500.0, 0.0}};
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu), BurnoutPhase::kObserving);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kObserving);
   const std::array<double, 3U> v1{{0.0, 1400.0, 0.0}};
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 10.0, kEarthMu),
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 10.0, kEarthMu, kEarthRadiusM),
             BurnoutPhase::kBeforeTrackStart);
   const std::array<double, 3U> v2{{0.0, 1300.0, 0.0}};
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v2, 20.0, kEarthMu),
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v2, 20.0, kEarthMu, kEarthRadiusM),
             BurnoutPhase::kBeforeTrackStart);
 }
 
@@ -171,17 +207,17 @@ TEST(TargetInferenceEngineTest, BurnoutAccelGateAnchorsAndEnergyDebounce) {
     const std::array<double, 3U> v0{{0.0, 1500.0, 0.0}};
     const std::array<double, 3U> v1 = BurnoutBoostStep(v0, 2.0 * kBurnoutGravity);
     const std::array<double, 3U> v2 = BurnoutBoostStep(v1, 2.0 * kBurnoutGravity);
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu), BurnoutPhase::kObserving);
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 1.0, kEarthMu), BurnoutPhase::kObserving);
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v2, 2.0, kEarthMu), BurnoutPhase::kBoosting);
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kObserving);
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 1.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kObserving);
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v2, 2.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kBoosting);
   }
   // 3g > 2.5g：加速度门即时判助推（无需防抖）。
   {
     BurnoutTrackerState state;
     const std::array<double, 3U> v0{{0.0, 1500.0, 0.0}};
     const std::array<double, 3U> v1 = BurnoutBoostStep(v0, 3.0 * kBurnoutGravity);
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu), BurnoutPhase::kObserving);
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 1.0, kEarthMu), BurnoutPhase::kBoosting);
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v0, 0.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kObserving);
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v1, 1.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kBoosting);
   }
 }
 
@@ -192,10 +228,10 @@ TEST(TargetInferenceEngineTest, BurnoutSlowRiseThenDeclineConfirmsMidWindowPeak)
   BurnoutTrackerState state;
   const oneq::coordinate::EcefPositionM pos = BurnoutTestPosition();
   std::array<double, 3U> v{{0.0, 1500.0, 0.0}};
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, 0.0, kEarthMu), BurnoutPhase::kObserving);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, 0.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kObserving);
   for (int i = 1; i <= 5; ++i) {
     v = BurnoutBoostStep(v, 1.3);  // |a|=1.3 m/s²，dε≈1950 < 噪声尺度门
-    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, static_cast<double>(i), kEarthMu),
+    EXPECT_EQ(UpdateBurnoutTracker(state, pos, v, static_cast<double>(i), kEarthMu, kEarthRadiusM),
               BurnoutPhase::kObserving)
         << "缓升采样 " << i;
   }
@@ -203,11 +239,11 @@ TEST(TargetInferenceEngineTest, BurnoutSlowRiseThenDeclineConfirmsMidWindowPeak)
   EXPECT_DOUBLE_EQ(state.peak_is_first_sample, false);
   // dt=45 s：降速 100 m/s（|a|≈2.2 < 2.5g），Δε≈−1.46e5 超下降沿门。
   const std::array<double, 3U> v_down{{0.0, v[1] - 100.0, 0.0}};
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v_down, 50.0, kEarthMu), BurnoutPhase::kConfirmed);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v_down, 50.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kConfirmed);
   EXPECT_DOUBLE_EQ(state.time_sec, 5.0);
   // 继续回落：锚点冻结，关机时刻不漂移。
   const std::array<double, 3U> v_down2{{0.0, v_down[1] - 100.0, 0.0}};
-  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v_down2, 60.0, kEarthMu), BurnoutPhase::kConfirmed);
+  EXPECT_EQ(UpdateBurnoutTracker(state, pos, v_down2, 60.0, kEarthMu, kEarthRadiusM), BurnoutPhase::kConfirmed);
   EXPECT_DOUBLE_EQ(state.time_sec, 5.0);
 }
 
@@ -223,24 +259,24 @@ TEST(TargetInferenceEngineTest, BurnoutVelocitySigmaGateKeepsObserving) {
   const std::array<double, 3U> v3 = BurnoutCoastStep(v2, 1.0);
   const std::array<double, 3U> v4 = BurnoutCoastStep(v3, 1.0);
   BurnoutTrackerState gated;
-  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v0, 0.0, kEarthMu, 20.0),
+  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v0, 0.0, kEarthMu, kEarthRadiusM, 20.0),
             BurnoutPhase::kObserving);
-  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v1, 1.0, kEarthMu, 20.0),
+  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v1, 1.0, kEarthMu, kEarthRadiusM, 20.0),
             BurnoutPhase::kObserving);
-  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v2, 2.0, kEarthMu, 20.0),
+  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v2, 2.0, kEarthMu, kEarthRadiusM, 20.0),
             BurnoutPhase::kObserving);
-  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v3, 3.0, kEarthMu, 20.0),
+  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v3, 3.0, kEarthMu, kEarthRadiusM, 20.0),
             BurnoutPhase::kObserving);
-  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v4, 4.0, kEarthMu, 20.0),
+  EXPECT_EQ(UpdateBurnoutTracker(gated, pos, v4, 4.0, kEarthMu, kEarthRadiusM, 20.0),
             BurnoutPhase::kObserving);
   EXPECT_FALSE(gated.valid);  // 状态未推进：恢复后从头累积，无残留锚点。
   // 同样的助推-滑行序列在 σ_v=1 m/s（雷达级跟踪）下正常确认。
   BurnoutTrackerState armed;
-  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v0, 5.0, kEarthMu, 1.0), BurnoutPhase::kObserving);
-  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v1, 6.0, kEarthMu, 1.0), BurnoutPhase::kBoosting);
-  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v2, 7.0, kEarthMu, 1.0), BurnoutPhase::kBoosting);
-  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v3, 8.0, kEarthMu, 1.0), BurnoutPhase::kBoosting);
-  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v4, 9.0, kEarthMu, 1.0), BurnoutPhase::kConfirmed);
+  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v0, 5.0, kEarthMu, kEarthRadiusM, 1.0), BurnoutPhase::kObserving);
+  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v1, 6.0, kEarthMu, kEarthRadiusM, 1.0), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v2, 7.0, kEarthMu, kEarthRadiusM, 1.0), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v3, 8.0, kEarthMu, kEarthRadiusM, 1.0), BurnoutPhase::kBoosting);
+  EXPECT_EQ(UpdateBurnoutTracker(armed, pos, v4, 9.0, kEarthMu, kEarthRadiusM, 1.0), BurnoutPhase::kConfirmed);
   EXPECT_DOUBLE_EQ(armed.time_sec, 7.0);
 }
 

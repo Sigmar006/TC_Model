@@ -6,8 +6,10 @@
 #include "target_inference/InferenceAcceptanceRecords.h"
 
 #include <cmath>
+#include <cstdio>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "1q/coordinate/position_transform.h"
 #include "1q/target_inference/TargetInferenceEngine.h"
@@ -78,7 +80,7 @@ BurnoutPhase UpdateBurnoutTracker(BurnoutTrackerState& state,
                                   const oneq::coordinate::EcefPositionM& position,
                                   const std::array<double, 3U>& velocity_ecef_m_per_s,
                                   double t_sec, double earth_mu_m3_per_s2,
-                                  double velocity_sigma_m) {
+                                  double earth_radius_m, double velocity_sigma_m) {
   // 方法常数（尺度均由 μ/r 推导，不新造物理常数；依据见 algorithms.md「关机点判定」）：
   // 推力典型几倍重力、滤波速度噪声仅几 m/s，2.5 倍重力门两不相扰；逐拍能量门取
   // 噪声尺度 1e-4·μ/r（高于 v·δv 噪声、低于缓升段单拍增量，防把慢推力误判平稳），
@@ -97,6 +99,13 @@ BurnoutPhase UpdateBurnoutTracker(BurnoutTrackerState& state,
                                   position.z_m * position.z_m);
   if (radius <= 0.0) {
     return BurnoutPhase::kObserving;  // 不可用采样不推进状态（调用方以半径守卫另行写行）。
+  }
+  if (radius <= earth_radius_m) {
+    // 中译：地表以下采样不作为关机点候选——落地之后的航迹点（含外推失控的速度估计）
+    //       能量可能被抬得比真实关机点更高，会把关机点定到地下（现场：目标键 99 被定到
+    //       −53,349 m）。已确认的结论保持，不被这种无效采样改判。
+    // 标识：地表以下采样护栏（2026-10-22）。
+    return state.confirmed ? BurnoutPhase::kConfirmed : BurnoutPhase::kObserving;
   }
   if (velocity_sigma_m >= kBurnoutVelocitySigmaM) {
     // 弱可观测（如仅方位融合）航迹：不推进助推/峰值/相态状态（状态原样保留，
@@ -265,7 +274,7 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
     const BurnoutPhase phase =
         UpdateBurnoutTracker(state, track.position, track.velocity_ecef_m_per_s,
                              track.sim_time_sec, config.earth_mu_m3_per_s2,
-                             velocity_sigma_m);
+                             config.earth_radius_m, velocity_sigma_m);
     std::string burnout = "目标键=" + std::to_string(track.key);
     const TrajectoryPrediction empty_trajectory{};
     const TrajectoryPrediction& trajectory =

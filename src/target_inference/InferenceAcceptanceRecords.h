@@ -82,11 +82,17 @@ struct BurnoutTrackerState {
  *       VelocitySigmaM，方法常数，依据：加速判别门 2.5g≈20 m/s² 在 1s 步长下
  *       需速度噪声远低于此）时不推进任何状态、返回观测中——仅方位/弱可观测
  *       航迹的速度欠估计收敛缓升与助推特征动力学不可分，判了必是假关机。
+ * @note 地表以下采样护栏（2026-10-22 现场定位）：`radius <= earth_radius_m` 的采样
+ *       不是飞行器状态（典型来源：航迹外推到落地后的采样、速度估计失真），既不得成为
+ *       关机点候选，也不推进助推/峰值/相态——已确认的结论保持不改判。现场症状：
+ *       目标键 99 的关机点被定到 (27.012,113.699,-53349.4 m)，即落地之后的采样当成了
+ *       能量峰值（航迹速度估计失真把 ε 抬到超过真实关机点）。
  */
 BurnoutPhase UpdateBurnoutTracker(BurnoutTrackerState& state,
                                   const oneq::coordinate::EcefPositionM& position,
                                   const std::array<double, 3U>& velocity_ecef_m_per_s,
                                   double t_sec, double earth_mu_m3_per_s2,
+                                  double earth_radius_m,
                                   double velocity_sigma_m = 0.0);
 
 /**

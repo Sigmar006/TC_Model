@@ -65,6 +65,7 @@ struct RirDetectionCellResult {
   double mti_response_db{0.0};          /**< MTI 功率响应（dB，可为负=盲速）。 */
   double mtd_bin_response_db{0.0};      /**< MTD 跨 bin 响应（dB，恒 ≤0）。 */
   double coherent_integration_db{0.0};  /**< MTD 相干积累增益（dB）。 */
+  double noise_total_gain_db{0.0};      /**< 噪声总增益（dB，正值=成本，含对消器 ×2）。 */
 };
 
 /**

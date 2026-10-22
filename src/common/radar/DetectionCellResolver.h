@@ -76,6 +76,14 @@ struct DetectionCellResult {
   double mtd_bin_response_db{0.0};
   /** @brief MTD 相干积累增益（dB，=10·log10(N)）。 */
   double coherent_integration_db{0.0};
+  /**
+   * @brief **噪声总增益**（dB，正值 = 噪声被放大，即代价）。
+   *
+   * @details = 配置的噪声处理增益 + MTI 对消器的噪声增益。2 脉冲对消器
+   *   `y[n]=x[n]−x[n−1]` 对白噪声的功率增益为 2（+3.01 dB），该增益必须与对目标的
+   *   响应 H_mti 配对记账，否则 SINR 会高估约 3 dB。MTI 未启用或 N<2 时只有配置项。
+   */
+  double noise_total_gain_db{0.0};
 };
 
 /**

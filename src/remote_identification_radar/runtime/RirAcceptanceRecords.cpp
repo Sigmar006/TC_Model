@@ -708,7 +708,17 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
              has_bank ? FormatChannelWatts(bank.noise_w) + "W" : std::string());
   EmitOrNone(t, cycle, "噪声增益功能测试", id_sp + "MTD等效噪声功率=", has_bank,
              has_bank ? FormatSci(bank.mtd_equivalent_noise_w) + "W" : std::string());
-  Emit(t, cycle, "噪声增益功能测试", id_sp + "噪声总增益=" + FormatF(noise_db, 3) + "dB");
+  // 中译：**噪声总增益**（2026-10-23）——输出真正施加到 SINR 分母上的总噪声增益，
+  //   即"配置的噪声处理增益 + MTI 对消器对白噪声的 ×2（+3.01 dB）"。此前只打印配置项
+  //   （1 dB），与实际进入分母的值（含对消器增益）不一致，属口径错误。
+  // 标识：噪声总增益（2026-10-23）。
+  {
+    const double applied_noise_db =
+        input.has_cell ? input.cell.noise_total_gain_db : noise_db;
+    std::string row = id_sp + "噪声总增益=" + FormatF(applied_noise_db, 3) + "dB";
+    row += " 噪声口径=施加值(配置项+MTI对消器)";
+    Emit(t, cycle, "噪声增益功能测试", row);
+  }
 
   // 验收判定标准 第34项：杂波——植被 kDisabled（clutter_power_w=0）时整条省略；
   // 有杂波时只写 MTI 剩余与 MTD 通道分布（抑制比/总抑制增益为派生量，不写）。

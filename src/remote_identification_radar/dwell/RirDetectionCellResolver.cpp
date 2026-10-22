@@ -60,6 +60,7 @@ void FromCommon(const oneq::common::radar::DetectionCellResult& in, RirDetection
   out->mti_response_db = in.mti_response_db;
   out->mtd_bin_response_db = in.mtd_bin_response_db;
   out->coherent_integration_db = in.coherent_integration_db;
+  out->noise_total_gain_db = in.noise_total_gain_db;
 }
 
 }  // namespace

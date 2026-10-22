@@ -5,6 +5,7 @@
 #include <tuple>
 #include <utility>
 #include "common/numerics/Constants.h"
+#include "common/radar/MtiMtdAcceptanceBank.h"
 
 namespace oneq {
 namespace common {
@@ -306,6 +307,7 @@ bool TryResolveDetectionCell(
   double mti_linear = 1.0;
   double mtd_bin_linear = 1.0;
   double coherent_linear = 1.0;
+  double mti_noise_linear = 1.0;
   double folded_hz = 0.0;
   if (config.enable_mti_mtd_effects && candidate.effective_pulse_count >= 2U &&
       own_waveform.pulse_repetition_interval_s > 0.0) {
@@ -319,9 +321,14 @@ bool TryResolveDetectionCell(
     }
     mtd_bin_linear = std::max(best_bin, 1.0e-30);
     coherent_linear = static_cast<double>(candidate.effective_pulse_count);
+    // 中译：**对消器的噪声增益**（2026-10-23）——2 脉冲对消器对白噪声的功率增益为 2
+    //   （+3.01 dB），必须与对目标的响应 H_mti 配对进入分母；此前只在验收旁路里算了 2，
+    //   SINR 通道漏掉，导致信噪比高估约 3 dB。
+    // 标识：对消器噪声增益（2026-10-23）。
+    mti_noise_linear = kMtiNoiseFactor;
   }
   const double denominator = std::max(
-      candidate.thermal_noise_power_w * noise_gain_linear +
+      candidate.thermal_noise_power_w * noise_gain_linear * mti_noise_linear +
           (candidate.interference_power_w * mti_linear) / jamming_suppression_linear +
           (candidate.clutter_power_w * mti_linear) / clutter_suppression_linear,
       kLinearFloor);
@@ -333,6 +340,8 @@ bool TryResolveDetectionCell(
   candidate.mti_response_db = 10.0 * std::log10(mti_linear);
   candidate.mtd_bin_response_db = 10.0 * std::log10(mtd_bin_linear);
   candidate.coherent_integration_db = 10.0 * std::log10(coherent_linear);
+  candidate.noise_total_gain_db =
+      10.0 * std::log10(std::max(noise_gain_linear * mti_noise_linear, 1.0e-30));
   candidate.processed_single_pulse_sinr_db =
       10.0 * std::log10(std::max(candidate.processed_single_pulse_sinr_linear, kLinearFloor));
   if (!std::isfinite(candidate.echo_power_w) || candidate.echo_power_w < 0.0 ||

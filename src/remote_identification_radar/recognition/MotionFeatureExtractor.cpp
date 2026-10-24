@@ -80,17 +80,20 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
     const float magnitude = acceleration_lsq_mps2.norm();
     if (std::isfinite(magnitude) && magnitude >= 1.0f && magnitude <= 50.0f) {
       observation.acceleration_mps2 = magnitude;
+      observation.acceleration_from_fit = true;
       observation.turn_radius_m = 0.0f;
     }
   }
   if (!acceleration_trustworthy) {
     observation.acceleration_mps2 = 0.0f;
+    observation.acceleration_from_fit = false;
   }
   // 中译：最终钳制——物理上 4–10 m/s² 量级，任何超过 50 m/s² 的来源（重捕瞬态、退化几何）
   //   都不写入特征，避免一票否决运动维。
   // 标识：加速度量级钳制（2026-10-22）。
   if (!(observation.acceleration_mps2 <= 50.0f)) {
     observation.acceleration_mps2 = 0.0f;
+    observation.acceleration_from_fit = false;
   }
 
   // 横向加速度分解：a_lat = |a - (a·v/|v|²)v|；低速或横向加速度低于阈值记为直线飞行。

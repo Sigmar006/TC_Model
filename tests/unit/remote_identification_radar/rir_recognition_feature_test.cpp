@@ -110,6 +110,45 @@ TEST(RirMotionFeatureExtractorTest, ExtractsSpeedAndStraightFlightFromConfirmedT
   EXPECT_GT(observation.quality, 0.0f);
 }
 
+/// @brief 来源阶段标志（2026-10-22）：速度/加速度取自"滤波前"还是"滤波后"决定验收行
+///        标注（`速度来源=滤波前|滤波后`）。标志必须跟随实际取值通路，否则日志会把滤波前
+///        统计值标成滤波后验；拟合加速度越界不入特征时，标志必须回落到滤波后。
+TEST(RirMotionFeatureExtractorTest, MarksPreFilterSourceFlagsWithTheValues) {
+  RirTrackState snapshot;
+  snapshot.status = RirTrackStatus::kConfirmed;
+  snapshot.speed = 1800.0f;
+  snapshot.velocity.x() = 1800.0f;
+  snapshot.acceleration_mps2 = 12.0f;
+  snapshot.acceleration.x() = 12.0f;
+  snapshot.gaussian_state.covariance = RirStateCovariance::Identity();
+
+  // 1) 只给滤波后验：两个标志都是"滤波后"。
+  const recognition::RirMotionObservation by_filter =
+      recognition::RirMotionFeatureExtractor::Extract(snapshot, 0.0f, 0.0f);
+  EXPECT_FALSE(by_filter.speed_from_fit);
+  EXPECT_FALSE(by_filter.acceleration_from_fit);
+
+  // 2) 给出滤波前统计值：速度取统计值、加速度取趋势斜率，标志同步为"滤波前"。
+  const Eigen::Vector3f velocity_pre_filter(4200.0f, 0.0f, 0.0f);
+  const Eigen::Vector3f acceleration_pre_filter(0.0f, 5.0f, 0.0f);
+  const recognition::RirMotionObservation by_pre_filter =
+      recognition::RirMotionFeatureExtractor::Extract(snapshot, 0.0f, 0.0f, true,
+                                                     velocity_pre_filter, true,
+                                                     acceleration_pre_filter);
+  EXPECT_TRUE(by_pre_filter.speed_from_fit);
+  EXPECT_FLOAT_EQ(by_pre_filter.speed_mps, 4200.0f);
+  EXPECT_TRUE(by_pre_filter.acceleration_from_fit);
+  EXPECT_FLOAT_EQ(by_pre_filter.acceleration_mps2, 5.0f);
+
+  // 3) 滤波前加速度量级越界（>50 m/s²）不入特征：标志回落到"滤波后"。
+  const Eigen::Vector3f out_of_range(0.0f, 80.0f, 0.0f);
+  const recognition::RirMotionObservation by_range =
+      recognition::RirMotionFeatureExtractor::Extract(snapshot, 0.0f, 0.0f, true,
+                                                     velocity_pre_filter, true, out_of_range);
+  EXPECT_TRUE(by_range.speed_from_fit);
+  EXPECT_FALSE(by_range.acceleration_from_fit);
+}
+
 /// @brief 速度未收敛时加速度维置零（2026-10-16）：滤波重置后首个后验速度会跳到真值
 ///        量级，而差分基准是重置前的旧速度（≈0），使 a=Δv/Δt 数值上约等于速度本身
 ///        （集成实测出现过加速度与速度逐分量相同、模长 5 640 m/s²，真实值仅约 5 m/s²）。

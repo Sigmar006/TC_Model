@@ -19,6 +19,7 @@
 #include "1q/coordinate/position_transform.h"
 #include "1q/coordinate/velocity_transform.h"
 #include "1q/remote_identification_radar/session/RirFeatureMeasurementTypes.h"
+#include "common/acceptance/AcceptanceSourceStage.h"
 #include "1q/remote_identification_radar/session/RirRecognitionResult.h"
 #include "1q/remote_identification_radar/session/RirOutputTypes.h"
 #include "common/logging/AcceptanceText.h"
@@ -640,7 +641,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   {
     std::string echo = id;
     echo += " 斜距=" + FormatF(input.range_m, 1) + "m";
-    echo += " 目标RCS=" + FormatF(input.rcs_m2, 3) + "m^2 目标RCS口径=有效(含视角)";
+    echo += std::string(" 目标RCS=") + FormatF(input.rcs_m2, 3) + "m^2 目标RCS口径=" + oneq::common::acceptance::kStageAfterDetection;
     // 中译：本行三项**全部是处理前（进入信号处理链之前）的单元级功率**，口径必须写明，
     //   否则会与第 33 项"脉冲压缩后的噪声功率"（处理后）只差一个脉压增益而被误读为矛盾。
     //   回波：目标回波在单元内的接收功率；噪声：匹配滤波带宽内的接收机热噪声；干扰：进入
@@ -831,7 +832,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   if (input.has_cell) {
     std::string interface_power = "雷达ID=" + std::to_string(input.radar_id) + " " + id;
     interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m 斜距口径=检测单元量测";
-    interface_power += " RCS=" + FormatF(input.rcs_m2, 3) + "m^2 RCS口径=有效(含视角)";
+    interface_power += std::string(" RCS=") + FormatF(input.rcs_m2, 3) + "m^2 RCS口径=" + oneq::common::acceptance::kStageAfterDetection;
     interface_power += " 波束离轴增益=" + FormatF(input.one_way_antenna_gain_dbi, 3) + "dBi";
     interface_power += " 回波计算输出功率=" + FormatSci(input.cell.echo_power_w) + "W";
     interface_power += " 处理入口回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
@@ -1343,7 +1344,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                            FormatVec3(track.position.x(), track.position.y(), track.position.z(), 3) +
                            "m 速度ENU=" +
                            FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
-                           "m/s 坐标系=ENU 速度口径=滤波后验";
+                           std::string("m/s 坐标系=ENU 速度口径=") + oneq::common::acceptance::kStageAfterFilter;
   if (features != nullptr) {
     interface_recognition += " SNR=" + FormatF(features->snr_db, 3) + "dB";
     interface_recognition += " 特征有效掩码=" + std::to_string(features->valid_feature_mask);
@@ -1398,14 +1399,15 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   // 三分量，锚点不可用时退 ENU）。第40项另由控制器写 本周期航迹数= 汇总行。
   // 2026-09-28 按更新后的规范：定位信息固定为 斜距 + 方位/俯仰（角定位），不再追加
   // 高度= 代替俯仰；无有效角距时整行以「定位信息=缺失」如实标记，不写高度占位。
-  // 中译：**来源标注**（2026-10-22）——同一定位/运动量在多项中重复出现是判据要求，
-  //   为避免把"同一值多处出现"误读成"多处独立测量"，在复合字段尾部标注取值来源与口径：
-  //   定位=航迹快照（斜距/角度同源于本拍航迹），运动=滤波后验（速度/加速度来自滤波器，
-  //   不是量测差分）。判据要求的分项保持原样，不删任何字段。
-  // 标识：复合字段来源标注（2026-10-22）。
+  // 中译：**来源标注**（2026-10-22 改口径）——同一定位/运动量在多项中重复出现是判据要求，
+  //   为避免把"同一值多处出现"误读成"多处独立测量"，在复合字段尾部标注该值由雷达**哪一段**
+  //   处理出来：检测前/检测后/滤波前/滤波后/识别后（词表见 common/acceptance/AcceptanceSourceStage.h）。
+  //   **不标具体算法**（最小二乘/差分等）：算法属实现细节，随实现可换；判据只关心阶段。
+  //   判据要求的分项保持原样，不删任何字段。
+  // 标识：复合字段来源标注（2026-10-22 阶段口径）。
   const std::string positioning =
       has_polar ? ("定位信息=斜距=" + FormatF(range_m, 1) + "m 方位/俯仰=" +
-                   FormatPairDeg(az_deg, el_deg, 3) + "° 来源=航迹快照")
+                   FormatPairDeg(az_deg, el_deg, 3) + "° 来源=" + oneq::common::acceptance::kStageAfterFilter)
                 : std::string("定位信息=缺失");
   const std::string motion =
       std::string("运动参数=速度=") + FormatF(track.speed, 3) + "m/s 航向=" +
@@ -1413,7 +1415,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       (have_frame ? FormatVec3(acc_ecef.x_mps, acc_ecef.y_mps, acc_ecef.z_mps, 4)
                   : FormatVec3(track.acceleration.x(), track.acceleration.y(),
                                track.acceleration.z(), 4)) +
-      "m/s^2 来源=滤波后验";
+      std::string("m/s^2 来源=") + oneq::common::acceptance::kStageAfterFilter;
   const char* kReentryItem = "对典型目标/再入目标进行跟踪功能测试";
   const char* kMultiItem = "多目标跟踪功能测试";
   Emit(sim_time_sec, cycle, kReentryItem,
@@ -1429,7 +1431,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
          track_target_id + " 位置（ECEF）=" +
              FormatVec3(pos_ecef.x_m, pos_ecef.y_m, pos_ecef.z_m, 1) + "m 速度=" +
              FormatVec3(vel_ecef.x_mps, vel_ecef.y_mps, vel_ecef.z_mps, 3) +
-             "m/s 速度口径=滤波后验 加速度=" +
+             std::string("m/s 速度口径=") + oneq::common::acceptance::kStageAfterFilter + " 加速度=" +
              FormatVec3(acc_ecef.x_mps, acc_ecef.y_mps, acc_ecef.z_mps, 4) + "m/s^2");
   }
   {
@@ -1466,7 +1468,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   //（判定句未点名 RCS 属存疑项，示例按项名写 RCS 并带定位/运动）。
   Emit(sim_time_sec, cycle, "根据目标RCS实时计算目标探测结果功能测试",
        "目标ID=" + std::to_string(track.external_target_id) +
-       " 本周期RCS口径=量测(航迹) 本周期RCS=" +
+       std::string(" 本周期RCS口径=") + oneq::common::acceptance::kStageAfterDetection + " 本周期RCS=" +
            FormatF(track.rcs, 3) + "m^2 " + positioning);
   Emit(sim_time_sec, cycle, "根据目标RCS实时计算目标探测结果功能测试",
        "目标ID=" + std::to_string(track.external_target_id) + " " + motion);
@@ -1482,11 +1484,14 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       motion_text += " 高度=" + FormatF(motion_feature.altitude_m, 1) + "m";
       motion_text += " 加速度=" + FormatF(motion_feature.acceleration_m_per_s2, 3) + "m/s^2";
       motion_text += std::string(" 近似直线=") + YesNo(motion_feature.is_straight);
-      // 中译：标注速度来源——识别侧用的是"量测位置多点最小二乘拟合"（B3），与第 45/65 项
-      //       的滤波后验速度（该几何下仅约 1.9 km/s）是两套口径，必须写明。
-      // 标识：运动特征速度来源（2026-10-21）。
-      motion_text +=
-          motion_feature.speed_from_fit ? " 速度来源=最小二乘拟合" : " 速度来源=滤波后验";
+      // 中译：标注速度/加速度的来源**阶段**（2026-10-22 改口径）：识别侧这两个量可能取自
+      //       "滤波前"（由检测后点迹序列统计）或"滤波后"（跟踪滤波后验），两者数值量级
+      //       不同；日志只写阶段，不写具体算法。
+      // 标识：运动特征速度/加速度来源阶段（2026-10-22）。
+      motion_text += std::string(" 速度来源=") +
+                     oneq::common::acceptance::FilterStageText(motion_feature.speed_from_fit);
+      motion_text += std::string(" 加速度来源=") +
+                     oneq::common::acceptance::FilterStageText(motion_feature.acceleration_from_fit);
       motion_text += " 识别类别=" + category_text;
       Emit(sim_time_sec, cycle, "运动特征处理功能测试", motion_text);
     }
@@ -1634,11 +1639,11 @@ void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
     // 标识：第 65 项速度来源（2026-10-22）。
     content += " 速度=" +
                FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
-               "m/s 坐标系=ENU 速度口径=滤波后验";
+               std::string("m/s 坐标系=ENU 速度口径=") + oneq::common::acceptance::kStageAfterFilter;
     content += " 加速度=" +
                FormatVec3(track.acceleration.x(), track.acceleration.y(), track.acceleration.z(),
                           3) +
-               "m/s^2 加速度口径=后验速度差分";
+               std::string("m/s^2 加速度口径=") + oneq::common::acceptance::kStageAfterFilter;
     content += " 状态协方差ENU[x,vx,y,vy,z,vz]=[";
     for (int row = 0; row < 6; ++row) {
       if (row != 0) {

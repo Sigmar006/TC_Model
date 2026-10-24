@@ -77,11 +77,16 @@ struct RirMotionObservation {
   bool valid{false};          /**< 维度可用性（快照为已确认航迹）。 */
   float speed_mps{0.0f};      /**< 速度模长（m/s）。 */
   /**
-   * @brief 速度是否来自"量测位置多点最小二乘拟合"（B3，2026-10-21）。
-   * @details true 时 speed_mps 为拟合值（约 4.2 km/s），false 时为滤波后验值（该几何下
-   *   仅约 1.9 km/s）。两种口径都进日志，必须标注来源，否则会被误读为前后矛盾。
+   * @brief 速度来源阶段：true = **滤波前**（由检测后点迹序列统计，未经跟踪滤波），
+   *        false = **滤波后**（跟踪滤波后验）。
+   * @details 两者数值量级不同（该几何下滤波后验仅约 1.9 km/s）；日志按阶段标注。
    */
   bool speed_from_fit{false};
+  /**
+   * @brief 加速度来源阶段：true = **滤波前**（逐拍点迹速度趋势的斜率），
+   *        false = **滤波后**（滤波后验速度的周期间差分）。
+   */
+  bool acceleration_from_fit{false};
   float altitude_m{0.0f};     /**< 绝对高度（m）= 平台高度 + 雷达局部 position_z。 */
   float acceleration_mps2{0.0f}; /**< 加速度模长（m/s²）。 */
   float turn_radius_m{0.0f};  /**< 转弯半径（m）；直线飞行时无效。 */

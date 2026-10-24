@@ -214,6 +214,22 @@ session 等价；这些性质只能由对应的 unit/integration/replay 测试�
 [evidence: tests/unit/sbirs_sensor/sbirs_cue_predictor_test]
 [evidence: tests/unit/sbirs_sensor/sbirs_pipeline_test]
 
+### 验收行来源标注口径：只标处理阶段（2026-10-22）
+
+`IRExternalInterface.log` 里的 `状态估计来源=` 只标**处理阶段**，估计器实现另列
+（`估计器=`），避免把实现名当成来源：
+
+| 阶段 | 本模块用例 |
+|---|---|
+| 检测前 | 尚未形成量测（扫描调度、波束指向、候选来源分类） |
+| 检测后 | 单帧检测判决产出（原始探测记录） |
+| 滤波前 | 捕获阶段尚无滤波器状态：`状态估计来源=滤波前(捕获阶段未建立)` |
+| 滤波后 | 已有航迹滤波状态：`状态估计来源=滤波后 估计器=IMM` / `EKF` / `角度CV-KF` |
+| 识别后 | 型号/类别输出 |
+
+约束：阶段词表单源在 `src/common/acceptance/AcceptanceSourceStage.h`；日志不写算法细节，
+后端选择与算法见 `algorithms.md` 与 `contract.md`。
+
 ## 非目标
 
 1. **图像级 TBD（Track-Before-Detect）**：第一版用 WFOV 单帧 SNR 门控判定可探测性，不做管道滤波、

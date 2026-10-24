@@ -112,9 +112,10 @@ session::RirFeatureObservations ToPublicFeatureObservations(const recognition::R
   features.rcs.quality = set.rcs.quality;
   features.motion.valid = set.motion.valid;
   features.motion.speed_m_per_s = set.motion.speed_mps;
-  // 中译：把"速度来源"透传到会话层记录，供验收行标注（B3，2026-10-21）。
-  // 标识：运动特征速度来源透传。
+  // 中译：把速度/加速度的**来源阶段**透传到会话层记录，供验收行标注（2026-10-22）。
+  // 标识：运动特征来源阶段透传。
   features.motion.speed_from_fit = set.motion.speed_from_fit;
+  features.motion.acceleration_from_fit = set.motion.acceleration_from_fit;
   features.motion.altitude_m = set.motion.altitude_m;
   features.motion.acceleration_m_per_s2 = set.motion.acceleration_mps2;
   features.motion.turn_radius_m = set.motion.turn_radius_m;

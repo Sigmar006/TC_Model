@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "common/acceptance/AcceptanceSourceStage.h"
 #include "1q/coordinate/attitude_transform.h"
 #include "1q/coordinate/inertial_transform.h"
 #include "1q/coordinate/position_transform.h"
@@ -625,7 +626,8 @@ void WriteSbirsExternalObservationOutput(
     if (snapshot.imm_active && imm_found != snapshot.imm_snapshots.end() &&
         !imm_found->second.model_states.empty()) {
       const tracking::SbirsImmModelState& model = imm_found->second.model_states.front();
-      state_row += " 状态估计来源=IMM";
+      state_row += std::string(" 状态估计来源=") + oneq::common::acceptance::kStageAfterFilter +
+                   " 估计器=IMM";
       state_row += " 状态向量=" + FormatEigenMatrix(model.state.mean);
       state_row += " 状态协方差=" + FormatEigenMatrix(model.state.covariance);
       state_row += " 模型权重=" + FormatF(static_cast<double>(model.weight), 6);
@@ -633,14 +635,16 @@ void WriteSbirsExternalObservationOutput(
     } else {
       const auto filter_found = snapshot.filter_states.find(attribution.target_id);
       if (filter_found != snapshot.filter_states.end()) {
-        state_row += " 状态估计来源=EKF";
+        state_row += std::string(" 状态估计来源=") + oneq::common::acceptance::kStageAfterFilter +
+                   " 估计器=EKF";
         state_row += " 状态向量=" + FormatEigenMatrix(filter_found->second.mean);
         state_row += " 状态协方差=" + FormatEigenMatrix(filter_found->second.covariance);
         wrote_state = true;
       } else {
         const auto angle_found = snapshot.angle_kf_states.find(attribution.target_id);
         if (angle_found != snapshot.angle_kf_states.end()) {
-          state_row += " 状态估计来源=角度CV-KF";
+          state_row += std::string(" 状态估计来源=") + oneq::common::acceptance::kStageAfterFilter +
+                   " 估计器=角度CV-KF";
           state_row += " 状态向量=" + FormatEigenMatrix(angle_found->second.mean);
           state_row += " 状态协方差=" + FormatEigenMatrix(angle_found->second.covariance);
           wrote_state = true;
@@ -651,7 +655,8 @@ void WriteSbirsExternalObservationOutput(
     // 但第 67 项交换数据要求"状态估计 + 状态协方差"恒在：捕获阶段确实没有滤波器状态，
     // 故显式声明"未建立/不适用"，既不编造数值也让字段恒在（2026-10-19 回归：421 行缺）。
     if (!wrote_state) {
-      state_row += " 状态估计来源=未建立(捕获阶段) 状态向量=不适用 状态协方差=不适用";
+      state_row += std::string(" 状态估计来源=") + oneq::common::acceptance::kStageBeforeFilter +
+                   "(捕获阶段未建立) 状态向量=不适用 状态协方差=不适用";
     }
     SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "红外观测与航迹输出接口测试",
                                      state_row);

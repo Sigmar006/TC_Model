@@ -267,6 +267,39 @@ std::string ResolveDefaultPath(AcceptanceChannel channel) {
   return std::string(CompileDefaultPath(channel));
 }
 
+#if defined(_MSC_VER)
+/**
+ * @brief 跨模块写锁：保证同一验收文件在进程内被**串行写入**（2026-10-26）。
+ *
+ * @details 1q.lib 是静态库，Sensors.dll 与 DataProcessors.dll 各有一份本文件的
+ *   statics 与各自的 std::mutex，因此模块内的锁**挡不住跨模块并发写**：卫星级
+ *   （Sensors.dll）与融合级（DataProcessors.dll）同时写 SatelliteTarget.log 时，
+ *   一行会写到一半就被另一行的字节插入，出现「加速度m/s^2=(仿真时间=57.000s...」
+ *   这类拼接行（实测 40 行，且丢失后续行的行首）。
+ *   解法是用 Windows 命名互斥体（Local 命名空间，进程内跨模块可见）包住实际写入。
+ */
+class CrossModuleWriteLock {
+ public:
+  CrossModuleWriteLock() {
+    static HANDLE handle = ::CreateMutexW(nullptr, FALSE, L"Local\\1q_acceptance_log_write_v1");
+    mutex_ = handle;
+    if (mutex_ != nullptr) {
+      ::WaitForSingleObject(mutex_, INFINITE);
+    }
+  }
+  ~CrossModuleWriteLock() {
+    if (mutex_ != nullptr) {
+      ::ReleaseMutex(mutex_);
+    }
+  }
+  CrossModuleWriteLock(const CrossModuleWriteLock&) = delete;
+  CrossModuleWriteLock& operator=(const CrossModuleWriteLock&) = delete;
+
+ private:
+  HANDLE mutex_ = nullptr;
+};
+#endif
+
 class ChannelSink {
  public:
   explicit ChannelSink(AcceptanceChannel channel,
@@ -334,6 +367,12 @@ class ChannelSink {
       return;
     }
     const std::string encoded = EncodeAcceptanceText(text);
+    // 中译：跨模块串行化——写入窗口内持命名互斥体，避免另一个 DLL 的同类 sink
+    //   把字节插到本行中间（拼接行实证见 CrossModuleWriteLock 注释）。
+    // 标识：跨模块写锁（2026-10-26）。
+#if defined(_MSC_VER)
+    CrossModuleWriteLock cross_module_lock;
+#endif
     stream_ << encoded;
     if (encoded[encoded.size() - 1U] != '\n') {
       stream_ << '\n';

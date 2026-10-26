@@ -61,6 +61,12 @@ struct RirDetectionAcceptInput {
   float look_az_deg{0.0f};
   float look_el_deg{0.0f};
   float rcs_m2{0.0f};
+  /**
+   * @brief RCS 口径（2026-10-26）：物理模型开启时 `rcs_m2` 是**视角 RCS**（随视线角变化），
+   *        关闭时它是**外部输入的标称 RCS**（场景给的值）。验收行据此标注口径。
+   */
+  bool rcs_physics_enabled{false};
+  float nominal_rcs_m2{0.0f};
   float snr_db{0.0f};
   float pd{0.0f};
   bool detected{false};

@@ -641,7 +641,11 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   {
     std::string echo = id;
     echo += " 斜距=" + FormatF(input.range_m, 1) + "m";
-    echo += std::string(" 目标RCS=") + FormatF(input.rcs_m2, 3) + "m^2 目标RCS口径=" + oneq::common::acceptance::kStageAfterDetection;
+    // 中译：RCS 口径与物理开关挂钩（2026-10-26）——开=视角 RCS；关=外部输入标称 RCS。
+    // 标识：第29项 RCS 口径（2026-10-26）。
+    echo += std::string(" 目标RCS=") + FormatF(input.rcs_m2, 3) + "m^2 目标RCS口径=" +
+            (input.rcs_physics_enabled ? std::string("视角RCS(物理模型)")
+                                       : std::string("外部输入RCS(标称,物理模型关)"));
     // 中译：本行三项**全部是处理前（进入信号处理链之前）的单元级功率**，口径必须写明，
     //   否则会与第 33 项"脉冲压缩后的噪声功率"（处理后）只差一个脉压增益而被误读为矛盾。
     //   回波：目标回波在单元内的接收功率；噪声：匹配滤波带宽内的接收机热噪声；干扰：进入
@@ -832,7 +836,9 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   if (input.has_cell) {
     std::string interface_power = "雷达ID=" + std::to_string(input.radar_id) + " " + id;
     interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m 斜距口径=检测单元量测";
-    interface_power += std::string(" RCS=") + FormatF(input.rcs_m2, 3) + "m^2 RCS口径=" + oneq::common::acceptance::kStageAfterDetection;
+    interface_power += std::string(" RCS=") + FormatF(input.rcs_m2, 3) + "m^2 RCS口径=" +
+                       (input.rcs_physics_enabled ? std::string("视角RCS(物理模型)")
+                                                  : std::string("外部输入RCS(标称,物理模型关)"));
     interface_power += " 波束离轴增益=" + FormatF(input.one_way_antenna_gain_dbi, 3) + "dBi";
     // 中译：判据第 70 项原文要求「并分别标识回波计算输出值与信号处理入口消费值」，
     //   故两个字段都保留；本实现为同一 detection cell 直传，二者必然相等——标注口径

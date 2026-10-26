@@ -739,6 +739,10 @@ bool RirController::TryBuildMeasurement(
     snap.look_az_deg = look_az_deg;
     snap.look_el_deg = look_el_deg;
     snap.rcs_m2 = target_return.rcs_m2;
+  // 中译：把 RCS 口径传给验收行（2026-10-26）——物理模型开=视角 RCS，关=外部输入标称 RCS。
+  // 标识：RCS 口径（2026-10-26）。
+  snap.rcs_physics_enabled = hardware_.rcs_physics.enable_physical_rcs;
+  snap.nominal_rcs_m2 = target.rcs;
     snap.snr_db = detection.snr_db;
     snap.pd = detection.detection_prob;
     snap.detected = detection.detected;

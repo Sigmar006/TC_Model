@@ -377,8 +377,12 @@ TEST(RirDetectionCellMtiMtdTest, SinrChangeMatchesMtiCoherentAndBinTerms) {
   ASSERT_GE(integrated.effective_pulse_count, 2U);
   const double delta_db =
       integrated.processed_single_pulse_sinr_db - baseline.processed_single_pulse_sinr_db;
+  // 中译：**对消器噪声增益**（2026-10-26）——2 脉冲对消器对白噪声的功率增益为 2，
+  //   已并入 SINR 分母，故 MTI 开启后的 SINR 变化还要减去 10log10(2)。
+  // 标识：对消器噪声增益计入期望值（2026-10-26）。
+  const double canceller_noise_db = 10.0 * std::log10(2.0);
   const double expected_db = integrated.mti_response_db + integrated.coherent_integration_db +
-                             integrated.mtd_bin_response_db;
+                             integrated.mtd_bin_response_db - canceller_noise_db;
   EXPECT_NEAR(delta_db, expected_db, 1.0e-6);
   EXPECT_NEAR(integrated.coherent_integration_db, 10.0, 1.0e-6);   // N=10
   EXPECT_LE(integrated.mtd_bin_response_db, 0.0);                  // 恒为损耗

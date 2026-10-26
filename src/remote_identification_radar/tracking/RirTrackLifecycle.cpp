@@ -579,20 +579,26 @@ void RirTrackLifecycle::ApplyGaussianState(RirTrackState* track, const RirGaussi
     // 瞬时差分（物理口径）→ 一阶指数平滑后再落盘：单周期差分的噪声按 1/dt 放大，
     // 直接用会把识别"运动"维变成噪声放大器（见 kAccelerationSmoothingCycles 注释）。
     // 首个样本直接起批（无历史可比，平滑无意义）；此后按时间常数递推。
-    const Eigen::Vector3f instantaneous = (track->velocity - previous_velocity) / dt_sec;
+    const Eigen::Vector3f instantaneous_raw = (track->velocity - previous_velocity) / dt_sec;
     // 中译：重置/重捕周期的速度跳变会产生上千 m/s² 的伪加速度，超过可信门限时**不更新**，
     //   保留上一次的有效值（而不是把伪值写进识别特征）。
     // 标识：加速度瞬态门（2026-10-22）。
-    if (!(instantaneous.norm() <= kMaxPlausibleAccelerationMps2)) {
-      track->acceleration_mps2 = track->acceleration.norm();
-      return;
+    // 中译：**超限时钳制而不是丢弃**（2026-10-26）——原实现直接 return，若首个样本
+    //   就是重置伪值，加速度会永久停在 0（实测验收第 40 项 `加速度=(0,0,0)` 恒为零）。
+    //   改为把幅值钳到物理上限后照常进入 EMA：既不让伪值污染，也不会冻结为 0。
+    // 标识：加速度钳制（2026-10-26）。
+    Eigen::Vector3f bounded = instantaneous_raw;
+    const float magnitude = bounded.norm();
+    if (!(magnitude <= kMaxPlausibleAccelerationMps2)) {
+      bounded = bounded * (kMaxPlausibleAccelerationMps2 / magnitude);
     }
+    const Eigen::Vector3f instantaneous_value = bounded;
     if (!track->acceleration_smoothed) {
-      track->acceleration = instantaneous;
+      track->acceleration = instantaneous_value;
       track->acceleration_smoothed = true;
     } else {
       const float alpha = 1.0f / kAccelerationSmoothingCycles;
-      track->acceleration = (1.0f - alpha) * track->acceleration + alpha * instantaneous;
+      track->acceleration = (1.0f - alpha) * track->acceleration + alpha * instantaneous_value;
     }
   }
   track->acceleration_mps2 = track->acceleration.norm();

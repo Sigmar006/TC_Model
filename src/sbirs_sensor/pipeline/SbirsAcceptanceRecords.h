@@ -3,6 +3,31 @@
  * @brief SBIRS 验收行拼装（安装矩阵、轨道角抽样累计、生命周期、性能暂无项）。
  */
 
+/* =============================================================================
+ * 外部集成使用说明（红外 / SBIRS，2026-10-27）
+ * -----------------------------------------------------------------------------
+ * 本头文件各函数把**已算好**的观测量按验收项组织成一行，落 `SatelliteTarget.log`
+ * （经 `SBIRS_ACCEPTANCE_ITEM` 宏 → `WriteAcceptanceLog(kSatelliteTarget, …)`）。
+ * 调用方只需按签名传值，不要自己拼 `仿真时间=/仿真周期=/[项名]` 前缀。
+ *
+ * 函数与验收项对应：
+ *   WriteSbirsInstallMatrices          安装矩阵误差（第 3 项）——仅在矩阵变化时写
+ *   WriteSbirsOrbitSample              卫星自身定位误差（第 8 项）——每周期一行
+ *   WriteSbirsAngleError               红外载荷角误差
+ *   WriteSbirsTargetDetectability      目标可探测性与动态参数（第 7 项）——双星定位时一行，
+ *                                      单星候选行顺延到下一周期首次写出；**会话结束必须
+ *                                      调 Flush 补齐尾拍**，否则最后一拍的候选会丢
+ *   WriteSbirsWideFieldScan / 窄场跟踪 宽视场扫描探测 / 窄视场跟踪探测（每驻留一行）
+ *   WriteSbirsMaxDetectionRange        最大探测距离（第 4 项）
+ *   WriteSbirsEvents                   特殊事件监测与提示
+ *   Flush…                             把缓冲中的候选行落盘（会话退出前调用）
+ *
+ * 约定：
+ *   - 行内角度用 deg、距离用 m、功率用 W；与其他验收文件保持一致；
+ *   - 事件类项（关机点预测、接力、协同融合）只在事件发生周期写一行，不是每周期；
+ *   - 本文件的写入同样受 `SbirsAcceptanceLog.h` 的两级开关控制（编译期 + 运行期）。
+ * ========================================================================== */
+
 #ifndef ONEQ_SRC_SBIRS_SENSOR_PIPELINE_SBIRS_ACCEPTANCE_RECORDS_H_
 #define ONEQ_SRC_SBIRS_SENSOR_PIPELINE_SBIRS_ACCEPTANCE_RECORDS_H_
 

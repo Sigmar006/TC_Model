@@ -3,6 +3,51 @@
  * @brief RIR 验收行拼装（检测链拆项、航迹/识别、调度、天线 CSV）。
  */
 
+/* =============================================================================
+ * 外部集成使用说明（雷达 / LRDR，2026-10-27）
+ * -----------------------------------------------------------------------------
+ * 本头文件只做「拼装 + 落盘」，不产生物理量。调用方（RirController）把已算好的
+ * 过程量按结构体传进来，这里按验收判定标准逐项组织成一行行文本。
+ *
+ * 落盘通道与函数对应关系（**每行只落一个通道，不要跨通道复用**）：
+ *
+ *   RadarOutput.log
+ *     WriteRirDetectionChain            第 29/31/32/33/34/35 项：回波功率、热噪声、
+ *                                       目标/噪声增益、杂波、干扰抑制
+ *     WriteRirDetectionChain（续）      第 30 项：外部干扰输入—到达功率
+ *     WriteRirCfar                      第 36 项：恒虚警（门限/Pd/检测标志）
+ *     WriteRirSearchDetections          第 37 项：空域自主搜索（指向 + 量测）
+ *     WriteRirHorizonSearchDetections   第 37A 项：地平线搜索（**每个地平线驻留都写指向行**，
+ *                                       有检测才追加量测行，2026-10-26 起）
+ *     WriteRirAssociation               第 38 项：航迹关联
+ *     WriteRirTrackAndId                第 39/40/42/43/44/45/46/47/47A 项：跟踪、滤波、
+ *                                       RCS/运动/极化/一维像特征、综合识别
+ *     WriteRirSchedule                  第 48 项：调度统计（本周期搜索驻留数）
+ *     WriteRirDwellPlan                 第 48 项：逐驻留（搜索带波位序号+指向；指定/跟踪带指向）
+ *     WriteRirAntennaPatternCsv         天线方向图 CSV（不是验收行，是数据转储）
+ *
+ *   RadarExternalInterface.log
+ *     WriteRirExternalSceneTargets      第 58 项：目标场景输入（含实测/标称 RCS、视角 RCS 表）
+ *     WriteRirExternalTracks            第 65 项：对外航迹（含 速度/加速度 口径标注）
+ *     WriteRirExternalRadarState        雷达资源状态与日志接口（含 rir.* 告警码）
+ *
+ *   RadarInternalInterface.log
+ *     WriteRirInternalEchoInterface     第 70 项：回波计算 → 信号处理（**双值**：计算输出/入口消费，
+ *                                       判据要求分别标识，见 docs 第 70 项）
+ *     WriteRirInternalDetectionInterface 第 71 项：信号处理 → CFAR（SNR 三口径：
+ *                                       单脉冲 / CFAR 消费 / 积累；`处理输出SNR` 已扣除相干积累 N）
+ *     WriteRirInternalTrackInterface    第 72 项：检测量测 → 航迹处理
+ *     WriteRirInternalRecognitionInterface 第 73 项：航迹 → 特征识别（含 特征批次/识别批次）
+ *
+ * 统一约定：
+ *   - 时间单位 s、频率 Hz、功率 W、角度 deg、斜距 m；能量类字段统一用科学计数法；
+ *   - 每个数值字段尽量带「口径/来源」后缀（如 `速度口径=滤波后`、`RCS口径=视角RCS(物理模型)`），
+ *     便于外部核对"同名不同值"；
+ *   - 判据明确要求"分别标识两侧值"的项（第 70 项）**不得合并**，即使两侧当前同值；
+ *   - 行格式由 `FormatAcceptanceLine` 统一加前缀，调用方内容里不要带换行；
+ *   - 线程安全由 `WriteAcceptanceLog` 保证（Windows 上跨模块命名互斥）。
+ * ========================================================================== */
+
 #ifndef ONEQ_SRC_REMOTE_IDENTIFICATION_RADAR_RUNTIME_RIR_ACCEPTANCE_RECORDS_H_
 #define ONEQ_SRC_REMOTE_IDENTIFICATION_RADAR_RUNTIME_RIR_ACCEPTANCE_RECORDS_H_
 

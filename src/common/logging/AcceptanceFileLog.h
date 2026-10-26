@@ -15,6 +15,48 @@
  * 无异常；打开失败向 stderr 提示一次后静默丢弃。
  */
 
+/* =============================================================================
+ * 外部集成使用说明（2026-10-27）
+ * -----------------------------------------------------------------------------
+ * 1. 六个通道各对应一个物理文件，通道与文件的对应关系是**固定契约**：
+ *      SatelliteTarget        -> log/SatelliteTarget.log        红外普通功能 + 融合/推演/精度
+ *      RadarOutput            -> log/RadarOutput.log            雷达普通功能（29..48 等）
+ *      RadarExternalInterface -> log/RadarExternalInterface.log 雷达对外/外部接口
+ *      IrExternalInterface    -> log/IRExternalInterface.log    红外对外/外部接口
+ *      RadarInternalInterface -> log/RadarInternalInterface.log 雷达内部接口（70..73）
+ *      IrInternalInterface    -> log/IRInternalInterface.log    红外内部接口（74..77）
+ *    每个文件**只由本通道写入**，不要跨通道写同一文件（跨模块并发会串行化，见下）。
+ *
+ * 2. 行格式由 AcceptanceRecordFormat 统一：
+ *      `仿真时间=<秒>s 仿真周期=<周期> [<验收项名>] <内容…>`
+ *    写入方只需给出「项名 + 内容」，不要自己拼时间/周期前缀，也不要带换行符——
+ *    WriteAcceptanceLog 会补一个 '\n'，带入换行会产生空行。
+ *
+ * 3. 启用与落盘目录：
+ *    - 编译期：各模块的 `*_ACCEPTANCE_LOG_ENABLED()` 宏决定是否编译进写入点；
+ *    - 运行期：`ScopedAcceptanceLogOutputDirectory` 覆盖输出目录（空串 = 不覆盖），
+ *      或 `OpenAcceptanceLog(channel, path)` 显式指定文件；未指定时用
+ *      `ONEQ_*_LOG_PATH` 编译期默认路径（宿主里通常指向 FOSimStudio\bin\App\log）。
+ *
+ * 4. 线程安全（**重要，外部集成请勿绕过**）：
+ *    - `WriteAcceptanceLog` 内部有通道级互斥体，**且**在 Windows 上叠加了一个进程内
+ *      命名互斥体（`Local\1q_acceptance_log_write_v1`）：因为 1q.lib 是静态库，会被
+ *      Sensors.dll / DataProcessors.dll 各链一份，两个模块各有一份 statics 与各自的锁，
+ *      仅靠模块内的锁挡不住跨模块并发写（实测会出现两行拼成一行）。
+ *    - 因此**不要**在集成方另开文件句柄直接写这六个文件；要写就走本接口，
+ *      或至少调用 `EncodeAcceptanceTextForFile` 并在自己的进程级锁内整行写出。
+ *
+ * 5. 排障接口（只读，不改变状态）：
+ *    - `CurrentAcceptanceLogPath(channel)`：这一通道实际打开的是哪个文件；
+ *    - `CurrentAcceptanceLogStateText(channel)`：open/good/fail/bad + tellp；
+ *    - `IsAcceptanceLogOpen(channel)`：是否已打开。
+ *    三者用于“日志没出现/写到别处”的定位，可安全地在任意周期调用。
+ *
+ * 6. 与诊断日志的区别：本接口写的是**验收证据**（要交付、要按项核对）；
+ *    `oneq_diag_log.h` 写的是**临时诊断**（可清可弃）。两者不要混用同一文件。
+ * ========================================================================== */
+
+
 #ifndef ONEQ_SRC_COMMON_LOGGING_ACCEPTANCE_FILE_LOG_H_
 #define ONEQ_SRC_COMMON_LOGGING_ACCEPTANCE_FILE_LOG_H_
 

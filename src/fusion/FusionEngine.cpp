@@ -186,6 +186,11 @@ struct Track {
   std::uint64_t last_update_cycle{0U};
   std::size_t hits{0U};            /**< 累计命中数（确认门输入） */
   bool filter_initialized{false};  /**< 航迹滤波器是否已起始（P2） */
+  // 中译：**真实量测记账**（2026-10-26）——合成量测（单星保活）不进滤波，
+  //       这里记录航迹是否吃到过真实量测，供精度评估剔除纯合成航迹。
+  // 标识：真实量测记账。
+  bool has_real_update{false};
+  std::uint64_t last_real_update_cycle{0U};
   std::uint64_t filter_cycle{0U};  /**< 滤波器最近推进周期 */
   bool filter_has_timestamp{false}; /**< 滤波器时间基准是否已含物理时刻（FUSION-OQ-1） */
   double filter_timestamp_s{0.0};  /**< 滤波器当前状态对应的物理时刻(s) */
@@ -389,7 +394,15 @@ class FusionEngine::Impl {
     track->missed_cycles = 0U;
     track->last_update_cycle = cycle;
     ++track->hits;
-    if (config_.enable_track_filtering) {
+    // 中译：**合成量测不进滤波**（2026-10-26）——单星保活记录的距离是冻结值，
+    //       只用于保活/连续性（命中数、最近周期、锚点），否则会把滤波状态拖偏，
+    //       并让精度评估把非独立量测当真实观测。
+    // 标识：合成量测隔离。
+    if (!detection.synthetic) {
+      track->has_real_update = true;
+      track->last_real_update_cycle = cycle;
+    }
+    if (config_.enable_track_filtering && !detection.synthetic) {
       ApplyFilterSample(track, detection, cycle);
     }
   }
@@ -839,6 +852,10 @@ class FusionEngine::Impl {
           confirmed ? (entry.second.missed_cycles > 0U ? FusedTrackLifecycle::kCoasting
                                                         : FusedTrackLifecycle::kConfirmed)
                     : FusedTrackLifecycle::kTentative;
+      // 中译：把"是否吃过真实量测"透出给评估侧（合成量测不参与滤波，故仅合成航迹恒 false）。
+      // 标识：真实量测透出（2026-10-26）。
+      target.updated_by_real_measurement = entry.second.has_real_update;
+      target.last_real_measurement_cycle = entry.second.last_real_update_cycle;
       if (config_.enable_track_filtering && entry.second.filter_initialized) {
         const Track& track = entry.second;
         EcefPositionM ecef{};

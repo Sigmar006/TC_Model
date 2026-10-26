@@ -751,6 +751,43 @@ TEST(PrecisionPairingSelectorTest, WideFieldOnlyDetectionDoesNotPair) {
   EXPECT_FALSE(pe::SelectSatellitePair(config, satellites).valid);
 }
 
+// 合成航迹剔除（2026-10-26）：融合层把"单星保活合成量测"隔离在滤波之外后，
+// 只有真实量测驱动过的航迹才能进速度/关键点误差统计；纯合成航迹必须被跳过，
+// 否则精度指标会拿预测外推值充数。
+TEST(PrecisionEvaluationSessionTest, SyntheticOnlyTrackYieldsNoVelocitySamples) {
+  pe::PrecisionEvaluationSession session(EvaluationConfig());
+  const pe::EvaluationTruthTarget truth = DescendingTarget();
+  const pe::DualSatEphemerisInput ephemeris = DualSatEphemeris();
+  const sbirs_sensor::session::SbirsCycleResult empty_result;
+
+  oneq::coordinate::LlaPositionDegM truth_lla;
+  ASSERT_TRUE(oneq::coordinate::TryEcefToLla(truth.position_ecef_m, &truth_lla));
+
+  fusion::FusedTarget track;
+  track.key = truth.key;
+  track.has_kinematic_estimate = true;
+  track.updated_by_real_measurement = false;
+  track.last_real_measurement_cycle = 0U;
+  track.kinematic_estimate.position = truth_lla;
+  track.kinematic_estimate.velocity_ecef_m_per_s = {
+      truth.velocity_ecef_m_per_s.x_mps, truth.velocity_ecef_m_per_s.y_mps,
+      truth.velocity_ecef_m_per_s.z_mps};
+
+  // 纯合成航迹：速度/关键点样本都必须为空（即便估计值恰好等于真值）。
+  const pe::PrecisionEvaluationCycleResult synthetic_cycle =
+      session.Step(1U, 1.0f, kUtcJulianDay, ephemeris, {truth}, empty_result, empty_result, {track});
+  EXPECT_TRUE(synthetic_cycle.velocity.empty());
+  EXPECT_TRUE(synthetic_cycle.keypoints.empty());
+
+  // 同一条航迹被标记为"吃过真实量测"后，速度样本立即产生且误差为 0。
+  track.updated_by_real_measurement = true;
+  track.last_real_measurement_cycle = 2U;
+  const pe::PrecisionEvaluationCycleResult real_cycle = session.Step(
+      2U, 1.0f, kUtcJulianDay, ephemeris, {truth}, empty_result, empty_result, {track});
+  ASSERT_EQ(real_cycle.velocity.size(), 1U);
+  EXPECT_LT(real_cycle.velocity.front().velocity_error_m_per_s, 1.0e-6);
+}
+
 TEST(PrecisionPairingSelectorTest, EqualBaselinesKeepLowestSourcePair) {
   std::vector<pe::PairingSatelliteInput> satellites;
   satellites.push_back(MakePairingSatellite(4U, 5.0e6, 0.0, 101U));

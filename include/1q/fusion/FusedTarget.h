@@ -70,6 +70,14 @@ struct ONEQ_API FusedTarget {
   std::uint64_t last_update_cycle{0U};    /**< 最近一次收到量测的周期号 */
   FusedTrackLifecycle lifecycle{FusedTrackLifecycle::kTentative}; /**< 航迹生命周期。 */
   bool has_kinematic_estimate{false};     /**< 是否携带运动学估计（滤波未启用/未起始/坐标回写失败时为 false）。 */
+  /**
+   * @brief 运动学估计是否有过**真实（非合成）量测**更新（2026-10-26）。
+   * @details 合成量测（单星保活推导位置）不进入滤波，故仅有合成量测的航迹
+   *   updated_by_real_measurement 恒 false——精度评估据此跳过该航迹，避免把
+   *   非独立量测算进误差统计。为 false 时 kinematic_estimate 仍可能是预测外推值。
+   */
+  bool updated_by_real_measurement{false};
+  std::uint64_t last_real_measurement_cycle{0U}; /**< 最近一次真实量测周期号；0 = 从未有真实量测。 */
   FusedKinematicEstimate kinematic_estimate{}; /**< 运动学估计（ECEF 滤波后验）。 */
 };
 

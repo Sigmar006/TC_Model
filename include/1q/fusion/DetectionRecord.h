@@ -43,6 +43,14 @@ struct ONEQ_API DetectionRecord {
   double quality{0.0};                   /**< 探测质量归一化值（[0,1]） */
   bool has_timestamp{false};             /**< 是否携带量测绝对时间戳 */
   double timestamp_s{0.0};               /**< 量测绝对时刻（单位：秒） */
+  /**
+   * @brief 是否为**合成量测**（2026-10-26）。
+   * @details 调用方用"上次真实交会距离 + 单星视线"推导出的位置属于合成量测：它只能
+   *   用于航迹保活与连续性（消息、生命周期），**不得进入运动学滤波更新**——合成位置
+   *   的距离是冻结值，目标径向机动时会把滤波状态拖偏，且会让精度评估把非独立量测
+   *   当真实观测统计。引擎对 synthetic=true 的记录只累计命中/更新锚点，不调用滤波更新。
+   */
+  bool synthetic{false};
 };
 
 }  // namespace fusion

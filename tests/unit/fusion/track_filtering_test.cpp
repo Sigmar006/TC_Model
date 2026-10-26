@@ -235,6 +235,57 @@ TEST(FusionTrackFilteringTest, PositionChannelTrackFiltersAndConfirms) {
   EXPECT_LT(final_velocity_error_m_per_s, 50.0);
 }
 
+// 合成量测隔离（2026-10-26）：单星保活推导的位置只用于保活，不得进滤波，
+// 也不得让航迹被精度评估当成"有真实量测"。
+TEST(FusionTrackFilteringTest, SyntheticMeasurementsKeepTrackAliveWithoutFilterUpdate) {
+  FusionEngine engine(MakeFilteringConfig());
+  const EcefPositionM p0(kEarthRadiusM, 0.0, 0.0);
+  const EcefPositionM v(0.0, 200.0, 0.0);
+  const EcefPositionM truth_third(p0.x_m + v.x_m * 2.0, p0.y_m + v.y_m * 2.0, 0.0);
+
+  // 1) 两拍真实位置量测：滤波起始 + 两点差分初速。
+  for (std::uint64_t cycle = 1U; cycle <= 2U; ++cycle) {
+    const double t = static_cast<double>(cycle - 1U);
+    const EcefPositionM truth(p0.x_m + v.x_m * t, p0.y_m + v.y_m * t, p0.z_m);
+    const auto targets = engine.Update({MakePositionRecord(7U, EcefToLla(truth))}, cycle);
+    ASSERT_EQ(targets.size(), 1U);
+    ASSERT_TRUE(targets.front().has_kinematic_estimate);
+    EXPECT_TRUE(targets.front().updated_by_real_measurement);
+  }
+  const std::vector<FusedTarget> before = engine.Update({}, 3U);
+  const EcefPositionM mean_before = EstimatePositionEcef(before.front());
+
+  // 2) 合成量测：位置明显偏 30 km。若它进了滤波，均值会被拉走。
+  DetectionRecord synthetic = MakePositionRecord(
+      7U, EcefToLla(EcefPositionM(truth_third.x_m + 30000.0, truth_third.y_m, truth_third.z_m)));
+  synthetic.synthetic = true;
+  const std::vector<FusedTarget> after_synthetic = engine.Update({synthetic}, 4U);
+  ASSERT_EQ(after_synthetic.size(), 1U);
+  const FusedTarget& target = after_synthetic.front();
+  // 命中数照常累计（保活语义），但运动学均值不被合成位置拖动。
+  EXPECT_GE(target.last_update_cycle, 4U);
+  const EcefPositionM mean_after = EstimatePositionEcef(target);
+  EXPECT_LT(DistanceM(mean_after, mean_before), 20000.0)
+      << "synthetic measurement must not drag the filter mean";
+  // 真实量测记账：仍标记为有过真实更新（前两拍），但周期号停在 2。
+  EXPECT_TRUE(target.updated_by_real_measurement);
+  EXPECT_EQ(target.last_real_measurement_cycle, 2U);
+}
+
+// 纯合成航迹：从未吃过真实量测的航迹必须显式标记，供评估侧剔除。
+TEST(FusionTrackFilteringTest, SyntheticOnlyTrackIsNotMarkedAsRealMeasurement) {
+  FusionEngine engine(MakeFilteringConfig());
+  const EcefPositionM p0(kEarthRadiusM, 0.0, 0.0);
+  DetectionRecord synthetic = MakePositionRecord(11U, EcefToLla(p0));
+  synthetic.synthetic = true;
+  const std::vector<FusedTarget> targets = engine.Update({synthetic}, 1U);
+  ASSERT_EQ(targets.size(), 1U);
+  EXPECT_FALSE(targets.front().updated_by_real_measurement);
+  EXPECT_EQ(targets.front().last_real_measurement_cycle, 0U);
+  // 合成量测不驱动滤波起始：无运动学估计。
+  EXPECT_FALSE(targets.front().has_kinematic_estimate);
+}
+
 // 单原点角度-only：横向（切向）快速收敛、径向（距离）滞后——弱可观测产品语义。
 TEST(FusionTrackFilteringTest, BearingOnlyTrackKeepsWeakRangeObservability) {
   FusionEngine engine(MakeFilteringConfig());

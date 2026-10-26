@@ -402,8 +402,11 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
   for (const auto& truth_entry : truth_by_key) {
     const EvaluationTruthTarget* truth = truth_entry.second;
     const auto track_entry = track_by_key.find(truth->key);
+    // 中译：**只评估吃过真实量测的航迹**（2026-10-26）——单星保活合成的记录不进滤波，
+    //       其运动学状态是预测外推值；把它算进速度/位置误差等于用非独立量测给自己打分。
+    // 标识：合成航迹剔除（精度评估）。
     if (track_entry == track_by_key.end() || !track_entry->second->has_kinematic_estimate ||
-        !truth->has_velocity) {
+        !track_entry->second->updated_by_real_measurement || !truth->has_velocity) {
       continue;
     }
     oneq::coordinate::EcefPositionM estimated_position;
@@ -459,7 +462,9 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
     // 估计状态推演（有运动学估计的航迹）。
     std::vector<target_inference::InferenceTrackState> estimate_states;
     for (const auto& track_entry : track_by_key) {
-      if (!track_entry.second->has_kinematic_estimate) {
+      // 同理：合成航迹不外推关键点（否则落点/发射点误差来自预测外推而非量测）。
+      if (!track_entry.second->has_kinematic_estimate ||
+          !track_entry.second->updated_by_real_measurement) {
         continue;
       }
       target_inference::InferenceTrackState state;

@@ -1309,6 +1309,20 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       observations_by_key[track.association_key] = observation;
     }
 
+    // 中译：把"拟合速度斜率"的加速度写进本周期快照（2026-10-26）——验收第 40/42 项
+    //   原用滤波后验速度差分，航迹重置周期会跳到上百 m/s²；改用与识别运动维同源的
+    //   拟合值（量级 2–10 m/s²），滤波值仍保留在 track.acceleration 不动。
+    // 标识：验收加速度取拟合斜率（2026-10-26）。
+    if (lifecycle_ != nullptr) {
+      for (tracking::RirTrackState& track : track_snapshots) {
+        Eigen::Vector3f acceleration_lsq = Eigen::Vector3f::Zero();
+        if (lifecycle_->TryGetLeastSquaresAcceleration(track.association_key, &acceleration_lsq)) {
+          track.has_acceleration_lsq = true;
+          track.acceleration_lsq_mps2 = acceleration_lsq;
+        }
+      }
+    }
+
     if (database_ != nullptr) {
       // 出口①：采集本周期实际构建的有效特征观测（透出来源），组装公开量测记录。
       std::vector<recognition::RirTracker::CycleFeatureObservation> cycle_observations;

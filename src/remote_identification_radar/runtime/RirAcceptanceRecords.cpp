@@ -1327,14 +1327,19 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   oneq::coordinate::EcefPositionM pos_ecef;
   oneq::coordinate::EcefVelocityMps vel_ecef;
   oneq::coordinate::EcefVelocityMps acc_ecef;
+  // 中译：加速度优先取"拟合速度斜率"（2026-10-26）——滤波后验差分在重置周期会
+  //   跳到上百 m/s²，验收第 40/42 项会显示非物理值；拟合值与识别运动维同源。
+  // 标识：验收加速度取拟合斜率（2026-10-26）。
+  const Eigen::Vector3f acc_source = track.has_acceleration_lsq
+                                         ? track.acceleration_lsq_mps2
+                                         : track.acceleration;
   bool have_frame = false;
   if (oneq::coordinate::TryEcefToLla(platform_ecef, &platform_lla)) {
     const oneq::coordinate::EnuPositionM pos_enu(track.position.x(), track.position.y(),
                                                  track.position.z());
     const oneq::coordinate::EnuVelocityMps vel_enu(track.velocity.x(), track.velocity.y(),
                                                    track.velocity.z());
-    const oneq::coordinate::EnuVelocityMps acc_enu(track.acceleration.x(), track.acceleration.y(),
-                                                   track.acceleration.z());
+    const oneq::coordinate::EnuVelocityMps acc_enu(acc_source.x(), acc_source.y(), acc_source.z());
     have_frame = oneq::coordinate::TryEnuToEcef(pos_enu, platform_lla, &pos_ecef) &&
                  oneq::coordinate::TryEnuToEcefVelocity(vel_enu, platform_lla, &vel_ecef) &&
                  oneq::coordinate::TryEnuToEcefVelocity(acc_enu, platform_lla, &acc_ecef);
@@ -1436,8 +1441,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       std::string("运动参数=速度=") + FormatF(track.speed, 3) + "m/s 航向=" +
       FormatF(heading, 2) + "° 加速度=" +
       (have_frame ? FormatVec3(acc_ecef.x_mps, acc_ecef.y_mps, acc_ecef.z_mps, 4)
-                  : FormatVec3(track.acceleration.x(), track.acceleration.y(),
-                               track.acceleration.z(), 4)) +
+                  : FormatVec3(acc_source.x(), acc_source.y(), acc_source.z(), 4)) +
       std::string("m/s^2 来源=") + oneq::common::acceptance::kStageAfterFilter;
   const char* kReentryItem = "对典型目标/再入目标进行跟踪功能测试";
   const char* kMultiItem = "多目标跟踪功能测试";

@@ -99,7 +99,15 @@ struct RirTrackState {
   std::uint32_t hit_count{0U};                           /**< 累计命中计数。 */
   Eigen::Vector3f position{Eigen::Vector3f::Zero()};     /**< 滤波位置（m）。 */
   Eigen::Vector3f velocity{Eigen::Vector3f::Zero()};     /**< 滤波速度（m/s）。 */
-  Eigen::Vector3f acceleration{Eigen::Vector3f::Zero()}; /**< 滤波加速度（m/s²，窗内平滑后）。 */
+  Eigen::Vector3f acceleration{Eigen::Vector3f::Zero()};
+  /**
+   * @brief 由量测位置拟合速度序列的斜率给出的加速度（ENU，m/s²，2026-10-26）。
+   * @details 滤波后验速度差分在航迹重置/关联切换时会跳到上百 m/s²（被钳制门限截住后
+   *   就变成"恒等于上限"），验收第 40/42 项因此显示非物理值。拟合斜率与识别运动维同源，
+   *   量级约 2–10 m/s²，用于验收输出；滤波值仍保留在 `acceleration` 不改。
+   */
+  bool has_acceleration_lsq{false};
+  Eigen::Vector3f acceleration_lsq_mps2{Eigen::Vector3f::Zero()}; /**< 滤波加速度（m/s²，窗内平滑后）。 */
   float speed{0.0f};               /**< 速度模长（m/s），识别运动特征直接消费。 */
   float acceleration_mps2{0.0f};   /**< 加速度模长（m/s²），识别运动特征直接消费。 */
   /**

@@ -834,7 +834,12 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m 斜距口径=检测单元量测";
     interface_power += std::string(" RCS=") + FormatF(input.rcs_m2, 3) + "m^2 RCS口径=" + oneq::common::acceptance::kStageAfterDetection;
     interface_power += " 波束离轴增益=" + FormatF(input.one_way_antenna_gain_dbi, 3) + "dBi";
-    interface_power += " 回波计算输出功率=" + FormatSci(input.cell.echo_power_w) + "W";
+    // 中译：判据第 70 项原文要求「并分别标识回波计算输出值与信号处理入口消费值」，
+    //   故两个字段都保留；本实现为同一 detection cell 直传，二者必然相等——标注口径
+    //   以免被误读为两次独立计算。
+    // 标识：第 70 项双值口径（2026-10-26）。
+    interface_power += " 回波计算输出功率=" + FormatSci(input.cell.echo_power_w) +
+                       "W 功率口径=生产者/消费者同值(同一检测单元)";
     interface_power += " 处理入口回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
     interface_power += " 回波计算输出时延=" + FormatSci(input.cell.echo_delay_s) + "s";
     interface_power += " 处理入口回波时延=" + FormatSci(input.cell.echo_delay_s) + "s";
@@ -856,10 +861,21 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   const double accumulated_snr_db = detector_snr_db + 10.0 * std::log10(pulses);
   const double total_noise_w = thermal + clutter +
                                (input.has_cell ? input.cell.interference_power_w : 0.0);
+  // 中译：**SNR 三口径对齐判据**（2026-10-26）——判据要求同快照输出「单脉冲 SNR /
+  //   积累 SNR / CFAR 消费 SNR」。检测单元的 processed SINR 已含相干积累 N，故：
+  //     单脉冲 = processed − 10log10(N)   （脉压+MTI+MTD 之后、积累之前）
+  //     CFAR 消费 = 积累 = processed      （检测器实际用的就是积累后的值）
+  //   原实现把 processed 当单脉冲再 +10log10(N) 当积累，N 被计了两次（N=11 时 +10.4 dB）。
+  // 标识：第 71 项 SNR 三口径（2026-10-26）。
+  const double coherent_db = input.has_cell ? input.cell.coherent_integration_db : 0.0;
+  const double single_pulse_snr_db = detector_snr_db - coherent_db;
+  (void)accumulated_snr_db;
   std::string interface_detection = id + " 处理输出SNR=" +
-                                    FormatF(detector_snr_db, 3) + "dB";
-  interface_detection += " 检测器输入SNR=" + FormatF(detector_snr_db, 3) + "dB";
-  interface_detection += " 积累SNR=" + FormatF(accumulated_snr_db, 3) + "dB";
+                                    FormatF(single_pulse_snr_db, 3) +
+                                    "dB 口径=单脉冲(不含相干积累)";
+  interface_detection += " 检测器输入SNR=" + FormatF(detector_snr_db, 3) +
+                         "dB 口径=CFAR消费(含相干积累)";
+  interface_detection += " 积累SNR=" + FormatF(detector_snr_db, 3) + "dB";
   if (input.has_cell) {
     // 中译：这里的"总噪声功率"是**热噪声 + 杂波 + 干扰**的处理前合计（SINR 分母），
     //   不是单一"噪声"；与第 29 项的单列噪声功率、第 33 项的脉压后噪声都不同口径。

@@ -1895,10 +1895,15 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
            " 本周期搜索驻留数=" + std::to_string(search_dwell_count));
   for (const RirDwellPlan& dwell : dwell_plan) {
     if (dwell.kind == RirDwellKind::kSearch) {
+      // 中译：**搜索驻留也写指向**（2026-10-26）——原来搜索行只有波位序号、没有指向，
+      //   于是"本周期搜索驻留数=N"与带指向的行数对不上（只有跟踪/指定行带指向）。
+      //   现在每类驻留都写指向，(数量,指向) 逐行可对数。
+      // 标识：搜索驻留指向（2026-10-26）。
       Emit(sim_time_sec, cycle, "波束扫描功能测试",
-           "雷达ID=" + std::to_string(radar_id) +
-               " 波位序号=" + std::to_string(dwell.scan_pattern_index) +
-               " 波位排列表已输出至" + scan_csv_path);
+           "雷达ID=" + std::to_string(radar_id) + " 驻留种类=搜索 波位序号=" +
+               std::to_string(dwell.scan_pattern_index) + " 指向=" +
+               FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) +
+               "° 波位排列表已输出至" + scan_csv_path);
       if (std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
           kHorizonElevationToleranceDeg) {
         Emit(sim_time_sec, cycle, "地平线搜索功能测试",

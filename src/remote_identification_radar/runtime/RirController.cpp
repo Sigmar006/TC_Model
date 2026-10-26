@@ -821,7 +821,11 @@ bool RirController::TryBuildMeasurement(
   built.detection_pd = detection.detection_prob;
   built.detection_snr_db = detection.snr_db;
   built.radial_velocity_m_per_s = radial_velocity;
-  built.rcs = target.rcs;
+  // 中译：**量测 RCS 用有效值**（2026-10-26）——原来这里取场景标称 RCS（0.1 m² 恒定），
+  //   验收第 43 项 `本周期RCS` 因此永远是 0.100，看起来"没有 RCS 相关输出"。
+  //   有效 RCS 已由检测单元按视角/频率算好（`target_return.rcs_m2`），直接沿用。
+  // 标识：量测 RCS 取有效值（2026-10-26）。
+  built.rcs = target_return.rcs_m2 > 0.0f ? target_return.rcs_m2 : target.rcs;
   built.measurement_covariance = MakeCartesianMeasurementCovariance(
       target, measurement_error.range_error_std_m, measurement_error.angle_error_std_rad);
   // 6 dB 回退模式保持旧识别门控口径：量测位置取真值，只携带误差协方差；

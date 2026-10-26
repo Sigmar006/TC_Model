@@ -1062,7 +1062,11 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
                                      std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections) {
-  if (!RIR_ACCEPTANCE_LOG_ENABLED() || detections.empty()) {
+  // 中译：**地平线搜索按“驻留事实”记账**（2026-10-26）——此前 `detections.empty()` 直接
+  //   return，只有“地平线波位恰好检到目标”才留下日志，搜索窗抬高后整项几乎不可见。
+  //   现改为：只要有地平线波位驻留就写指向行；检到目标才追加量测行。
+  // 标识：地平线搜索驻留即记（2026-10-26）。
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
   // 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名，按 §0.9
@@ -1070,6 +1074,9 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
   Emit(sim_time_sec, cycle, "地平线搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
            FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
+  if (detections.empty()) {
+    return;  // 无检测：只留指向行，不伪造量测。
+  }
   std::string found;
   for (std::size_t i = 0U; i < detections.size(); ++i) {
     if (i != 0U) {

@@ -171,6 +171,16 @@ bool TryRecognitionContribution(
   return std::isfinite(*contribution);
 }
 
+/** @brief 统计特征有效位图里置位的维度数（识别判据诊断用）。 */
+std::uint32_t CountBits(std::uint32_t mask) {
+  std::uint32_t count = 0U;
+  while (mask != 0U) {
+    count += (mask & 1U);
+    mask >>= 1U;
+  }
+  return count;
+}
+
 const char* TrackStatusText(tracking::RirTrackStatus status) {
   switch (status) {
     case tracking::RirTrackStatus::kConfirmed:
@@ -1396,6 +1406,15 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
     //       best_score/total_score 的"得分份额"（≈1/模型数），不是类别置信概率，
     //       与"已给出类别"并列会被误读；型号/类别本身仍在同一行输出。
     // 标识：2026-10-21 删除置信度字段。
+    // 中译：**识别判据诊断**（2026-10-27）——把决定"类别能不能确认"的三个数直接写出来：
+    //   综合分（最佳候选分）、次优分、二者边际。类别确认要求 综合分 ≥ acceptance_score(0.6)；
+    //   型号确认还要求 边际 ≥ minimum_margin(0.05) 且有效维度足够。
+    //   之前日志只有"类别/型号"，判不出来时无法区分是"所有模板都低分"还是"候选太接近"。
+    // 标识：识别判据诊断（2026-10-27）。
+    interface_recognition += " 综合分=" + FormatF(result->best_score, 4);
+    interface_recognition += " 次优分=" + FormatF(result->runner_up_score, 4);
+    interface_recognition += " 边际=" + FormatF(result->best_score - result->runner_up_score, 4);
+    interface_recognition += " 有效维度数=" + std::to_string(CountBits(result->valid_feature_mask));
     interface_recognition += " 积累观测数=" + std::to_string(result->observation_count);
   }
   RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle,

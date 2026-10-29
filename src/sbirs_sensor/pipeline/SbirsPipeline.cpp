@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <set>
 #include <string>
@@ -2214,6 +2215,27 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     acquisition_request.snr = selected.snr;
     acquisition_request.minimum_snr_linear = policy.detection.narrow_min_snr_linear;
     const bool captured = IsNfovAcquisitionEligible(acquisition_request);
+    // 中译：**捕获失败子判据诊断**（2026-10-27）——判据只有两条（视场外 / SNR 不足），
+    //   而日志原来只写输入 SNR 与结论，无法区分是哪一条挡住，现场只能靠猜。
+    //   这里按与 IsNfovAcquisitionEligible 完全相同的口径重算残差并标注子判据：
+    //     方位残差 = 延迟真值方位 − (指令方位 + 静态 settle 误差)，按 ±180° 回绕；
+    //     俯仰残差 = 延迟真值俯仰 − 指令俯仰；
+    //     任一残差超过半视场即 "outside-fov"，否则为 "snr-below"。
+    //   判定本身仍走 IsNfovAcquisitionEligible，本段只读不写，不改变行为。
+    // 标识：NFOV 捕获子判据诊断（2026-10-27）。
+    const double az_residual_deg =
+        std::remainder(static_cast<double>(acquisition_request.delayed_truth_azimuth_deg) -
+                           (static_cast<double>(acquisition_request.command_azimuth_deg) +
+                            static_cast<double>(acquisition_request.pointing_settle_error_deg)),
+                       360.0);
+    const double el_residual_deg =
+        static_cast<double>(acquisition_request.delayed_truth_elevation_deg) -
+        static_cast<double>(acquisition_request.command_elevation_deg);
+    const bool in_fov = std::fabs(az_residual_deg) <=
+                            0.5 * static_cast<double>(acquisition_request.field_of_view_azimuth_deg) &&
+                        std::fabs(el_residual_deg) <=
+                            0.5 * static_cast<double>(acquisition_request.field_of_view_elevation_deg);
+    const char* capture_sub_gate = captured ? "ok" : (in_fov ? "snr-below" : "outside-fov");
     if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
       SBIRS_INTERNAL_INTERFACE_ITEM(
           sim_time_sec, input.cycle_index, "红外宽场候选与窄场调度交互接口测试",
@@ -2224,7 +2246,14 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
               " 捕获结果=" + (captured ? "成功" : "失败") +
               " 候选状态=" + (captured ? "已捕获" : "捕获失败") +
               " 捕获失败原因=" +
-              (captured ? "none" : "nfov-acquisition-failed"));
+              (captured ? "none" : "nfov-acquisition-failed") +
+              " 子判据=" + capture_sub_gate + " 方位残差=" +
+              oneq::logging::FormatF(az_residual_deg, 4) + "deg 俯仰残差=" +
+              oneq::logging::FormatF(el_residual_deg, 4) + "deg 视场半宽=(" +
+              oneq::logging::FormatF(0.5 * acquisition_request.field_of_view_azimuth_deg, 3) + "," +
+              oneq::logging::FormatF(0.5 * acquisition_request.field_of_view_elevation_deg, 3) +
+              ")deg 已服务时长=" +
+              oneq::logging::FormatF(pointing_result.elapsed_wait_sec, 3) + "s");
     }
     if (SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED()) {
       // 中译：窄视场首次捕获事件（卫星、目标、捕获结论、cue 预测命令角与 SNR）。

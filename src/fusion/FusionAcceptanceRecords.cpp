@@ -5,6 +5,8 @@
 
 #include "fusion/FusionAcceptanceRecords.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <set>
@@ -207,6 +209,22 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     }
     if (track.has_kinematic_estimate) {
       content += " 协方差对角=" + FormatCovDiag6(track.kinematic_estimate.covariance_ecef);
+      // 中译：**融合位置精度**（2026-11-02）——协方差对角虽然完整，但读不出一句
+      //   "这条航迹现在准到几米"。这里由位置块/速度块对角开方给出 3D 1σ（RSS）：
+      //   协方差排布 [x,vx,y,vy,z,vz]，位置轴 0/2/4、速度轴 1/3/5；方差取 max(0)
+      //   再开方，避免滤波数值噪声产生的极小负值变成 NaN。
+      // 标识：融合位置精度输出（2026-11-02）。
+      const std::array<double, 36U>& cov = track.kinematic_estimate.covariance_ecef;
+      const double var_x = std::max(0.0, cov[0]);
+      const double var_y = std::max(0.0, cov[14]);
+      const double var_z = std::max(0.0, cov[28]);
+      const double var_vx = std::max(0.0, cov[7]);
+      const double var_vy = std::max(0.0, cov[21]);
+      const double var_vz = std::max(0.0, cov[35]);
+      content += " 位置精度1σ=" + FormatF(std::sqrt(var_x + var_y + var_z), 1) + "m";
+      content += " 位置精度轴向1σ=(" + FormatF(std::sqrt(var_x), 1) + "," +
+                 FormatF(std::sqrt(var_y), 1) + "," + FormatF(std::sqrt(var_z), 1) + ")m";
+      content += " 速度精度1σ=" + FormatF(std::sqrt(var_vx + var_vy + var_vz), 3) + "m/s";
     }
     FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "宽窄视场联合探测功能测试", content);
     FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "多传感器目标跟踪功能测试", content);

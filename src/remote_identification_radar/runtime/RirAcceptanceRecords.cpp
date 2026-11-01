@@ -668,9 +668,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     echo += " 斜距=" + FormatF(input.range_m, 1) + "m";
     // 中译：RCS 口径与物理开关挂钩（2026-10-26）——开=视角 RCS；关=外部输入标称 RCS。
     // 标识：第29项 RCS 口径（2026-10-26）。
-    echo += std::string(" 目标RCS=") + FormatF(input.rcs_m2, 3) + "m^2 目标RCS口径=" +
-            (input.rcs_physics_enabled ? std::string("视角RCS(物理模型)")
-                                       : std::string("外部输入RCS(标称,物理模型关)"));
+    echo += std::string(" 目标RCS=") + FormatF(input.rcs_m2, 3) + "m^2";
     // 中译：本行三项**全部是处理前（进入信号处理链之前）的单元级功率**，口径必须写明，
     //   否则会与第 33 项"脉冲压缩后的噪声功率"（处理后）只差一个脉压增益而被误读为矛盾。
     //   回波：目标回波在单元内的接收功率；噪声：匹配滤波带宽内的接收机热噪声；干扰：进入
@@ -680,7 +678,6 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     echo += " 噪声功率=" + FormatSci(thermal) + "W";
     echo += " 干扰功率=" +
             FormatSci(input.has_cell ? input.cell.interference_power_w : 0.0) + "W";
-    echo += " 功率口径=处理前(检测单元)";
     Emit(t, cycle, "回波功率计算功能测试", echo);
   }
 
@@ -732,7 +729,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     // 标识：第 33 项脉压后噪声（2026-10-22）。
     const double noise_after_pc = pc > 0.0 ? thermal / pc : thermal;
     Emit(t, cycle, "噪声增益功能测试",
-         id_sp + "脉冲压缩后的噪声功率=" + FormatSci(noise_after_pc) + "W 噪声口径=压缩后(单位峰值增益)");
+         id_sp + "脉冲压缩后的噪声功率=" + FormatSci(noise_after_pc) + "W");
   }
   EmitOrNone(t, cycle, "噪声增益功能测试", id_sp + "各多普勒滤波器通道噪声功率=", has_bank,
              has_bank ? FormatChannelWatts(bank.noise_w) + "W" : std::string());
@@ -746,7 +743,6 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     const double applied_noise_db =
         input.has_cell ? input.cell.noise_total_gain_db : noise_db;
     std::string row = id_sp + "噪声总增益=" + FormatF(applied_noise_db, 3) + "dB";
-    row += " 噪声口径=施加值(配置项+MTI对消器)";
     Emit(t, cycle, "噪声增益功能测试", row);
   }
 
@@ -835,7 +831,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   //       而第 29 项的六列功率是**处理前**的；不标注会被外部按原始功率复算判为矛盾。
   // 标识：第 36 项 SNR 口径（2026-10-21）。
   Emit(t, cycle, "恒虚警检测功能测试",
-       id_sp + "信噪比=" + FormatF(input.snr_db, 3) + "dB 信噪比口径=处理后");
+       id_sp + "信噪比=" + FormatF(input.snr_db, 3) + "dB");
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测结果=" + YesNo(input.detected));
   Emit(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测概率=" + FormatF(input.pd, 5));
   // 2026-09-28 新增要求：本项还须写「检测概率=90%的最大探测距离」及所依据的 RCS。
@@ -860,17 +856,15 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   // 仅有 detection cell 有效时输出，不伪造缺失分量。
   if (input.has_cell) {
     std::string interface_power = "雷达ID=" + std::to_string(input.radar_id) + " " + id;
-    interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m 斜距口径=检测单元量测";
-    interface_power += std::string(" RCS=") + FormatF(input.rcs_m2, 3) + "m^2 RCS口径=" +
-                       (input.rcs_physics_enabled ? std::string("视角RCS(物理模型)")
-                                                  : std::string("外部输入RCS(标称,物理模型关)"));
+    interface_power += " 斜距=" + FormatF(input.range_m, 1) + "m";
+    interface_power += std::string(" RCS=") + FormatF(input.rcs_m2, 3) + "m^2";
     interface_power += " 波束离轴增益=" + FormatF(input.one_way_antenna_gain_dbi, 3) + "dBi";
     // 中译：判据第 70 项原文要求「并分别标识回波计算输出值与信号处理入口消费值」，
     //   故两个字段都保留；本实现为同一 detection cell 直传，二者必然相等——标注口径
     //   以免被误读为两次独立计算。
     // 标识：第 70 项双值口径（2026-10-26）。
     interface_power += " 回波计算输出功率=" + FormatSci(input.cell.echo_power_w) +
-                       "W 功率口径=生产者/消费者同值(同一检测单元)";
+                       "W";
     interface_power += " 处理入口回波功率=" + FormatSci(input.cell.echo_power_w) + "W";
     interface_power += " 回波计算输出时延=" + FormatSci(input.cell.echo_delay_s) + "s";
     interface_power += " 处理入口回波时延=" + FormatSci(input.cell.echo_delay_s) + "s";
@@ -903,16 +897,16 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   (void)accumulated_snr_db;
   std::string interface_detection = id + " 处理输出SNR=" +
                                     FormatF(single_pulse_snr_db, 3) +
-                                    "dB 口径=单脉冲(不含相干积累)";
+                                    "dB";
   interface_detection += " 检测器输入SNR=" + FormatF(detector_snr_db, 3) +
-                         "dB 口径=CFAR消费(含相干积累)";
+                         "dB";
   interface_detection += " 积累SNR=" + FormatF(detector_snr_db, 3) + "dB";
   if (input.has_cell) {
     // 中译：这里的"总噪声功率"是**热噪声 + 杂波 + 干扰**的处理前合计（SINR 分母），
     //   不是单一"噪声"；与第 29 项的单列噪声功率、第 33 项的脉压后噪声都不同口径。
     // 标识：第 71 项噪声合计口径（2026-10-22）。
     interface_detection += " 总噪声功率=" + FormatSci(total_noise_w) +
-                           "W 噪声口径=热噪声+杂波+干扰(处理前合计)";
+                           "W";
   }
   interface_detection += " 脉压/MTI/MTD增益=" +
                          FormatF(pc_db, 3) + "/" +
@@ -1027,7 +1021,7 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
     // 中译：场景接口的 ENU 位置/速度是**场景真值**（来自想定），与第 73 项的航迹估计同名不同源，
     //   必须标注，否则会被当成同一量的两个互相矛盾的估计。
     // 标识：场景接口真值口径（2026-10-22）。
-    content += " 位置ENU口径=场景真值 位置ENU=" +
+    content += " 位置ENU=" +
                FormatVec3(target.position_x, target.position_y, target.position_z, 3) +
                "m";
     content += " 速度ENU=" + FormatVec3(target.velocity_x, target.velocity_y, target.velocity_z, 3) +
@@ -1163,8 +1157,7 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
     // 中译：本项 Pd 与第 36 项的「统计检测概率」同源不同口径（此处按本周期该次量测），
     //       加限定词避免两处数值被当作互相印证或互相矛盾。
     // 标识：第 43 项检测概率口径（2026-10-21）。
-    content += " 检测概率=" + FormatF(measurement.detection_pd, 4) +
-               " 检测概率口径=输出量测";
+    content += " 检测概率=" + FormatF(measurement.detection_pd, 4) ;
     content += measurement.matched_existing_track
                    ? " 关联结果=航迹" + std::to_string(measurement.association_key)
                    : " 关联结果=未配到任何已有航迹";
@@ -1227,7 +1220,7 @@ void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
     }
     content += " 径向速度(远离为正)=" +
                FormatF(measurement.radial_velocity_m_per_s, 3) + "m/s";
-    content += " SNR=" + FormatF(measurement.detection_snr_db, 3) + "dB SNR口径=输出量测";
+    content += " SNR=" + FormatF(measurement.detection_snr_db, 3) + "dB";
     content += " 检测概率=" + FormatF(measurement.detection_pd, 5);
     content += " 量测协方差ENU_m2[x,y,z]=[";
     for (int row = 0; row < 3; ++row) {
@@ -1403,7 +1396,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                            FormatVec3(track.position.x(), track.position.y(), track.position.z(), 3) +
                            "m 速度ENU=" +
                            FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
-                           std::string("m/s 坐标系=ENU 速度口径=") + oneq::common::acceptance::kStageAfterFilter;
+                           std::string("m/s 坐标系=ENU");
   if (features != nullptr) {
     interface_recognition += " SNR=" + FormatF(features->snr_db, 3) + "dB";
     interface_recognition += " 特征有效掩码=" + std::to_string(features->valid_feature_mask);
@@ -1498,7 +1491,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
          track_target_id + " 位置（ECEF）=" +
              FormatVec3(pos_ecef.x_m, pos_ecef.y_m, pos_ecef.z_m, 1) + "m 速度=" +
              FormatVec3(vel_ecef.x_mps, vel_ecef.y_mps, vel_ecef.z_mps, 3) +
-             std::string("m/s 速度口径=") + oneq::common::acceptance::kStageAfterFilter + " 加速度=" +
+             std::string("m/s 加速度=") +
              FormatVec3(acc_ecef.x_mps, acc_ecef.y_mps, acc_ecef.z_mps, 4) + "m/s^2");
   }
   {
@@ -1535,7 +1528,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   //（判定句未点名 RCS 属存疑项，示例按项名写 RCS 并带定位/运动）。
   Emit(sim_time_sec, cycle, "根据目标RCS实时计算目标探测结果功能测试",
        "目标ID=" + std::to_string(track.external_target_id) +
-       std::string(" 本周期RCS口径=") + oneq::common::acceptance::kStageAfterDetection + " 本周期RCS=" +
+       std::string(" 本周期RCS=") +
            FormatF(track.rcs, 3) + "m^2 " + positioning);
   Emit(sim_time_sec, cycle, "根据目标RCS实时计算目标探测结果功能测试",
        "目标ID=" + std::to_string(track.external_target_id) + " " + motion);
@@ -1706,11 +1699,11 @@ void WriteRirExternalTracks(float sim_time_sec, std::uint32_t cycle,
     // 标识：第 65 项速度来源（2026-10-22）。
     content += " 速度=" +
                FormatVec3(track.velocity.x(), track.velocity.y(), track.velocity.z(), 3) +
-               std::string("m/s 坐标系=ENU 速度口径=") + oneq::common::acceptance::kStageAfterFilter;
+               std::string("m/s 坐标系=ENU");
     content += " 加速度=" +
                FormatVec3(track.acceleration.x(), track.acceleration.y(), track.acceleration.z(),
                           3) +
-               std::string("m/s^2 加速度口径=") + oneq::common::acceptance::kStageAfterFilter;
+               std::string("m/s^2");
     content += " 状态协方差ENU[x,vx,y,vy,z,vz]=[";
     for (int row = 0; row < 6; ++row) {
       if (row != 0) {

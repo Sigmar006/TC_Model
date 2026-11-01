@@ -1499,14 +1499,23 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     //   现改为沿**目标自身方向**判断：空间目标不受几何截断（遮挡另有 IsEarthOcculted），
     //   只有近地/地面目标才受地球临边限制（临边距离 = √(R_sat² − R_e²)）。
     // 标识：最大探测距离几何口径修正（2026-11-02）。
+    // 中译：**几何受限 = 双高度地平线距离**（2026-11-02 二次修正，恢复"考虑地球曲率"口径）——
+    //   上一版把空间目标的几何项设为"不受限"，虽然消除了 258 km 的矛盾，但丢掉了曲率物理；
+    //   这一版按经典双高度地平线公式给出目标半径 r_t 下的最远可见距离：
+    //     R_geo = √(R_sat² − R_e²) + √(r_t² − R_e²)
+    //   物理含义：观测星到地球切点的距离 + 切点到目标所在高度的距离；它与地球遮挡判据
+    //   （IsEarthOcculted，同一 kEarthRadiusM）严格同源，因此"实际斜距 ≤ R_geo"是可见的
+    //   必要条件，任何被检出的目标必然满足 d_max ≥ 实际斜距，不会再出现前后矛盾。
+    //   地面目标 r_t = R_e → R_geo = 41,680 km；GEO 同轨目标 r_t = R_sat → ≈83,360 km
+    //   （通常先被任务上限 50,000 km 钳位）。
+    // 标识：最大探测距离几何口径（双高度地平线，2026-11-02）。
     const double target_radius_m = foundation::Norm(target.position_eci_m);
     const double satellite_radius_m = foundation::Norm(satellite_position_eci_m);
-    const bool co_shell_target = std::fabs(target_radius_m - satellite_radius_m) < 1000.0;
-    double geometric_limit_m = std::numeric_limits<double>::infinity();
-    if (!co_shell_target && target_radius_m <= kEarthRadiusM + 100.0) {
-      geometric_limit_m = std::sqrt(std::max(0.0, satellite_radius_m * satellite_radius_m -
-                                                    kEarthRadiusM * kEarthRadiusM));
-    }
+    const double sat_horizon_m = std::sqrt(std::max(
+        0.0, satellite_radius_m * satellite_radius_m - kEarthRadiusM * kEarthRadiusM));
+    const double target_horizon_m =
+        std::sqrt(std::max(0.0, target_radius_m * target_radius_m - kEarthRadiusM * kEarthRadiusM));
+    const double geometric_limit_m = sat_horizon_m + target_horizon_m;
     const double mission_limit_m = static_cast<double>(mission.max_range_m);
     double max_detection_range_m = radiometric_max_detection_range_m;
     const char* range_binding = "辐射受限";
@@ -1533,13 +1542,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       }
       // 三个分项与实际斜距一并写出，便于外部一眼看出"这个数是哪个限制给的"。
       dmax += " 辐射受限=" + oneq::logging::FormatF(radiometric_max_detection_range_m, 1) + "m";
-      if (co_shell_target) {
-        dmax += " 几何受限=不适用(同壳层目标)";
-      } else if (std::isfinite(geometric_limit_m)) {
-        dmax += " 几何受限=" + oneq::logging::FormatF(geometric_limit_m, 1) + "m";
-      } else {
-        dmax += " 几何受限=不受限";
-      }
+      dmax += " 几何受限(双高度地平线)=" + oneq::logging::FormatF(geometric_limit_m, 1) + "m";
+      dmax += " 目标高度=" + oneq::logging::FormatF(target_radius_m - kEarthRadiusM, 1) + "m";
       dmax += " 任务上限=" + oneq::logging::FormatF(mission_limit_m, 1) + "m";
       dmax += " 实际斜距=" + oneq::logging::FormatF(range_m, 1) + "m";
       SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "最大探测距离计算功能测试", dmax);

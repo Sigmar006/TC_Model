@@ -429,10 +429,21 @@ class ChannelSink {
     // 分别判定为首次而各做一次 trunc，后写方抹掉先写方（详见 ClaimFirstOpenForPath
     // 注释里的实证）。故此处叠加跨模块判定，两者都认领为首次才截断。
     const bool first_open = (path != nullptr) && ClaimFirstOpenForPath(path);
-    const std::ios::openmode mode =
-        (opened_in_process_ || !first_open) ? (std::ios::out | std::ios::app | std::ios::binary)
-                                            : (std::ios::out | std::ios::trunc | std::ios::binary);
-    stream_.open(path, mode);
+    // 中译：**首开只负责清空文件，流本身永远以 app 打开**（2026-11-02 二次修正）——
+    //   原实现在首开时直接用 `std::ios::trunc` 打开，此后该流继续按自己的位置顺序写，
+    //   于是当**另一个 DLL** 的流以 app 追加到 EOF 之后，本流下一次写入又落回自己那个
+    //   较靠前的位置，把对方刚追加的内容整段覆盖。现场证据：第 26/27 项报告 wrote=3、
+    //   流 good、路径正确，却一行都搜不到；同一文件里 tellp（31 MB）小于实际大小（65 MB）。
+    //   现在统一：首开用 `fopen(path,"wb")` 清空文件并立刻关闭，随后一律以 app 打开，
+    //   保证每个写入者都追加到当时 EOF，谁也不覆盖谁。
+    // 标识：验收日志跨 DLL 覆盖修复（2026-11-02）。
+    if (first_open) {
+      std::FILE* truncate_handle = std::fopen(path, "wb");
+      if (truncate_handle != nullptr) {
+        std::fclose(truncate_handle);
+      }
+    }
+    stream_.open(path, std::ios::out | std::ios::app | std::ios::binary);
     if (stream_.is_open()) {
       open_failed_ = false;
       warned_ = false;

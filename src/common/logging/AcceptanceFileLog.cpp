@@ -256,17 +256,42 @@ std::string ReadEnv(const char* name) {
 #endif
 }
 
+#if defined(_MSC_VER)
+/**
+ * @brief 把（可能是相对的）日志路径规范化为**绝对路径**（2026-11-02）。
+ *
+ * @details 跨模块"首开截断"判定以**路径字符串**为准（`ClaimFirstOpenForPath` 按路径散列
+ *   命名互斥体）。1q.lib 被 Sensors.dll / DataProcessors.dll 各链一份，两边若一个拿到
+ *   `log/SatelliteTarget.log`、另一个拿到 `C:\...\log\SatelliteTarget.log`，散列不同
+ *   ⇒ 各自都判为"首次" ⇒ **两边各做一次 trunc**，于是两条流互相覆盖对方已写内容，
+ *   现场表现为"某个模块的行报告写了、日志里却搜不到"（第 26/27 项长期缺行即此）。
+ *   这里统一用 `_fullpath` 规范化，保证同一文件的判定键一致。
+ */
+std::string ToAbsolutePath(const std::string& path) {
+  if (path.empty()) {
+    return path;
+  }
+  char resolved[_MAX_PATH] = {0};
+  if (::_fullpath(resolved, path.c_str(), _MAX_PATH) != nullptr) {
+    return std::string(resolved);
+  }
+  return path;
+}
+#else
+std::string ToAbsolutePath(const std::string& path) { return path; }
+#endif
+
 std::string ResolveDefaultPath(AcceptanceChannel channel) {
   const std::string primary = ReadEnv(EnvName(channel));
   if (!primary.empty()) {
-    return primary;
+    return ToAbsolutePath(primary);
   }
   // 归并前的旧独立文件变量（如 ONEQ_FUSION_ACCEPTANCE_LOG_PATH）仍生效。
   const std::string legacy = ReadEnv(LegacyEnvName(channel));
   if (!legacy.empty()) {
-    return legacy;
+    return ToAbsolutePath(legacy);
   }
-  return std::string(CompileDefaultPath(channel));
+  return ToAbsolutePath(std::string(CompileDefaultPath(channel)));
 }
 
 #if defined(_MSC_VER)

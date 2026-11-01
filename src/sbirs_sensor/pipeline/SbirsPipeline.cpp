@@ -2237,6 +2237,21 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       // 标识：验收日志 E4——3.2.1.3.2.1 NFOV 捕获结论证据；窄场角按规范口径写 ECI 弧度。
       constexpr double kDegToRad = 0.017453292519943295;
       const double selected_snr_db = 10.0 * std::log10(std::max(selected.snr, 1.0e-12));
+      // 中译：本行**必须带镜头转向时间**（2026-11-02）——第14项判据要求"镜头转动时间
+      //   < 0.5 s"，而原实现只在"曾有转向中记录"时另起一行写该字段：同帧免转向捕获
+      //   （目标本来就在窄视场内，卫星互看时最常见）永远不写，整项在日志里一条都没有。
+      //   现在把该字段并入捕获行：有转向记录取"首次转向中→本拍"时长，无记录写
+      //   0.000s(免转向)，两种情形都可直接判 < 0.5 s。
+      // 标识：第14项镜头转向时间并入捕获行（2026-11-02）。
+      std::string turn_text = "0.000s(免转向)";
+      const auto slew_found = nfov_slew_start_time_s_.find(target_id);
+      if (slew_found != nfov_slew_start_time_s_.end()) {
+        turn_text = oneq::logging::FormatF(
+                        std::max(0.0, static_cast<double>(sim_time_sec) -
+                                          static_cast<double>(slew_found->second)),
+                        3) +
+                    "s";
+      }
       SBIRS_DUAL_ACCEPTANCE_ITEM(
           sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
           "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
@@ -2244,7 +2259,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
               " 窄场方位/俯仰(ECI)=(" +
               oneq::logging::FormatF(selected.command_azimuth_deg * kDegToRad, 8) + "," +
               oneq::logging::FormatF(selected.command_elevation_deg * kDegToRad, 8) +
-              ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB");
+              ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB 镜头转向时间=" +
+              turn_text);
     }
     if (!captured) {
       log_acceptance_release(target_id, "acquisition_ineligible", 0U);
@@ -2255,21 +2271,6 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       append_acquisition_failure(selected,
                                  attribution::SbirsCaptureFailureReason::kNfovAcquisitionFailed);
       return;
-    }
-    // 2026-09-28 按主文档补全（第14项）：宽视场镜头转向时间 = 首次「转向中」到本周期
-    // 捕获成功的时长（s）；无转向记录（首拍即在窄场内免转动捕获）时不伪造该字段。
-    if (SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED()) {
-      const auto slew_found = nfov_slew_start_time_s_.find(target_id);
-      if (slew_found != nfov_slew_start_time_s_.end()) {
-        const double turn_time_s =
-            std::max(0.0, static_cast<double>(sim_time_sec) -
-                              static_cast<double>(slew_found->second));
-        SBIRS_DUAL_ACCEPTANCE_ITEM(
-            sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
-            "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
-                std::to_string(target_id) + " 镜头转向时间=" +
-                oneq::logging::FormatF(turn_time_s, 3) + "s");
-      }
     }
     nfov_slew_start_time_s_.erase(target_id);
     pointing_coordinator_.PromoteToTracking(target_id);

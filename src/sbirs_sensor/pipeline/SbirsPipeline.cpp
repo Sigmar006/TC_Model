@@ -1491,24 +1491,11 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         target.radiant_intensity_w_per_sr, hw.optical_aperture_m, hw.optical_transmission,
         path_transmittance, hw.detector_quantum_efficiency, hw.integration_time_sec,
         effective_noise_w, policy.detection.wide_min_snr_linear);
-    // 中译：**几何上限修正**（2026-11-02）——原实现用"17×17 网格 × 目标地心半径球"求
-    //   视场内最大可视距离，对**同壳层目标**（GEO 看 GEO，半径差 < 1 km）几何退化：
-    //   视线与该半径球只在视平线附近相交（几公里），再被地球遮挡过滤，于是把 258 km
-    //   写成"最大探测距离"，而同一目标对的实际斜距是 10,400 km、且已正常出测角——
-    //   两者自相矛盾（现场据此判定 258 km 为假值）。
-    //   现改为沿**目标自身方向**判断：空间目标不受几何截断（遮挡另有 IsEarthOcculted），
-    //   只有近地/地面目标才受地球临边限制（临边距离 = √(R_sat² − R_e²)）。
-    // 标识：最大探测距离几何口径修正（2026-11-02）。
-    // 中译：**几何受限 = 双高度地平线距离**（2026-11-02 二次修正，恢复"考虑地球曲率"口径）——
-    //   上一版把空间目标的几何项设为"不受限"，虽然消除了 258 km 的矛盾，但丢掉了曲率物理；
-    //   这一版按经典双高度地平线公式给出目标半径 r_t 下的最远可见距离：
-    //     R_geo = √(R_sat² − R_e²) + √(r_t² − R_e²)
-    //   物理含义：观测星到地球切点的距离 + 切点到目标所在高度的距离；它与地球遮挡判据
-    //   （IsEarthOcculted，同一 kEarthRadiusM）严格同源，因此"实际斜距 ≤ R_geo"是可见的
-    //   必要条件，任何被检出的目标必然满足 d_max ≥ 实际斜距，不会再出现前后矛盾。
-    //   地面目标 r_t = R_e → R_geo = 41,680 km；GEO 同轨目标 r_t = R_sat → ≈83,360 km
-    //   （通常先被任务上限 50,000 km 钳位）。
-    // 标识：最大探测距离几何口径（双高度地平线，2026-11-02）。
+    // 中译：d_max = min(辐射受限, 几何受限, 任务上限)，只输出这一个值（2026-11-02）——
+    //   几何受限取双高度地平线 √(R_sat²−R_e²)+√(r_t²−R_e²)：它与地球遮挡判据同源，
+    //   保证"被检出 ⇒ 实际斜距 ≤ d_max"，不会再出现"前面几百公里、后面看到上千公里"的矛盾；
+    //   辐射受限保留目标辐射特征（当前统一 5e5 W/sr）。
+    // 标识：第6项最大探测距离单值口径（2026-11-02）。
     const double target_radius_m = foundation::Norm(target.position_eci_m);
     const double satellite_radius_m = foundation::Norm(satellite_position_eci_m);
     const double sat_horizon_m = std::sqrt(std::max(
@@ -1517,15 +1504,9 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         std::sqrt(std::max(0.0, target_radius_m * target_radius_m - kEarthRadiusM * kEarthRadiusM));
     const double geometric_limit_m = sat_horizon_m + target_horizon_m;
     const double mission_limit_m = static_cast<double>(mission.max_range_m);
-    double max_detection_range_m = radiometric_max_detection_range_m;
-    const char* range_binding = "辐射受限";
+    double max_detection_range_m = std::min(radiometric_max_detection_range_m, geometric_limit_m);
     if (mission_limit_m > 0.0 && mission_limit_m < max_detection_range_m) {
       max_detection_range_m = mission_limit_m;
-      range_binding = "任务上限";
-    }
-    if (std::isfinite(geometric_limit_m) && geometric_limit_m < max_detection_range_m) {
-      max_detection_range_m = geometric_limit_m;
-      range_binding = "地球临边";
     }
     if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
       // 中译：本星本周期对该目标的最大探测距离 d_max（米）。目标已进窄场锁定、由他星
@@ -1534,18 +1515,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       //       故跟踪期不再缺行；d_max 为宽场门限反解值，不含窄场门限口径。
       std::string dmax = "相对卫星ID=" + std::to_string(satellite_entity_id_);
       dmax += " 目标ID=" + std::to_string(target.target_id);
-      if (!(radiometric_max_detection_range_m > 0.0)) {
-        dmax += " 相对卫星最大探测距离=不适用(辐射链路不可解)";
-      } else {
-        dmax += " 相对卫星最大探测距离=" + oneq::logging::FormatF(max_detection_range_m, 1) +
-                "m 受限项=" + range_binding;
-      }
-      // 三个分项与实际斜距一并写出，便于外部一眼看出"这个数是哪个限制给的"。
-      dmax += " 辐射受限=" + oneq::logging::FormatF(radiometric_max_detection_range_m, 1) + "m";
-      dmax += " 几何受限(双高度地平线)=" + oneq::logging::FormatF(geometric_limit_m, 1) + "m";
-      dmax += " 目标高度=" + oneq::logging::FormatF(target_radius_m - kEarthRadiusM, 1) + "m";
-      dmax += " 任务上限=" + oneq::logging::FormatF(mission_limit_m, 1) + "m";
-      dmax += " 实际斜距=" + oneq::logging::FormatF(range_m, 1) + "m";
+      dmax += " 相对卫星最大探测距离=" + oneq::logging::FormatF(max_detection_range_m, 1) + "m";
       SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "最大探测距离计算功能测试", dmax);
     }
 
@@ -2152,6 +2122,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                        : (pointing_result.status == SbirsPointingAdvanceStatus::kTimedOut
                               ? "超时"
                               : "已拒绝"));
+        (void)pointing_status;  // 同上。
         // 中译：剩余角要写"实际指向 − 指令指向"的角距（含共模/通道扰动与静态 settle
         //       误差）。旧值取舵机本步进后的理想残差——只要一步转得到就恒为 0（实测
         //       91.9%），真没转到位时反而只报舵机缺口（149.85°），两个方向都与"指向
@@ -2171,6 +2142,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         const char* candidate_state =
             pointing_result.status == SbirsPointingAdvanceStatus::kSettled ? "已捕获跟踪"
                                                                           : "指向未稳定";
+        (void)candidate_state;  // 同上。
         SBIRS_INTERNAL_INTERFACE_ITEM(
             sim_time_sec, input.cycle_index, "红外宽场候选与窄场调度交互接口测试",
             "卫星ID=" + std::to_string(satellite_entity_id_) + " 当前服务目标=" +
@@ -2240,6 +2212,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                         std::fabs(el_residual_deg) <=
                             0.5 * static_cast<double>(acquisition_request.field_of_view_elevation_deg);
     const char* capture_sub_gate = captured ? "ok" : (in_fov ? "snr-below" : "outside-fov");
+    (void)capture_sub_gate;  // 仅验收构建消费；v141 无验收宏时避免 C4189。
     if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
       SBIRS_INTERNAL_INTERFACE_ITEM(
           sim_time_sec, input.cycle_index, "红外宽场候选与窄场调度交互接口测试",

@@ -52,6 +52,66 @@ using oneq::logging::FormatSci;
 using oneq::logging::FormatVec3;
 using oneq::logging::YesNo;
 
+/**
+ * @brief 天线有效口径面积（m²）：`Ae = G·λ²/(4π)`。
+ * @param[in] gain_dbi 该来波方向的接收增益（dBi；主瓣用主瓣增益，旁瓣来波用链路自带的接收增益）。
+ * @param[in] frequency_hz 载频（Hz）。
+ * @return 有效口径面积；输入非法时返回 0（调用方据此省略密度字段）。
+ */
+double AntennaApertureM2(double gain_dbi, double frequency_hz) {
+  if (!(frequency_hz > 0.0) || !std::isfinite(gain_dbi)) {
+    return 0.0;
+  }
+  const double wavelength_m = oneq::common::numerics::kLightSpeed / frequency_hz;
+  return std::pow(10.0, gain_dbi / 10.0) * wavelength_m * wavelength_m /
+         (4.0 * oneq::common::numerics::kPi);
+}
+
+/**
+ * @brief 功率 → 口面功率密度：`S = P / Ae`（W/m²）。
+ * @return 输入非法（功率 < 0、口径 ≤ 0）时返回 NaN，调用方据此省略该字段。
+ */
+double PowerDensityWPerM2(double power_w, double gain_dbi, double frequency_hz) {
+  if (!std::isfinite(power_w) || power_w < 0.0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double aperture_m2 = AntennaApertureM2(gain_dbi, frequency_hz);
+  if (!(aperture_m2 > 0.0)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return power_w / aperture_m2;
+}
+
+/**
+ * @brief 多干扰源聚合后的"到达功率密度"（W/m²）。
+ *
+ * 干扰通常从旁瓣进入，若一律用主瓣口径除聚合功率会低估几十 dB。这里对每条链路用
+ * **该链路自己的接收增益**算密度再求和，并按"聚合功率 / 逐链路功率之和"等比缩放，
+ * 使密度与实际打印的聚合功率严格同比例（聚合功率含时频重叠、抑制等模型处理）。
+ */
+double AggregateInterferenceDensityWPerM2(
+    const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links,
+    double aggregate_power_w, double frequency_hz) {
+  double sum_power_w = 0.0;
+  double sum_density = 0.0;
+  for (const oneq::electromagnetics::RfIncidentLinkResult& link : links) {
+    const double power_w = link.received_power_w;
+    if (!std::isfinite(power_w) || power_w <= 0.0) {
+      continue;
+    }
+    const double density = PowerDensityWPerM2(power_w, link.receive_antenna_gain_dbi, frequency_hz);
+    if (!std::isfinite(density)) {
+      continue;
+    }
+    sum_power_w += power_w;
+    sum_density += density;
+  }
+  if (!(sum_power_w > 0.0) || !std::isfinite(sum_density)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return sum_density * (aggregate_power_w / sum_power_w);
+}
+
 bool SameIdentity(const oneq::electromagnetics::RfEmissionIdentity& left,
                   const oneq::electromagnetics::RfEmissionIdentity& right) {
   return left.sensor_entity_id == right.sensor_entity_id &&
@@ -678,6 +738,27 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     echo += " 噪声功率=" + FormatSci(thermal) + "W";
     echo += " 干扰功率=" +
             FormatSci(input.has_cell ? input.cell.interference_power_w : 0.0) + "W";
+    // 中译：**口面功率密度**（2026-11-02 甲方要求补 W/m²，保留原 W 不动）——
+    //   S = P / Ae，Ae = G·λ²/(4π)：回波走主瓣 ⇒ 用主瓣增益；干扰多自旁瓣进入 ⇒
+    //   逐链路用各链路自己的接收增益求密度再按功率等比缩放（不能一律用主瓣口径，
+    //   否则会低估几十 dB）；热噪声是接收机内部产生的，除出来的量按"等效输入"记账。
+    // 标识：第29项功率密度（W/m²，2026-11-02）。
+    const double aperture_gain_dbi = static_cast<double>(input.one_way_antenna_gain_dbi);
+    const double carrier_hz = input.center_frequency_hz;
+    const double echo_density =
+        PowerDensityWPerM2(FromDb(input.echo_power_dbw), aperture_gain_dbi, carrier_hz);
+    const double noise_density = PowerDensityWPerM2(thermal, aperture_gain_dbi, carrier_hz);
+    const double jam_density = AggregateInterferenceDensityWPerM2(
+        input.incident_links, input.has_cell ? input.cell.interference_power_w : 0.0, carrier_hz);
+    if (std::isfinite(echo_density)) {
+      echo += " 回波功率密度=" + FormatSci(echo_density) + "W/m^2";
+    }
+    if (std::isfinite(noise_density)) {
+      echo += " 噪声等效输入功率密度=" + FormatSci(noise_density) + "W/m^2";
+    }
+    if (std::isfinite(jam_density)) {
+      echo += " 干扰功率密度=" + FormatSci(jam_density) + "W/m^2";
+    }
     Emit(t, cycle, "回波功率计算功能测试", echo);
   }
 
@@ -689,8 +770,18 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     if (last_noise_radar != input.radar_id || last_noise_cycle != cycle) {
       last_noise_radar = input.radar_id;
       last_noise_cycle = cycle;
-      Emit(t, cycle, "接收机噪声功率计算功能测试",
-           "雷达ID=" + std::to_string(input.radar_id) + " 热噪声功率=" + FormatSci(thermal) + "W");
+      // 中译：热噪声功率后面补"等效输入功率密度"（W/m²，2026-11-02）——热噪声是接收机
+      //   内部产生量，除以主瓣有效口径 `Ae = G·λ²/(4π)` 得到的是**等效输入**密度，
+      //   按约定记账（不是从口面物理入射的功率）。
+      // 标识：第31项等效输入噪声功率密度（2026-11-02）。
+      std::string noise_row =
+          "雷达ID=" + std::to_string(input.radar_id) + " 热噪声功率=" + FormatSci(thermal) + "W";
+      const double thermal_density = PowerDensityWPerM2(
+          thermal, static_cast<double>(input.one_way_antenna_gain_dbi), input.center_frequency_hz);
+      if (std::isfinite(thermal_density)) {
+        noise_row += " 热噪声等效输入功率密度=" + FormatSci(thermal_density) + "W/m^2";
+      }
+      Emit(t, cycle, "接收机噪声功率计算功能测试", noise_row);
     }
   }
 
@@ -968,6 +1059,16 @@ void WriteRirInterferenceLinks(
     //       "到达雷达的干扰功率"。
     // 标识：T-02（2026-10-20）。
     content += " 到达雷达的干扰功率=" + FormatSci(link.received_power_before_overlap_w) + "W";
+    // 中译：**到达功率密度**（2026-11-02 甲方要求补 W/m²）——用该干扰链路**自身方向**的
+    //   接收增益换算 `Ae = G_rx·λ²/(4π)`，因此无论来自主瓣还是旁瓣都成立；载频取链路
+    //   实际发射中心频率（与功率同一来源），保证密度与功率严格对应。
+    // 标识：第30项到达功率密度（W/m²，2026-11-02）。
+    const double link_density = PowerDensityWPerM2(
+        link.received_power_before_overlap_w, link.receive_antenna_gain_dbi,
+        link.emission_waveform.center_frequency_hz);
+    if (std::isfinite(link_density)) {
+      content += " 到达功率密度=" + FormatSci(link_density) + "W/m^2";
+    }
     RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "干扰功率计算功能测试", content);
   }
 }

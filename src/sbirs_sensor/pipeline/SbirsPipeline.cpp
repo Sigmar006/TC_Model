@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <cstddef>
 #include <cstdio>
 #include <set>
@@ -445,35 +446,10 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
   return envelope;
 }
 
-double ComputeMaxVisibleRangeInFovM(const session::SbirsVector3M& satellite_position_eci_m,
-                                    const SbirsBoresightChain& boresight_chain,
-                                    float center_az_sensor_deg, float center_el_sensor_deg,
-                                    float fov_az_deg, float fov_el_deg,
-                                    double target_geocentric_radius_m, double earth_radius_m) {
-  if (!(target_geocentric_radius_m > earth_radius_m)) {
-    target_geocentric_radius_m = earth_radius_m;
-  }
-  double max_range_m = 0.0;
-  constexpr int kAxisSteps = 16;
-  for (int az_index = 0; az_index <= kAxisSteps; ++az_index) {
-    const float az_fraction = static_cast<float>(az_index) / kAxisSteps;
-    const float az_deg = center_az_sensor_deg - 0.5f * fov_az_deg + az_fraction * fov_az_deg;
-    for (int el_index = 0; el_index <= kAxisSteps; ++el_index) {
-      const float el_fraction = static_cast<float>(el_index) / kAxisSteps;
-      const float el_deg = center_el_sensor_deg - 0.5f * fov_el_deg + el_fraction * fov_el_deg;
-      session::SbirsVector3M intersection_eci;
-      if (!foundation::TryIntersectRayWithSphere(
-              satellite_position_eci_m, boresight_chain.EciLosOfSensorPointing(az_deg, el_deg),
-              target_geocentric_radius_m, &intersection_eci) ||
-          foundation::IsEarthOcculted(satellite_position_eci_m, intersection_eci, earth_radius_m)) {
-        continue;
-      }
-      max_range_m = std::max(max_range_m, foundation::Norm(foundation::Subtract(
-                                              intersection_eci, satellite_position_eci_m)));
-    }
-  }
-  return max_range_m;
-}
+// 2026-11-02 删除 ComputeMaxVisibleRangeInFovM：它用"17×17 网格 × 目标地心半径球"
+// 求视场内最大可视距离，对同壳层目标（GEO 看 GEO）几何退化到几公里，
+// 把 258 km 写成"最大探测距离"而实际斜距 10,400 km 且已出测角，口径矛盾。
+// 现改由逐目标几何上限（地球临边 / 空间目标不受限）承担，见 d_max 段。
 
 /**
  * @brief 锁定目标的周期上下文暂存（单镜筒轮转用，2026-09-02）。
@@ -1515,13 +1491,33 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         target.radiant_intensity_w_per_sr, hw.optical_aperture_m, hw.optical_transmission,
         path_transmittance, hw.detector_quantum_efficiency, hw.integration_time_sec,
         effective_noise_w, policy.detection.wide_min_snr_linear);
-    const double fov_max_detection_range_m = ComputeMaxVisibleRangeInFovM(
-        satellite_position_eci_m, boresight_chain, actual_scan_azimuth_sensor_deg,
-        actual_scan_elevation_sensor_deg, mission.wide_field_fov_az_deg,
-        mission.wide_field_fov_el_deg, foundation::Norm(target.position_eci_m), kEarthRadiusM);
-    const double max_detection_range_m =
-        std::min(radiometric_max_detection_range_m,
-                 std::min(static_cast<double>(mission.max_range_m), fov_max_detection_range_m));
+    // 中译：**几何上限修正**（2026-11-02）——原实现用"17×17 网格 × 目标地心半径球"求
+    //   视场内最大可视距离，对**同壳层目标**（GEO 看 GEO，半径差 < 1 km）几何退化：
+    //   视线与该半径球只在视平线附近相交（几公里），再被地球遮挡过滤，于是把 258 km
+    //   写成"最大探测距离"，而同一目标对的实际斜距是 10,400 km、且已正常出测角——
+    //   两者自相矛盾（现场据此判定 258 km 为假值）。
+    //   现改为沿**目标自身方向**判断：空间目标不受几何截断（遮挡另有 IsEarthOcculted），
+    //   只有近地/地面目标才受地球临边限制（临边距离 = √(R_sat² − R_e²)）。
+    // 标识：最大探测距离几何口径修正（2026-11-02）。
+    const double target_radius_m = foundation::Norm(target.position_eci_m);
+    const double satellite_radius_m = foundation::Norm(satellite_position_eci_m);
+    const bool co_shell_target = std::fabs(target_radius_m - satellite_radius_m) < 1000.0;
+    double geometric_limit_m = std::numeric_limits<double>::infinity();
+    if (!co_shell_target && target_radius_m <= kEarthRadiusM + 100.0) {
+      geometric_limit_m = std::sqrt(std::max(0.0, satellite_radius_m * satellite_radius_m -
+                                                    kEarthRadiusM * kEarthRadiusM));
+    }
+    const double mission_limit_m = static_cast<double>(mission.max_range_m);
+    double max_detection_range_m = radiometric_max_detection_range_m;
+    const char* range_binding = "辐射受限";
+    if (mission_limit_m > 0.0 && mission_limit_m < max_detection_range_m) {
+      max_detection_range_m = mission_limit_m;
+      range_binding = "任务上限";
+    }
+    if (std::isfinite(geometric_limit_m) && geometric_limit_m < max_detection_range_m) {
+      max_detection_range_m = geometric_limit_m;
+      range_binding = "地球临边";
+    }
     if (SBIRS_ACCEPTANCE_LOG_ENABLED()) {
       // 中译：本星本周期对该目标的最大探测距离 d_max（米）。目标已进窄场锁定、由他星
       //       递话而来、或暂在本星宽场视场门外时同样成行。
@@ -1529,19 +1525,23 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       //       故跟踪期不再缺行；d_max 为宽场门限反解值，不含窄场门限口径。
       std::string dmax = "相对卫星ID=" + std::to_string(satellite_entity_id_);
       dmax += " 目标ID=" + std::to_string(target.target_id);
-      // 三种事实不得都写成 0（2026-10-21 体检：现场 66% 写 0 m、6.4% 写死上限）：
-      // 视场外/辐射链路不可解 → 不适用；被任务上限钳位 → 标注；否则写物理值。
-      const SbirsDetectionRangeKind range_kind = ClassifyDetectionRange(
-          radiometric_max_detection_range_m, fov_max_detection_range_m,
-          static_cast<double>(mission.max_range_m));
-      if (range_kind == SbirsDetectionRangeKind::kOutOfFieldOfView) {
-        dmax += " 相对卫星最大探测距离=不适用(目标不在本星宽场视场内)";
-      } else if (range_kind == SbirsDetectionRangeKind::kClampedToMissionMax) {
-        dmax += " 相对卫星最大探测距离=" +
-                oneq::logging::FormatF(max_detection_range_m, 1) + "m(上限钳位)";
+      if (!(radiometric_max_detection_range_m > 0.0)) {
+        dmax += " 相对卫星最大探测距离=不适用(辐射链路不可解)";
       } else {
-        dmax += " 相对卫星最大探测距离=" + oneq::logging::FormatF(max_detection_range_m, 1) + "m";
+        dmax += " 相对卫星最大探测距离=" + oneq::logging::FormatF(max_detection_range_m, 1) +
+                "m 受限项=" + range_binding;
       }
+      // 三个分项与实际斜距一并写出，便于外部一眼看出"这个数是哪个限制给的"。
+      dmax += " 辐射受限=" + oneq::logging::FormatF(radiometric_max_detection_range_m, 1) + "m";
+      if (co_shell_target) {
+        dmax += " 几何受限=不适用(同壳层目标)";
+      } else if (std::isfinite(geometric_limit_m)) {
+        dmax += " 几何受限=" + oneq::logging::FormatF(geometric_limit_m, 1) + "m";
+      } else {
+        dmax += " 几何受限=不受限";
+      }
+      dmax += " 任务上限=" + oneq::logging::FormatF(mission_limit_m, 1) + "m";
+      dmax += " 实际斜距=" + oneq::logging::FormatF(range_m, 1) + "m";
       SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "最大探测距离计算功能测试", dmax);
     }
 

@@ -500,7 +500,10 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
   const config::RirAzimuthElevationDeg boresight(antenna.boresight_offset_deg.az_deg,
                                                  antenna.boresight_offset_deg.el_deg);
 
-  const double step_deg = 0.02;
+  // 中译：反算与数据文件同用 0.1° 网格，保证"日志里的反算值"可用随行给出的
+  //   RadarAntennaGainPatterndata.csv 逐点复核（2026-11-02 要求）。
+  // 标识：方向图反算采样步长（2026-11-02）。
+  const double step_deg = 0.1;
   const double half_span_deg =
       std::max(1.0, 2.0 * std::max(static_cast<double>(antenna.nominal_az_beamwidth_deg),
                                    static_cast<double>(antenna.nominal_el_beamwidth_deg)));
@@ -550,7 +553,7 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
   // 最大旁瓣电平：主瓣外（离轴 > 半波束宽）方位扫描的最大采样增益，相对采样峰值。
   double derived_sidelobe_db = -60.0;
   for (double offset = 1.5 * antenna.nominal_az_beamwidth_deg; offset <= 180.0;
-       offset += 1.0) {
+       offset += step_deg) {
     const double gain = evaluate_gain(offset, 0.0);
     if (std::isfinite(gain)) {
       derived_sidelobe_db = std::max(derived_sidelobe_db, gain - derived_peak_gain_dbi);
@@ -599,20 +602,32 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
                           std::string(verdict_sidelobe) == "通过" &&
                           std::string(verdict_backlobe) == "通过";
 
-  // 日志边界（主文档第28项「日志边界」明确要求）：**不打印**峰值增益/波束宽度/旁瓣/后瓣的
-  // 反算数值，也不以这些数值是否被记录作为通过条件；只写方向图模型、方向图数据文件标识、
-  // 各参数校验结果与整体一致性结果，便于定位失败项。详细数值保留在代码内部校验上下文
-  //（即上面的 derived_/conf_ 变量），不再落盘。2026-09-28 按主文档收紧。
+  // 中译：**逐项输出反算值、配置值与误差**（2026-11-02 要求）——原实现按第 28 项
+  //   「日志边界」只写校验结论、不写数值，现场无法核对"反算到底是多少、和配置差多少"。
+  //   现按甲方要求改为：每个参数给出「反算 / 配置 / 误差 / 校验」四要素，并写出采样步长，
+  //   使日志可用同目录 RadarAntennaGainPatterndata.csv 逐点复核。
+  // 标识：第28项反算-配置对照输出（2026-11-02），取代 2026-09-28 的"只写结论"口径。
   const std::string pattern_csv_path = ResolveRirAntennaPatternCsvPath();
   std::string content = "雷达ID=" + std::to_string(radar_id);
   content += " 模型=" + std::string(AntennaPatternModelText(antenna.model_type));
   content += " 方向图文件=" + pattern_csv_path;
-  content += " 峰值增益校验=" + std::string(verdict_peak);
-  content += " 方位波束宽度校验=" + std::string(verdict_az_bw);
-  content += " 俯仰波束宽度校验=" + std::string(verdict_el_bw);
-  content += " 最大旁瓣电平校验=" + std::string(verdict_sidelobe);
-  content += " 后瓣电平校验=" + std::string(verdict_backlobe);
-  content += all_within ? " 外部配置一致性=通过" : " 外部配置一致性=不通过";
+  content += " 采样步长=" + FormatF(step_deg, 3) + "°";
+  content += " 峰值增益(dBi)[反算=" + FormatF(derived_peak_gain_dbi, 4) +
+             " 配置=" + FormatF(conf_peak_gain_dbi, 4) +
+             " 误差=" + FormatF(err_peak_gain * 100.0, 2) + "%" + "] 峰值增益校验=" + std::string(verdict_peak);
+  content += " 方位波束宽度(deg)[反算=" + FormatF(derived_az_bw_deg, 4) +
+             " 配置=" + FormatF(conf_az_bw_deg, 4) +
+             " 误差=" + FormatF(err_az_bw * 100.0, 2) + "%" + "] 方位波束宽度校验=" + std::string(verdict_az_bw);
+  content += " 俯仰波束宽度(deg)[反算=" + FormatF(derived_el_bw_deg, 4) +
+             " 配置=" + FormatF(conf_el_bw_deg, 4) +
+             " 误差=" + FormatF(err_el_bw * 100.0, 2) + "%" + "] 俯仰波束宽度校验=" + std::string(verdict_el_bw);
+  content += " 最大旁瓣电平(dB)[反算=" + FormatF(derived_sidelobe_db, 3) +
+             " 配置=" + FormatF(conf_sidelobe_db, 3) +
+             " 误差=" + FormatF(err_sidelobe * 100.0, 2) + "%" + "] 最大旁瓣电平校验=" + std::string(verdict_sidelobe);
+  content += " 后瓣电平(dB)[反算=" + FormatF(derived_backlobe_db, 3) +
+             " 配置=" + FormatF(conf_backlobe_db, 3) +
+             " 误差=" + FormatF(err_backlobe * 100.0, 2) + "%" + "] 后瓣电平校验=" + std::string(verdict_backlobe);
+  content += " 外部配置一致性=" + std::string(all_within ? "通过" : "不通过");
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
 }
 
@@ -2122,9 +2137,11 @@ bool TryExportRirAntennaPatternCsv(const config::hardware::RirAntennaConfig& ant
   // 自适应网格见评审 2026-08-26 条14（已废止）；同日修订：el 初版 ±180° 有
   // 方向冗余，收敛为 ±90°。
   // 以整数序号生成坐标，避免浮点逐次累加造成网格漂移；输出域、顺序和步长不变。
-  const double step_deg =
-      std::max(0.1, std::min(static_cast<double>(antenna.nominal_az_beamwidth_deg),
-                             static_cast<double>(antenna.nominal_el_beamwidth_deg)));
+  // 中译：采样点固定 0.1°（2026-11-02 要求）——原实现步长 = 波束宽度（本机 0.4°），
+  //   主瓣只有 1~2 个采样点，外部按数据文件复算波束宽度/旁瓣时分辨率不足，
+  //   验收第 28 项要求的参数无法从文件算准。0.1° 下 0.4° 波束有 4 个点、-3 dB 点落在格点上。
+  // 标识：方向图采样步长 0.1°（2026-11-02）。
+  const double step_deg = 0.1;
   const int az_count = static_cast<int>(std::floor(360.0 / step_deg + 0.5));
   const int el_count = static_cast<int>(std::floor(180.0 / step_deg + 0.5));
   for (int az_index = 0; az_index <= az_count; ++az_index) {

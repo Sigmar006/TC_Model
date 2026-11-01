@@ -22,6 +22,28 @@ namespace {
 using oneq::logging::FormatF;
 using oneq::logging::FormatVec3;
 
+/**
+ * @brief 落点/发射点/关机点的**物理合理高度上限**（m，2026-11-02 定位 A 收尾门控）。
+ *
+ * @details 推演只吃融合估计值；当某条航迹的角度-only 估计被摆到异常位置时，前向/回推
+ *   解算会给出**卫星级高度**的"落点/发射点/关机点"（现场：目标键=107，发射点高度
+ *   3.57e7 m，而 107 是预警卫星本身）。这类行数值虽"算出来"，物理上不可能，属假值，
+ *   不得写进验收日志。
+ *   取 1000 km 作上限：弹道导弹关机点约 100~300 km、再入段顶点本场景最高约 2900 km
+ *   （那是弹道顶点，不是关机点），发射点在地面；1000 km 足够宽松且能干净排除卫星级解。
+ */
+constexpr double kMaxPlausiblePointAltitudeM = 1.0e6;
+
+/**
+ * @brief 该解算点的高度是否落在弹道/地面的物理合理范围内。
+ * @param[in] altitude_m 解算点高度（m，WGS84 椭球高）。
+ * @return 在 [-1000 m, 1000 km] 内返回 true；否则视为假值，调用方不写该行。
+ */
+bool IsPlausiblePredictedPointAltitude(double altitude_m) {
+  return std::isfinite(altitude_m) && altitude_m <= kMaxPlausiblePointAltitudeM &&
+         altitude_m >= -1000.0;
+}
+
 struct LastVel {
   double vx{0.0};
   double vy{0.0};
@@ -288,7 +310,8 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
     double burnout_time_sec = 0.0;
     oneq::coordinate::LlaPositionDegM burnout_lla{};
     if (TryResolveBurnoutEstimate(phase, state, track.sim_time_sec, trajectory,
-                                  &burnout_time_sec, &burnout_lla)) {
+                                  &burnout_time_sec, &burnout_lla) &&
+        IsPlausiblePredictedPointAltitude(burnout_lla.altitude_m)) {
       burnout += " 关机点时刻=" + FormatF(burnout_time_sec, 1) + "s";
       burnout += " 关机点经纬高=" + FormatVec3(
           burnout_lla.latitude_deg, burnout_lla.longitude_deg, burnout_lla.altitude_m, 3);
@@ -378,7 +401,8 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
     }
     INFERENCE_ACCEPTANCE_ITEM(row_sim_time, row_cycle, "目标轨迹预报功能测试", forecast);
 
-    if (traj.has_impact) {
+    if (traj.has_impact &&
+        IsPlausiblePredictedPointAltitude(traj.impact_point.altitude_m)) {
       std::string impact = "目标键=" + std::to_string(i < tracks.size() ? tracks[i].key : 0U);
       impact += " 初步落点经纬高=" + FormatVec3(traj.impact_point.latitude_deg,
                                                 traj.impact_point.longitude_deg,
@@ -415,7 +439,8 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
       INFERENCE_ACCEPTANCE_ITEM(row_sim_time, row_cycle, "落点预报与信息分发功能测试", publish);
     }
 
-    if (traj.has_launch) {
+    if (traj.has_launch &&
+        IsPlausiblePredictedPointAltitude(traj.launch_point.altitude_m)) {
       double a = 0.0;
       double b = 0.0;
       double az = 0.0;

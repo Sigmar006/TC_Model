@@ -134,6 +134,14 @@ class SbirsTrackingCoordinator {
   std::map<std::uint64_t, tracking::SbirsGaussianState> filter_states_{};
   std::map<std::uint64_t, tracking::SbirsAngleCvGaussianState> angle_kf_states_{};
   std::map<std::uint64_t, unsigned int> nis_gate_exceeded_counts_{};
+  /**
+   * @brief 连续被离群门丢弃的量测拍数（2026-11-02 定位 A）。
+   *
+   * 角度 CV 滤波遇到"预测漂移 → 创新变大 → 判离群丢弃 → 只靠预测 → 漂移更大"的正反馈时
+   * 会永久锁死；现场表现为某颗星的窄场角度逐拍单调涨到度级。连续丢弃达到阈值即以当前
+   * 量测重置滤波器（重捕），打断该正反馈。
+   */
+  std::map<std::uint64_t, unsigned int> consecutive_outlier_counts_{};
   bool imm_initialized_{false};
   std::vector<std::unique_ptr<tracking::SbirsAngleMeasurementModel>> imm_measurement_models_{};
   std::vector<std::unique_ptr<tracking::SbirsEkfPredictor>> imm_predictors_owned_{};

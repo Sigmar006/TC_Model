@@ -2446,8 +2446,20 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           engaged_id, policy, &estimated_measurement_random_source_, context.azimuth_deg,
           context.elevation_deg, context.range_m, context.omega_deg_per_sec,
           satellite_position_eci_m, satellite_velocity_eci_m, nfov_frame_count);
-      detection.record.azimuth_rad = ToEciAzimuthRad(tracking_result.output_azimuth_deg);
-      detection.record.elevation_rad = ToEciElevationRad(tracking_result.output_elevation_deg);
+      // 中译：**被离群门丢弃的量测不得用滤波器输出顶替**（2026-11-02 定位 A）——原实现
+      //   无论量测是否被丢弃，都把 `output_azimuth_deg`（滤波/预测角）写成检测角；当滤波
+      //   因连续离群而只靠预测滑行时，这一行就把"漂移到度级的预测"当成量测发给融合，
+      //   双星交会因此拿到 166 km 级残差（现场 [pair] 45.7 km 中位）。量测被丢弃时改用
+      //   本拍**实际量测角**，检测角始终是"量测"而不是"预测"。
+      // 标识：离群丢弃时发布实测角（2026-11-02）。
+      if (tracking_result.measurement_discarded) {
+        detection.record.azimuth_rad = ToEciAzimuthRad(tracking_result.measurement_azimuth_deg);
+        detection.record.elevation_rad =
+            ToEciElevationRad(tracking_result.measurement_elevation_deg);
+      } else {
+        detection.record.azimuth_rad = ToEciAzimuthRad(tracking_result.output_azimuth_deg);
+        detection.record.elevation_rad = ToEciElevationRad(tracking_result.output_elevation_deg);
+      }
       detection.attribution.has_estimation_nis = tracking_result.has_estimation_nis;
       detection.attribution.estimation_nis = tracking_result.estimation_nis;
       detection.attribution.estimation_nis_gate_exceeded =

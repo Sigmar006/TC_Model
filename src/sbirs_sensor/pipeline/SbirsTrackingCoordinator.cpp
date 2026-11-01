@@ -21,6 +21,10 @@ constexpr float kSbirsNisChiSquare2Dof95 = 5.99f;
  *       作阈值既挡得住毒数据，也不会把正常量测当离群丢掉（2026-10-21）。
  */
 constexpr float kSbirsNisOutlierChiSquare = 1000.0f;
+// 中译：连续被离群门丢弃多少拍后强制重捕（用当前量测重置角度 CV 状态）。取 5 拍：
+//   单拍偶发离群（真实机动/量测野值）不该重置滤波器，连续 5 拍说明状态已跟不上目标。
+// 标识：离群重捕阈值（2026-11-02）。
+constexpr unsigned int kConsecutiveOutlierReacquire = 5U;
 /** @brief 离群量测连续被拒的最大拍数（配置 nis_gate_loss_cycles=0 时的兜底丢锁判据）。 */
 constexpr unsigned int kSbirsMaxConsecutiveRejections = 3U;
 
@@ -246,8 +250,22 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
                          result.estimation_nis > kSbirsNisOutlierChiSquare;
     if (outlier) {
       result.measurement_discarded = true;
+      // 中译：**离群锁死重捕**（2026-11-02 定位 A）——连续被判离群说明滤波器已经跟不上
+      //   目标（预测漂移把创新越推越大），继续只靠预测会让角度单调涨到度级。连续丢弃
+      //   达到 kConsecutiveOutlierReacquire 拍就用**当前量测**重置角度 CV 状态（重捕），
+      //   本拍按"已更新"记账，不再丢弃。
+      // 标识：离群连续丢弃重捕（2026-11-02）。
+      unsigned int &outlier_count = consecutive_outlier_counts_[target_id];
+      ++outlier_count;
+      if (outlier_count >= kConsecutiveOutlierReacquire) {
+        state_it->second =
+            tracking::MakeInitialAngleCvState(measurement_rad(0), measurement_rad(1));
+        outlier_count = 0U;
+        result.measurement_discarded = false;
+      }
     } else {
       state_it->second = update_result.posterior;
+      consecutive_outlier_counts_[target_id] = 0U;
     }
     if (result.estimation_nis_gate_exceeded) {
       ++nis_gate_exceeded_counts_[target_id];

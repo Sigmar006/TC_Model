@@ -24,6 +24,21 @@ namespace logging {
  */
 void WriteSatelliteTargetAcceptanceLine(const std::string& line);
 
+/**
+ * @brief 只读诊断：SatelliteTarget 通道当前实际打开的文件路径（未打开返回空串）。
+ *
+ * @note 排查"行报告已写、日志里却搜不到"时用来确认**写到哪个文件**（CWD 相对路径与
+ *       绝对路径混用时最常踩）。
+ */
+std::string CurrentSatelliteTargetLogPath();
+
+/**
+ * @brief 只读诊断：SatelliteTarget 通道流状态（open/good/fail/bad 与 tellp）。
+ *
+ * @note tellp 不增长即说明写入被流状态吞掉（failbit 置位后所有写入都是空操作）。
+ */
+std::string CurrentSatelliteTargetLogStateText();
+
 }  // namespace logging
 }  // namespace oneq
 

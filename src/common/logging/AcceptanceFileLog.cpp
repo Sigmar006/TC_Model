@@ -565,6 +565,14 @@ void WriteAcceptanceLogToDirectory(AcceptanceChannel channel,
   SinkOfPath(channel, JoinPath(output_directory, ChannelFileName(channel))).Write(text);
 }
 
+std::string CurrentSatelliteTargetLogPath() {
+  return CurrentAcceptanceLogPath(AcceptanceChannel::kSatelliteTarget);
+}
+
+std::string CurrentSatelliteTargetLogStateText() {
+  return CurrentAcceptanceLogStateText(AcceptanceChannel::kSatelliteTarget);
+}
+
 void WriteSatelliteTargetAcceptanceLine(const std::string& line) {
   // 中译：集成方落盘入口（2026-11-02）——直接复用 SatelliteTarget 通道的库内 sink：
   //   同一把互斥、同一条流、同样的 ANSI→UTF-8 转码与补换行；宿主不必再自己 fopen。

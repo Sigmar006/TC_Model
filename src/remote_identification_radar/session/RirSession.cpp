@@ -873,8 +873,15 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     acceptance_scan_pattern_logged = true;
   }
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {
+    // 中译：37/37A 互斥判据与控制器共用同一函数，避免两处各判一套（2026-11-02）。
+    // 标识：第37/37A 互斥（驻留行侧，2026-11-02）。
+    const float horizon_half_beam_deg =
+        0.5f * std::max(config.hardware.antenna.nominal_az_beamwidth_deg,
+                        config.hardware.antenna.nominal_el_beamwidth_deg);
+    const bool horizon_search_cycle =
+        runtime::IsHorizonSearchCycle(dwell_plan, horizon_half_beam_deg);
     runtime::WriteRirDwellScan(controller.EffectiveSensorEntityId(), input.sim_time_sec,
-                               input.input_cycle_index, dwell_plan);
+                               input.input_cycle_index, dwell_plan, horizon_search_cycle);
   }
 
   // 搜索角域随驻留计划一并下发：硬件体积 + 转台朝向 + 任务扫描子窗 + 指定目标 ID；

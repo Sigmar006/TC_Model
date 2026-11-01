@@ -15,6 +15,7 @@
 #include <random>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "1q/remote_identification_radar/config/RirHardwareConfig.h"
@@ -358,6 +359,14 @@ class RirController {
   float last_max_detected_slant_range_m_{0.0f}; /**< 最近周期持航迹目标最大输入斜距（m）。 */
   /** 本周期逐目标检测 SNR（单脉冲口径）；归属视图与调试视图透出，非验收统计项。 */
   std::unordered_map<std::uint64_t, float> last_cycle_snr_by_target_id_{};
+  /**
+   * @brief 上一周期逐目标真值速度（ENU，m/s）与其时刻（2026-11-02）。
+   *
+   * 场景输入没有加速度字段，第 42 项"加速度误差"所需的真值加速度由相邻周期真值速度
+   * 差商 Δv/Δt 导出；Δt 只取 (0, 10] s，目标中断后重新出现不跨越长间隔求差。
+   */
+  std::unordered_map<std::uint64_t, std::pair<double, Eigen::Vector3f>>
+      prev_truth_velocity_enu_{};
 };
 
 }  // namespace runtime

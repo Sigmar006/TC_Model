@@ -927,6 +927,15 @@ void RirController::RunCycle(const session::RirCycleInput& input,
   // 按「未经过具体流程步骤则不输出」抑制该项日志（2026-09-28）。
   const bool has_real_dwell_plan = !dwell_plan.empty();
   const std::vector<RirDwellPlan>& plan = has_real_dwell_plan ? dwell_plan : kFallbackPlan;
+  // 中译：**地平线搜索周期判定**（2026-11-02）——第37（空域自主搜索）与第37A（地平线搜索）
+  //   必须二选一：只要本周期存在贴地平线（|el| ≤ 半波束宽）的搜索驻留，整周期的指向/调度/
+  //   检测行全部写 37A，37 一行不写；否则反之。原实现按"首个非跟踪驻留"判，同一周期会
+  //   同时出现 37A 指向行与 37 调度行。
+  // 标识：第37/37A 互斥判定（2026-11-02）。
+  const float horizon_half_beam_deg =
+      0.5f * std::max(hardware_.antenna.nominal_az_beamwidth_deg,
+                      hardware_.antenna.nominal_el_beamwidth_deg);
+  const bool horizon_search_cycle = IsHorizonSearchCycle(plan, horizon_half_beam_deg);
   // 验收"指向"行与接收链回退口径按计划首条目；发射记录逐驻留
   //（见 ResolveRfCycle / last_emission_frame_，核查 9.2）。
   const config::RirAzimuthElevationDeg& dwell_center_deg = plan.front().pointing_deg;
@@ -1226,11 +1235,8 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       // 验收判定标准 第37项/第37A项：本周期主驻留指向俯仰接近 0°（|el| ≤ 半波束宽）
       // 时判为地平线搜索，按 37A 独立项名写出（与 37 项同批字段）；其余按 37 项写出。
       // 本模型无独立地平线搜索模式，判据为「波束实际指向接近地平线」。
-      const float horizon_half_beam_deg =
-          0.5f * std::max(hardware_.antenna.nominal_az_beamwidth_deg,
-                          hardware_.antenna.nominal_el_beamwidth_deg);
       if (has_real_dwell_plan) {
-        if (std::fabs(dwell_center_deg.el_deg) <= horizon_half_beam_deg) {
+        if (horizon_search_cycle) {
           WriteRirHorizonSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
                                           input.input_cycle_index, dwell_center_deg.az_deg,
                                           dwell_center_deg.el_deg, g_acceptance_found_targets);
@@ -1401,7 +1407,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                        latest_summary_.dwell_budget.dwell_budget_sec,
                        latest_summary_.dwell_budget.dwell_consumed_sec, planned_search,
                        planned_designate, planned_external_track, planned_internal_track,
-                       confirmed);
+                       confirmed, horizon_search_cycle);
     }
   } else {
     track_snapshots = lifecycle_->BuildTrackSnapshots();
@@ -1478,11 +1484,39 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                                                          truth_pos_enu.z());
           const oneq::coordinate::EnuVelocityMps truth_vel_enu(
               truth_target->velocity_x, truth_target->velocity_y, truth_target->velocity_z);
+          const Eigen::Vector3f truth_vel_enu_vector(truth_target->velocity_x,
+                                                     truth_target->velocity_y,
+                                                     truth_target->velocity_z);
           if (oneq::coordinate::TryEnuToEcef(truth_enu, platform_lla,
                                              &truth_context.position_ecef) &&
               oneq::coordinate::TryEnuToEcefVelocity(truth_vel_enu, platform_lla,
                                                      &truth_context.velocity_ecef)) {
             truth_context.has_ecef = true;
+            // 中译：**真值加速度**（2026-11-02 第42项加速度误差用）——场景输入只给位置与
+            //   速度，没有加速度字段，故用相邻周期真值速度差商 Δv/Δt 导出；Δt 限定
+            //   (0, 10] s，目标中断后重现不跨长间隔求差，避免出现虚假巨值。
+            //   行内会标注"真值加速度来源=真值速度差分"，不冒充直接输入量。
+            // 标识：第42项真值加速度差商（2026-11-02）。
+            const double now_sec = static_cast<double>(input.sim_time_sec);
+            const std::uint64_t key = static_cast<std::uint64_t>(track.external_target_id);
+            const auto prev_it = prev_truth_velocity_enu_.find(key);
+            const double dt_sec = (prev_it != prev_truth_velocity_enu_.end())
+                                      ? (now_sec - prev_it->second.first)
+                                      : 0.0;
+            if (prev_it != prev_truth_velocity_enu_.end() && dt_sec > 0.0 && dt_sec <= 10.0) {
+              const Eigen::Vector3f acc_enu =
+                  (truth_vel_enu_vector - prev_it->second.second) / static_cast<float>(dt_sec);
+              oneq::coordinate::EcefVelocityMps acc_ecef_probe;
+              if (oneq::coordinate::TryEnuToEcefVelocity(
+                      oneq::coordinate::EnuVelocityMps(acc_enu.x(), acc_enu.y(), acc_enu.z()),
+                      platform_lla, &acc_ecef_probe)) {
+                truth_context.has_acceleration = true;
+                truth_context.acceleration_x_mps2 = acc_ecef_probe.x_mps;
+                truth_context.acceleration_y_mps2 = acc_ecef_probe.y_mps;
+                truth_context.acceleration_z_mps2 = acc_ecef_probe.z_mps;
+              }
+            }
+            prev_truth_velocity_enu_[key] = std::make_pair(now_sec, truth_vel_enu_vector);
           }
         }
         truth_context.scatterers = &truth_target->range_rcs_scatterers;

@@ -821,8 +821,12 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
         input.cfar_pfa, static_cast<int>(std::max(1U, pulses)));
     has_threshold = std::isfinite(threshold);
   }
+  // 中译：**门限改为 dB**（2026-11-02 甲方要求）——T 是归一化检验统计量的倍率
+  //   （Q(N,T)=P_fa 反解），与 dB 口径的 SNR 直接比对必须换算；直接写倍率会被读成 dB。
+  //   现输出 10·log10(T) 并带单位，便于与同项 `信噪比=…dB` 直接比较。
+  // 标识：第36项统计检测门限 dB 口径（2026-11-02）。
   EmitOrNone(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测门限=", has_threshold,
-             has_threshold ? FormatF(threshold, 6) : std::string());
+             has_threshold ? (FormatF(10.0 * std::log10(threshold), 4) + "dB") : std::string());
   // 中译：补"实际计算得出的信噪比"——门限与结果之间的判决依据此前缺失，读日志只能看到
   //       "门限 13.8 / 结果 否"，无法判断差多少。该 SNR 就是 CFAR **实际消费**的那个值：
   //       cell 路径为处理后单脉冲 SINR，回退路径为雷达方程算出的 SNR。
@@ -1072,6 +1076,22 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
     content += "]";
     RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, content);
   }
+}
+
+bool IsHorizonSearchCycle(const std::vector<RirDwellPlan>& dwell_plan, float half_beam_deg) {
+  // 中译：第37/37A 二选一判据（2026-11-02）——只要本周期存在**贴地平线**的搜索驻留，
+  //   整周期就按"地平线搜索"记账：37A 写指向/调度/检测，37 一行不写。
+  //   原实现按"本周期首个非跟踪驻留的俯仰"判，导致同一周期里 37A 的指向行与 37 的调度行
+  //   同时出现（"地平线搜索时空中还在搜索"）。
+  // 标识：地平线搜索周期判定（2026-11-02）。
+  for (const RirDwellPlan& dwell : dwell_plan) {
+    if (dwell.kind == RirDwellKind::kSearch &&
+        std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
+            static_cast<double>(half_beam_deg)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
@@ -1512,16 +1532,34 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
     Emit(sim_time_sec, cycle, "跟踪滤波功能测试", track_target_id + " " + cov_text);
   }
   if (have_frame && truth != nullptr && truth->has_ecef) {
-    Emit(sim_time_sec, cycle, "跟踪滤波功能测试",
-         track_target_id + " 估计误差指标=位置误差ECEF=" +
-             FormatVec3(pos_ecef.x_m - truth->position_ecef.x_m,
-                        pos_ecef.y_m - truth->position_ecef.y_m,
-                        pos_ecef.z_m - truth->position_ecef.z_m, 1) +
-             "m 速度误差=" +
-             FormatVec3(vel_ecef.x_mps - truth->velocity_ecef.x_mps,
-                        vel_ecef.y_mps - truth->velocity_ecef.y_mps,
-                        vel_ecef.z_mps - truth->velocity_ecef.z_mps, 3) +
-             "m/s");
+    std::string err_row = track_target_id + " 估计误差指标=位置误差ECEF=" +
+                          FormatVec3(pos_ecef.x_m - truth->position_ecef.x_m,
+                                     pos_ecef.y_m - truth->position_ecef.y_m,
+                                     pos_ecef.z_m - truth->position_ecef.z_m, 1) +
+                          "m 速度误差=" +
+                          FormatVec3(vel_ecef.x_mps - truth->velocity_ecef.x_mps,
+                                     vel_ecef.y_mps - truth->velocity_ecef.y_mps,
+                                     vel_ecef.z_mps - truth->velocity_ecef.z_mps, 3) +
+                          "m/s";
+    if (truth->has_acceleration) {
+      // 中译：**加速度误差**（2026-11-02 甲方要求）——原误差行只有位置与速度，缺少加速度；
+      //   这里同时给出真值加速度（外部可见的"实际加速度"）与估计-真值之差及其模长。
+      //   真值加速度由控制器按真值速度差商导出（场景输入无加速度字段），故标注来源。
+      // 标识：第42项加速度误差 + 真值加速度（2026-11-02）。
+      const double ax = static_cast<double>(acc_ecef.x_mps);
+      const double ay = static_cast<double>(acc_ecef.y_mps);
+      const double az = static_cast<double>(acc_ecef.z_mps);
+      const double ex = ax - truth->acceleration_x_mps2;
+      const double ey = ay - truth->acceleration_y_mps2;
+      const double ez = az - truth->acceleration_z_mps2;
+      err_row += " 实际加速度ECEF=" +
+                 FormatVec3(truth->acceleration_x_mps2, truth->acceleration_y_mps2,
+                            truth->acceleration_z_mps2, 4) +
+                 "m/s^2 加速度误差=" + FormatVec3(ex, ey, ez, 4) + "m/s^2 加速度误差模=" +
+                 FormatF(std::sqrt(ex * ex + ey * ey + ez * ez), 4) +
+                 "m/s^2 真值加速度来源=真值速度差分";
+    }
+    Emit(sim_time_sec, cycle, "跟踪滤波功能测试", err_row);
   }
 
   // 第43项 根据目标 RCS 实时计算目标探测结果：本周期RCS + 定位信息 + 运动参数
@@ -1895,7 +1933,8 @@ void WriteRirExternalResourceStatus(
 void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
                       std::uint32_t designate_count, std::uint32_t external_track_count,
-                      std::uint32_t internal_track_count, std::uint32_t confirmed_tracks) {
+                      std::uint32_t internal_track_count, std::uint32_t confirmed_tracks,
+                      bool horizon_search_cycle) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -1903,7 +1942,11 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   // 2026-08-30 核查 9.1：删除"计划驻留/实际执行"字段——库内逐驻留执行，实际数
   // 恒等于计划数，无信息量；按类分项计数与时间预算保留。
   // 2026-10-22：库内跟踪与外部跟踪合并为"驻留"一项输出（用户要求统一命名）。
-  Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
+  // 中译：调度行归属哪一项由"本周期是否为地平线搜索周期"决定（2026-11-02）——
+  //   地平线周期写 37A、其余写 37，保证两项互斥、不重复成行。
+  // 标识：第37/37A 调度行互斥（2026-11-02）。
+  const char* schedule_item = horizon_search_cycle ? "地平线搜索功能测试" : "空域自主搜索功能测试";
+  Emit(sim_time_sec, cycle, schedule_item,
        "雷达ID=" + std::to_string(radar_id) + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
            " 驻留=" + std::to_string(external_track_count + internal_track_count) +
@@ -1920,7 +1963,7 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
 }
 
 void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                       const std::vector<RirDwellPlan>& dwell_plan) {
+                       const std::vector<RirDwellPlan>& dwell_plan, bool horizon_search_cycle) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -1957,8 +2000,12 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
                std::to_string(dwell.scan_pattern_index) + " 指向=" +
                FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) +
                "° 波位排列表已输出至" + scan_csv_path);
-      if (std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
-          kHorizonElevationToleranceDeg) {
+      // 中译：37A 的指向行只在**地平线搜索周期**写（2026-11-02）——否则整周期既有 37 的
+      //   调度行、又有 37A 的指向行，等于"地平线搜索与空中搜索同时在跑"。
+      // 标识：37A 指向行归属互斥（2026-11-02）。
+      if (horizon_search_cycle &&
+          std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
+              kHorizonElevationToleranceDeg) {
         Emit(sim_time_sec, cycle, "地平线搜索功能测试",
              "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
                  FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");

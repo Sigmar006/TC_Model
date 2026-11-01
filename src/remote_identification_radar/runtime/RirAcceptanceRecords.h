@@ -93,6 +93,16 @@ struct RirTrackTruthContext {
   bool has_ecef{false};        /**< 真值 ECEF 位置/速度可用（滤波误差指标用）。 */
   oneq::coordinate::EcefPositionM position_ecef{};
   oneq::coordinate::EcefVelocityMps velocity_ecef{};
+  /**
+   * @brief 真值 ECEF 加速度可用标志（2026-11-02 第42项加速度误差用）。
+   *
+   * 场景输入 `RirSceneTarget` 只有位置与速度，没有加速度字段，故由控制器按
+   * `Δv_真值/Δt`（相邻周期真值速度差商）导出；行内标注 `真值加速度来源=真值速度差分`。
+   */
+  bool has_acceleration{false};
+  double acceleration_x_mps2{0.0};
+  double acceleration_y_mps2{0.0};
+  double acceleration_z_mps2{0.0};
   /** 第47项散射中心：场景距离像真值输入（库内特征提取只出统计量，无逐中心量测）。 */
   const std::vector<session::RirRangeRcsScatterer>* scatterers{nullptr};
 };
@@ -222,10 +232,21 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 
 /**
  * @brief 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名。
+ * @note **与第37项互斥**（2026-11-02）：判定口径为"本周期是否存在贴地平线的搜索驻留"，
+ *       存在则整周期只写 37A（指向/调度/检测三类行），不写任何 37 行；反之亦然。
+ *       判定函数见 `IsHorizonSearchCycle`。
  */
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
                                      std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections);
+
+/**
+ * @brief 本周期是否属于"地平线搜索周期"（第37/37A 二选一判据，2026-11-02）。
+ * @param[in] dwell_plan 本周期驻留计划。
+ * @param[in] half_beam_deg 地平线判据的半波束宽（= 0.5×max(方位/俯仰波束宽)）。
+ * @return 存在任一搜索驻留其俯仰 |el| ≤ 半波束宽时返回 true。
+ */
+bool IsHorizonSearchCycle(const std::vector<RirDwellPlan>& dwell_plan, float half_beam_deg);
 
 /**
  * @param[in] platform_lla 平台 LLA（雷达局部 ENU 的绝对锚点；量测位置 LLA 换算用）。
@@ -312,7 +333,7 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
                       std::uint32_t designate_count, std::uint32_t external_track_count,
                       std::uint32_t internal_track_count,
-                      std::uint32_t confirmed_tracks);
+                      std::uint32_t confirmed_tracks, bool horizon_search_cycle);
 
 /**
  * @brief 验收判定标准 第48项：逐驻留波束指向行（2026-08-29 TAS：一周期多驻留）。
@@ -323,7 +344,7 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
  *       消除"周期内序号"的误读（该值跨周期连续递增并在波位表长度处回绕）。
  */
 void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                       const std::vector<RirDwellPlan>& dwell_plan);
+                       const std::vector<RirDwellPlan>& dwell_plan, bool horizon_search_cycle);
 
 /**
  * @brief 验收判定标准 第48项：波束扫描范围摘要（扫描上下限 + 扫描配置回显）。

@@ -180,6 +180,13 @@ class SbirsPipeline {
   // kSlewing 的周期记录起始时刻，捕获成功时按差值给出转向时长（s）；仅用于验收行
   // 取证，不参与任何调度/滤波计算。
   std::map<std::uint64_t, float> nfov_slew_start_time_s_{};
+  /**
+   * @brief 上一次窄场指向（传感器系 az/el，deg），2026-11-02 第14项镜头转向时间用。
+   *
+   * 转向时间 = 本次指向相对上次指向的角距离 / 配置转速：同一星换目标时就是镜头真实
+   * 需要转过的角度；首次指向以当时宽场扫描指向为起点。落点只在捕获成功时更新。
+   */
+  std::map<std::uint64_t, std::pair<float, float> > nfov_last_pointing_deg_{};
 };
 
 }  // namespace pipeline

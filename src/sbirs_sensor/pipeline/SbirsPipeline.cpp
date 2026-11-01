@@ -2242,12 +2242,47 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       //   时长；压根没有转向（目标本来就在窄视场内、同帧捕获）就写 0.000s。两种情形都是
       //   可直接与 0.5 s 判据比较的纯数值。
       // 标识：第14项镜头转向时间（实测秒值，2026-11-02）。
+      // 中译：转向时长按**镜头实际要转过的角度**给（2026-11-02 二次修正）——
+      //   首选实测：有"转向中"记录时用 首次转向中→本拍 的真实耗时；
+      //   否则按几何算：本次窄场指向 相对 上一次窄场指向（首次以当时宽场扫描指向为起点）
+      //   的角距离 ÷ 配置转速，再扣掉稳定容差。这样同一星换目标时会得到真实量级的
+      //   转动时长（例：20° 换向、60°/s ⇒ 0.33 s），不再恒定写 0。
+      // 标识：第14项镜头转向时间（实测优先 + 几何回退，2026-11-02）。
       double turn_time_s = 0.0;
       const auto slew_found = nfov_slew_start_time_s_.find(target_id);
       if (slew_found != nfov_slew_start_time_s_.end()) {
         turn_time_s = std::max(0.0, static_cast<double>(sim_time_sec) -
                                         static_cast<double>(slew_found->second));
+      } else {
+        double from_az = static_cast<double>(actual_scan_azimuth_sensor_deg);
+        double from_el = static_cast<double>(actual_scan_elevation_sensor_deg);
+        const auto last_pointing = nfov_last_pointing_deg_.find(satellite_entity_id_);
+        if (last_pointing != nfov_last_pointing_deg_.end()) {
+          from_az = static_cast<double>(last_pointing->second.first);
+          from_el = static_cast<double>(last_pointing->second.second);
+        }
+        double delta_az = static_cast<double>(acquisition_request.command_azimuth_deg) - from_az;
+        while (delta_az > 180.0) {
+          delta_az -= 360.0;
+        }
+        while (delta_az < -180.0) {
+          delta_az += 360.0;
+        }
+        const double delta_el =
+            static_cast<double>(acquisition_request.command_elevation_deg) - from_el;
+        const double angle_deg =
+            std::sqrt(delta_az * delta_az + delta_el * delta_el);
+        const double slew_rate =
+            static_cast<double>(mission.narrow_pointing_max_slew_rate_deg_per_sec);
+        const double settle_deg = static_cast<double>(mission.narrow_pointing_settle_error_deg);
+        if (slew_rate > 0.0) {
+          turn_time_s = std::max(0.0, angle_deg - settle_deg) / slew_rate;
+        }
       }
+      // 捕获成功后记下本次指向，供下一次换向算角距离。
+      nfov_last_pointing_deg_[satellite_entity_id_] =
+          std::make_pair(acquisition_request.command_azimuth_deg,
+                         acquisition_request.command_elevation_deg);
       SBIRS_DUAL_ACCEPTANCE_ITEM(
           sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
           "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +

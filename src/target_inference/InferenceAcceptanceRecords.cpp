@@ -223,9 +223,15 @@ bool TryResolveBurnoutEstimate(BurnoutPhase phase, const BurnoutTrackerState& st
     *burnout_time_sec = state.time_sec;
     return true;
   }
+  // 中译：**观测期回推不再要求 `state.valid`**（2026-11-02）——`state.valid` 是"关机点
+  //   峰值判定已获速度精度门（σ_v 达雷达级）"的标志，而回推估计走的是**另一条依据**
+  //   （大气界面停机点，行内标注「判定依据=大气界面回推估计」），两者不该互相绑定。
+  //   现场：融合角度-only 航迹的 σ_v 永远到不了雷达级，于是第 23 项整轮只能写"正在模拟
+  //   计算"，而同期推演其实已经算出 `has_launch`。只要回推解存在就允许写估计值。
+  // 标识：第23项关机点回推解耦速度门（2026-11-02）。
   const bool can_backtrack = phase == BurnoutPhase::kBeforeWindow ||
                              phase == BurnoutPhase::kBeforeTrackStart ||
-                             (phase == BurnoutPhase::kObserving && state.valid);
+                             phase == BurnoutPhase::kObserving;
   if (!can_backtrack || !trajectory.valid || !trajectory.has_launch) {
     return false;
   }

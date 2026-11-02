@@ -83,33 +83,59 @@ double PowerDensityWPerM2(double power_w, double gain_dbi, double frequency_hz) 
 }
 
 /**
- * @brief 多干扰源聚合后的"到达功率密度"（W/m²）。
+ * @brief 单条干扰链路在雷达口面上的**入射功率密度**（W/m²）。
  *
- * 干扰通常从旁瓣进入，若一律用主瓣口径除聚合功率会低估几十 dB。这里对每条链路用
- * **该链路自己的接收增益**算密度再求和，并按"聚合功率 / 逐链路功率之和"等比缩放，
- * 使密度与实际打印的聚合功率严格同比例（聚合功率含时频重叠、抑制等模型处理）。
+ * @details 用链路自己的接收增益算口径（干扰源若与目标同址，来向就是主瓣方向，增益接近峰值），
+ *   再把**接收机侧损耗**（系统损耗、极化失配、共址隔离）从功率里还原掉——它们是接收机内部
+ *   的损失，不是入射波本身的能量；传播损耗（含大气吸收）保留在密度里，因为它确实削弱了
+ *   到达口面的功率密度。
+ *
+ * @note 2026-11-02 修正：上一版直接 `received_power_w / Ae`，把接收机损耗也除进了口径，
+ *   使同一几何下的密度比真实入射密度低 2~7 dB（现场：自防护干扰机与目标同址、来向在主瓣内，
+ *   反算口径却只有 25.8 m² ≈ 45 dBi，被误读成"从旁瓣进来"）。
+ */
+double LinkIncidentDensityWPerM2(const oneq::electromagnetics::RfIncidentLinkResult& link,
+                                double frequency_hz) {
+  double power_w = link.received_power_before_overlap_w;
+  if (!std::isfinite(power_w) || power_w <= 0.0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  double receiver_side_loss_db = link.receiver_system_loss_db + link.polarization_mismatch_loss_db;
+  if (link.is_co_site) {
+    receiver_side_loss_db += link.co_site_isolation_db;
+  }
+  if (std::isfinite(receiver_side_loss_db) && receiver_side_loss_db != 0.0) {
+    power_w /= std::pow(10.0, receiver_side_loss_db / 10.0);
+  }
+  return PowerDensityWPerM2(power_w, link.receive_antenna_gain_dbi, frequency_hz);
+}
+
+/**
+ * @brief 多干扰源聚合后的**入射功率密度**（W/m²）。
+ *
+ * @details 逐链路算入射密度再相加（各源非相干），口径用该链路自己的接收增益——干扰若从
+ *   旁瓣进入，增益自然低，不能用主瓣口径一律相除。
+ *
+ * @note 2026-11-02 修正：不再按"聚合功率/逐链路功率之和"等比缩放。聚合功率里含时频重叠与
+ *   抗拖压制（那是**检测等效功率**，属处理链），把它按比例摊回密度会把处理损耗混进
+ *   物理量。两个字段各按各的口径：`干扰功率=` 是检测等效功率，`干扰功率密度=` 是口面入射
+ *   功率密度，二者相差时频重叠与抗拖因子，属预期差异（已在行内注明口径）。
  */
 double AggregateInterferenceDensityWPerM2(
     const std::vector<oneq::electromagnetics::RfIncidentLinkResult>& links,
-    double aggregate_power_w, double frequency_hz) {
-  double sum_power_w = 0.0;
+    double frequency_hz) {
   double sum_density = 0.0;
   for (const oneq::electromagnetics::RfIncidentLinkResult& link : links) {
-    const double power_w = link.received_power_w;
-    if (!std::isfinite(power_w) || power_w <= 0.0) {
-      continue;
-    }
-    const double density = PowerDensityWPerM2(power_w, link.receive_antenna_gain_dbi, frequency_hz);
+    const double density = LinkIncidentDensityWPerM2(link, frequency_hz);
     if (!std::isfinite(density)) {
       continue;
     }
-    sum_power_w += power_w;
     sum_density += density;
   }
-  if (!(sum_power_w > 0.0) || !std::isfinite(sum_density)) {
+  if (!std::isfinite(sum_density)) {
     return std::numeric_limits<double>::quiet_NaN();
   }
-  return sum_density * (aggregate_power_w / sum_power_w);
+  return sum_density;
 }
 
 bool SameIdentity(const oneq::electromagnetics::RfEmissionIdentity& left,
@@ -748,8 +774,8 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     const double echo_density =
         PowerDensityWPerM2(FromDb(input.echo_power_dbw), aperture_gain_dbi, carrier_hz);
     const double noise_density = PowerDensityWPerM2(thermal, aperture_gain_dbi, carrier_hz);
-    const double jam_density = AggregateInterferenceDensityWPerM2(
-        input.incident_links, input.has_cell ? input.cell.interference_power_w : 0.0, carrier_hz);
+    const double jam_density =
+        AggregateInterferenceDensityWPerM2(input.incident_links, carrier_hz);
     if (std::isfinite(echo_density)) {
       echo += " 回波功率密度=" + FormatSci(echo_density) + "W/m^2";
     }

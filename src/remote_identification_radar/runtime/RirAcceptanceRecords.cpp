@@ -1084,7 +1084,7 @@ void WriteRirInterferenceLinks(
     //       "单元内干扰功率"不可复算。字段名按用户 2026-10-20 要求改为
     //       "到达雷达的干扰功率"。
     // 标识：T-02（2026-10-20）。
-    content += " 到达雷达的干扰功率=" + FormatSci(link.received_power_before_overlap_w) + "W";
+    content += " 到达雷达功率=" + FormatSci(link.received_power_before_overlap_w) + "W";
     // 中译：**到达功率密度**（2026-11-02 甲方要求补 W/m²）——用该干扰链路**自身方向**的
     //   接收增益换算 `Ae = G_rx·λ²/(4π)`，因此无论来自主瓣还是旁瓣都成立；载频取链路
     //   实际发射中心频率（与功率同一来源），保证密度与功率严格对应。

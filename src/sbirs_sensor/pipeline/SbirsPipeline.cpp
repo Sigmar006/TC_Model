@@ -1188,8 +1188,12 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                                         : std::string("miss");
 
     std::string footprint = "覆盖四角经纬=[" + corners_csv + "] 中心=(" + center_text +
-                            ") 驻留=" + oneq::logging::FormatF(dwell_s, 3) + "s";
+                            ") 驻留时间=" + oneq::logging::FormatF(dwell_s, 3) + "s";
     // 规范口径（验收判定标准 第12项）：地面覆盖区域坐标与驻留时间 + 卫星ID。
+    // 中译：**字段名改为 `驻留时间=`**（2026-11-02）——判据正文与外部验证程序只认
+    //   `驻留时间=`（且要判 0.5 s<驻留时间<1 s），原字段 `驻留=` 名字对不上，外部会判
+    //   "没有写驻留时间"。
+    // 标识：第12/14项驻留时间字段名（2026-11-02）。
     std::string wfov_row = "卫星ID=" + std::to_string(satellite_entity_id_) + " " + footprint;
     SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试", wfov_row);
     // 规范口径（验收判定标准 第14项·其一）：宽视场扫描覆盖区域与第 12 项同数据、
@@ -1198,9 +1202,14 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                               " 宽视场扫描覆盖区域=" + footprint;
     SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
                                joint_cover);
-    if (install_matrices_acceptance_pending_) {
-      // 验收项「安装矩阵误差功能测试」（第10项）：首个执行周期写一次（周期 0 语义；
-      // ApplyConfig 重抽失准后置位重写）。卫星 ID 此时已可被调用方标注。
+    // 中译：**第10项改为"首周期 + 周期重发"**（2026-11-02）——原先只在 `仿真周期=0` 写一次，
+    //   外部验证程序若从第 1 周期起读（或只 tail 运行中的日志）就"看不到输出"；现场反馈
+    //   "外部代码中安装矩阵误差没有输出"即此因。矩阵本身是常值（失准角在 ApplyConfig
+    //   时重抽），周期重发不产生新信息，只保证任意读取窗口内都能看到。
+    // 标识：第10项安装矩阵周期重发（2026-11-02）。
+    constexpr std::uint32_t kInstallMatrixReemitCycles = 300U;
+    if (install_matrices_acceptance_pending_ ||
+        (kInstallMatrixReemitCycles != 0U && (input.cycle_index % kInstallMatrixReemitCycles) == 0U)) {
       WriteSbirsInstallMatrices(
           satellite_entity_id_, config_.session.orientation.mount_angles_deg,
           oneq::coordinate::EulerAnglesDeg(misalignment_total_deg_.yaw_deg,
@@ -1808,6 +1817,19 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                 oneq::logging::FormatF(mission.wide_field_fov_az_deg * kDegToRad, 6) + "," +
                 oneq::logging::FormatF(mission.wide_field_fov_el_deg * kDegToRad, 6) + ")rad";
       energy += " 目标ID=" + std::to_string(target.target_id);
+      // 中译：**第11项补"目标辐射"**（2026-11-02 甲方要求）——判据明确要求"能够记录红外
+      //   预警卫星的目标辐射"，而此前本行只有接收功率/能量/SNR，缺辐射学源头量，外部无法
+      //   复算能量链。这里补三项：目标辐射强度（W/sr）、逐目标大气透过率、到达卫星口面的
+      //   入射辐照度 E = I·τ/R²（W/m²）——与接收功率 P_r = E·A_opt·τ_opt·η 同源，可直接对账。
+      // 标识：第11项目标辐射信息（2026-11-02）。
+      energy += " 目标辐射强度=" +
+                oneq::logging::FormatSci(target.radiant_intensity_w_per_sr) + "W/sr";
+      energy += " 大气透过率=" + oneq::logging::FormatF(path_transmittance, 6);
+      const double incident_irradiance_w_m2 =
+          range_m > 1.0 ? static_cast<double>(target.radiant_intensity_w_per_sr) *
+                              static_cast<double>(path_transmittance) / (range_m * range_m)
+                        : 0.0;
+      energy += " 入射辐照度=" + oneq::logging::FormatSci(incident_irradiance_w_m2) + "W/m^2";
       const double snr_db_wide = 10.0 * std::log10(std::max(snr, 1.0e-12));
       energy += " 接收功率=" + oneq::logging::FormatSci(received_power_w) + "W";
       energy += " 信号能量=" + oneq::logging::FormatSci(signal_energy_j) + "J";

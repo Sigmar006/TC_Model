@@ -201,7 +201,13 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     oneq::coordinate::EcefPositionM ecef{};
     const bool have_ecef = track.has_kinematic_estimate &&
                            oneq::coordinate::TryLlaToEcef(track.kinematic_estimate.position, &ecef);
+    // 中译：**补 `目标ID=`**（2026-11-02 甲方要求）——判据示例是
+    //   `航迹键=1 目标ID=1001 …`，而此前只有 `航迹键`；外部要按目标聚合验收数据时，
+    //   没有目标 ID 就无法与场景/其它项对齐。身份保留时 `key` 即场景目标 ID；
+    //   上游身份丢失的航迹由引擎合成键，此时两字段同值（如实反映"只有库内键"）。
+    // 标识：第15项目标ID（2026-11-02）。
     std::string content = "航迹键=" + std::to_string(track.key);
+    content += " 目标ID=" + std::to_string(track.key);
     content += " 传感器信息源名称=[" + ChannelNames(track) + "]";
     content += " 信息源测角数据=[" + ChannelBearings(track) + "]";
     if (have_ecef) {

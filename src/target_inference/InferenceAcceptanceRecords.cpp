@@ -312,7 +312,7 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
     if (TryResolveBurnoutEstimate(phase, state, track.sim_time_sec, trajectory,
                                   &burnout_time_sec, &burnout_lla) &&
         IsPlausiblePredictedPointAltitude(burnout_lla.altitude_m)) {
-      burnout += " 关机点时刻=" + FormatF(burnout_time_sec, 1) + "s";
+      burnout += " 关机时刻=" + FormatF(burnout_time_sec, 1) + "s";
       burnout += " 关机点经纬高=" + FormatVec3(
           burnout_lla.latitude_deg, burnout_lla.longitude_deg, burnout_lla.altitude_m, 3);
       if (phase != BurnoutPhase::kConfirmed) {
@@ -332,7 +332,7 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
       }
     } else {
       // 速度精度门未通过、助推中或无可用回推结果：关机点仍需继续计算。
-      burnout += " 关机点时刻=正在模拟计算";
+      burnout += " 关机时刻=正在模拟计算";
       burnout += " 关机点经纬高=正在模拟计算";
     }
     INFERENCE_ACCEPTANCE_ITEM(row_sim_time, row_cycle, "关机点预测功能测试", burnout);

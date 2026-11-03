@@ -419,10 +419,17 @@ void EmitDetectabilityLine(std::uint64_t target_id,
                  FormatF(fix_lla.longitude_deg, 6) + "," + FormatF(fix_lla.altitude_m, 1) + ")";
     }
   }
+  const bool dual_los_fix = entries.size() >= 2U;
   for (const auto& sat_entry : entries) {
     const DetectabilityEntry& entry = sat_entry.second;
     content += " 相对卫星ID=" + std::to_string(entry.satellite_id);
-    content += " 相对卫星斜距=" + FormatF(entry.slant_range_m, 1) + "m";
+    // 中译：**斜距只在双星定位行写**（2026-11-04，判据第7项 L495/L503）——单星只有测角
+    //   量测，斜距不可能由该星测得；此前单星顺延行照样输出 `相对卫星斜距=`（现场 2,758 行），
+    //   外部会把它读成"未交会就给了距离"。现在单星行只保留卫星ID/量测角/阶段/可探测性。
+    // 标识：第7项斜距仅双星行（2026-11-04）。
+    if (dual_los_fix) {
+      content += " 相对卫星斜距=" + FormatF(entry.slant_range_m, 1) + "m";
+    }
     content += " 量测方位/俯仰(ECI)=(" + FormatF(entry.measured_az_rad, 8) + "," +
                FormatF(entry.measured_el_rad, 8) + ")rad";
     content += entry.narrow_field ? " 阶段=NFOV" : " 阶段=WFOV";

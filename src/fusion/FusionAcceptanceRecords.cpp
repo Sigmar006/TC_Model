@@ -217,7 +217,17 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     if (!config.fusion_station_name.empty()) {
       content += " 测角信息融合卫星地面站名称=" + config.fusion_station_name;
     }
-    if (have_ecef) {
+    // 中译：**单通道（单星）航迹不输出位置**（2026-11-04，甲方"不输出"）——单星只测向，
+    //   位置来自保活/单星视线外推，不是交会解；双星及以上才写 ECEF 位置。
+    // 标识：第15项单星不发位置（2026-11-04）。
+    std::size_t active_channels_15 = 0U;
+    for (const ChannelMeasurement& channel : track.channels) {
+      if (channel.sample_count > 0U) {
+        ++active_channels_15;
+      }
+    }
+    const bool position_available = active_channels_15 >= 2U;
+    if (have_ecef && position_available) {
       content += " ECEF位置m=" + FormatVec3(ecef.x_m, ecef.y_m, ecef.z_m, 1);
     }
     if (track.has_kinematic_estimate) {
@@ -234,9 +244,11 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
       const double var_vx = std::max(0.0, cov[7]);
       const double var_vy = std::max(0.0, cov[21]);
       const double var_vz = std::max(0.0, cov[35]);
-      content += " 位置精度1σ=" + FormatF(std::sqrt(var_x + var_y + var_z), 1) + "m";
-      content += " 位置精度轴向1σ=(" + FormatF(std::sqrt(var_x), 1) + "," +
-                 FormatF(std::sqrt(var_y), 1) + "," + FormatF(std::sqrt(var_z), 1) + ")m";
+      if (position_available) {
+        content += " 位置精度1σ=" + FormatF(std::sqrt(var_x + var_y + var_z), 1) + "m";
+        content += " 位置精度轴向1σ=(" + FormatF(std::sqrt(var_x), 1) + "," +
+                   FormatF(std::sqrt(var_y), 1) + "," + FormatF(std::sqrt(var_z), 1) + ")m";
+      }
       content += " 速度精度1σ=" + FormatF(std::sqrt(var_vx + var_vy + var_vz), 3) + "m/s";
     }
     FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "宽窄视场联合探测功能测试", content);
@@ -300,10 +312,10 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
       //   `位置LLA=/速度模=/加速度模=`；此前单星分支一个字段都不写，外部只看到剩余覆盖
       //   与接力计划，判不出"是否有位置/速度/加速度"。
       // 标识：第16项单星位置速度加速度（2026-11-02）。
-      relay += " 位置LLA=(";
-      relay += FormatF(track.kinematic_estimate.position.latitude_deg, 6) + ",";
-      relay += FormatF(track.kinematic_estimate.position.longitude_deg, 6) + ",";
-      relay += FormatF(track.kinematic_estimate.position.altitude_m, 1) + ")";
+      // 中译：**单星不发位置**（2026-11-04，甲方"不输出"）——红外单星只测向，位置须由
+      //   双星/多源交会给出；此前单星分支写 `位置LLA=`（现场 2,613 条单通道航迹，位置 σ
+      //   可达 432 km），等于"未交会就给出定位结果"。现在单星只留速度/加速度模。
+      // 标识：第16项单星不发位置（2026-11-04）。
       relay += " 速度模=" + FormatF(speed, 3) + "m/s";
       relay += " 加速度模=" + FormatF(acc, 3) + "m/s^2";
     }

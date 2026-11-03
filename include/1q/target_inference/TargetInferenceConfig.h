@@ -43,6 +43,27 @@ struct ONEQ_API TargetInferenceConfig {
   std::uint64_t impact_distribution_source_id{0U};
   /** 落点预报分发对象实体 ID（接收方；0 = 未标注，省略）。 */
   std::uint64_t impact_distribution_target_id{0U};
+  /**
+   * @brief 落点预报的标准化封装版本（验收判定标准 第25项 `标准化封装版本=`）。
+   *
+   * @details 判据要求"模拟预报告信息的标准化封装与分发"必须留下封装要素，版本号属封装头，
+   *   由装配层配置；缺省 1.0 表示首版格式。
+   */
+  // v120 限制：类类型成员不能用 {} 初始化（C2797），改用 = 拷贝初始化。
+  std::string impact_distribution_message_version = std::string("1.0");
+  /**
+   * @brief 落点预报消息类型（验收判定标准 第25项 `消息类型=`）。
+   *
+   * @details 同一分发通道将来可能承载多类消息，类型字段用于接收方分流；本板只有落点预报。
+   */
+  std::string impact_distribution_message_type = std::string("落点预报");
+  /**
+   * @brief 落点预报对外报出的置信度（验收判定标准 第25项 `置信度=`）。
+   *
+   * @details 与 `落点误差范围1σ=` 并列输出：误差范围给出 1-σ，置信度给出该报文声明的
+   *   置信水平（缺省 0.95）。两者口径不同、不得互相换算后替换。
+   */
+  double impact_distribution_confidence{0.95};
 };
 
 }  // namespace target_inference

@@ -396,8 +396,26 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
       forecast += " 落点经纬高=" + FormatVec3(traj.impact_point.latitude_deg,
                                               traj.impact_point.longitude_deg,
                                               traj.impact_point.altitude_m, 3);
-      forecast += " 误差椭圆半长/半短/方位=(" + FormatF(sigma, 1) + "m," + FormatF(sigma, 1) +
-                  "m,0°)";
+      // 中译：**落点误差椭圆三参数**（2026-11-02 判据第20项"本项新增必写输出"）——
+      //   由落点位置 3×3 协方差投影到落点处水平面后做 2×2 特征分解，给出半长轴/半短轴/
+      //   方位角；字段名与判据示例一致（`落点误差椭圆半长/半短/方位=`）。
+      //   此前只写各向同性 (σ,σ,0°)，半短轴恒等于半长、取向恒为 0，等于没有椭圆信息。
+      // 标识：第20项落点误差椭圆（2026-11-02）。
+      double ellipse_major_m = sigma;
+      double ellipse_minor_m = sigma;
+      double ellipse_azimuth_deg = 0.0;
+      {
+        std::array<double, 36U> impact_cov_layout{};
+        const std::array<double, 9U> &impact_cov = traj.impact_position_covariance_m2;
+        // 复用 HorizontalEllipseFromCov 的 [x,vx,y,vy,z,vz] 布局：x=(0), x-y=(2), y=(14)。
+        impact_cov_layout[0] = impact_cov[0];
+        impact_cov_layout[2] = impact_cov[1];
+        impact_cov_layout[14] = impact_cov[4];
+        HorizontalEllipseFromCov(impact_cov_layout, &ellipse_major_m, &ellipse_minor_m,
+                                 &ellipse_azimuth_deg);
+      }
+      forecast += " 落点误差椭圆半长/半短/方位=(" + FormatF(ellipse_major_m, 1) + "m," +
+                  FormatF(ellipse_minor_m, 1) + "m," + FormatF(ellipse_azimuth_deg, 2) + "°)";
     }
     INFERENCE_ACCEPTANCE_ITEM(row_sim_time, row_cycle, "目标轨迹预报功能测试", forecast);
 
@@ -423,8 +441,19 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
                                            traj.impact_point.longitude_deg,
                                            traj.impact_point.altitude_m, 3);
       if (!sigma_text.empty()) {
-        publish += " 关机点误差1σ=" + sigma_text;
+        // 中译：**字段名按判据第25项改为 `落点误差范围1σ=`**（2026-11-02）——原字段名是
+        //   关机点误差，而本项对外发布的是落点预报报文，报文头里的误差范围才是接收方按
+        //   判据核对 5% 射程的字段。数值仍取关机点敏度传播的 1-σ（落点误差的主项）。
+        // 标识：第25项落点误差范围（2026-11-02）。
+        publish += " 落点误差范围1σ=" + sigma_text;
       }
+      // 中译：**判据第25项封装要素**（2026-11-02）——置信度、标准化封装版本、消息类型
+      //   属"标准化封装"必须留下的报文头；缺任一项外部只能看到"有落点"，判不出是否
+      //   按标准封装并分发。
+      // 标识：第25项封装要素（2026-11-02）。
+      publish += " 置信度=" + FormatF(config.impact_distribution_confidence, 4);
+      publish += " 标准化封装版本=" + config.impact_distribution_message_version;
+      publish += " 消息类型=" + config.impact_distribution_message_type;
       if (config.impact_distribution_channel.empty()) {
         publish += " 分发状态=已封装待分发";
       } else {

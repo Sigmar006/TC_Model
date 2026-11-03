@@ -390,7 +390,12 @@ std::vector<TargetInferenceResult> TargetInferenceEngine::Infer(
           };
           RvState nominal_impact{};
           if (forward_at(input_state, impact_time, &nominal_impact)) {
-            double max_impact_variance = 0.0;
+            /* 落点位置协方差（3×3）：以有限差分的敏度列 h_j 做 rank-1 累加
+               P = Σ_j h_j·h_jᵀ·P_jj —— 这是 J·P·Jᵀ 在 P 取对角时的形式，非对角耦合项
+               二阶小（证据级口径，与原有标量 1-σ 同源，数值上严格一致地覆盖原口径）。
+               2026-11-02：由"只累加标量"改为"保留 3×3"，因为判据第 20 项要求给出误差椭圆
+               半长/半短/方位——标量无法给出半轴与取向。 */
+            double impact_cov[3][3] = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}};
             for (std::size_t j = 0U; j < 6U; ++j) {
               RvState perturbed = input_state;
               if (j % 2U == 0U) {
@@ -402,18 +407,29 @@ std::vector<TargetInferenceResult> TargetInferenceEngine::Infer(
               if (!forward_at(perturbed, impact_time, &perturbed_impact)) {
                 continue;
               }
-              /* 落点位置敏度行（3×6）：协方差贡献 Σ_j H_ij² P_jj 近似（对角占优简化，
-                 完整 J·P·Jᵀ 的非对角项贡献在高维耦合下二阶小；证据级口径）。 */
-              double sensitivity_sq_sum = 0.0;
+              double h[3] = {0.0, 0.0, 0.0};
               for (std::size_t i = 0U; i < 3U; ++i) {
-                const double h =
-                    (perturbed_impact.r[i] - nominal_impact.r[i]) / eps[j];
-                sensitivity_sq_sum += h * h;
+                h[i] = (perturbed_impact.r[i] - nominal_impact.r[i]) / eps[j];
               }
-              max_impact_variance += sensitivity_sq_sum * track.covariance_ecef[j * 6U + j];
+              const double variance_j = track.covariance_ecef[j * 6U + j];
+              for (std::size_t row = 0U; row < 3U; ++row) {
+                for (std::size_t col = 0U; col < 3U; ++col) {
+                  impact_cov[row][col] += h[row] * h[col] * variance_j;
+                }
+              }
+            }
+            double impact_variance_trace = 0.0;
+            for (std::size_t row = 0U; row < 3U; ++row) {
+              impact_variance_trace += impact_cov[row][row];
             }
             result.trajectory.impact_position_sigma_m =
-                std::sqrt(std::max(max_impact_variance, 0.0));
+                std::sqrt(std::max(impact_variance_trace, 0.0));
+            for (std::size_t row = 0U; row < 3U; ++row) {
+              for (std::size_t col = 0U; col < 3U; ++col) {
+                result.trajectory.impact_position_covariance_m2[row * 3U + col] =
+                    impact_cov[row][col];
+              }
+            }
           }
         }
       }

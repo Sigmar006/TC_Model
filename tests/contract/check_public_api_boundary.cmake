@@ -111,6 +111,10 @@ set(SBIRS_CONFIG_HEADERS
     "sbirs_sensor/config/sbirs_sensor_config.hpp"
 )
 
+set(SBIRS_ORBIT_HEADERS
+    "sbirs_sensor/orbit/OrbitPropagator.h"
+)
+
 set(SBIRS_SESSION_HEADERS
     "sbirs_sensor/session/SbirsCycleInput.h"
     "sbirs_sensor/session/SbirsCycleInputAdapter.h"
@@ -337,6 +341,7 @@ set(EXPECTED_PUBLIC_HEADERS
     ${EOS_SESSION_HEADERS}
     ${SBIRS_MODULE_ENTRY_HEADERS}
     ${SBIRS_CONFIG_HEADERS}
+    ${SBIRS_ORBIT_HEADERS}
     ${SBIRS_SESSION_HEADERS}
     ${ESR_MODULE_ENTRY_HEADERS}
     ${ESR_CONFIG_HEADERS}

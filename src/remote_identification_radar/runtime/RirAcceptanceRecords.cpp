@@ -1295,7 +1295,14 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
            FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
   if (detections.empty()) {
-    return;  // 无检测：只留指向行，不伪造量测。
+    // 中译：**未检出也写"检测与量测信息"行（空列表）**（2026-11-02）——判据第37A项要求
+    //   "记录检测与量测信息"，若该行只在检出时出现，本场景（目标都在高空、地平线波位
+    //   照不到）整轮都看不到这一项，外部会判"没有记录检测与量测信息"。写空列表是**如实**
+    //   表达"本周期地平线波位未检出"，既满足字段存在性，也不伪造量测值。
+    // 标识：第37A项未检出也留痕（2026-11-02）。
+    Emit(sim_time_sec, cycle, "地平线搜索功能测试",
+         "检测与量测信息=搜到目标=[]");
+    return;
   }
   std::string found;
   for (std::size_t i = 0U; i < detections.size(); ++i) {

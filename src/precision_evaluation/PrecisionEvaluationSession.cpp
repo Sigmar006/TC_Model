@@ -451,12 +451,16 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
       if (!truth_results.empty()) {
         const target_inference::TrajectoryPrediction& trajectory = truth_results.front().trajectory;
         // 关键点 LLA→ECEF 失败视为无关键点（与其余分支的守卫口径一致）。
-        cached.has_impact =
-            trajectory.has_impact &&
-            TryLlaToEcefPosition(trajectory.impact_point, &cached.impact_ecef);
-        cached.has_launch =
-            trajectory.has_launch &&
-            TryLlaToEcefPosition(trajectory.launch_point, &cached.launch_ecef);
+        // 仅在本次推演结果有效时覆盖：目标落地后真值状态可能落到地表以下，把已解出的
+        // 关键点覆盖成 false 会丢掉之前有效的落点/发射点。
+        if (trajectory.valid) {
+          cached.has_impact =
+              trajectory.has_impact &&
+              TryLlaToEcefPosition(trajectory.impact_point, &cached.impact_ecef);
+          cached.has_launch =
+              trajectory.has_launch &&
+              TryLlaToEcefPosition(trajectory.launch_point, &cached.launch_ecef);
+        }
       }
       // 中译：**解不出关键点就下个间隔重试**（2026-11-04）——原实现无条件置 computed=true，
       //   而真值关键点只在目标首次出现的那一拍算一次；早期（助推/爬升）状态用纯二体外推
@@ -464,7 +468,13 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
       //   发射点解出来了、落点一条都没有）。现在只有在至少解出一个关键点时才锁定缓存，
       //   否则留待下个推演间隔重算——真值状态越晚越接近再入段，落点可解性单调变好。
       // 标识：真值关键点重试（2026-11-04）。
-      cached.computed = cached.has_impact || cached.has_launch;
+      // 中译：**只以"落点是否解出"为准决定是否继续重试**（2026-11-04 第二版）——上一版写成
+      //   "落点或发射点任一解出即锁定"，而真值侧**发射点几乎总能解出**（回推 1800 s 到大气
+      //   界面即可），于是缓存立刻锁定、落点再不会重算：现场 `[precision][keypoints]
+      //   … impact=0 launch=1` 恒定 1,065 拍就是此因。
+      //   同时避免"目标落地后状态无效把已解出的关键点清空"：只在 trajectory.valid 时覆盖。
+      // 标识：真值关键点以落点为准重试（2026-11-04）。
+      cached.computed = cached.has_impact;
     }
     // 估计状态推演（有运动学估计的航迹）。
     std::vector<target_inference::InferenceTrackState> estimate_states;

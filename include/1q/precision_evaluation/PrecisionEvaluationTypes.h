@@ -25,7 +25,14 @@ struct ONEQ_API EvaluationTruthTarget {
   oneq::coordinate::EcefPositionM position_ecef_m{};  /**< 真值位置（ECEF，单位 m） */
   oneq::coordinate::EcefVelocityMps velocity_ecef_m_per_s{}; /**< 真值速度（ECEF，单位 m/s） */
   bool has_velocity{false};                           /**< 是否提供真值速度 */
-  double radiant_intensity_w_per_sr{1.0e8};           /**< 目标辐射强度（W/sr，构造 SBIRS 场景与 SNR 门用） */
+  /**
+   * @brief 目标辐射强度（W/sr，构造 SBIRS 场景与 SNR 门用）。
+   *
+   * @details 改 **500000**（2026-11-04）——与 `SbirsSceneTarget` 库默认、以及 OPIR 装配层
+   *   的 `kDefaultRadiantIntensityWPerSr` 统一。原 1e8 使评估内部的场景比实际链路亮
+   *   23 dB，评估出的角度/落点误差与真实链路不同源。
+   */
+  double radiant_intensity_w_per_sr{500000.0};
   bool active{true};                                  /**< 目标是否在场 */
 };
 

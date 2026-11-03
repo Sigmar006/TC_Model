@@ -38,7 +38,15 @@ struct ONEQ_API SbirsSceneTarget {
   std::uint64_t target_id{0U};     /**< 目标唯一标识，状态机以此键管理状态 */
   std::string target_name{};       /**< 目标名称，仅进入归属/调试层，不进 raw output */
   SbirsVector3M position_ecef_m{}; /**< ECEF 位置真值，单位 m */
-  double radiant_intensity_w_per_sr{10388.1146065573}; /**< 目标辐射强度（波段内、朝向传感器方向），单位 W/sr */
+  /**
+   * @brief 目标辐射强度（波段内、朝向传感器方向），单位 W/sr。
+   *
+   * @details 默认值 **500000 W/sr**（2026-11-04 甲方要求统一口径）。原默认 10388.1146 是
+   *   "1200 K / ε=0.85 / 1 m² / 3–5 μm"的等效值；装配层（OPIR 传感器）实际一直在用
+   *   `kDefaultRadiantIntensityWPerSr = 500000`，两处口径不一致会让"库默认场景"与
+   *   "宿主实际场景"的 SNR 差 16.8 dB。此处与装配层对齐。
+   */
+  double radiant_intensity_w_per_sr{500000.0};
   SbirsVector3M velocity_ecef_m_per_s{}; /**< ECEF 速度真值，单位 m/s（仅 cue 外推与动态滞后用） */
   bool has_velocity_ecef_m_per_s{false}; /**< 是否提供速度；为 false 时数据必须为有限零向量，避免静默忽略矛盾载荷 */
   bool active{true};               /**< 目标是否在场景中有效 */

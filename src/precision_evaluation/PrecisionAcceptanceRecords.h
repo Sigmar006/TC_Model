@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <array>
 #include <map>
+#include <string>
 #include <vector>
 
 #include "1q/precision_evaluation/PrecisionEvaluationTypes.h"

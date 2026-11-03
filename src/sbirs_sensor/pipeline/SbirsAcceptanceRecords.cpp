@@ -96,6 +96,10 @@ const char* EventName(session::SbirsDetectionLifecycleEventKind kind) {
       return "跟踪中断(滑行)";
     case session::SbirsDetectionLifecycleEventKind::kLost:
       return "跟踪中断";
+    // 中译：第24B项——连续 10 拍未检测到的"预警中断"事件（2026-11-04 甲方口径）。
+    // 标识：预警中断事件名（2026-11-04）。
+    case session::SbirsDetectionLifecycleEventKind::kEarlyWarningInterrupted:
+      return "预警中断";
     default:
       return nullptr;
   }
@@ -108,6 +112,9 @@ int EventLevel(session::SbirsDetectionLifecycleEventKind kind) {
     case session::SbirsDetectionLifecycleEventKind::kCoasting:
     case session::SbirsDetectionLifecycleEventKind::kLost:
       return 2;
+    // 预警中断按第24B项示例取等级 3（比当拍丢失更严重，已确认中断）。
+    case session::SbirsDetectionLifecycleEventKind::kEarlyWarningInterrupted:
+      return 3;
     default:
       return 3;
   }
@@ -547,7 +554,14 @@ void WriteSbirsLifecycleEvents(std::uint32_t satellite_id, float sim_time_sec,
                                            found->second->position_ecef_m.y,
                                            found->second->position_ecef_m.z, 1);
     }
-    SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "特殊事件监测与提示功能测试", content);
+    // 中译：**预警中断用独立项名**（2026-11-04）——判据第24B项要求 `[预警中断事件监测
+    //   与提示功能测试]` 独立成行，其余事件仍写 `[特殊事件监测与提示功能测试]`（不动）。
+    // 标识：第24B项独立项名（2026-11-04）。
+    if (event.kind == session::SbirsDetectionLifecycleEventKind::kEarlyWarningInterrupted) {
+      SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "预警中断事件监测与提示功能测试", content);
+    } else {
+      SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "特殊事件监测与提示功能测试", content);
+    }
   }
 }
 

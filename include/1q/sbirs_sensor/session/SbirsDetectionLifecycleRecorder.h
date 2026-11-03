@@ -25,7 +25,15 @@ enum class ONEQ_API SbirsDetectionLifecycleEventKind {
   kUpdated,           /**< 目标状态更新（持续检测） */
   kCoasting,          /**< 暂无有效 NFOV 量测但仍保持锁定 */
   kLost,              /**< 目标丢失 */
-  kNotDetected        /**< 目标本周期未检测 */
+  kNotDetected,       /**< 目标本周期未检测 */
+  /**
+   * @brief 预警中断：已成功预警过的目标连续 **10 拍**未再被检测到（2026-11-04 甲方口径）。
+   *
+   * @details 与 `kLost` 的区别：`kLost` 是"当拍丢失"的即时事件（可能下一拍就恢复），
+   *   本事件是**延迟确认的中断**——连续 10 个周期没有检测，才按第 24B 项写"预警中断"。
+   *   阈值固定 10 拍（甲方指定），不做成配置项。
+   */
+  kEarlyWarningInterrupted
 };
 
 /** @brief 生命周期事件原因：视场外、低于 SNR 门限、捕获失败、调度跳过等。 */

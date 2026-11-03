@@ -13,7 +13,17 @@ namespace {
 struct TargetState {
   bool detected{false};
   std::string target_name{};
+  // 中译：**预警中断计数**（2026-11-04）——连续未检测拍数 + 是否已报过中断 + 是否曾被
+  //   成功预警（`kFirstDetected`/`kUpdated`/`kCoasting` 任一置真）。连续 10 拍未检测即报
+  //   "预警中断"（第24B项），已报过不重复报；目标重新被检测到则清零、允许下次再报。
+  // 标识：预警中断计数（2026-11-04）。
+  std::uint32_t missed_cycles{0U};
+  bool interrupted_reported{false};
+  bool warned{false};
 };
+
+// 预警中断阈值（甲方 2026-11-04：连续 10 拍未检测即判中断）。
+constexpr std::uint32_t kEarlyWarningInterruptCycles = 10U;
 
 const output::SbirsDetectionRecord* FindRecord(std::uint64_t detection_id,
                                                const SbirsOutputFrame& frame) {
@@ -175,6 +185,9 @@ std::vector<SbirsDetectionLifecycleEvent> SbirsDetectionLifecycleRecorder::Updat
       events.push_back(event);
       state.detected = true;
       state.target_name = target.target_name;
+      state.missed_cycles = 0U;
+      state.interrupted_reported = false;
+      state.warned = true;
       continue;
     }
     const bool detected_now = record != nullptr && record->detected;
@@ -187,6 +200,9 @@ std::vector<SbirsDetectionLifecycleEvent> SbirsDetectionLifecycleRecorder::Updat
       events.push_back(event);
       state.detected = true;
       state.target_name = target.target_name;
+      state.missed_cycles = 0U;
+      state.interrupted_reported = false;
+      state.warned = true;
       continue;
     }
 
@@ -214,11 +230,34 @@ std::vector<SbirsDetectionLifecycleEvent> SbirsDetectionLifecycleRecorder::Updat
     }
     state.detected = false;
     state.target_name = target.target_name;
+    // 中译：连续未检测计数 + 第 10 拍报"预警中断"（2026-11-04 甲方口径：10 拍）。
+    // 标识：预警中断判定（2026-11-04）。
+    ++state.missed_cycles;
+    if (state.warned && !state.interrupted_reported &&
+        state.missed_cycles == kEarlyWarningInterruptCycles) {
+      SbirsDetectionLifecycleEvent event = MakeBaseEvent(target, result);
+      event.kind = SbirsDetectionLifecycleEventKind::kEarlyWarningInterrupted;
+      event.reason = reason;
+      if (record != nullptr && attribution != nullptr) {
+        FillObservationFields(*record, *attribution, &event);
+      } else if (attribution != nullptr) {
+        FillAttributionFields(*attribution, &event);
+      }
+      events.push_back(event);
+      state.interrupted_reported = true;
+    }
   }
 
+  // 中译：目标从输入场景消失时**不再立刻删除状态**（2026-11-04）——删了就无法累计
+  //   "连续 10 拍未检测"，第24B项的预警中断永远报不出来。改为：先按 `kLost` 报一次
+  //   （保持既有行为），随后与"在场但未检测"走同一套计数，在第 10 拍报预警中断。
+  // 标识：目标消失也计预警中断（2026-11-04）。
   for (std::unordered_map<std::uint64_t, TargetState>::iterator it = impl_->states.begin();
-       it != impl_->states.end();) {
-    if (present_target_ids.count(it->first) == 0U && it->second.detected) {
+       it != impl_->states.end(); ++it) {
+    if (present_target_ids.count(it->first) != 0U) {
+      continue;
+    }
+    if (it->second.detected) {
       SbirsDetectionLifecycleEvent event;
       event.cycle_index = result.input_cycle_index;
       event.target_id = it->first;
@@ -226,9 +265,19 @@ std::vector<SbirsDetectionLifecycleEvent> SbirsDetectionLifecycleRecorder::Updat
       event.kind = SbirsDetectionLifecycleEventKind::kLost;
       event.reason = SbirsDetectionLifecycleReason::kTargetMissingFromInput;
       events.push_back(event);
-      it = impl_->states.erase(it);
-    } else {
-      ++it;
+      it->second.detected = false;
+    }
+    ++it->second.missed_cycles;
+    if (it->second.warned && !it->second.interrupted_reported &&
+        it->second.missed_cycles == kEarlyWarningInterruptCycles) {
+      SbirsDetectionLifecycleEvent event;
+      event.cycle_index = result.input_cycle_index;
+      event.target_id = it->first;
+      event.target_name = it->second.target_name;
+      event.kind = SbirsDetectionLifecycleEventKind::kEarlyWarningInterrupted;
+      event.reason = SbirsDetectionLifecycleReason::kTargetMissingFromInput;
+      events.push_back(event);
+      it->second.interrupted_reported = true;
     }
   }
 

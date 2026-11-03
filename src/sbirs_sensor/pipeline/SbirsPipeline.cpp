@@ -1809,6 +1809,22 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                     oneq::logging::FormatF(el_err * kDegToArcsec, 2) + ")arcsec";
       SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试",
                                  wfov_angle);
+      // 中译：**第14项也要宽视场目标视线角与其误差**（2026-11-02）——判据第14项正文要求
+      //   "宽视场目标视线方位/俯仰及误差"，示例第一行同时含覆盖区、驻留时间、宽场视线与
+      //   误差；此前第14项只有覆盖区与窄场行，宽场视线/误差只写在第12项，本项缺。
+      //   字段名与判据示例一致（`宽视场目标视线方位/俯仰(ECI)=`、`宽视场视线角误差方位/俯仰=`）。
+      // 标识：第14项宽视场视线与误差（2026-11-02）。
+      std::string joint_wfov = "卫星ID=" + std::to_string(satellite_entity_id_);
+      joint_wfov += " 目标ID=" + std::to_string(target.target_id);
+      joint_wfov += " 宽视场目标视线方位/俯仰(ECI)=(" +
+                    oneq::logging::FormatF(candidate.measured_azimuth_deg * kDegToRad, 8) + "," +
+                    oneq::logging::FormatF(candidate.measured_elevation_deg * kDegToRad, 8) +
+                    ")rad";
+      joint_wfov += " 宽视场视线角误差方位/俯仰=(" +
+                    oneq::logging::FormatF(az_err * kDegToArcsec, 2) + "," +
+                    oneq::logging::FormatF(el_err * kDegToArcsec, 2) + ")arcsec";
+      SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
+                                 "宽窄视场联合探测功能测试", joint_wfov);
       // 第11项 红外预警卫星大幅面扫描与探测：扫描幅宽（ECI rad）/目标辐射能量链/
       // SNR/探测概率/检测标志（评审 2026-08-26 条2：Pd 复用雷达公共层 Marcum Q 模型
       // （Swerling0 单脉冲），Pfa 由宽场门限系数 k 按高斯尾部 Pfa=0.5·erfc(k/√2) 反推）。
@@ -2313,6 +2329,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
               oneq::logging::FormatF(selected.command_azimuth_deg * kDegToRad, 8) + "," +
               oneq::logging::FormatF(selected.command_elevation_deg * kDegToRad, 8) +
               ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB 镜头转向时间=" +
+              oneq::logging::FormatF(turn_time_s, 3) + "s 窄视场镜头转动时间=" +
               oneq::logging::FormatF(turn_time_s, 3) + "s");
     }
     if (!captured) {
@@ -2748,6 +2765,12 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                      oneq::logging::FormatF(detection.record.elevation_rad, 8) + ")rad";
       joint_track += " 跟踪状态=";
       joint_track += detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪";
+      // 中译：**第14项窄场视线角误差**（2026-11-02）——判据要求"窄视场目标视线方位/俯仰及
+      //   误差"，误差须位于 ±10 arcsec（由外部判）；本行只落原始误差量，不写通过标志。
+      // 标识：第14项窄视场视线角误差（2026-11-02）。
+      joint_track += " 窄视场视线角误差方位/俯仰=(" +
+                     oneq::logging::FormatF(az_err * 3600.0, 2) + "," +
+                     oneq::logging::FormatF(el_err * 3600.0, 2) + ")arcsec";
       joint_track += " SNR=" + oneq::logging::FormatF(snr_db, 3) + "dB";
       SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
                                  "宽窄视场联合探测功能测试", joint_track);

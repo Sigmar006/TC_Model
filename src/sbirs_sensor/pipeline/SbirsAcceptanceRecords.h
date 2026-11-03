@@ -60,6 +60,37 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
 void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
                           std::uint64_t target_id, double az_error_deg, double el_error_deg);
 
+/**
+ * @brief 载荷总指向误差预算（红外载荷角要求 3 µrad 的判定依据）。
+ *
+ * @details 载荷指向误差由四类独立来源 RSS 合成，本函数把它们**合成一行**写出，使
+ *   "总指向误差 ≤ 3 µrad" 成为可测量、可追溯的量：
+ *     ① 安装矩阵失准（静态，等效旋转角由失准矩阵 trace 反算）——通常量级最大；
+ *     ② 共模姿态指向扰动（Gauss-Markov 平稳 1-σ）；
+ *     ③ 逐通道指向扰动（同上）；
+ *     ④ LOS 随机测角项（轨道/姿态/视场三项 RSS，见 SbirsErrorModel）。
+ *   动态滞后与折射已包含在第 9/12/13 项的实测角误差里，本行不重复计入。
+ *   本行只落原始量与判定结果，不改任何物理量。
+ *
+ * @param[in] satellite_id 卫星实体 ID。
+ * @param[in] sim_time_sec 仿真时间（s）。
+ * @param[in] cycle        仿真周期号。
+ * @param[in] misalignment_yaw_deg   安装失准 yaw（deg）。
+ * @param[in] misalignment_pitch_deg 安装失准 pitch（deg）。
+ * @param[in] misalignment_roll_deg  安装失准 roll（deg）。
+ * @param[in] orbit_sigma_deg        轨道位置折算角 1-σ（deg）。
+ * @param[in] attitude_sigma_deg     姿态确定 1-σ（deg）。
+ * @param[in] fov_sigma_deg          视场/焦面几何 1-σ（deg）。
+ * @param[in] common_attitude_sigma_deg 共模姿态指向扰动平稳 1-σ（deg）。
+ * @param[in] channel_pointing_sigma_deg 逐通道指向扰动平稳 1-σ（deg）。
+ */
+void WriteSbirsPayloadPointingBudget(std::uint32_t satellite_id, float sim_time_sec,
+                                     std::uint32_t cycle, double misalignment_yaw_deg,
+                                     double misalignment_pitch_deg, double misalignment_roll_deg,
+                                     double orbit_sigma_deg, double attitude_sigma_deg,
+                                     double fov_sigma_deg, double common_attitude_sigma_deg,
+                                     double channel_pointing_sigma_deg);
+
 // 验收判定标准 第7项（修改）：目标可探测性与动态参数——双星定位时同一目标单行
 //（位置 LLA 只在该情况下写出，两颗相对卫星ID/斜距/量测角同行）；单星候选行待
 // 同周期无第二星时顺延到下一周期首次写出时落盘。会话结束须调 Flush补齐尾拍。

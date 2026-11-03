@@ -148,6 +148,72 @@ void WriteSbirsInstallMatrices(std::uint32_t satellite_id,
   SBIRS_ACCEPTANCE_ITEM(0.0f, 0U, "安装矩阵误差功能测试", content);
 }
 
+void WriteSbirsPayloadPointingBudget(std::uint32_t satellite_id, float sim_time_sec,
+                                     std::uint32_t cycle, double misalignment_yaw_deg,
+                                     double misalignment_pitch_deg, double misalignment_roll_deg,
+                                     double orbit_sigma_deg, double attitude_sigma_deg,
+                                     double fov_sigma_deg, double common_attitude_sigma_deg,
+                                     double channel_pointing_sigma_deg) {
+  if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  constexpr double kDegToRad = 0.017453292519943295;
+  constexpr double kRadToUrad = 1.0e6;
+  // 载荷角指标（甲方 2026-11-04）：总指向误差 ≤ 3 µrad（= 0.619 arcsec）。
+  constexpr double kRequirementUrad = 3.0;
+
+  // ① 安装矩阵失准的等效旋转角：θ = arccos((trace(R) − 1) / 2)。
+  //    R 为失准角构造的旋转矩阵，纯旋转下该式精确；数值越界按端点钳位。
+  const oneq::coordinate::RotationMatrix3d r_mis = oneq::coordinate::BuildRotationMatrix(
+      oneq::coordinate::EulerAnglesDeg(misalignment_yaw_deg, misalignment_pitch_deg,
+                                       misalignment_roll_deg));
+  const double trace = r_mis.m00 + r_mis.m11 + r_mis.m22;
+  double cos_theta = (trace - 1.0) / 2.0;
+  if (!(cos_theta <= 1.0)) {
+    cos_theta = 1.0;
+  }
+  if (!(cos_theta >= -1.0)) {
+    cos_theta = -1.0;
+  }
+  const double mount_rad = std::acos(cos_theta);
+
+  // ④ LOS 随机测角项：轨道/姿态/视场三项 RSS（与 SbirsErrorModel 同口径）。
+  const double orbit_rad = orbit_sigma_deg * kDegToRad;
+  const double attitude_rad = attitude_sigma_deg * kDegToRad;
+  const double fov_rad = fov_sigma_deg * kDegToRad;
+  const double los_rad =
+      std::sqrt(orbit_rad * orbit_rad + attitude_rad * attitude_rad + fov_rad * fov_rad);
+  // ②③ 指向扰动（平稳 1-σ）。
+  const double common_rad = common_attitude_sigma_deg * kDegToRad;
+  const double channel_rad = channel_pointing_sigma_deg * kDegToRad;
+
+  // 四类独立来源 RSS 合成。
+  const double terms[4] = {mount_rad, common_rad, channel_rad, los_rad};
+  double sum_sq = 0.0;
+  for (int i = 0; i < 4; ++i) {
+    sum_sq += terms[i] * terms[i];
+  }
+  const double total_urad = std::sqrt(sum_sq) * kRadToUrad;
+  const bool within = total_urad <= kRequirementUrad;
+
+  std::string content = "卫星ID=" + std::to_string(satellite_id);
+  content += " 统计口径=载荷总指向误差预算";
+  content += " 安装误差等效角=" + FormatF(mount_rad * kRadToUrad, 3) + "urad";
+  content += " 共模姿态=" + FormatF(common_rad * kRadToUrad, 3) + "urad";
+  content += " 通道指向=" + FormatF(channel_rad * kRadToUrad, 3) + "urad";
+  content += " LOS随机=" + FormatF(los_rad * kRadToUrad, 3) + "urad";
+  content += " 合成总指向误差=" + FormatF(total_urad, 3) + "urad";
+  content += " 判定门限=3.000urad";
+  content += within ? " 判定=满足" : " 判定=超出";
+  if (!within && kRequirementUrad > 0.0) {
+    content += " 超差倍数=" + FormatF(total_urad / kRequirementUrad, 1);
+  }
+  // 与第 12/13 项实测角误差的关系写清楚：动态滞后/折射已在实测误差内，不重复计入。
+  content += " 未计入项=动态滞后/折射(见第9/12/13项实测)";
+  content += " 弧秒换算=" + FormatF(total_urad * 0.206264806, 3) + "arcsec";
+  SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "安装矩阵误差功能测试", content);
+}
+
 void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
                            float orbit_sigma_deg, double reference_range_m,
                            float nav_position_sigma_m,

@@ -1215,6 +1215,22 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           oneq::coordinate::EulerAnglesDeg(misalignment_total_deg_.yaw_deg,
                                            misalignment_total_deg_.pitch_deg,
                                            misalignment_total_deg_.roll_deg));
+      // 中译：**载荷总指向误差预算**（2026-11-04 甲方 3 µrad 指标）——把四类独立来源
+      //   （安装矩阵失准 / 共模姿态 / 通道指向 / LOS 随机）RSS 合成一行，使"≤3 µrad"
+      //   可判、可追溯。此前这四项分散：安装误差只在第 10 项的矩阵里（未折算角度），
+      //   指向扰动只作用于波束指向、LOS 随机只体现在第 9/12/13 项的实测残差里，
+      //   没有一处给出"总指向误差"。
+      // 标识：载荷总指向误差预算（2026-11-04）。
+      WriteSbirsPayloadPointingBudget(
+          satellite_entity_id_, sim_time_sec, input.cycle_index,
+          static_cast<double>(misalignment_total_deg_.yaw_deg),
+          static_cast<double>(misalignment_total_deg_.pitch_deg),
+          static_cast<double>(misalignment_total_deg_.roll_deg),
+          static_cast<double>(config_.session.policy.error_model.orbit_sigma_deg),
+          static_cast<double>(config_.session.policy.error_model.attitude_sigma_deg),
+          static_cast<double>(config_.session.policy.error_model.fov_sigma_deg),
+          static_cast<double>(config_.session.policy.pointing_disturbance.common_attitude_sigma_deg),
+          static_cast<double>(config_.session.policy.pointing_disturbance.channel_pointing_sigma_deg));
       install_matrices_acceptance_pending_ = false;
     }
     const double sat_range = std::sqrt(input.satellite_position_ecef_m.x * input.satellite_position_ecef_m.x +

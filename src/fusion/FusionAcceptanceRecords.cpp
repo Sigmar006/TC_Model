@@ -294,6 +294,49 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
       relay += FormatF(track.kinematic_estimate.position.altitude_m, 1) + ")";
       relay += " 速度模=" + FormatF(speed, 3) + "m/s";
       relay += " 加速度模=" + FormatF(acc, 3) + "m/s^2";
+    } else if (track.has_kinematic_estimate) {
+      // 中译：**单星跟踪也写位置/速度/加速度**（2026-11-02）——判据第16项正文要求
+      //   记录"跟踪目标的位置、速度、加速度"，示例的第二行（单星）就是不带"多源"前缀的
+      //   `位置LLA=/速度模=/加速度模=`；此前单星分支一个字段都不写，外部只看到剩余覆盖
+      //   与接力计划，判不出"是否有位置/速度/加速度"。
+      // 标识：第16项单星位置速度加速度（2026-11-02）。
+      relay += " 位置LLA=(";
+      relay += FormatF(track.kinematic_estimate.position.latitude_deg, 6) + ",";
+      relay += FormatF(track.kinematic_estimate.position.longitude_deg, 6) + ",";
+      relay += FormatF(track.kinematic_estimate.position.altitude_m, 1) + ")";
+      relay += " 速度模=" + FormatF(speed, 3) + "m/s";
+      relay += " 加速度模=" + FormatF(acc, 3) + "m/s^2";
+    }
+    // 中译：**预测目标运动轨迹**（2026-11-02）——判据第16项正文要求"预测目标的运动轨迹"，
+    //   示例为 `预测目标运动轨迹=[+1s:(lat,lon,h);+10s:(…)]`。融合层是 CV 模型（无加速度
+    //   状态），按**匀速外推**给 +1/+5/+10 s 三点：`p(t) = p0 + v·t`（ECEF），再转 LLA。
+    //   该轨迹是"当前状态的可外推段"，不含重力/阻力，故只给 10 s 内三点，不外推到落点。
+    // 标识：第16项预测目标运动轨迹（2026-11-02）。
+    if (track.has_kinematic_estimate) {
+      oneq::coordinate::EcefPositionM base_ecef{};
+      if (oneq::coordinate::TryLlaToEcef(track.kinematic_estimate.position, &base_ecef)) {
+        std::string trajectory = " 预测目标运动轨迹=[";
+        const double offsets[3] = {1.0, 5.0, 10.0};
+        for (std::size_t k = 0U; k < 3U; ++k) {
+          oneq::coordinate::EcefPositionM point = base_ecef;
+          point.x_m += vel[0] * offsets[k];
+          point.y_m += vel[1] * offsets[k];
+          point.z_m += vel[2] * offsets[k];
+          oneq::coordinate::LlaPositionDegM point_lla{};
+          if (!oneq::coordinate::TryEcefToLla(point, &point_lla)) {
+            continue;
+          }
+          if (k > 0U && trajectory.size() > std::string(" 预测目标运动轨迹=[").size()) {
+            trajectory += ";";
+          }
+          trajectory += "+" + std::to_string(static_cast<int>(offsets[k])) + "s:(" +
+                        FormatF(point_lla.latitude_deg, 6) + "," +
+                        FormatF(point_lla.longitude_deg, 6) + "," +
+                        FormatF(point_lla.altitude_m, 1) + ")";
+        }
+        trajectory += "]";
+        relay += trajectory;
+      }
     }
 
     // 接力三项（2026-08-22 甲方批注）：逐方位源以「(视场宽度 − 自首见累计扫过角)

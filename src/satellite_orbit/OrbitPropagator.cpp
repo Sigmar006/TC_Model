@@ -1,4 +1,4 @@
-﻿#include "1q/sbirs_sensor/orbit/OrbitPropagator.h"
+﻿#include "1q/satellite_orbit/OrbitPropagator.h"
 
 #include <algorithm>
 #include <cmath>
@@ -6,8 +6,7 @@
 #include "1q/coordinate/inertial_transform.h"
 #include "common/numerics/Constants.h"
 
-namespace sbirs_sensor {
-namespace orbit {
+namespace satellite_orbit {
 namespace {
 
 using oneq::common::numerics::DegToRad;
@@ -124,8 +123,7 @@ void RotateX(double angle_rad, double vector[3U]) {
 bool StateFromElements(const OrbitalElements& elements, CartesianState* state) {
   const double semi_major_axis = elements.semi_major_axis_m;
   const double eccentricity = elements.eccentricity;
-  const double mean_anomaly =
-      NormalizeRadians(DegToRad(elements.mean_anomaly_deg));
+  const double mean_anomaly = NormalizeRadians(DegToRad(elements.mean_anomaly_deg));
   const double eccentric_anomaly = SolveKeplerEquation(mean_anomaly, eccentricity);
   const double cos_eccentric = std::cos(eccentric_anomaly);
   const double sin_eccentric = std::sin(eccentric_anomaly);
@@ -142,8 +140,7 @@ bool StateFromElements(const OrbitalElements& elements, CartesianState* state) {
   const double semi_latus_rectum = semi_major_axis * one_minus_e2;
   const double speed_scale = std::sqrt(kEarthMuM3PerS2 / semi_latus_rectum);
   double position[3U] = {radius * cos_true, radius * sin_true, 0.0};
-  double velocity[3U] = {-speed_scale * sin_true,
-                         speed_scale * (eccentricity + cos_true), 0.0};
+  double velocity[3U] = {-speed_scale * sin_true, speed_scale * (eccentricity + cos_true), 0.0};
   // 近焦点系 → ECI：R3(Ω)·R1(i)·R3(ω)。
   const double argument_of_perigee = DegToRad(elements.argument_of_perigee_deg);
   const double inclination = DegToRad(elements.inclination_deg);
@@ -180,9 +177,8 @@ void ComputeAcceleration(const double position[3U], bool enable_j2, double accel
   }
   const double z_squared_ratio = (z * z) / radius_squared;
   // a_J2 = −(3/2)·J2·μ·Re²/r⁵·[x(1−5z²/r²), y(1−5z²/r²), z(3−5z²/r²)]。
-  const double common =
-      1.5 * kJ2Coefficient * kEarthMuM3PerS2 * kEarthEquatorialRadiusM *
-      kEarthEquatorialRadiusM * inverse_radius_cubed / radius_squared;
+  const double common = 1.5 * kJ2Coefficient * kEarthMuM3PerS2 * kEarthEquatorialRadiusM *
+                        kEarthEquatorialRadiusM * inverse_radius_cubed / radius_squared;
   acceleration[0] -= common * x * (1.0 - 5.0 * z_squared_ratio);
   acceleration[1] -= common * y * (1.0 - 5.0 * z_squared_ratio);
   acceleration[2] -= common * z * (3.0 - 5.0 * z_squared_ratio);
@@ -221,13 +217,11 @@ CartesianState Rk4Step(const CartesianState& state, double dt_sec, bool enable_j
   for (int i = 0; i < 3; ++i) {
     const int index = static_cast<int>(i);
     next.position[index] =
-        state.position[index] +
-        scale * (k1.position[index] + 2.0 * k2.position[index] + 2.0 * k3.position[index] +
-                 k4.position[index]);
+        state.position[index] + scale * (k1.position[index] + 2.0 * k2.position[index] +
+                                         2.0 * k3.position[index] + k4.position[index]);
     next.velocity[index] =
-        state.velocity[index] +
-        scale * (k1.velocity[index] + 2.0 * k2.velocity[index] + 2.0 * k3.velocity[index] +
-                 k4.velocity[index]);
+        state.velocity[index] + scale * (k1.velocity[index] + 2.0 * k2.velocity[index] +
+                                         2.0 * k3.velocity[index] + k4.velocity[index]);
   }
   return next;
 }
@@ -245,10 +239,10 @@ CartesianState ToCartesian(const EciState& state) {
 
 EciState ToEciState(const CartesianState& state) {
   EciState eci;
-  eci.position = oneq::coordinate::EciPositionM(state.position[0], state.position[1],
-                                                 state.position[2]);
-  eci.velocity = oneq::coordinate::EciVelocityMps(state.velocity[0], state.velocity[1],
-                                                   state.velocity[2]);
+  eci.position =
+      oneq::coordinate::EciPositionM(state.position[0], state.position[1], state.position[2]);
+  eci.velocity =
+      oneq::coordinate::EciVelocityMps(state.velocity[0], state.velocity[1], state.velocity[2]);
   return eci;
 }
 
@@ -345,5 +339,4 @@ void OrbitPropagator::SetStepSize(double step_size_s) {
 
 void OrbitPropagator::SetJ2Enabled(bool enable) { enable_j2_ = enable; }
 
-}  // namespace orbit
-}  // namespace sbirs_sensor
+}  // namespace satellite_orbit

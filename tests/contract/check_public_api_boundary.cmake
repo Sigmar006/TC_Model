@@ -111,10 +111,6 @@ set(SBIRS_CONFIG_HEADERS
     "sbirs_sensor/config/sbirs_sensor_config.hpp"
 )
 
-set(SBIRS_ORBIT_HEADERS
-    "sbirs_sensor/orbit/OrbitPropagator.h"
-)
-
 set(SBIRS_SESSION_HEADERS
     "sbirs_sensor/session/SbirsCycleInput.h"
     "sbirs_sensor/session/SbirsCycleInputAdapter.h"
@@ -211,6 +207,11 @@ set(TARGET_INFERENCE_HEADERS
     "target_inference/TargetInferenceConfig.h"
     "target_inference/TargetInferenceEngine.h"
     "target_inference/target_inference.hpp"
+)
+
+set(SATELLITE_ORBIT_HEADERS
+    "satellite_orbit/OrbitPropagator.h"
+    "satellite_orbit/satellite_orbit.hpp"
 )
 
 set(PRECISION_EVALUATION_HEADERS
@@ -346,7 +347,6 @@ set(EXPECTED_PUBLIC_HEADERS
     ${EOS_SESSION_HEADERS}
     ${SBIRS_MODULE_ENTRY_HEADERS}
     ${SBIRS_CONFIG_HEADERS}
-    ${SBIRS_ORBIT_HEADERS}
     ${SBIRS_SESSION_HEADERS}
     ${ESR_MODULE_ENTRY_HEADERS}
     ${ESR_CONFIG_HEADERS}
@@ -358,6 +358,7 @@ set(EXPECTED_PUBLIC_HEADERS
     ${FUSION_HEADERS}
     ${THREAT_ASSESSMENT_HEADERS}
     ${TARGET_INFERENCE_HEADERS}
+    ${SATELLITE_ORBIT_HEADERS}
     ${PRECISION_EVALUATION_HEADERS}
     ${SAR_MODULE_ENTRY_HEADERS}
     ${SAR_CONFIG_HEADERS}

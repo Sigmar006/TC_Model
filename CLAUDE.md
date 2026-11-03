@@ -4,7 +4,7 @@
 
 **The project has not been delivered: refactoring does not chase excessive compatibility — clean boundaries are the first principle.**
 
-A static library of simulation models for external service modules — airborne radar (AR), electronic surveillance radar (ESR), synthetic aperture radar (SAR), electro-optical sensor (EOS), flight dynamics, space-based infrared sensor (SBIRS), and remote identification radar (RIR) — plus electronic countermeasure (ECM), navigation, fusion, threat assessment and target-inference algorithm modules (stateless inference over track-state frames), and a precision-evaluation module that scores products against scenario truth, delivered as a single linkable artifact.
+A static library of simulation models for external service modules — airborne radar (AR), electronic surveillance radar (ESR), synthetic aperture radar (SAR), electro-optical sensor (EOS), flight dynamics, space-based infrared sensor (SBIRS), and remote identification radar (RIR) — plus electronic countermeasure (ECM), navigation, fusion, threat assessment and target-inference algorithm modules (stateless inference over track-state frames), a satellite-orbit propagation model, and a precision-evaluation module that scores products against scenario truth, delivered as a single linkable artifact.
 
 ## Directory Structure
 
@@ -17,7 +17,7 @@ docs/                   navigation entry: docs/README.md
 tests/ examples/ tools/ schemas/
 ```
 
-Modules: airborne_radar (AR), electronic_surveillance_radar (ESR), sar (SAR), electro_optical_sensor (EOS), flight_dynamic, sbirs_sensor (SBIRS), remote_identification_radar (RIR), electronic_countermeasure (ECM), navigation, fusion, threat_assessment, target_inference, precision_evaluation.
+Modules: airborne_radar (AR), electronic_surveillance_radar (ESR), sar (SAR), electro_optical_sensor (EOS), flight_dynamic, sbirs_sensor (SBIRS), remote_identification_radar (RIR), electronic_countermeasure (ECM), navigation, fusion, threat_assessment, target_inference, satellite_orbit, precision_evaluation.
 
 ## Build and Test
 

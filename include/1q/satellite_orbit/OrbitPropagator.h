@@ -4,7 +4,7 @@
  *
  * 设计依据：《探测仿真系统软件设计说明》5.1.1「模拟 OPIR 轨道运动能力」——
  * 轨道传播由 OrbitPropagator 类承担，由轨道六根数与历元推进卫星状态，逐周期
- * 输出 ECEF 位置与速度供 SbirsCycleInput 使用。
+ * 输出 ECEF 位置与速度供周期输入使用。
  *
  * 约定与近似（效能级）：
  * - 动力学仅含二体中心引力与可选 J2 项；不建模高阶重力场、日月引力、太阳光压
@@ -15,14 +15,13 @@
  * - 不抛出 C++ 异常：非法输入返回 false，失败时不修改已持有的传播状态。
  */
 
-#ifndef ONEQ_SBIRS_SENSOR_ORBIT_ORBIT_PROPAGATOR_H_
-#define ONEQ_SBIRS_SENSOR_ORBIT_ORBIT_PROPAGATOR_H_
+#ifndef ONEQ_SATELLITE_ORBIT_ORBIT_PROPAGATOR_H_
+#define ONEQ_SATELLITE_ORBIT_ORBIT_PROPAGATOR_H_
 
 #include "1q/api.hpp"
 #include "1q/coordinate/types.h"
 
-namespace sbirs_sensor {
-namespace orbit {
+namespace satellite_orbit {
 
 /**
  * @brief 轨道六根数（经典开普勒根数）。
@@ -43,7 +42,7 @@ struct ONEQ_API EciState {
   oneq::coordinate::EciVelocityMps velocity{}; /**< ECI 速度，单位 m/s */
 };
 
-/** @brief 地固系（ECEF）位置与速度状态，用于注入 SbirsCycleInput。 */
+/** @brief 地固系（ECEF）位置与速度状态，用于注入周期输入的卫星状态字段。 */
 struct ONEQ_API EcefState {
   oneq::coordinate::EcefPositionM position{};   /**< ECEF 位置，单位 m */
   oneq::coordinate::EcefVelocityMps velocity{}; /**< ECEF 速度，单位 m/s */
@@ -124,7 +123,6 @@ class ONEQ_API OrbitPropagator {
   double last_propagated_jd_{0.0}; /**< 上次传播到的 UTC 儒略日 */
 };
 
-}  // namespace orbit
-}  // namespace sbirs_sensor
+}  // namespace satellite_orbit
 
-#endif  // ONEQ_SBIRS_SENSOR_ORBIT_ORBIT_PROPAGATOR_H_
+#endif  // ONEQ_SATELLITE_ORBIT_ORBIT_PROPAGATOR_H_

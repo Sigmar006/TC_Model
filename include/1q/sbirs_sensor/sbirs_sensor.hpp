@@ -7,7 +7,6 @@
 #define ONEQ_SBIRS_SENSOR_SBIRS_SENSOR_HPP_
 
 #include "1q/sbirs_sensor/config/sbirs_sensor_config.hpp"
-#include "1q/sbirs_sensor/orbit/OrbitPropagator.h"
 #include "1q/sbirs_sensor/session/SbirsCycleInput.h"
 #include "1q/sbirs_sensor/session/SbirsCycleInputAdapter.h"
 #include "1q/sbirs_sensor/session/SbirsCycleOutputAdapter.h"

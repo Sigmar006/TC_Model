@@ -46,6 +46,7 @@ set(ALLOWED_DOC_DIRS
     "threat_assessment"
     "target_inference"
     "precision_evaluation"
+    "satellite_orbit"
     "explainers")
 
 set(BUSINESS_MODULE_DIRS
@@ -61,7 +62,8 @@ set(BUSINESS_MODULE_DIRS
     "sar"
     "sbirs_sensor"
     "threat_assessment"
-    "target_inference")
+    "target_inference"
+    "satellite_orbit")
 
 set(MODULE_DOC_FILES
     "design.md"

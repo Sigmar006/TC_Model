@@ -1,5 +1,5 @@
 ﻿/**
- * @file sbirs_orbit_propagator_test.cpp
+ * @file orbit_propagator_test.cpp
  * @brief OrbitPropagator 单元测试：根数→历元状态、RK4 周期闭合、J2 摄动、
  *        ECEF/GMST 输出一致性与 fail-closed 输入校验。
  */
@@ -11,7 +11,7 @@
 #include <limits>
 
 #include "1q/coordinate/inertial_transform.h"
-#include "1q/sbirs_sensor/orbit/OrbitPropagator.h"
+#include "1q/satellite_orbit/OrbitPropagator.h"
 
 namespace {
 
@@ -22,8 +22,8 @@ constexpr double kSecondsPerDay = 86400.0;
 // 用于 ECEF 与 ECI 按解析旋转逐分量对照。
 constexpr double kGmstZeroJulianDay = 2451544.2230698913;
 
-sbirs_sensor::orbit::OrbitalElements CircularEquatorialElements() {
-  sbirs_sensor::orbit::OrbitalElements elements;
+satellite_orbit::OrbitalElements CircularEquatorialElements() {
+  satellite_orbit::OrbitalElements elements;
   elements.semi_major_axis_m = 7000000.0;
   elements.eccentricity = 0.0;
   elements.inclination_deg = 0.0;
@@ -38,7 +38,7 @@ double Norm(const oneq::coordinate::EciPositionM& position) {
                    position.z_m * position.z_m);
 }
 
-void NormalOf(const sbirs_sensor::orbit::EciState& state, double normal[3U]) {
+void NormalOf(const satellite_orbit::EciState& state, double normal[3U]) {
   const double rx = state.position.x_m;
   const double ry = state.position.y_m;
   const double rz = state.position.z_m;
@@ -55,8 +55,8 @@ void NormalOf(const sbirs_sensor::orbit::EciState& state, double normal[3U]) {
   normal[2] /= length;
 }
 
-double AngleBetweenNormals(const sbirs_sensor::orbit::EciState& lhs,
-                           const sbirs_sensor::orbit::EciState& rhs) {
+double AngleBetweenNormals(const satellite_orbit::EciState& lhs,
+                           const satellite_orbit::EciState& rhs) {
   double lhs_normal[3U];
   double rhs_normal[3U];
   NormalOf(lhs, lhs_normal);
@@ -69,12 +69,12 @@ double AngleBetweenNormals(const sbirs_sensor::orbit::EciState& lhs,
 
 }  // namespace
 
-TEST(SbirsOrbitPropagatorTest, EpochStateMatchesCircularEquatorialElements) {
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+TEST(SatelliteOrbitPropagatorTest, EpochStateMatchesCircularEquatorialElements) {
+  satellite_orbit::OrbitPropagator propagator;
   ASSERT_TRUE(propagator.Initialize(CircularEquatorialElements(), 2451545.0));
   ASSERT_TRUE(propagator.initialized());
 
-  const sbirs_sensor::orbit::EciState& epoch = propagator.current_state_eci();
+  const satellite_orbit::EciState& epoch = propagator.current_state_eci();
   EXPECT_NEAR(epoch.position.x_m, 7000000.0, 1.0e-6);
   EXPECT_NEAR(epoch.position.y_m, 0.0, 1.0e-6);
   EXPECT_NEAR(epoch.position.z_m, 0.0, 1.0e-6);
@@ -85,17 +85,17 @@ TEST(SbirsOrbitPropagatorTest, EpochStateMatchesCircularEquatorialElements) {
   EXPECT_DOUBLE_EQ(propagator.last_propagated_julian_day(), 2451545.0);
 }
 
-TEST(SbirsOrbitPropagatorTest, PerigeeRadiusAndSpeedMatchVisViva) {
-  sbirs_sensor::orbit::OrbitalElements elements = CircularEquatorialElements();
+TEST(SatelliteOrbitPropagatorTest, PerigeeRadiusAndSpeedMatchVisViva) {
+  satellite_orbit::OrbitalElements elements = CircularEquatorialElements();
   elements.eccentricity = 0.2;
   elements.inclination_deg = 55.0;
   elements.raan_deg = 40.0;
   elements.argument_of_perigee_deg = 70.0;
   elements.mean_anomaly_deg = 0.0;
 
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+  satellite_orbit::OrbitPropagator propagator;
   ASSERT_TRUE(propagator.Initialize(elements, 2451545.0));
-  const sbirs_sensor::orbit::EciState& epoch = propagator.current_state_eci();
+  const satellite_orbit::EciState& epoch = propagator.current_state_eci();
   const double perigee_radius = elements.semi_major_axis_m * (1.0 - elements.eccentricity);
   const double perigee_speed =
       std::sqrt(kEarthMuM3PerS2 * (1.0 + elements.eccentricity) /
@@ -107,24 +107,24 @@ TEST(SbirsOrbitPropagatorTest, PerigeeRadiusAndSpeedMatchVisViva) {
   EXPECT_NEAR(speed, perigee_speed, 1.0e-6);
 }
 
-TEST(SbirsOrbitPropagatorTest, OneOrbitPeriodReturnsToInitialState) {
-  sbirs_sensor::orbit::OrbitalElements elements = CircularEquatorialElements();
+TEST(SatelliteOrbitPropagatorTest, OneOrbitPeriodReturnsToInitialState) {
+  satellite_orbit::OrbitalElements elements = CircularEquatorialElements();
   elements.eccentricity = 0.01;
   elements.inclination_deg = 30.0;
   elements.raan_deg = 40.0;
   elements.argument_of_perigee_deg = 20.0;
   elements.mean_anomaly_deg = 10.0;
 
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+  satellite_orbit::OrbitPropagator propagator;
   ASSERT_TRUE(propagator.Initialize(elements, 2451545.0));
   propagator.SetJ2Enabled(false);
-  const sbirs_sensor::orbit::EciState initial = propagator.current_state_eci();
+  const satellite_orbit::EciState initial = propagator.current_state_eci();
   const double period_sec =
       2.0 * kPi * std::sqrt(std::pow(elements.semi_major_axis_m, 3.0) / kEarthMuM3PerS2);
 
-  sbirs_sensor::orbit::EcefState ecef;
+  satellite_orbit::EcefState ecef;
   ASSERT_TRUE(propagator.PropagateToTime(2451545.0 + period_sec / kSecondsPerDay, &ecef));
-  const sbirs_sensor::orbit::EciState& final_state = propagator.current_state_eci();
+  const satellite_orbit::EciState& final_state = propagator.current_state_eci();
   EXPECT_NEAR(final_state.position.x_m, initial.position.x_m, 1.0);
   EXPECT_NEAR(final_state.position.y_m, initial.position.y_m, 1.0);
   EXPECT_NEAR(final_state.position.z_m, initial.position.z_m, 1.0);
@@ -133,23 +133,23 @@ TEST(SbirsOrbitPropagatorTest, OneOrbitPeriodReturnsToInitialState) {
   EXPECT_NEAR(final_state.velocity.z_mps, initial.velocity.z_mps, 1.0e-3);
 }
 
-TEST(SbirsOrbitPropagatorTest, J2PerturbationRotatesOrbitPlane) {
-  sbirs_sensor::orbit::OrbitalElements elements = CircularEquatorialElements();
+TEST(SatelliteOrbitPropagatorTest, J2PerturbationRotatesOrbitPlane) {
+  satellite_orbit::OrbitalElements elements = CircularEquatorialElements();
   elements.eccentricity = 0.001;
   elements.inclination_deg = 30.0;
   elements.raan_deg = 40.0;
   elements.argument_of_perigee_deg = 20.0;
   elements.mean_anomaly_deg = 10.0;
 
-  sbirs_sensor::orbit::OrbitPropagator without_j2;
-  sbirs_sensor::orbit::OrbitPropagator with_j2;
+  satellite_orbit::OrbitPropagator without_j2;
+  satellite_orbit::OrbitPropagator with_j2;
   ASSERT_TRUE(without_j2.Initialize(elements, 2451545.0));
   ASSERT_TRUE(with_j2.Initialize(elements, 2451545.0));
   without_j2.SetJ2Enabled(false);
   with_j2.SetJ2Enabled(true);
-  const sbirs_sensor::orbit::EciState initial = without_j2.current_state_eci();
+  const satellite_orbit::EciState initial = without_j2.current_state_eci();
 
-  sbirs_sensor::orbit::EcefState ecef;
+  satellite_orbit::EcefState ecef;
   ASSERT_TRUE(without_j2.PropagateToTime(2451545.0 + 1.0, &ecef));
   ASSERT_TRUE(with_j2.PropagateToTime(2451545.0 + 1.0, &ecef));
 
@@ -160,13 +160,13 @@ TEST(SbirsOrbitPropagatorTest, J2PerturbationRotatesOrbitPlane) {
   EXPECT_GT(angle_with_j2, 1.0e-3);
 }
 
-TEST(SbirsOrbitPropagatorTest, EcefOutputMatchesGmstRotationAndTransport) {
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+TEST(SatelliteOrbitPropagatorTest, EcefOutputMatchesGmstRotationAndTransport) {
+  satellite_orbit::OrbitPropagator propagator;
   ASSERT_TRUE(propagator.Initialize(CircularEquatorialElements(), kGmstZeroJulianDay));
-  sbirs_sensor::orbit::EcefState ecef;
+  satellite_orbit::EcefState ecef;
   ASSERT_TRUE(propagator.PropagateToTime(kGmstZeroJulianDay, &ecef));
 
-  const sbirs_sensor::orbit::EciState& eci = propagator.current_state_eci();
+  const satellite_orbit::EciState& eci = propagator.current_state_eci();
   // 该历元 GMST 仅剩亚微弧度残差，但不足以忽略：按解析 R3(−θ) 逐分量对照，
   // 位置用旋转矩阵，速度额外补偿 ω×r 输运项。
   double gmst_rad = 0.0;
@@ -187,11 +187,11 @@ TEST(SbirsOrbitPropagatorTest, EcefOutputMatchesGmstRotationAndTransport) {
   EXPECT_NEAR(ecef.velocity.z_mps, eci.velocity.z_mps, 1.0e-6);
 }
 
-TEST(SbirsOrbitPropagatorTest, EcefVelocityIsInverseOfEcefToEciTransform) {
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+TEST(SatelliteOrbitPropagatorTest, EcefVelocityIsInverseOfEcefToEciTransform) {
+  satellite_orbit::OrbitPropagator propagator;
   ASSERT_TRUE(propagator.Initialize(CircularEquatorialElements(), 2451545.0));
   const double target_jd = 2451545.0 + 0.5;
-  sbirs_sensor::orbit::EcefState ecef;
+  satellite_orbit::EcefState ecef;
   ASSERT_TRUE(propagator.PropagateToTime(target_jd, &ecef));
 
   double gmst_rad = 0.0;
@@ -201,7 +201,7 @@ TEST(SbirsOrbitPropagatorTest, EcefVelocityIsInverseOfEcefToEciTransform) {
   ASSERT_TRUE(oneq::coordinate::TryEcefToEci(ecef.position, gmst_rad, &eci_position));
   ASSERT_TRUE(oneq::coordinate::TryEcefVelocityToEci(ecef.position, ecef.velocity, gmst_rad,
                                                       &eci_velocity));
-  const sbirs_sensor::orbit::EciState& current = propagator.current_state_eci();
+  const satellite_orbit::EciState& current = propagator.current_state_eci();
   EXPECT_NEAR(eci_position.x_m, current.position.x_m, 1.0e-6);
   EXPECT_NEAR(eci_position.y_m, current.position.y_m, 1.0e-6);
   EXPECT_NEAR(eci_position.z_m, current.position.z_m, 1.0e-6);
@@ -210,12 +210,12 @@ TEST(SbirsOrbitPropagatorTest, EcefVelocityIsInverseOfEcefToEciTransform) {
   EXPECT_NEAR(eci_velocity.z_mps, current.velocity.z_mps, 1.0e-6);
 }
 
-TEST(SbirsOrbitPropagatorTest, InitializeRejectsInvalidElementsAndKeepsState) {
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+TEST(SatelliteOrbitPropagatorTest, InitializeRejectsInvalidElementsAndKeepsState) {
+  satellite_orbit::OrbitPropagator propagator;
   ASSERT_TRUE(propagator.Initialize(CircularEquatorialElements(), 2451545.0));
-  const sbirs_sensor::orbit::EciState baseline = propagator.current_state_eci();
+  const satellite_orbit::EciState baseline = propagator.current_state_eci();
 
-  sbirs_sensor::orbit::OrbitalElements invalid = CircularEquatorialElements();
+  satellite_orbit::OrbitalElements invalid = CircularEquatorialElements();
   invalid.semi_major_axis_m = 0.0;
   EXPECT_FALSE(propagator.Initialize(invalid, 2451545.0));
 
@@ -246,10 +246,10 @@ TEST(SbirsOrbitPropagatorTest, InitializeRejectsInvalidElementsAndKeepsState) {
   EXPECT_DOUBLE_EQ(propagator.current_state_eci().velocity.y_mps, baseline.velocity.y_mps);
 }
 
-TEST(SbirsOrbitPropagatorTest, PropagateRejectsBackwardAndNonFiniteTime) {
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+TEST(SatelliteOrbitPropagatorTest, PropagateRejectsBackwardAndNonFiniteTime) {
+  satellite_orbit::OrbitPropagator propagator;
   ASSERT_TRUE(propagator.Initialize(CircularEquatorialElements(), 2451545.0));
-  sbirs_sensor::orbit::EcefState ecef;
+  satellite_orbit::EcefState ecef;
   ASSERT_TRUE(propagator.PropagateToTime(2451545.0 + 60.0 / kSecondsPerDay, &ecef));
   const double last_jd = propagator.last_propagated_julian_day();
 
@@ -261,8 +261,8 @@ TEST(SbirsOrbitPropagatorTest, PropagateRejectsBackwardAndNonFiniteTime) {
   EXPECT_DOUBLE_EQ(propagator.last_propagated_julian_day(), last_jd);
 }
 
-TEST(SbirsOrbitPropagatorTest, StepSizeHasPositiveFloorAndIgnoresNonFinite) {
-  sbirs_sensor::orbit::OrbitPropagator propagator;
+TEST(SatelliteOrbitPropagatorTest, StepSizeHasPositiveFloorAndIgnoresNonFinite) {
+  satellite_orbit::OrbitPropagator propagator;
   propagator.SetStepSize(30.0);
   EXPECT_DOUBLE_EQ(propagator.step_size_sec(), 30.0);
   propagator.SetStepSize(0.0);
@@ -274,16 +274,16 @@ TEST(SbirsOrbitPropagatorTest, StepSizeHasPositiveFloorAndIgnoresNonFinite) {
   EXPECT_DOUBLE_EQ(propagator.step_size_sec(), floored);
 }
 
-TEST(SbirsOrbitPropagatorTest, SameInputSequenceIsDeterministic) {
-  sbirs_sensor::orbit::OrbitPropagator lhs;
-  sbirs_sensor::orbit::OrbitPropagator rhs;
+TEST(SatelliteOrbitPropagatorTest, SameInputSequenceIsDeterministic) {
+  satellite_orbit::OrbitPropagator lhs;
+  satellite_orbit::OrbitPropagator rhs;
   ASSERT_TRUE(lhs.Initialize(CircularEquatorialElements(), 2451545.0));
   ASSERT_TRUE(rhs.Initialize(CircularEquatorialElements(), 2451545.0));
   lhs.SetStepSize(7.0);
   rhs.SetStepSize(7.0);
   const double target_jd = 2451545.0 + 0.25;
-  sbirs_sensor::orbit::EcefState lhs_ecef;
-  sbirs_sensor::orbit::EcefState rhs_ecef;
+  satellite_orbit::EcefState lhs_ecef;
+  satellite_orbit::EcefState rhs_ecef;
   ASSERT_TRUE(lhs.PropagateToTime(target_jd, &lhs_ecef));
   ASSERT_TRUE(rhs.PropagateToTime(target_jd, &rhs_ecef));
   EXPECT_DOUBLE_EQ(lhs_ecef.position.x_m, rhs_ecef.position.x_m);

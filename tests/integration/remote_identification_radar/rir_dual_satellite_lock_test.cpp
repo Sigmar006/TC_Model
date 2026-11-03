@@ -27,9 +27,50 @@ using session::RirSceneTarget;
 
 TEST(RirDualSatelliteLockTest, DualLosFixPositionAndTruthVelocityLockTarget) {
   constexpr std::uint64_t kExternalTargetId = 70421U;
-  const EcefPositionM truth_position(8000000.0, 6000000.0, 0.0);
-  const EcefPositionM satellite_a(7000000.0, 0.0, 0.0);
-  const EcefPositionM satellite_b(0.0, 7000000.0, 0.0);
+  RirCycleInput input;
+  input.input_cycle_index = 1U;
+  input.dt_sec = 0.5;
+  SetDefaultTestPlatformEcef(&input);
+
+  // 中译：**几何必须落在雷达可观测空域内**（2026-11-04 修正）——原用例把真值点取在
+  //   赤道 10,000 km 处，从 30°N/120°E 的平台看它在**地平线以下**（俯仰 −28°），而雷达
+  //   扫描范围只有 [−30°, +30°]/[−60°, +60°]，于是驻留中心被钳到边界 +30°、探测不到、
+  //   航迹归属为空，三条断言全失败。测试要验的是"交会解 → 锁定"这条链，不是"越界钳位"，
+  //   所以真值点改由平台**按方位/俯仰/斜距正向生成**（方位 20°、俯仰 15°、斜距 120 km），
+  //   保证它确实在雷达可见空域内，且期望值可解析算出。
+  // 标识：测试几何落在可观测空域（2026-11-04）。
+  // 中译：方位取 40°（2026-11-04）——雷达机内方位以**正东为 0**、逆时针为正，机内
+  //   look_az = 90° − ENU 方位；原取 20° 时机内 look_az=70°，落在 [−60°, +60°] 扫描
+  //   体之外（`rir.target_outside_search_volume`），根本进不了探测。40° ⇒ look_az=50°，
+  //   在体内且离边界有 10° 余量。
+  // 标识：测试方位取机内可扫描区（2026-11-04）。
+  constexpr double kTargetAzDeg = 40.0;
+  constexpr double kTargetElDeg = 15.0;
+  constexpr double kTargetRangeM = 120000.0;
+  LlaPositionDegM platform_lla;
+  ASSERT_TRUE(oneq::coordinate::TryEcefToLla(input.platform_position, &platform_lla));
+
+  oneq::coordinate::EnuPositionM truth_enu;
+  truth_enu.east_m = kTargetRangeM * std::cos(kTargetElDeg * 3.141592653589793 / 180.0) *
+                     std::sin(kTargetAzDeg * 3.141592653589793 / 180.0);
+  truth_enu.north_m = kTargetRangeM * std::cos(kTargetElDeg * 3.141592653589793 / 180.0) *
+                      std::cos(kTargetAzDeg * 3.141592653589793 / 180.0);
+  truth_enu.up_m = kTargetRangeM * std::sin(kTargetElDeg * 3.141592653589793 / 180.0);
+  EcefPositionM truth_position;
+  ASSERT_TRUE(oneq::coordinate::TryEnuToEcef(truth_enu, platform_lla, &truth_position));
+
+  // 两颗星按经纬高摆位（远在 35,000 km，保证交会良态），视线由真值反算。
+  const auto satellite_ecef = [](double _lat_deg, double _lon_deg) {
+    oneq::coordinate::LlaPositionDegM lla{};
+    lla.latitude_deg = _lat_deg;
+    lla.longitude_deg = _lon_deg;
+    lla.altitude_m = 35000000.0;
+    EcefPositionM ecef;
+    (void)oneq::coordinate::TryLlaToEcef(lla, &ecef);
+    return ecef;
+  };
+  const EcefPositionM satellite_a = satellite_ecef(30.0, 120.0);
+  const EcefPositionM satellite_b = satellite_ecef(10.0, 140.0);
   const Vector3d los_a(truth_position.x_m - satellite_a.x_m,
                        truth_position.y_m - satellite_a.y_m,
                        truth_position.z_m - satellite_a.z_m);
@@ -45,14 +86,7 @@ TEST(RirDualSatelliteLockTest, DualLosFixPositionAndTruthVelocityLockTarget) {
   EXPECT_NEAR(dual_sat_fix.y_m, truth_position.y_m, 1.0e-6);
   EXPECT_NEAR(dual_sat_fix.z_m, truth_position.z_m, 1.0e-6);
 
-  RirCycleInput input;
-  input.input_cycle_index = 1U;
-  input.dt_sec = 0.5;
-  SetDefaultTestPlatformEcef(&input);
-
-  // LRDR 接收相对平台的 ENU 位置；双星解输出 ECEF，故先轉到平台锚点 ENU。
-  LlaPositionDegM platform_lla;
-  ASSERT_TRUE(oneq::coordinate::TryEcefToLla(input.platform_position, &platform_lla));
+  // LRDR 接收相对平台的 ENU 位置；双星解输出 ECEF，故先转到平台锚点 ENU。
   oneq::coordinate::EnuPositionM target_enu;
   ASSERT_TRUE(oneq::coordinate::TryEcefToEnu(dual_sat_fix, platform_lla, &target_enu));
 

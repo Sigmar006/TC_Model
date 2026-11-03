@@ -332,8 +332,12 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
       }
     } else {
       // 速度精度门未通过、助推中或无可用回推结果：关机点仍需继续计算。
-      burnout += " 关机时刻=正在模拟计算";
-      burnout += " 关机点经纬高=正在模拟计算";
+      // 中译：**占位改成带原因的"不适用"**（2026-11-04）——判据§0 规则 3 细化后，
+      //   裸占位（`=无`/`=0.000`/无原因的 `=不适用`）一律禁止；带原因的 `不适用(…)` 保留，
+      //   因为外部验证程序按字段存在性核对，删字段会被判缺项。
+      // 标识：关机点占位带原因（2026-11-04）。
+      burnout += " 关机时刻=不适用(尚未解算出关机点)";
+      burnout += " 关机点经纬高=不适用(尚未解算出关机点)";
     }
     INFERENCE_ACCEPTANCE_ITEM(row_sim_time, row_cycle, "关机点预测功能测试", burnout);
   }

@@ -735,7 +735,7 @@ void WriteSbirsExternalObservationOutput(
     // 故显式声明"未建立/不适用"，既不编造数值也让字段恒在（2026-10-19 回归：421 行缺）。
     if (!wrote_state) {
       state_row += std::string(" 状态估计来源=") + oneq::common::acceptance::kStageBeforeFilter +
-                   "(捕获阶段未建立) 状态向量=不适用 状态协方差=不适用";
+                   "(捕获阶段未建立) 状态向量=不适用(捕获阶段未建立) 状态协方差=不适用(捕获阶段未建立)";
     }
     SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "红外观测与航迹输出接口测试",
                                      state_row);

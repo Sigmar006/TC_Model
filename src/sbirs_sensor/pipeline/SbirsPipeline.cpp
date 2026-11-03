@@ -1634,7 +1634,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       detection_interface += std::string(" 视场门结果=") + (in_wfov ? "通过" : "拒绝");
       // 第 75 项交换数据要求「稳定帧门结果」恒在；稳定帧是 NFOV 捕获后的判据，
       // WFOV 阶段无此概念，显式标注"不适用"而非省略（2026-10-18 回归发现缺 69.7%）。
-      detection_interface += " 稳定帧门结果=不适用";
+      detection_interface += " 稳定帧门结果=不适用(宽场搜索阶段无此概念)";
       detection_interface += std::string(" 综合准入结果=") +
                              (in_wfov && wfov_snr_gate_passed ? "通过" : "拒绝");
       SBIRS_INTERNAL_INTERFACE_ITEM(
@@ -2806,7 +2806,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         nfov += " 脱靶量像素=(" + oneq::logging::FormatF(focal_offset.x_pixels, 2) + "," +
                 oneq::logging::FormatF(focal_offset.y_pixels, 2) + ")";
       } else if (coasting_cycle) {
-        nfov += " 脱靶量m=不适用(滑行无窄场帧) 脱靶量模=不适用 脱靶量像素=不适用";
+        nfov += " 脱靶量m=不适用(滑行无窄场帧) 脱靶量模=不适用(滑行无窄场帧) "\
+                "脱靶量像素=不适用(滑行无窄场帧)";
       }
       nfov += " 窄视场目标视线方位/俯仰(ECI)=(" +
               oneq::logging::FormatF(detection.record.azimuth_rad, 8) + "," +

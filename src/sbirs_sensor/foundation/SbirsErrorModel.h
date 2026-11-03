@@ -92,7 +92,22 @@ double ResolveEffectiveAngularSigmaDeg(const config::SbirsErrorModelConfig& mode
  */
 SbirsErrorBearing ApplyAngularErrorModel(
     const config::SbirsErrorModelConfig& model, SbirsRandomSource* random, float true_azimuth_deg,
-    float true_elevation_deg, double true_range_m, float relative_angular_rate_deg_per_sec);
+    float true_elevation_deg, double true_range_m, float relative_angular_rate_deg_per_sec,
+    /*2026-11-04 追加：线性 SNR 与瞬时视场（rad），用于把焦面光子噪声并入测角随机项；
+      ≤0 时退化为纯配置常数 σ（旧行为，保证既有调用点语义不变）。*/
+    double snr_linear = 0.0, double ifov_rad = 0.0);
+
+/**
+ * @brief 逐帧测角随机 1-σ（deg）：姿态/视场"仪器地板"与焦面光子噪声项 RSS 合成。
+ *
+ * @details σ = sqrt( floor² + (IFOV / (k·√SNR))² )，其中
+ *   floor = RSS(orbit_sigma_deg, attitude_sigma_deg, fov_sigma_deg)（与 SNR 无关的
+ *   平台/仪器偏置），k = `centroid_gain`。SNR 或 IFOV 非正时只返回地板项。
+ * @param[in] snr_linear 线性信噪比（功率比，>0）。
+ * @param[in] ifov_rad   瞬时视场 = 像元间距 / 焦距（rad，>0）。
+ */
+double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_linear,
+                                   double ifov_rad);
 
 /**
  * @brief 高刷新率多帧融合量测（窄视场跟踪）：N 帧独立抽样融合为单周期量测。

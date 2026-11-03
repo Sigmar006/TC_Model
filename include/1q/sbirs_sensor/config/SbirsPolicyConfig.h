@@ -35,6 +35,16 @@ struct ONEQ_API SbirsErrorModelConfig {
   float attitude_sigma_deg{0.0001f};     /**< 卫星姿态误差角度 1-σ，单位 deg */
   float fov_sigma_deg{0.00005f};         /**< 探测器视场（像元/畸变）误差 1-σ，单位 deg */
   float detector_bandwidth_hz{100.0f};   /**< 探测器带宽，用于动态滞后误差，单位 Hz */
+  /**
+   * @brief 焦面质心定位增益 k（无量纲）：逐帧光子噪声项 σ = IFOV / (k·√SNR)。
+   *
+   * @details 2026-11-04：此前测角随机项是**常数 σ**（轨道/姿态/视场三项 RSS），与 SNR
+   *   完全无关（实测相关系数 −0.007），"能不能到 3 µrad"变成配置写死的巧合。本项让
+   *   测角误差随信号强弱变化：IFOV = 像元间距/焦距（当前 30 µm / 2 m = 15 µrad），
+   *   k 由标定确定，典型 0.5–1.0（k=1 时 SNR=30 dB ⇒ 0.47 µrad、SNR=15 dB ⇒
+   *   2.67 µrad）。该光子项与姿态/视场偏置按 RSS 合成。
+   */
+  float centroid_gain{1.0f};
   float nav_position_sigma_m{50.0f};     /**< 卫星导航定位径向误差 1-σ（典型 ≈50m），仅验收旁路 ECEF 误差行使用 */
   /** @note 甲方 2026-08-27 指标：红外系统测角误差 ≤3 μrad（≈0.000172°）。三项
    *        σ 默认 RSS ≈ 1.95 μrad（3×10⁻⁵°/10⁻⁴°/5×10⁻⁵° 组合），注入即在指标

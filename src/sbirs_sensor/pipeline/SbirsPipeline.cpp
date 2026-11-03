@@ -1727,9 +1727,17 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     candidate.max_detection_range_m = max_detection_range_m;
     // 2.10 WFOV 带误差位置：施加 5 类物理误差（高斯随机 + 折射 + 滞后）。
     // 复用上方已算的目标角速度 omega_deg_per_sec_cached。
+    // 中译：**测角随机项随 SNR 变化**（2026-11-04）——焦面质心噪声 σ = IFOV/(k·√SNR)，
+    //   IFOV = 像元间距/焦距。此前是常数 σ，"弱信号测不准、强信号更准"这一物理关系在
+    //   模型里完全缺失（实测误差与 SNR 相关系数 −0.007）。
+    // 标识：宽场测角并入光子噪声（2026-11-04）。
+    const double ifov_rad_wfov =
+        (hw.focal_length_m > 0.0f)
+            ? static_cast<double>(hw.detector_pixel_pitch_m / hw.focal_length_m)
+            : 0.0;
     const foundation::SbirsErrorBearing bearing = foundation::ApplyAngularErrorModel(
         policy.error_model, &wfov_measurement_random_source_, azimuth_deg, elevation_deg, range_m,
-        /*relative_angular_rate_deg_per_sec=*/omega_deg_per_sec_cached);
+        /*relative_angular_rate_deg_per_sec=*/omega_deg_per_sec_cached, snr, ifov_rad_wfov);
     candidate.measured_azimuth_deg = bearing.azimuth_deg;
     candidate.measured_elevation_deg = bearing.elevation_deg;
     candidate.measured_range_m = bearing.range_m;
@@ -2487,8 +2495,15 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     bool lost_due_to_estimation_nis = false;
     SbirsTrackingUpdateResult tracking_result;
     // 单帧 σ 为硬件性质（与帧数无关）；融合 σ 仅在有帧时按 1/√N 衰减，滑行周期记 0。
-    const double nfov_frame_sigma_deg =
-        foundation::ResolveEffectiveAngularSigmaDeg(policy.error_model);
+    // 中译：单帧 σ 改为"仪器地板 ⊕ 焦面光子噪声"（2026-11-04），与本周期线性 SNR 相关；
+    //   融合 σ 仍按 1/√N 衰减（多帧平均降低随机项，不降低偏置）。
+    // 标识：窄场单帧σ并入光子噪声（2026-11-04）。
+    const double ifov_rad_nfov =
+        (hw.focal_length_m > 0.0f)
+            ? static_cast<double>(hw.detector_pixel_pitch_m / hw.focal_length_m)
+            : 0.0;
+    const double nfov_frame_sigma_deg = foundation::ResolveFrameAngularSigmaDeg(
+        policy.error_model, context.snr, ifov_rad_nfov);
     const double nfov_fused_sigma_deg =
         nfov_frame_count >= 1
             ? nfov_frame_sigma_deg / std::sqrt(static_cast<double>(nfov_frame_count))
@@ -2735,7 +2750,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         const double axis_err_urad =
             kDegToUrad * std::max(std::fabs(az_err), std::fabs(el_err));
         const bool coasting_for_milestone = detection.attribution.nfov_tracking_coasting;
-        if (!coasting_for_milestone && std::isfinite(axis_err_urad)) {
+        const bool plausible_for_milestone = std::fabs(axis_err_urad) <= 30.0 * 17453.292519943295;
+        if (!coasting_for_milestone && plausible_for_milestone && std::isfinite(axis_err_urad)) {
           if (axis_err_urad < nfov_precision_best_urad_) {
             nfov_precision_best_urad_ = axis_err_urad;
             nfov_precision_best_cycle_ = input.cycle_index;
@@ -2797,9 +2813,23 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
               oneq::logging::FormatF(detection.record.elevation_rad, 8) + ")rad";
       // 2026-09-28 按主文档补全（第13项）：窄视场视线角误差（量测−真值，arcsec）；
       // ±10 arcsec 约束由外部验证程序判定，本行只落原始误差量，不写通过标志。
-      nfov += " 窄视场视线角误差方位/俯仰=(" +
-              oneq::logging::FormatF(az_err * 3600.0, 2) + "," +
-              oneq::logging::FormatF(el_err * 3600.0, 2) + ")arcsec";
+      // 中译：**滑行段与异常值不再写数值**（2026-11-04）——滑行周期没有窄场帧，角误差
+      //   无物理意义（现场 2,000 行滑行段 16.1% 超 10 µrad、p95 355.9″，被外部当作超差）；
+      //   另有极少数坏帧经方位折返后仍给出 2.1e6 µrad（≈120°）的荒谬值。两者一并标记，
+      //   既不写假数值，也不让判定统计被污染。
+      // 标识：窄场角误差有效性标记（2026-11-04）。
+      constexpr double kDegToArcsecForValidity = 3600.0;
+      const double max_abs_err_arcsec =
+          kDegToArcsecForValidity * std::max(std::fabs(az_err), std::fabs(el_err));
+      const bool angle_error_valid = !coasting_cycle && max_abs_err_arcsec <= 30.0 * 3600.0;
+      if (!angle_error_valid) {
+        nfov += coasting_cycle ? " 窄视场视线角误差方位/俯仰=不适用(滑行无窄场帧)"
+                               : " 窄视场视线角误差方位/俯仰=不适用(异常超过30°)";
+      } else {
+        nfov += " 窄视场视线角误差方位/俯仰=(" +
+                oneq::logging::FormatF(az_err * 3600.0, 2) + "," +
+                oneq::logging::FormatF(el_err * 3600.0, 2) + ")arcsec";
+      }
       const double snr_db = 10.0 * std::log10(std::max(context.snr, 1.0e-12));
       nfov += " 跟踪状态=";
       nfov += detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪";
@@ -2831,9 +2861,15 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       // 中译：**第14项窄场视线角误差**（2026-11-02）——判据要求"窄视场目标视线方位/俯仰及
       //   误差"，误差须位于 ±10 arcsec（由外部判）；本行只落原始误差量，不写通过标志。
       // 标识：第14项窄视场视线角误差（2026-11-02）。
-      joint_track += " 窄视场视线角误差方位/俯仰=(" +
-                     oneq::logging::FormatF(az_err * 3600.0, 2) + "," +
-                     oneq::logging::FormatF(el_err * 3600.0, 2) + ")arcsec";
+      // 中译：第14项同一口径——滑行/异常周期不写数值（见第13项处说明）。
+      if (!angle_error_valid) {
+        joint_track += coasting_cycle ? " 窄视场视线角误差方位/俯仰=不适用(滑行无窄场帧)"
+                                      : " 窄视场视线角误差方位/俯仰=不适用(异常超过30°)";
+      } else {
+        joint_track += " 窄视场视线角误差方位/俯仰=(" +
+                       oneq::logging::FormatF(az_err * 3600.0, 2) + "," +
+                       oneq::logging::FormatF(el_err * 3600.0, 2) + ")arcsec";
+      }
       joint_track += " SNR=" + oneq::logging::FormatF(snr_db, 3) + "dB";
       SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
                                  "宽窄视场联合探测功能测试", joint_track);

@@ -64,13 +64,30 @@ double ResolveEffectiveAngularSigmaDeg(const config::SbirsErrorModelConfig& mode
   return std::sqrt(orbit * orbit + attitude * attitude + fov * fov);
 }
 
+double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_linear,
+                                   double ifov_rad) {
+  const double floor_deg = ResolveEffectiveAngularSigmaDeg(model);
+  // 中译：**焦面光子噪声项**（2026-11-04）——质心定位的标准极限是 IFOV/(k·√SNR)：
+  //   同一像元内光子数越多，质心越准；弱目标自然变差。此前该项完全缺失，测角误差是
+  //   常数，与 SNR 无关（实测相关系数 −0.007），"能否到 3 µrad"成了配置写死的巧合。
+  // 标识：焦面光子噪声项（2026-11-04）。
+  const double gain = static_cast<double>(model.centroid_gain);
+  if (!(snr_linear > 0.0) || !(ifov_rad > 0.0) || !(gain > 0.0)) {
+    return floor_deg;
+  }
+  const double photon_rad = ifov_rad / (gain * std::sqrt(snr_linear));
+  const double photon_deg = photon_rad * (180.0 / kPi);
+  return std::sqrt(floor_deg * floor_deg + photon_deg * photon_deg);
+}
+
 SbirsErrorBearing ApplyAngularErrorModel(const config::SbirsErrorModelConfig& model,
                                          SbirsRandomSource* random, float true_azimuth_deg,
                                          float true_elevation_deg, double true_range_m,
-                                         float relative_angular_rate_deg_per_sec) {
+                                         float relative_angular_rate_deg_per_sec, double snr_linear,
+                                         double ifov_rad) {
   SbirsErrorBearing bearing;
   // 物理分项按 RSS 合成为单一 1-σ；az/el 独立采样，与对角量测协方差一致。
-  const double angular_sigma_deg = ResolveEffectiveAngularSigmaDeg(model);
+  const double angular_sigma_deg = ResolveFrameAngularSigmaDeg(model, snr_linear, ifov_rad);
   const double azimuth_random_error =
       angular_sigma_deg > 0.0 && random != nullptr
           ? angular_sigma_deg * random->NextStandardNormal()

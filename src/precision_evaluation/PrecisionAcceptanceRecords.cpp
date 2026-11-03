@@ -114,21 +114,6 @@ void WritePrecisionKeyMetricsUnconditional(
   }
 }
 
-void WritePredictedImpactError(std::uint64_t target_key, std::uint32_t cycle_index,
-                               double sim_time_sec, double impact_error_m) {
-  // 中译：**第21项预测落点误差**（2026-11-04 甲方要求模型侧写出）——估计落点与真值落点
-  //   的三维距离，与精度评估 kImpactPoint 同源（两侧都由同一推演引擎解算落点）。
-  //   只写误差量本身：不写射程、不写 5% 比例（比例判定仍归验证程序）。
-  //   时刻/周期用真实值，便于与推演侧 `[落点预测功能测试] 目标键=… 初步落点经纬高=…` 对齐。
-  // 标识：第21项预测落点误差（2026-11-04）。
-  std::string content = "目标键=" + std::to_string(target_key);
-  content += " 落点误差=" + FormatF(impact_error_m, 1) + "m";
-  oneq::logging::WriteAcceptanceLog(
-      oneq::logging::AcceptanceChannel::kSatelliteTarget,
-      oneq::logging::FormatAcceptanceLine(static_cast<float>(sim_time_sec), cycle_index,
-                                          "落点预测功能测试", content));
-}
-
 void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
   const std::string line = BuildPrecisionAhpLine(report);
   if (line.empty()) {

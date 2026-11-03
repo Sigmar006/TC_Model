@@ -37,6 +37,8 @@ threat_assessment 先例：泛型输入帧、无状态纯函数、算法不感�
 - 模块边界、非目标、变更规则 → [boundaries.md](boundaries.md)
 - 算法清单（弹道积分/回推/敏度误差预算/类型融合）、实现边界与反直觉点 →
   [algorithms.md](algorithms.md)
+- 四类预测（轨迹/落点/发射点/关机点）的**方法、参数表与计算流程**（对接与验收查阅入口）
+  → [prediction_methods.md](prediction_methods.md)
 
 注：target_inference 不含 data-flow.md——无状态函数式算法面（同 threat_assessment
 先例），没有数据流管线。

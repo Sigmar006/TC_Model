@@ -458,7 +458,13 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
             trajectory.has_launch &&
             TryLlaToEcefPosition(trajectory.launch_point, &cached.launch_ecef);
       }
-      cached.computed = true;
+      // 中译：**解不出关键点就下个间隔重试**（2026-11-04）——原实现无条件置 computed=true，
+      //   而真值关键点只在目标首次出现的那一拍算一次；早期（助推/爬升）状态用纯二体外推
+      //   解不到落点，于是该目标**整轮都没有落点样本**（现场 `impact=0 launch=680`：
+      //   发射点解出来了、落点一条都没有）。现在只有在至少解出一个关键点时才锁定缓存，
+      //   否则留待下个推演间隔重算——真值状态越晚越接近再入段，落点可解性单调变好。
+      // 标识：真值关键点重试（2026-11-04）。
+      cached.computed = cached.has_impact || cached.has_launch;
     }
     // 估计状态推演（有运动学估计的航迹）。
     std::vector<target_inference::InferenceTrackState> estimate_states;

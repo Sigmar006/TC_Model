@@ -204,7 +204,13 @@ void WriteSbirsPayloadPointingBudget(std::uint32_t satellite_id, float sim_time_
   content += " LOS随机=" + FormatF(los_rad * kRadToUrad, 3) + "urad";
   content += " 合成总指向误差=" + FormatF(total_urad, 3) + "urad";
   content += " 判定门限=3.000urad";
-  content += within ? " 判定=满足" : " 判定=超出";
+  // 中译：本行判的是**稳态总指向误差**（含安装失准，逐拍恒定）；甲方对窄视场的正式口径是
+  //   "精度有落到 3 µrad 的时间点即可"，那一判定由 SbirsPipeline 的"窄视场精度首次达到/
+  //   最优保持"里程碑行给出。这里显式标注口径，避免把本行的"超出"误读成窄视场不达标。
+  // 标识：预算行判定口径（2026-11-04）。
+  content += " 判定口径=稳态总指向(含安装失准)";
+  content += within ? " 判定(稳态)=满足" : " 判定(稳态)=超出";
+  content += " 窄视场达标口径=见'窄视场精度首次达到3urad'里程碑行";
   if (!within && kRequirementUrad > 0.0) {
     content += " 超差倍数=" + FormatF(total_urad / kRequirementUrad, 1);
   }

@@ -155,6 +155,14 @@ class SbirsPipeline {
   int scan_row_index_{0}; /**< 当前 WFOV 俯仰栅格行索引，范围 [0, row_count) */
   std::uint32_t satellite_entity_id_{0U}; /**< 卫星实体/融合源 ID（验收行标注用，不影响计算） */
   bool install_matrices_acceptance_pending_{true}; /**< 安装矩阵验收行待写（构造/ApplyConfig 置位，首个执行周期写出） */
+  // 中译：**窄视场精度达标里程碑**（2026-11-04 甲方口径："窄视场精度有落到 3 微弧的时间点
+  //   即可"）——记录首次达到 ≤3 µrad 的周期/时刻与迄今最优值，供验收直接引用，
+  //   而不是让外部去扫全量日志再推断。
+  // 标识：窄视场精度达标里程碑（2026-11-04）。
+  bool nfov_precision_hit_logged_{false};       /**< 是否已写出"首次达标"里程碑行 */
+  double nfov_precision_best_urad_{1.0e30};     /**< 迄今最优（最小）单轴误差，单位 µrad */
+  std::uint32_t nfov_precision_best_cycle_{0U}; /**< 最优值所在周期 */
+  float nfov_precision_best_time_s_{0.0f};      /**< 最优值所在仿真时刻（s） */
   session::SbirsEulerAnglesDeg misalignment_total_deg_{}; /**< 运行期安装失准角总量（构造/ApplyConfig 一次抽取） */
   std::uint64_t next_detection_id_{1U};
   std::map<std::uint64_t, SbirsTargetState> target_states_{};

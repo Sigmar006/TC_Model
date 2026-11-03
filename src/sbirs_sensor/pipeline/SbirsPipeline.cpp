@@ -2726,6 +2726,53 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           static_cast<float>(detection.record.azimuth_rad * 57.29577951308232), context.azimuth_deg);
       const double el_err =
           static_cast<float>(detection.record.elevation_rad * 57.29577951308232) - context.elevation_deg;
+      // 中译：**窄视场精度达标里程碑**（2026-11-04）——甲方口径是"窄视场精度有落到 3 微弧的
+      //   时间点即可"，因此这里逐拍取单轴较大误差，记录首次 ≤3 µrad 的周期/时刻，并
+      //   每 300 周期报一次迄今最优。滑行周期没有窄场帧，不参与判定。
+      // 标识：窄视场精度达标里程碑（2026-11-04）。
+      {
+        const double kDegToUrad = 17453.292519943295;
+        const double axis_err_urad =
+            kDegToUrad * std::max(std::fabs(az_err), std::fabs(el_err));
+        const bool coasting_for_milestone = detection.attribution.nfov_tracking_coasting;
+        if (!coasting_for_milestone && std::isfinite(axis_err_urad)) {
+          if (axis_err_urad < nfov_precision_best_urad_) {
+            nfov_precision_best_urad_ = axis_err_urad;
+            nfov_precision_best_cycle_ = input.cycle_index;
+            nfov_precision_best_time_s_ = sim_time_sec;
+          }
+          constexpr double kPayloadAngleRequirementUrad = 3.0;
+          const bool reached = axis_err_urad <= kPayloadAngleRequirementUrad;
+          if (reached && !nfov_precision_hit_logged_) {
+            std::string milestone =
+                "相对卫星ID=" + std::to_string(satellite_entity_id_);
+            milestone += " 目标ID=" + std::to_string(engaged_id);
+            milestone += " 统计口径=窄视场精度首次达到3urad";
+            milestone += " 误差方位/俯仰=(" +
+                         oneq::logging::FormatF(std::fabs(az_err) * kDegToUrad, 4) + "," +
+                         oneq::logging::FormatF(std::fabs(el_err) * kDegToUrad, 4) + ")urad";
+            milestone += " 单轴最大=" + oneq::logging::FormatF(axis_err_urad, 4) + "urad";
+            milestone += " 判定门限=3.000urad 判定=达到";
+            SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "红外载荷角误差功能测试",
+                                  milestone);
+            nfov_precision_hit_logged_ = true;
+          }
+          constexpr std::uint32_t kBestReemitCycles = 300U;
+          if (reached && (input.cycle_index % kBestReemitCycles) == 0U) {
+            std::string best =
+                "相对卫星ID=" + std::to_string(satellite_entity_id_);
+            best += " 统计口径=窄视场精度最优保持";
+            best += " 迄今最优单轴误差=" + oneq::logging::FormatF(nfov_precision_best_urad_, 4) +
+                    "urad";
+            best += " 最优所在周期=" + std::to_string(nfov_precision_best_cycle_);
+            best += " 最优所在时刻=" + oneq::logging::FormatF(nfov_precision_best_time_s_, 3) + "s";
+            best += " 判定门限=3.000urad";
+            best += nfov_precision_best_urad_ <= kPayloadAngleRequirementUrad ? " 判定=达到"
+                                                                             : " 判定=未达到";
+            SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "红外载荷角误差功能测试", best);
+          }
+        }
+      }
       std::string nfov = "卫星ID=" + std::to_string(satellite_entity_id_);
       nfov += " 目标ID=" + std::to_string(engaged_id);
       // 滑行周期没有窄场帧，焦平面脱靶量与融合 σ 都无定义：写"不适用"，不得写 0.00000

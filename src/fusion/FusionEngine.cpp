@@ -863,11 +863,27 @@ class FusionEngine::Impl {
         ecef.y_m = track.filter_mean(2);
         ecef.z_m = track.filter_mean(4);
         if (oneq::coordinate::TryEcefToLla(ecef, &target.kinematic_estimate.position)) {
+          // 中译：**速度合理性门**（2026-11-04，甲方选 B 线：治融合状态）——
+          //   角度-only 弱可观测航迹在量测不自洽时，CV/UKF 的**速度状态会爆掉**：现场
+          //   目标键 109 的速度模最大到 3,316,749 m/s（3,317 km/s），推演把它当弹道状态
+          //   前向积分，10 s 就"飞"了 5,600 km，产出的落点/发射点/关机点全是假值
+          //   （第 20/21/22/23/25 项的 60/393/904 行都源于这类状态）。
+          //   口径：|v| > 12,000 m/s（略高于第二宇宙速度 11.2 km/s）即判为**物理不可能**，
+          //   该周期**不发布**运动学估计（has_kinematic_estimate 保持 false），下游
+          //   （推演、第 15/16/26 项）改看协方差/跳过，而不是消费一个错到量级的状态。
+          //   注意：这里只拦"爆掉"的值，不干预正常收敛；正常弹道 7 km/s、GEO 3.07 km/s 均通过。
+          // 标识：融合速度合理性门（2026-11-04）。
+          const double vx = static_cast<double>(track.filter_mean(1));
+          const double vy = static_cast<double>(track.filter_mean(3));
+          const double vz = static_cast<double>(track.filter_mean(5));
+          const double speed_m_per_s = std::sqrt(vx * vx + vy * vy + vz * vz);
+          constexpr double kMaxPlausibleSpeedMps = 12000.0;
+          if (!(speed_m_per_s <= kMaxPlausibleSpeedMps)) {
+            output.push_back(std::move(target));
+            continue;   // 不发布运动学估计（位置/速度/协方差全部保持初值）
+          }
           target.has_kinematic_estimate = true;
-          target.kinematic_estimate.velocity_ecef_m_per_s = {
-              static_cast<double>(track.filter_mean(1)),
-              static_cast<double>(track.filter_mean(3)),
-              static_cast<double>(track.filter_mean(5))};
+          target.kinematic_estimate.velocity_ecef_m_per_s = {vx, vy, vz};
           for (int row = 0; row < 6; ++row) {
             for (int col = 0; col < 6; ++col) {
               target.kinematic_estimate.covariance_ecef[static_cast<std::size_t>(row) * 6U +

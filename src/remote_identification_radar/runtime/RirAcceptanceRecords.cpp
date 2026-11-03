@@ -834,6 +834,11 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     processed += std::string(" 处理链路=") +
                  (has_bank ? "脉压+MTI+MTD" : "脉压");
     processed += " 处理前回波功率=" + FormatSci(echo_before_w) + "W";
+    // 中译：**补判据示例字段名 `回波功率=`**（2026-11-02）——第 32 项示例以 `回波功率=` 指代
+    //   处理前回波，而此前只有"处理前回波功率="这一描述性名字，外部按示例名匹配会判缺字段。
+    //   同一行同时保留两个名字，数值同源（= 第 29 项的 `回波功率=`）。
+    // 标识：第32项回波功率字段名（2026-11-02）。
+    processed += " 回波功率=" + FormatSci(echo_before_w) + "W";
     Emit(t, cycle, "目标信号增益功能测试", processed);
   }
 

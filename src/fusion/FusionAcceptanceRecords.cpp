@@ -504,7 +504,11 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
         const sbirs_sensor::tracking::SbirsAngleCvUpdater updater;
         kf.state = updater.Update(predicted, measurement, noise).posterior;
       }
+      // 中译：**补 `目标ID=`**（2026-11-02）——判据示例带目标 ID，此前只有航迹键，
+      //   外部无法把卡尔曼滤波行与场景目标对齐。
+      // 标识：第18项目标ID（2026-11-02）。
       std::string std_kf = "目标键=" + std::to_string(track.key);
+      std_kf += " 目标ID=" + std::to_string(track.key);
       std_kf += " 源=" + SourceLabel(channel.source_id, channel.source_name);
       std_kf += " 滤波方位/俯仰=(" + FormatF(kf.state.mean(0), 6) + "," +
                 FormatF(kf.state.mean(2), 6) + ")rad";

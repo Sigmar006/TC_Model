@@ -177,7 +177,6 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
     const sbirs_sensor::session::SbirsCycleResult& result_a,
     const sbirs_sensor::session::SbirsCycleResult& result_b,
     const std::vector<fusion::FusedTarget>& tracks) {
-  (void)dt_sec;
   PrecisionEvaluationCycleResult cycle_result;
   cycle_result.cycle_index = cycle_index;
   double gmst_rad = 0.0;
@@ -502,6 +501,13 @@ PrecisionEvaluationCycleResult PrecisionEvaluationSession::Step(
           if (TryLlaToEcefPosition(trajectory.impact_point, &estimated_impact)) {
             sample.has_impact = true;
             sample.impact_error_m = DistanceM(estimated_impact, truth_cache->second.impact_ecef);
+            // 中译：**把落点误差写进第21项**（2026-11-04 甲方要求）——精度评估本来就算出了
+            //   该量（kImpactPoint），此前只进汇总不进日志；现在逐拍写 `落点误差=`，
+            //   与推演侧 `[落点预测功能测试] 目标键=… 初步落点经纬高=…` 按目标键+周期对齐。
+            // 标识：第21项落点误差写出（2026-11-04）。
+            WritePredictedImpactError(sample.key, cycle_index,
+                                      static_cast<double>(cycle_index) * static_cast<double>(dt_sec),
+                                      sample.impact_error_m);
           }
         }
         if (trajectory.has_launch && truth_cache->second.has_launch) {

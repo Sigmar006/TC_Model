@@ -34,6 +34,22 @@ struct TargetKeyErrorSnapshot {
 // 脱靶量，无则省略）；不写 RMSE/CEP50/CI 等派生统计。
 void WritePrecisionKeyMetrics(const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest);
 
+/**
+ * @brief 第21项：**预测落点误差**（估计落点与真值落点三维距离，m）一行。
+ *
+ * @details 判据第21项原写"预测落点误差须不超过 DD 实际射程的 5%，误差由验证程序计算、
+ *   不写入日志"；2026-11-04 甲方要求**模型侧同时写出该误差**，便于逐拍追溯（比例判定
+ *   仍由验证程序做，本行只给误差量本身，不写射程、不写比例）。
+ *   口径：两状态（估计/真值）经**同一推演引擎**各自解算落点后求三维距离，与精度评估
+ *   的 kImpactPoint 指标同源，不是新造的观测量。
+ * @param[in] target_key 目标键（与推演行 `目标键=` 同源）。
+ * @param[in] cycle_index 周期号。
+ * @param[in] sim_time_sec 仿真时刻（s）。
+ * @param[in] impact_error_m 落点误差（m，三维距离）。
+ */
+void WritePredictedImpactError(std::uint64_t target_key, std::uint32_t cycle_index,
+                               double sim_time_sec, double impact_error_m);
+
 void WritePrecisionAhp(const PrecisionEvaluationReport& report);
 
 // 无编译期闸门的写出接口（2026-10-21）：现场宿主用"总是写"的路径，避免写盘宏在

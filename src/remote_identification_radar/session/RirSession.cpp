@@ -1022,7 +1022,9 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     }
     runtime::WriteRirImpactGuidance(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                     input.input_cycle_index,
-                                    external_track_request.source_entity_id, has_detection,
+                                    external_track_request.source_entity_id,
+                                    external_track_request.source_target_id,
+                                    external_track_request.source_target_name, has_detection,
                                     detection_range_m, detection_az_deg, detection_el_deg,
                                     detection_altitude_m);
   }

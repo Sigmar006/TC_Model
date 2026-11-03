@@ -24,6 +24,7 @@
 #define ONEQ_REMOTE_IDENTIFICATION_RADAR_SESSION_RIR_TRACK_REQUEST_H_
 
 #include <cstdint>
+#include <string>
 
 #include "1q/api.hpp"
 #include "1q/coordinate/types.h"
@@ -81,6 +82,14 @@ struct ONEQ_API RirExternalTrackRequest {
 
   /** @brief 来源侧目标标识（溯源与人读；不参与门控）。 */
   std::uint64_t source_target_id{0U};
+  /**
+   * @brief 来源侧目标名称（可读溯源；不参与门控；空 = 未提供）。
+   * @note 跨组件身份不能只靠数字 ID：实测雷达侧与红外侧的 `unit_id_` 不是同一套编号
+   *   （红外导弹=101、雷达侧导弹=99、雷达自身=101），名称才是双方共有的唯一标识
+   *   （FOSim `CyberUnitInfoType::unit_name_` 注释即写明"io 用的唯一标识符"）。
+   *   第 21 项验收行需要它把"引导的是哪个目标"写清楚。
+   */
+  std::string source_target_name{};
   /** @brief 来源设备标识（红外/融合通道；诊断与回放溯源）。 */
   std::uint32_t source_entity_id{0U};
 };

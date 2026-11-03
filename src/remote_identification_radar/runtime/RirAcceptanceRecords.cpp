@@ -1227,8 +1227,9 @@ bool IsHorizonSearchCycle(const std::vector<RirDwellPlan>& dwell_plan, float hal
 }
 
 void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                            std::uint32_t source_satellite_id, bool has_detection,
-                            double range_m, double az_deg, double el_deg, double altitude_m) {
+                            std::uint32_t source_satellite_id, std::uint64_t target_id,
+                            const std::string& target_name, bool has_detection, double range_m,
+                            double az_deg, double el_deg, double altitude_m) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -1243,6 +1244,16 @@ void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uin
   std::string content = "雷达ID=" + std::to_string(radar_id);
   if (source_satellite_id != 0U) {
     content += " 卫星引导来源ID=" + std::to_string(source_satellite_id);
+  }
+  // 中译：**目标身份**（2026-11-04）——判据 §0 规则 8 要求行内能看出"哪部雷达、哪个目标"。
+  //   雷达侧目标号与红外侧目标号不是同一套编号（实测红外导弹=101、雷达侧导弹=99、雷达自身=101），
+  //   不写目标号时外部无法判断这行"引导的是谁"，也无法核对"雷达是否真的照到了被引导目标"。
+  // 标识：第21项目标身份（2026-11-04）。
+  if (target_id != 0U) {
+    content += " 目标ID=" + std::to_string(target_id);
+  }
+  if (!target_name.empty()) {
+    content += " 目标名称=" + target_name;
   }
   if (has_detection) {
     content += " 雷达探测斜距=" + FormatF(range_m, 1) + "m";

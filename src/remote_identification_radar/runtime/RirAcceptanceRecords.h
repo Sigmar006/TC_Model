@@ -238,6 +238,10 @@ struct RirSearchDetectionLite {
  * @param[in] sim_time_sec        仿真时间（s）。
  * @param[in] cycle               周期号。
  * @param[in] source_satellite_id 引导来源（卫星/融合通道）实体号；0 = 未标注（该字段省略）。
+ * @param[in] target_id           被引导目标在本雷达侧的目标号（0 = 无）。
+ *   判据 §0 规则 8 要求行内能看出"哪部雷达、哪个目标"，且雷达侧目标号与红外侧目标号
+ *   **不是同一套编号**（实测红外导弹=101、雷达侧导弹=99、雷达自身=101），必须原样落盘。
+ * @param[in] target_name         被引导目标名称（可为空）；用于跨组件核对身份。
  * @param[in] has_detection       本周期是否对本目标有检测（false = 只写引导行）。
  * @param[in] range_m             雷达探测斜距（m）。
  * @param[in] az_deg              雷达探测方位（deg）。
@@ -245,8 +249,9 @@ struct RirSearchDetectionLite {
  * @param[in] altitude_m          雷达探测高度（m）。
  */
 void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                            std::uint32_t source_satellite_id, bool has_detection,
-                            double range_m, double az_deg, double el_deg, double altitude_m);
+                            std::uint32_t source_satellite_id, std::uint64_t target_id,
+                            const std::string& target_name, bool has_detection, double range_m,
+                            double az_deg, double el_deg, double altitude_m);
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,

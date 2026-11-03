@@ -59,6 +59,22 @@ class ONEQ_API SbirsSession {
   bool TryApplyRuntimeConfig(const config::SbirsRuntimeConfigPatch& patch);
 
   /**
+   * @brief 由配置的轨道推进卫星状态至目标时刻，并写入周期输入的卫星字段。
+   *
+   * 设计说明 5.1.1「卫星轨道传播」：`SbirsSessionConfig::orbit` 提供历元基准，
+   * 传播器跨周期保持积分状态；本方法按 `utc_julian_day` 推进，把 ECEF 位置与速度
+   * 写入 @p input 的 `utc_julian_day`、`satellite_position_ecef_m` 与
+   * `satellite_velocity_ecef_m_per_s`，随后即可交给 `StepWithResult`。
+   *
+   * @param[in] utc_julian_day 目标 UTC 儒略日（须不小于上次传播时刻）
+   * @param[in,out] input 单周期输入；成功时三个卫星字段被覆盖，失败时不修改
+   * @return 传播成功返回 true；未启用轨道传播（`orbit.propagation_enabled == false`）、
+   *         传播器初始化失败、目标时刻早于上次传播时刻或 @p input 为空时返回 false
+   * @note 未启用时卫星状态仍由调用方逐周期提供（既有必填契约不变）。
+   */
+  bool PropagateSatelliteState(double utc_julian_day, SbirsCycleInput* input);
+
+  /**
    * @brief 运行时注入一条星间 cross-cue（交叉提示）引导消息。
    * @param[in] cue 引导消息：来源星宽场带误差测角（ECI）+ 带误差距离 + 来源星 ECEF 位置。
    * @note 运行时输入（修订 5，2026-09-01）：不进每帧 `SbirsCycleInput`；消息入运行期

@@ -153,6 +153,16 @@ constexpr char kInvalidEstimatedTrackingBackend[] =
 constexpr char kInvalidTrackingGateLossCycles[] =
     "sbirs.validation.invalid_tracking_gate_loss_cycles";
 
+/** @brief 轨道根数非法（半长轴/偏心率/倾角等不构成合法椭圆轨道）。 */
+constexpr char kInvalidOrbitElements[] = "sbirs.validation.invalid_orbit_elements";
+
+/** @brief 轨道历元 UTC 儒略日非法（须为有限正数）。 */
+constexpr char kInvalidOrbitEpoch[] = "sbirs.validation.invalid_orbit_epoch";
+
+/** @brief 轨道传播积分步长非法（须为正有限值）。 */
+constexpr char kInvalidOrbitPropagationStep[] =
+    "sbirs.validation.invalid_orbit_propagation_step";
+
 // ===== 执行诊断（规则 13b/14c）=====
 
 /** @brief 目标被地球遮挡（视线被地球遮蔽）。 */

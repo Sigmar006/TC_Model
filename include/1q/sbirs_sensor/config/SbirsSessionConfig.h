@@ -12,6 +12,7 @@
 #include "1q/sbirs_sensor/config/SbirsEnvironmentConfig.h"
 #include "1q/sbirs_sensor/config/SbirsHardwareConfig.h"
 #include "1q/sbirs_sensor/config/SbirsMissionConfig.h"
+#include "1q/sbirs_sensor/config/SbirsOrbitConfig.h"
 #include "1q/sbirs_sensor/config/SbirsOrientationConfig.h"
 #include "1q/sbirs_sensor/config/SbirsPolicyConfig.h"
 
@@ -28,6 +29,7 @@ struct ONEQ_API SbirsSessionConfig {
   SbirsOrientationConfig orientation{}; /**< 安装指向与稳定参数（静态） */
   SbirsPolicyConfig policy{};           /**< 检测/误差/调度策略 */
   SbirsEnvironmentConfig environment{}; /**< 环境与气象衰减参数 */
+  SbirsOrbitConfig orbit{};             /**< 卫星轨道传播参数（默认关闭） */
   bool sensor_enabled{true};            /**< 传感器初始电源状态（COMMON-OQ-4 字段提升） */
   /**
    * 外部运行时日志开关：true 打印红外功能、接口及融合副本验收日志，false 全部禁止。

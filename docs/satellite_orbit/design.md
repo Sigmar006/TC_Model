@@ -25,13 +25,17 @@ Answers: satellite_orbit 是什么、为谁提供卫星几何基准、与其他�
 
 ## 与 SBIRS 的协作
 
-`SbirsSessionConfig` 的轨道根数与历元字段为传播器提供初始基准，
+`SbirsSessionConfig::orbit`（`SbirsOrbitConfig`）的轨道根数与历元字段为传播器提供初始基准，
 `SbirsCycleInput` 的卫星 ECEF 状态字段承载传播器输出
 （设计说明 5.1.1「卫星轨道传播」）。
 
-**实现状态**：本模块当前只交付传播器本身；`sbirs_sensor` 的配置字段与会话内
-传播器接线尚未完成，属后续独立变更。在该接线完成前，调用方需自行调用
-`OrbitPropagator::PropagateToTime` 并把结果填入周期输入。
+**实现状态**：已接线。启用 `SbirsSessionConfig::orbit.propagation_enabled` 后，
+`SbirsSession` 内部持有本模块的 `OrbitPropagator`，调用方每周期调用
+`SbirsSession::PropagateSatelliteState(utc_julian_day, &input)` 推进卫星状态并写入
+`SbirsCycleInput` 的 `utc_julian_day` / `satellite_position_ecef_m` /
+`satellite_velocity_ecef_m_per_s`。未启用（默认）时传播器不存在，卫星状态仍由调用方
+逐周期提供，既有必填契约不变。配置非法时会话不建立传播器（fail-closed），
+`CreateWithDiagnostics` 以 `sbirs.validation.invalid_orbit_*` 报告。
 
 ## 公共接口
 

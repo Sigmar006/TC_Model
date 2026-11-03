@@ -103,6 +103,7 @@ set(SBIRS_CONFIG_HEADERS
     "sbirs_sensor/config/SbirsEnvironmentConfig.h"
     "sbirs_sensor/config/SbirsHardwareConfig.h"
     "sbirs_sensor/config/SbirsMissionConfig.h"
+    "sbirs_sensor/config/SbirsOrbitConfig.h"
     "sbirs_sensor/config/SbirsOrientationConfig.h"
     "sbirs_sensor/config/SbirsPolicyConfig.h"
     "sbirs_sensor/config/SbirsRuntimeConfigPatch.h"

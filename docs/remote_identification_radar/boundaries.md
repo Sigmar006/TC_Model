@@ -343,6 +343,21 @@ CMake 开关 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`（默认 OFF）门控。开启后�
 3. 词表不得随口径调整而在日志里漂移：`tests/unit/common/common_acceptance_source_stage_test.cpp`
    锁死词面，改动即测试失败。
 
+## 外部引导与"搜索空域门"的先后关系（2026-11-04 实测口径）
+
+外部引导（`SubmitExternalTrack`）决定**波束往哪儿打**，但它**不改变**探测候选的搜索空域：
+
+- 引导生效时，本周期全部波位都放到引导中心（实测 10/10 槽位、`pointing_source=kExternalTrack`，
+  即使 `scan_center` 转到目标反方向 180° 也一样）；
+- 但探测候选仍要过 `scan_window ∩ orientation` 这一层（`rir.target_outside_search_volume`）。
+  把阵面转到背对目标、且 `scan_window` 不覆盖目标方向时，会出现"**波束照到了、候选却被判
+  空域外**"，最终探测不到——这不是引导失效，是搜索空域把人挡在门外。
+
+因此验收/联调里若把雷达方位改成"背对目标"，必须同时确认 `scan_window` 是否覆盖目标方向：
+覆盖 ⇒ 引导到位即能探测建航迹（用例 `CueDetectsTargetWhenSearchWindowCoversIt`）；
+不覆盖 ⇒ 只有指向正确、探测为空并给出 `target_outside_search_volume`
+（用例 `CueSteersBeamEvenWhenScanCenterFacesAway`）。
+
 ## 设计变更规则
 
 1. 新增/删除/改变 public SPI 时，同步本文档集、consumer tests 与

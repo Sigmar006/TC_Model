@@ -21,6 +21,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -350,4 +352,155 @@ TEST(RirExternalTrackTest, DegradedCueStillTakesAllSlots) {
 
 }  // namespace
 }  // namespace tests
+/// @brief **负向验证 A：引导能转向，但目标仍受"搜索空域门"约束**（2026-11-04）。
+///        阵面朝正西（`scan_center.az=180°`）、任务子窗只覆盖西侧 ±3°，目标与引导都在
+///        正东（az≈0，恰是背对方向）。期望：引导**照常把全部波位打到目标方向**
+///        （pointing=外部跟踪、首个驻留=引导中心、10/10 外部驻留），但探测候选被
+///        `scan_window ∩ orientation` 判成空域外——issue 为 `rir.target_outside_search_volume`。
+///        这条锁的是"引导不受扫描基准约束、但搜索子窗仍会裁探测"的既有口径。
+TEST(RirExternalTrackTest, CueSteersBeamEvenWhenScanCenterFacesAway) {
+  config::RirSessionConfig config = MakeConfig();
+  config.mission.scan_center_deg.az_deg = 180.0f;   // 阵面朝西
+  config.mission.scan_center_deg.el_deg = 0.0f;
+  config.mission.scan_window_deg.az_min_deg = -3.0f;  // 子窗只覆盖西侧
+  config.mission.scan_window_deg.az_max_deg = 3.0f;
+  config.mission.scan_window_deg.el_min_deg = 5.0f;
+  config.mission.scan_window_deg.el_max_deg = 55.0f;
+  RirSession session = RirSession::Create(config);
+
+  RirCycleInput no_cue_input = MakeInput(1U, 0.5);
+  {
+    RirSceneTarget target;
+    target.external_target_id = 7U;
+    target.target_name = "east-target";
+    target.position_x = 200000.0f;   // 正东 200 km
+    target.position_z = 30000.0f;
+    target.rcs = 5.0f;
+    no_cue_input.scene_targets.push_back(target);
+  }
+
+  // ① 无引导：波束停在朝西的扫描基准上（方位绝对值 > 90°）。
+  const RirCycleResult no_cue = session.StepWithResult(no_cue_input);
+  ASSERT_EQ(no_cue.status, RirCycleStatus::kCompleted);
+  EXPECT_NE(no_cue.pointing_source, RirPointingSource::kExternalTrack);
+  EXPECT_GT(std::fabs(static_cast<double>(no_cue.dwell_center_deg.az_deg)), 90.0);
+
+  // ② 提交正东引导：指向切到外部跟踪，全部槽位给引导方向。
+  ASSERT_TRUE(session.SubmitExternalTrack(
+      MakeRequestFromEnu(200000.0, 0.0, 30000.0, 0.0, 0.0, 0.0, 0.0)));
+  RirCycleInput cue_input = MakeInput(2U, 0.5);
+  cue_input.scene_targets = no_cue_input.scene_targets;
+  const RirCycleResult with_cue = session.StepWithResult(cue_input);
+  ASSERT_EQ(with_cue.status, RirCycleStatus::kCompleted);
+  EXPECT_EQ(with_cue.pointing_source, RirPointingSource::kExternalTrack)
+      << "引导必须压过扫描基准（阵面朝西也一样）";
+  EXPECT_NEAR(static_cast<double>(with_cue.external_track_center_deg.az_deg), 0.0, 1.0);
+  EXPECT_NEAR(static_cast<double>(with_cue.dwell_center_deg.az_deg),
+              static_cast<double>(with_cue.external_track_center_deg.az_deg), 0.01);
+  EXPECT_GT(with_cue.external_track_dwell_count, 0U);
+  EXPECT_EQ(with_cue.search_dwell_count, 0U) << "外部引导期间不应回退到固定光栅";
+  // ③ 目标在子窗之外：探测候选被搜索空域门裁掉（如实记录，不是静默失败）。
+  bool outside_volume = false;
+  for (std::size_t i = 0U; i < with_cue.issues.size(); ++i) {
+    if (with_cue.issues[i].code == "rir.target_outside_search_volume") {
+      outside_volume = true;
+    }
+  }
+  EXPECT_TRUE(outside_volume) << "子窗不覆盖目标方向时应给出空域外 issue";
+}
+
+/// @brief **负向验证 B：子窗覆盖目标时，同样的引导能真的探测到并建航迹**（2026-11-04）。
+///        与用例 A 的唯一差别是任务子窗放宽到全向——用来把"引导能否转向"和
+///        "搜索子窗是否裁探测"两件事分开，证明引导到位后探测本身是通的。
+TEST(RirExternalTrackTest, CueDetectsTargetWhenSearchWindowCoversIt) {
+  config::RirSessionConfig config = MakeConfig();
+  config.mission.scan_center_deg.az_deg = 180.0f;   // 阵面仍朝西
+  config.mission.scan_center_deg.el_deg = 0.0f;
+  config.mission.scan_window_deg.az_min_deg = -180.0f;  // 子窗全向（唯一差别）
+  config.mission.scan_window_deg.az_max_deg = 180.0f;
+  config.mission.scan_window_deg.el_min_deg = 5.0f;
+  config.mission.scan_window_deg.el_max_deg = 55.0f;
+  RirSession session = RirSession::Create(config);
+  ASSERT_TRUE(session.SubmitExternalTrack(
+      MakeRequestFromEnu(200000.0, 0.0, 30000.0, 0.0, 0.0, 0.0, 0.0)));
+
+  std::size_t attributions = 0U;
+  for (std::uint32_t cycle = 1U; cycle <= 14U; ++cycle) {
+    RirCycleInput input = MakeInput(cycle, 0.5);
+    RirSceneTarget target;
+    target.external_target_id = 7U;
+    target.target_name = "east-target";
+    target.position_x = 200000.0f;
+    target.position_z = 30000.0f;
+    target.rcs = 5.0f;
+    input.scene_targets.push_back(target);
+    const RirCycleResult result = session.StepWithResult(input);
+    ASSERT_EQ(result.status, RirCycleStatus::kCompleted);
+    EXPECT_EQ(result.pointing_source, RirPointingSource::kExternalTrack);
+    attributions = std::max(attributions, result.track_attributions.size());
+  }
+  EXPECT_GT(attributions, 0U) << "引导到位且子窗覆盖时，应形成航迹归属（= 真的探测到）";
+}
+
+}  // namespace
+}  // namespace tests
+/// @brief **负向验证：扫描中心背对目标**（2026-11-04）——把阵面朝到正西
+///        （`scan_center.az=180°`）、任务子窗只有西侧 ±3°，而目标与引导都在正东
+///        （az≈0，恰是背对方向）。期望：
+///        ① 无引导时波束不往东看；
+///        ② 一旦提交外部引导，指向来源切到 kExternalTrack、首个驻留落在引导中心，
+///           东侧目标照常被点亮——即"引导不受扫描基准与子窗约束"。
+TEST(RirExternalTrackTest, CueOverridesScanCenterPointedAway) {
+  config::RirSessionConfig config = MakeConfig();
+  config.mission.scan_center_deg.az_deg = 180.0f;   // 阵面朝西
+  config.mission.scan_center_deg.el_deg = 0.0f;
+  config.mission.scan_window_deg.az_min_deg = -3.0f;  // 子窗只覆盖西侧
+  config.mission.scan_window_deg.az_max_deg = 3.0f;
+  config.mission.scan_window_deg.el_min_deg = 5.0f;
+  config.mission.scan_window_deg.el_max_deg = 55.0f;
+  RirSession session = RirSession::Create(config);
+
+  RirCycleInput no_cue_input = MakeInput(1U, 0.5);
+  {
+    RirSceneTarget target;
+    target.external_target_id = 7U;
+    target.target_name = "east-target";
+    target.position_x = 200000.0f;   // 正东 200 km
+    target.position_z = 30000.0f;
+    target.rcs = 5.0f;
+    no_cue_input.scene_targets.push_back(target);
+  }
+
+  // ① 无引导：指向不应跑到东侧。
+  const RirCycleResult no_cue = session.StepWithResult(no_cue_input);
+  ASSERT_EQ(no_cue.status, RirCycleStatus::kCompleted);
+  EXPECT_NE(no_cue.pointing_source, RirPointingSource::kExternalTrack);
+  const double dwell_az = static_cast<double>(no_cue.dwell_center_deg.az_deg);
+  EXPECT_GT(std::fabs(dwell_az), 90.0) << "无引导时波束应停在朝西基准，dwell_az=" << dwell_az;
+
+  // ② 提交正东引导：指向来源切到外部跟踪，首个驻留即引导中心。
+  ASSERT_TRUE(session.SubmitExternalTrack(
+      MakeRequestFromEnu(200000.0, 0.0, 30000.0, 0.0, 0.0, 0.0, 0.0)));
+  RirCycleInput cue_input = MakeInput(2U, 0.5);
+  {
+    RirSceneTarget target;
+    target.external_target_id = 7U;
+    target.target_name = "east-target";
+    target.position_x = 200000.0f;
+    target.position_z = 30000.0f;
+    target.rcs = 5.0f;
+    cue_input.scene_targets.push_back(target);
+  }
+  const RirCycleResult with_cue = session.StepWithResult(cue_input);
+  ASSERT_EQ(with_cue.status, RirCycleStatus::kCompleted);
+  EXPECT_EQ(with_cue.pointing_source, RirPointingSource::kExternalTrack)
+      << "引导必须压过扫描基准（阵面朝西也一样）";
+  EXPECT_NEAR(static_cast<double>(with_cue.external_track_center_deg.az_deg), 0.0, 1.0);
+  EXPECT_NEAR(static_cast<double>(with_cue.dwell_center_deg.az_deg),
+              static_cast<double>(with_cue.external_track_center_deg.az_deg), 0.01);
+  EXPECT_GT(with_cue.external_track_dwell_count, 0U);
+  EXPECT_FALSE(with_cue.output_frame.recognition_outputs.empty())
+      << "引导到位后东侧目标应被点亮";
+}
+
 }  // namespace remote_identification_radar

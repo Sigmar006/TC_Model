@@ -433,9 +433,23 @@ void WriteInferenceAcceptance(const std::vector<InferenceTrackState>& tracks,
       // 验收判定标准 第25项（修改）：不写 弹道模型/标准化封装/硬编码置信度占位；
       // 分发状态=已发布 须随 分发来源ID/分发对象ID（装配层标注的实体 ID）。
       const bool has_burnout_sigma = traj.has_burnout_sigma;
-      const double publish_sigma = has_burnout_sigma ? traj.burnout_position_sigma_m : 0.0;
-      const std::string sigma_text =
-          has_burnout_sigma ? FormatF(publish_sigma, 1) + "m" : std::string();
+      // 中译：**误差范围优先取落点自身 1-σ**（2026-11-03）——本行发布的是"落点预报"，
+      //   接收方要按判据核对的是**落点误差**是否 ≤ 5% 射程；此前只在"关机点峰值判定
+      //   确认"时才有值（`has_burnout_sigma`），而角度-only 航迹走的是回推估计分支，
+      //   于是 `落点误差范围1σ=` 长期缺失。现在改为：有落点 1-σ 就用它，否则退回关机点 1-σ。
+      // 标识：第25项误差范围取落点1σ（2026-11-03）。
+      const bool has_impact_sigma =
+          traj.has_impact && std::isfinite(traj.impact_position_sigma_m) &&
+          traj.impact_position_sigma_m > 0.0;
+      double publish_sigma = 0.0;
+      if (has_impact_sigma) {
+        publish_sigma = traj.impact_position_sigma_m;
+      } else if (has_burnout_sigma) {
+        publish_sigma = traj.burnout_position_sigma_m;
+      }
+      const std::string sigma_text = (has_impact_sigma || has_burnout_sigma)
+                                         ? FormatF(publish_sigma, 1) + "m"
+                                         : std::string();
       std::string publish = "目标键=" + std::to_string(i < tracks.size() ? tracks[i].key : 0U);
       publish += " 预测落点=" + FormatVec3(traj.impact_point.latitude_deg,
                                            traj.impact_point.longitude_deg,

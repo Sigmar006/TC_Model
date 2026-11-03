@@ -277,19 +277,11 @@ std::vector<TargetInferenceResult> TargetInferenceEngine::Infer(
             *elapsed = -(t + dt);
             return next;
           }
-          // 中译：**速度停机门只在低空生效**（2026-11-02）——原实现对任意高度都停机，
-          //   于是"高空、速度接近零"的异常状态（保活/合成位置航迹常见）会在**卫星轨道
-          //   高度**直接停机，把那个点当成"发射点/关机点"（现场：[predict-out] launch=930，
-          //   第 22 项零行、第 23 项全占位，因为输出的点被高度门判为假值）。
-          //   速度门本意是"回推进了助推段（推力未建模）就收手"，这只有在低空才有意义；
-          //   高空应继续回推，让弹道解真正降到大气界面，解不出就按上限超时丢弃（诚实）。
-          // 标识：回推速度门只在低空生效（2026-11-02）。
-          if (r_next - config_.earth_radius_m <=
-                  config_.launch_atmosphere_interface_altitude_m &&
-              Norm3(next.v) <= config_.launch_speed_threshold_m_per_s) {
-            *elapsed = -(t + dt);
-            return next;
-          }
+          // 中译：**速度停机门已删除**（2026-11-04）——上面的界面门在任何高度都先命中
+          //   （它的判据 ⊆ 速度门判据），速度门因此永远不会执行，属不可达死代码。
+          //   删除后回推只有两条"成功"出口：地表交点、大气界面停机点；都不触发就按
+          //   `launch_max_backtrack_sec` 超时丢弃（调用方置 has_launch=false，诚实）。
+          // 标识：删除不可达的速度停机门（2026-11-04）。
           state = next;
           t += dt;
         }

@@ -27,7 +27,6 @@ struct ONEQ_API TargetInferenceConfig {
   double prediction_horizon_sec{300.0};      /**< 轨迹预测时域（单位：s）。 */
   double integration_step_sec{1.0};          /**< 弹道积分步长（单位：s）。 */
   double waypoint_interval_sec{10.0};        /**< 航迹点输出间隔（单位：s）。 */
-  double launch_speed_threshold_m_per_s{30.0}; /**< 回推速度停机门（单位：m/s）。 */
   double launch_max_backtrack_sec{900.0};    /**< 回推时长上限（单位：s）。 */
   double launch_atmosphere_interface_altitude_m{100000.0}; /**< 回推大气界面停机高度（单位：m）；回推状态地心高低于该值即停机，发射点估计=停机点（助推段未建模的物理停机门）。 */
   double launch_model_error_rate_m_per_s{50.0}; /**< 发射点模型误差增长率（单位：m/s）；1σ 主项=该速率×回推时长（助推段/模型未建模误差随回推时长增长）。 */

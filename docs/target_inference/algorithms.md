@@ -25,8 +25,9 @@ Answers: 每个推演算法怎么实现、边界在哪、反直觉点是什么
 - 落点：前向步进中 |r| 跨越地表半径 → 相邻步线性插值交点。
 - 发射点：回推步进至地心高降至 `launch_atmosphere_interface_altitude_m`（缺省
   100 km，大气界面停机门）即停，停机点即"助推段上界"估计；界面高度 ≤ 0 关门
-  后回落到地表交点（插值），速度 ≤ `launch_speed_threshold_m_per_s` 为次级停机门；
-  超过 `launch_max_backtrack_sec` 未触发 → `has_launch=false`。
+  后回落到地表交点（插值）。两条成功出口只有"地表交点"与"界面停机点"；都不触发
+  超过 `launch_max_backtrack_sec` → `has_launch=false`。原"速度 ≤ 30 m/s 次级停机门"
+  因界面门判据包含它而永不执行，2026-11-04 随字段一并删除。
 
 ### 实现边界
 

@@ -936,19 +936,23 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
 
   // 验收判定标准 第36项：CFAR 三子项（门限/结果/概率，key=value 分行）。
   bool has_threshold = false;
-  double threshold = 0.0;
+  double threshold_snr_db = 0.0;
   if (input.has_cell && std::isfinite(input.cfar_pfa) && input.cfar_pfa > 0.0 &&
       input.cfar_pfa < 1.0) {
-    threshold = oneq::common::radar::RadarEquations::ComputeThreshold(
-        input.cfar_pfa, static_cast<int>(std::max(1U, pulses)));
-    has_threshold = std::isfinite(threshold);
+    // 中译：**门限改成"真正与 SNR 比较的那个参数"**（2026-11-04 甲方要求）——
+    //   判决链里没有"dB 门限 vs dB SNR"这样的直接比较：实际做法是由单脉冲 SNR 代入
+    //   同一 Marcum Q 检测模型算出 Pd，再用 Pd 与随机数比较（见
+    //   StatisticalCfarDetector::DetectResolvedCell）。此前的 `10·log10(T)` 只是归一化
+    //   检验统计量倍率的 dB 表示，与 `信噪比=` **不同轴**（现场可见 信噪比=3.895dB <
+    //   门限=11.4037dB 却判"是"）。现在改为用同一模型反解 **Pd=50% 所需的单脉冲 SNR**，
+    //   与同项 `信噪比=` 同轴：SNR 高于它才过半概率被判出。
+    // 标识：第36项门限改 SNR 轴（2026-11-04）。
+    threshold_snr_db = SolveRequiredSnrDb(input.cfar_pfa,
+                                          static_cast<int>(std::max(1U, pulses)), 0.5);
+    has_threshold = std::isfinite(threshold_snr_db);
   }
-  // 中译：**门限改为 dB**（2026-11-02 甲方要求）——T 是归一化检验统计量的倍率
-  //   （Q(N,T)=P_fa 反解），与 dB 口径的 SNR 直接比对必须换算；直接写倍率会被读成 dB。
-  //   现输出 10·log10(T) 并带单位，便于与同项 `信噪比=…dB` 直接比较。
-  // 标识：第36项统计检测门限 dB 口径（2026-11-02）。
   EmitOrNone(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测门限=", has_threshold,
-             has_threshold ? (FormatF(10.0 * std::log10(threshold), 4) + "dB") : std::string());
+             has_threshold ? (FormatF(threshold_snr_db, 3) + "dB") : std::string());
   // 中译：补"实际计算得出的信噪比"——门限与结果之间的判决依据此前缺失，读日志只能看到
   //       "门限 13.8 / 结果 否"，无法判断差多少。该 SNR 就是 CFAR **实际消费**的那个值：
   //       cell 路径为处理后单脉冲 SINR，回退路径为雷达方程算出的 SNR。
@@ -1039,7 +1043,10 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
                          (has_bank ? FormatF(bank.mti_gain_db, 3) : std::string("无")) + "/" +
                          (has_bank ? FormatF(bank.mtd_gain_db, 3) : std::string("无")) + "dB";
   if (has_threshold) {
-    interface_detection += " 统计门限=" + FormatF(threshold, 6);
+    // 中译：内部接口行沿用同一口径——统计门限按"Pd=50% 所需单脉冲 SNR（dB）"写，
+    //   与第36项 `统计检测门限=` 同源，避免同名字段两套轴。
+    // 标识：第71项统计门限同轴（2026-11-04）。
+    interface_detection += " 统计门限=" + FormatF(threshold_snr_db, 3) + "dB";
   }
   interface_detection += " Pd=" + FormatF(input.pd, 5);
   interface_detection += " 检测标志=";

@@ -1,4 +1,4 @@
-// Copyright 2026. All Rights Reserved.
+﻿// Copyright 2026. All Rights Reserved.
 //
 // @file rir_dual_satellite_lock_test.cpp
 // @brief 双星红外视线交会位置与目标真值速度驱动 LRDR 锁定的端到端测试。
@@ -73,7 +73,7 @@ TEST(RirDualSatelliteLockTest, DualLosFixPositionAndTruthVelocityLockTarget) {
   radar_config.mission.work_mode = config::RirWorkMode::kIdentify;
   radar_config.policy.detection.gate_mode = config::RirDetectionGateMode::kSnrFallback;
   radar_config.policy.lifecycle.confirm_hits = 1U;
-  config::RirSession radar = config::RirSession::Create(radar_config);
+  session::RirSession radar = session::RirSession::Create(radar_config);
   config::RirRuntimeConfigPatch designation;
   designation.has_designated_target_id = true;
   designation.designated_external_target_id = kExternalTargetId;
@@ -95,8 +95,19 @@ TEST(RirDualSatelliteLockTest, DualLosFixPositionAndTruthVelocityLockTarget) {
       static_cast<float>(std::atan2(target.position_z, horizontal_range_m) * 180.0 / 3.141592653589793);
   EXPECT_NEAR(result.dwell_center_deg.az_deg, expected_az_deg, 1.0e-3f);
   EXPECT_NEAR(result.dwell_center_deg.el_deg, expected_el_deg, 1.0e-3f);
-  ASSERT_FALSE(result.output_frame.detections.empty());
-  EXPECT_EQ(result.output_frame.detections.front().external_target_id, kExternalTargetId);
+  // 中译：输出帧的公开面是"识别结论 + 特征量测"两路（`RirOutputFrame` 无 `detections` 成员），
+  //   而"雷达确实锁上了这颗目标"的权威证据是**航迹归属视图**：它把库内关联键映射回场景
+  //   目标 ID。这里断言归属视图里出现指定目标，证明双星定位解 → 指定 → 探测 → 航迹归属
+  //   这条链整条打通（仅断言"有输出"会把探测失败也判过）。
+  ASSERT_FALSE(result.track_attributions.empty());
+  bool designated_seen = false;
+  for (std::size_t i = 0; i < result.track_attributions.size(); ++i) {
+    if (result.track_attributions[i].external_target_id == kExternalTargetId) {
+      designated_seen = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(designated_seen);
 }
 
 }  // namespace

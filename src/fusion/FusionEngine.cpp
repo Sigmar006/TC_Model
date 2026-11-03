@@ -198,6 +198,15 @@ struct Track {
   bool has_first_position{false};  /**< 是否已记录首个位置点（差分初速输入） */
   EcefPositionM first_position{};  /**< 首个量测位置 */
   double first_timestamp_s{0.0};   /**< 首个量测时刻(s) */
+  // 中译：**差分基线自持记录**（2026-11-04）——原实现只在"位置起始"的航迹上置
+  //   `has_first_position`，而绝大多数航迹是**方位起始**（角度-only），于是后面的
+  //   位置量测（双星交会）永远进不了两点差分分支，速度停在起始零速上不动：
+  //   现场目标键 99 在 cycle 1264 的推演航路点是"自由落体"（+1s→+2s 高度降 7.15 m，
+  //   恰等于 g=4.75 m/s² 的自落体），而同一航迹到 cycle 1298 速度才涨到 4.1 km/s。
+  //   这两个字段把差分基线独立记录下来，不再依赖航迹的起始方式。
+  // 标识：差分基线自持记录（2026-11-04）。
+  std::uint64_t first_position_cycle{0U};     /**< 首个位置量测的周期号 */
+  bool first_position_has_timestamp{false};   /**< 首个位置量测是否带绝对时间戳 */
   Eigen::Matrix<float, 6, 1> filter_mean{Eigen::Matrix<float, 6, 1>::Zero()};
   Eigen::Matrix<float, 6, 6> filter_cov{Eigen::Matrix<float, 6, 6>::Identity()};
   Track() = default;
@@ -668,16 +677,34 @@ class FusionEngine::Impl {
       // 方位起始：首拍量测照常执行量测更新（角度-only 航迹的距离收敛依赖此更新）。
     }
 
-    // 两点差分初速：位置起始航迹的第二个位置量测以 (p2 − p1)/Δt 直接建立初速，
+    // 中译：**首个位置量测即建立差分基线**（2026-11-04）——方位起始的航迹也要能靠
+    //   后续双星交会量测建立初速；否则速度永远停在零初值上（见 Track 字段注记）。
+    // 标识：差分基线建立（2026-11-04）。
+    if (detection.has_position && !track->velocity_initialized && !track->has_first_position) {
+      EcefPositionM baseline_ecef{};
+      if (oneq::coordinate::TryLlaToEcef(detection.position, &baseline_ecef)) {
+        track->has_first_position = true;
+        track->first_position = baseline_ecef;
+        track->first_position_cycle = cycle;
+        track->first_position_has_timestamp = detection.has_timestamp;
+        track->first_timestamp_s =
+            detection.has_timestamp
+                ? detection.timestamp_s
+                : static_cast<double>(cycle) * config_.track_cycle_period_sec;
+      }
+    }
+
+    // 两点差分初速：第二个位置量测以 (p2 − p1)/Δt 直接建立初速，
     // 替代零速先验起步，消除建轨期的速度新息超调。
     if (detection.has_position && !track->velocity_initialized && track->has_first_position) {
       EcefPositionM z_ecef{};
       if (oneq::coordinate::TryLlaToEcef(detection.position, &z_ecef)) {
         double dt_diff = 0.0;
-        if (detection.has_timestamp && track->filter_has_timestamp) {
+        if (detection.has_timestamp && track->first_position_has_timestamp) {
           dt_diff = detection.timestamp_s - track->first_timestamp_s;
         } else {
-          dt_diff = static_cast<double>(cycle - track->filter_cycle) * config_.track_cycle_period_sec;
+          dt_diff = static_cast<double>(cycle - track->first_position_cycle) *
+                    config_.track_cycle_period_sec;
         }
         // 物理间隔过近的两点差分会把位置噪声放大 1/Δt 倍，至少间隔 50 ms 才差分。
         if (dt_diff > 0.05) {
@@ -855,6 +882,10 @@ class FusionEngine::Impl {
       // 中译：把"是否吃过真实量测"透出给评估侧（合成量测不参与滤波，故仅合成航迹恒 false）。
       // 标识：真实量测透出（2026-10-26）。
       target.updated_by_real_measurement = entry.second.has_real_update;
+      // 中译：把"初速是否已由两点差分建立"透出——下游（推演）必须据此拒绝零初速状态，
+      //   否则速度未收敛的航迹会被当作真实弹道状态外推（落点≈发射点、σ 上千公里）。
+      // 标识：初速建立标志透出（2026-11-04）。
+      target.has_velocity_estimate = entry.second.velocity_initialized;
       target.last_real_measurement_cycle = entry.second.last_real_update_cycle;
       if (config_.enable_track_filtering && entry.second.filter_initialized) {
         const Track& track = entry.second;

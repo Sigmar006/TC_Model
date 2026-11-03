@@ -76,6 +76,16 @@ struct ONEQ_API FusedTarget {
    *   updated_by_real_measurement 恒 false——精度评估据此跳过该航迹，避免把
    *   非独立量测算进误差统计。为 false 时 kinematic_estimate 仍可能是预测外推值。
    */
+  /**
+   * @brief 初速是否已由两点差分建立（位置量测 `(p2−p1)/Δt`）。
+   *
+   * @details 滤波器起始时速度分量为零先验；方位起始的航迹在拿到两个位置量测之前，
+   *   `kinematic_estimate.velocity_ecef_m_per_s` 只是"还没学到"的零值。消费方
+   *   （尤其弹道推演）必须据此区分"速度为 0"与"速度未知"——把零速状态当弹道状态
+   *   前向积分会得到落点≈发射点、误差上千公里的荒谬结果。
+   */
+  bool has_velocity_estimate{false};
+
   bool updated_by_real_measurement{false};
   std::uint64_t last_real_measurement_cycle{0U}; /**< 最近一次真实量测周期号；0 = 从未有真实量测。 */
   FusedKinematicEstimate kinematic_estimate{}; /**< 运动学估计（ECEF 滤波后验）。 */

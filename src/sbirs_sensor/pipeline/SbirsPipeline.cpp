@@ -2835,6 +2835,29 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       nfov += detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪";
       nfov += " 信号能量=" + oneq::logging::FormatSci(context.signal_energy_j) + "J";
       nfov += " SNR=" + oneq::logging::FormatF(snr_db, 3) + "dB";
+      // 中译：**SNR—误差线性对账**（2026-11-04 甲方口径）——把"该行 SNR 按线性标定应有的 σ"
+      //   与实际单轴误差并排写出，外部验证程序可直接验证"误差是否随 SNR 线性变化"，
+      //   不需要了解内部实现。倍数 = 实测/预测（1σ 量纲）。
+      // 标识：SNR-误差线性对账（2026-11-04）。
+      {
+        constexpr double kDegToUradLog = 17453.292519943295;
+        const double sigma_urad_log = nfov_frame_sigma_deg * kDegToUradLog;
+        const double measured_urad_log =
+            kDegToUradLog * std::max(std::fabs(az_err), std::fabs(el_err));
+        nfov += " 线性判定=(σ预测=" + oneq::logging::FormatF(sigma_urad_log, 3) + "urad,实测=" +
+                oneq::logging::FormatF(measured_urad_log, 3) + "urad";
+        if (sigma_urad_log > 0.0) {
+          nfov += ",倍数=" + oneq::logging::FormatF(measured_urad_log / sigma_urad_log, 2) + "σ";
+        }
+        nfov += ",锚点=" + oneq::logging::FormatF(
+                    static_cast<double>(policy.error_model.sigma_linear_snr_high_db), 0) + "dB/" +
+                oneq::logging::FormatF(
+                    static_cast<double>(policy.error_model.sigma_linear_high_urad), 2) + "urad~" +
+                oneq::logging::FormatF(
+                    static_cast<double>(policy.error_model.sigma_linear_snr_low_db), 0) + "dB/" +
+                oneq::logging::FormatF(
+                    static_cast<double>(policy.error_model.sigma_linear_low_urad), 2) + "urad" + ")";
+      }
       // 高刷新率高精度数据输出（单镜筒轮转口径）：本周期实际帧数 + 单帧/融合 1-σ。
       nfov += " 帧数=" + std::to_string(nfov_frame_count);
       // 帧数=0 而跟踪状态=跟踪 的周期（现场 144 行）实为几何/SNR 门未过、尚未丢锁：

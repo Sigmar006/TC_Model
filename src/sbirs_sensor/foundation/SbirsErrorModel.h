@@ -110,6 +110,16 @@ double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, d
                                    double ifov_rad);
 
 /**
+ * @brief 测角 σ 的**直接线性标定**（dB 域线性插值，单位 deg）。
+ *
+ * @details σ(SNR_dB) 在两个锚点之间线性插值，区间外按端点钳位：
+ *   σ = σ_high + (σ_low − σ_high)·(SNR_high − SNR_dB)/(SNR_high − SNR_low)。
+ *   这是"不走内部算法逻辑、直接把 SNR 和误差挂钩"的判定口径，供外部验证程序逐行对账。
+ * @param[in] snr_db 线性 SNR 换算的 dB 值（≤0 视为不可用，返回高端锚点 σ）。
+ */
+double ResolveLinearSnrSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_db);
+
+/**
  * @brief 高刷新率多帧融合量测（窄视场跟踪）：N 帧独立抽样融合为单周期量测。
  * @param[in] frame_count 每周期帧数（≤1 时退化为单帧路径，行为与
  *            ApplyAngularErrorModel 一致）

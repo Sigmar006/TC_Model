@@ -64,8 +64,44 @@ double ResolveEffectiveAngularSigmaDeg(const config::SbirsErrorModelConfig& mode
   return std::sqrt(orbit * orbit + attitude * attitude + fov * fov);
 }
 
+double ResolveLinearSnrSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_db) {
+  const double hi_db = static_cast<double>(model.sigma_linear_snr_high_db);
+  const double lo_db = static_cast<double>(model.sigma_linear_snr_low_db);
+  const double hi_urad = static_cast<double>(model.sigma_linear_high_urad);
+  const double lo_urad = static_cast<double>(model.sigma_linear_low_urad);
+  // 中译：**SNR↔测角误差的直接线性标定**（2026-11-04 甲方口径）——不走 IFOV/√SNR 的内部
+  //   推导，只按 dB 线性插值：SNR 从高锚点降到低锚点，σ 从 σ_high 线性升到 σ_low；
+  //   区间外按端点钳位，避免极端值把误差推到无意义量级。外部验证程序可直接用
+  //   "该行 SNR ⇒ 应有 σ" 对账，无需了解内部实现。
+  // 标识：SNR-误差线性标定（2026-11-04）。
+  const double kUradToDeg = 180.0 / kPi * 1.0e-6;
+  if (!(hi_db > lo_db) || !(hi_urad > 0.0) || !(lo_urad > 0.0)) {
+    return hi_urad > 0.0 ? hi_urad * kUradToDeg : ResolveEffectiveAngularSigmaDeg(model);
+  }
+  if (!(snr_db > 0.0)) {
+    return hi_urad * kUradToDeg;
+  }
+  double t = (hi_db - snr_db) / (hi_db - lo_db);   // 0 在高锚点，1 在低锚点
+  if (t < 0.0) {
+    t = 0.0;
+  }
+  if (t > 1.0) {
+    t = 1.0;
+  }
+  const double urad = hi_urad + (lo_urad - hi_urad) * t;
+  return urad * kUradToDeg;
+}
+
 double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_linear,
                                    double ifov_rad) {
+  // 中译：线性标定开关打开时**只**用 SNR 线性表（覆盖内部 RSS 推导），这正是甲方要的
+  //   "直接挂钩"口径；关闭时回落到"仪器地板 ⊕ 焦面光子噪声"的物理模型。
+  // 标识：线性标定优先（2026-11-04）。
+  if (model.use_linear_snr_sigma) {
+    const double snr_db = (snr_linear > 0.0) ? 10.0 * std::log10(snr_linear) : 0.0;
+    return ResolveLinearSnrSigmaDeg(model, snr_db);
+  }
+
   const double floor_deg = ResolveEffectiveAngularSigmaDeg(model);
   // 中译：**焦面光子噪声项**（2026-11-04）——质心定位的标准极限是 IFOV/(k·√SNR)：
   //   同一像元内光子数越多，质心越准；弱目标自然变差。此前该项完全缺失，测角误差是

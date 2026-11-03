@@ -45,6 +45,20 @@ struct ONEQ_API SbirsErrorModelConfig {
    *   2.67 µrad）。该光子项与姿态/视场偏置按 RSS 合成。
    */
   float centroid_gain{1.0f};
+  /**
+   * @brief 是否用"SNR↔测角误差"的**直接线性标定**替代内部 RSS 算法（2026-11-04 甲方口径）。
+   *
+   * @details 打开后逐帧测角 σ **只**由 SNR 线性决定（dB 域线性插值），不再走
+   *   `√(地板² + (IFOV/(k√SNR))²)` 那条内部推导，便于外部验证程序把"SNR—误差"
+   *   直接对账（现场要求：不走内部算法逻辑，直接把 SNR 和误差挂钩）。
+   */
+  bool use_linear_snr_sigma{true};
+  /** @brief 线性标定锚点：SNR 高端（dB）及对应 σ（µrad）。 */
+  float sigma_linear_snr_high_db{35.0f};
+  float sigma_linear_high_urad{1.0f};
+  /** @brief 线性标定锚点：SNR 低端（dB）及对应 σ（µrad）。 */
+  float sigma_linear_snr_low_db{10.0f};
+  float sigma_linear_low_urad{5.0f};
   float nav_position_sigma_m{50.0f};     /**< 卫星导航定位径向误差 1-σ（典型 ≈50m），仅验收旁路 ECEF 误差行使用 */
   /** @note 甲方 2026-08-27 指标：红外系统测角误差 ≤3 μrad（≈0.000172°）。三项
    *        σ 默认 RSS ≈ 1.95 μrad（3×10⁻⁵°/10⁻⁴°/5×10⁻⁵° 组合），注入即在指标

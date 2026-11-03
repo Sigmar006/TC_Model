@@ -960,6 +960,72 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   // 实际有效目标最大斜距（本周期持航迹目标最大输入斜距）：给外部判断实际探测距离，
   // 与 max_range_m 径向粗筛门区分。
   result.max_detected_slant_range_m = controller.LastMaxDetectedSlantRangeM();
+
+  // 中译：**第21项雷达侧证据**（2026-11-02）——判据要求 `log/RadarOutput.log` 在卫星测角
+  //   之后记录"卫星探测引导信息 + RIR 对 DD 目标的距离/方位/高度"。只在**本次周期存在
+  //   外部跟踪请求**时写（那是卫星/融合通道给过来的引导），引导来源ID 取请求的来源设备号；
+  //   本周期是否检到目标决定是否附探测三要素。无外部请求时不写，避免把雷达自主搜索
+  //   误记成"卫星引导"。
+  // 标识：第21项雷达侧引导与探测（2026-11-02）。
+  // 中译：**引导来源ID 缺失时仍写探测三要素**（2026-11-02）——宿主当前只填
+  //   `source_target_id`（被引导目标），未填 `source_entity_id`（引导来源卫星/融合通道），
+  //   若整行以 `source_entity_id != 0` 为门，第 21 项的"雷达探测斜距/方位/高度"会一并消失。
+  //   这里只要求本周期有外部跟踪请求即写；来源ID 有则写、无则省略该字段（不伪造）。
+  //   `卫星引导来源ID` 的最终补齐需宿主在 `SubmitExternalTrack` 时把卫星实体号填进
+  //   `RirExternalTrackRequest::source_entity_id`。
+  // 标识：第21项引导行容错（2026-11-02）。
+  if (RIR_ACCEPTANCE_LOG_ENABLED() && has_external_track) {
+    bool has_detection = false;
+    double detection_range_m = 0.0;
+    double detection_az_deg = 0.0;
+    double detection_el_deg = 0.0;
+    double detection_altitude_m = 0.0;
+    // 优先取与来源目标同一目标的航迹归属（外部请求带 source_target_id 时按它匹配）。
+    const session::RirTrackAttributionRecord* matched = nullptr;
+    for (const session::RirTrackAttributionRecord& attribution : result.track_attributions) {
+      if (external_track_request.source_target_id != 0U &&
+          attribution.external_target_id != external_track_request.source_target_id) {
+        continue;
+      }
+      matched = &attribution;
+      if (attribution.external_target_id == external_track_request.source_target_id) {
+        break;   // 精确匹配优先
+      }
+    }
+    if (matched != nullptr) {
+      float range_m = 0.0f;
+      float az_deg = 0.0f;
+      float el_deg = 0.0f;
+      if (runtime::TryLookPolarFromEnuM(static_cast<float>(matched->position_enu_x_m),
+                                       static_cast<float>(matched->position_enu_y_m),
+                                       static_cast<float>(matched->position_enu_z_m), &range_m,
+                                       &az_deg, &el_deg)) {
+        has_detection = true;
+        detection_range_m = static_cast<double>(range_m);
+        detection_az_deg = static_cast<double>(az_deg);
+        detection_el_deg = static_cast<double>(el_deg);
+        // 高度：ENU → ECEF → LLA（锚点用本周期平台位置）。
+        oneq::coordinate::LlaPositionDegM anchor_lla{};
+        oneq::coordinate::EcefPositionM target_ecef{};
+        if (oneq::coordinate::TryEcefToLla(input.platform_position, &anchor_lla)) {
+          const oneq::coordinate::EnuPositionM target_enu(
+              static_cast<float>(matched->position_enu_x_m),
+              static_cast<float>(matched->position_enu_y_m),
+              static_cast<float>(matched->position_enu_z_m));
+          oneq::coordinate::LlaPositionDegM target_lla{};
+          if (oneq::coordinate::TryEnuToEcef(target_enu, anchor_lla, &target_ecef) &&
+              oneq::coordinate::TryEcefToLla(target_ecef, &target_lla)) {
+            detection_altitude_m = target_lla.altitude_m;
+          }
+        }
+      }
+    }
+    runtime::WriteRirImpactGuidance(controller.EffectiveSensorEntityId(), input.sim_time_sec,
+                                    input.input_cycle_index,
+                                    external_track_request.source_entity_id, has_detection,
+                                    detection_range_m, detection_az_deg, detection_el_deg,
+                                    detection_altitude_m);
+  }
   return result;
 }
 

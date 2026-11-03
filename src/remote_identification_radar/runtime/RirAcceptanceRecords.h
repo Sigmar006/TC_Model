@@ -226,6 +226,28 @@ struct RirSearchDetectionLite {
  * @brief 验收判定标准 第37项「空域自主搜索功能测试」：指向信息行 + 检测与量测信息行
  *        （扫描调度信息另见 `WriteRirSchedule`）。
  */
+/**
+ * @brief 第21项：写"卫星引导 + RIR 对 DD 目标的距离/方位/高度"一行。
+ *
+ * @details 判据第21项要求：`log/RadarOutput.log` 须在卫星测角数据时刻之后记录**卫星探测
+ *   引导信息**，以及 RIR 对 DD 目标得到的**距离、方位和高度**——不能用 SatelliteTarget.log
+ *   或推演日志里的同名字段替代。本行即该要求在雷达侧的落盘：`卫星引导来源ID=` 取外部
+ *   跟踪请求的来源设备号（红外/融合通道，见 `RirExternalTrackRequest::source_entity_id`）。
+ *
+ * @param[in] radar_id            本雷达实体号。
+ * @param[in] sim_time_sec        仿真时间（s）。
+ * @param[in] cycle               周期号。
+ * @param[in] source_satellite_id 引导来源（卫星/融合通道）实体号；0 = 未标注（该字段省略）。
+ * @param[in] has_detection       本周期是否对本目标有检测（false = 只写引导行）。
+ * @param[in] range_m             雷达探测斜距（m）。
+ * @param[in] az_deg              雷达探测方位（deg）。
+ * @param[in] el_deg              雷达探测俯仰（deg）。
+ * @param[in] altitude_m          雷达探测高度（m）。
+ */
+void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
+                            std::uint32_t source_satellite_id, bool has_detection,
+                            double range_m, double az_deg, double el_deg, double altitude_m);
+
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections);

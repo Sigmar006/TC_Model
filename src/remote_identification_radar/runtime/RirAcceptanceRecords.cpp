@@ -1226,6 +1226,33 @@ bool IsHorizonSearchCycle(const std::vector<RirDwellPlan>& dwell_plan, float hal
   return false;
 }
 
+void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
+                            std::uint32_t source_satellite_id, bool has_detection,
+                            double range_m, double az_deg, double el_deg, double altitude_m) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  // 中译：**第21项雷达侧证据行**（2026-11-02）——判据原文要求"`log/RadarOutput.log` 须在
+  //   卫星测角数据时刻之后记录卫星探测引导信息，以及 RIR 对 DD 目标得到的距离、方位和
+  //   高度；不能用 SatelliteTarget.log 或推演日志中的重复字段替代"。此前雷达侧完全没有
+  //   `[落点预测功能测试]` 行，外部只能看到卫星侧测角与落点，判不出"雷达是否按引导照到
+  //   目标并给出距离/方位/高度"。
+  //   引导来源ID 取外部跟踪请求的来源设备号（红外/融合通道）；无检测时只写引导行，
+  //   检测行如实省略（不写零值伪造）。
+  // 标识：第21项雷达侧引导与探测（2026-11-02）。
+  std::string content = "雷达ID=" + std::to_string(radar_id);
+  if (source_satellite_id != 0U) {
+    content += " 卫星引导来源ID=" + std::to_string(source_satellite_id);
+  }
+  if (has_detection) {
+    content += " 雷达探测斜距=" + FormatF(range_m, 1) + "m";
+    content += " 雷达探测方位/俯仰=" + FormatPairDeg(static_cast<float>(az_deg),
+                                                   static_cast<float>(el_deg), 3) + "°";
+    content += " 雷达探测高度=" + FormatF(altitude_m, 1) + "m";
+  }
+  Emit(sim_time_sec, cycle, "落点预测功能测试", content);
+}
+
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections) {

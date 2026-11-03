@@ -15,6 +15,7 @@
 
 #include "1q/coordinate/position_transform.h"
 #include "common/logging/AcceptanceText.h"
+#include "common/numerics/Constants.h"
 #include "fusion/FusionAcceptanceLog.h"
 #include "sbirs_sensor/tracking/SbirsAngleCvKalman.h"
 
@@ -210,6 +211,12 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     content += " 目标ID=" + std::to_string(track.key);
     content += " 传感器信息源名称=[" + ChannelNames(track) + "]";
     content += " 信息源测角数据=[" + ChannelBearings(track) + "]";
+    // 中译：**判据第15项外部导入合并判据要求写"测角信息融合卫星地面站名称"**
+    //   （2026-11-02）——否则外部无法区分同一目标在不同地面站得到的融合结果。
+    // 标识：第15项融合地面站名称（2026-11-02）。
+    if (!config.fusion_station_name.empty()) {
+      content += " 测角信息融合卫星地面站名称=" + config.fusion_station_name;
+    }
     if (have_ecef) {
       content += " ECEF位置m=" + FormatVec3(ecef.x_m, ecef.y_m, ecef.z_m, 1);
     }
@@ -234,6 +241,24 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
     }
     FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "宽窄视场联合探测功能测试", content);
     FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "多传感器目标跟踪功能测试", content);
+    // 中译：**判据示例第二行：逐源测角 + 红外可探测**（2026-11-02）——判据示例是
+    //   `相对卫星ID=4 目标ID=1001 目标方位/俯仰(ECI)=(…)rad 红外可探测=是`；
+    //   本行按"每个源一行"写，`相对卫星ID` 取该源的 source_id，方位/俯仰由度转弧度
+    //   （融合层收到的就是 ECI 测角）。`红外可探测` 以"该源本周期是否有测角"为判据：
+    //   有测角即有红外探测，无测角（仅位置量测/失跟）记"否"。
+    // 标识：第15项逐源测角与红外可探测（2026-11-02）。
+    for (const ChannelMeasurement& channel : track.channels) {
+      std::string per_source = "相对卫星ID=" + std::to_string(channel.source_id);
+      per_source += " 目标ID=" + std::to_string(track.key);
+      if (channel.has_bearing) {
+        per_source += " 目标方位/俯仰(ECI)=(" +
+                      FormatF(oneq::common::numerics::DegToRad(channel.bearing_az_deg), 6) +
+                      "," + FormatF(oneq::common::numerics::DegToRad(channel.bearing_el_deg), 6) +
+                      ")rad";
+      }
+      per_source += channel.has_bearing ? " 红外可探测=是" : " 红外可探测=否";
+      FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "多传感器目标跟踪功能测试", per_source);
+    }
 
     const auto& vel = track.kinematic_estimate.velocity_ecef_m_per_s;
     LastVel& prev = LastVelocities()[track.key];

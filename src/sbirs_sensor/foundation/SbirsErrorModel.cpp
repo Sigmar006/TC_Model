@@ -64,31 +64,43 @@ double ResolveEffectiveAngularSigmaDeg(const config::SbirsErrorModelConfig& mode
   return std::sqrt(orbit * orbit + attitude * attitude + fov * fov);
 }
 
-double ResolveLinearSnrSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_db) {
-  const double hi_db = static_cast<double>(model.sigma_linear_snr_high_db);
-  const double lo_db = static_cast<double>(model.sigma_linear_snr_low_db);
-  const double hi_urad = static_cast<double>(model.sigma_linear_high_urad);
-  const double lo_urad = static_cast<double>(model.sigma_linear_low_urad);
-  // 中译：**SNR↔测角误差的直接线性标定**（2026-11-04 甲方口径）——不走 IFOV/√SNR 的内部
-  //   推导，只按 dB 线性插值：SNR 从高锚点降到低锚点，σ 从 σ_high 线性升到 σ_low；
-  //   区间外按端点钳位，避免极端值把误差推到无意义量级。外部验证程序可直接用
-  //   "该行 SNR ⇒ 应有 σ" 对账，无需了解内部实现。
-  // 标识：SNR-误差线性标定（2026-11-04）。
-  const double kUradToDeg = 180.0 / kPi * 1.0e-6;
-  if (!(hi_db > lo_db) || !(hi_urad > 0.0) || !(lo_urad > 0.0)) {
-    return hi_urad > 0.0 ? hi_urad * kUradToDeg : ResolveEffectiveAngularSigmaDeg(model);
-  }
+namespace {
+
+// 中译：**SNR↔测角误差线性标定锚点**（2026-11-04 甲方口径）——固定为库内常量，不另开配置：
+//   SNR 35 dB ⇒ σ 1.0 µrad；SNR 10 dB ⇒ σ 5.0 µrad；dB 域线性插值，区间外按端点钳位。
+//   默认启用；需要回到物理模型时调用 oneq::sbirs_sensor::SetLinearSnrAngleSigmaEnabled(false)。
+// 标识：线性标定锚点常量（2026-11-04）。
+constexpr double kSigmaLinearSnrHighDb = 35.0;
+constexpr double kSigmaLinearHighUrad = 1.0;
+constexpr double kSigmaLinearSnrLowDb = 10.0;
+constexpr double kSigmaLinearLowUrad = 5.0;
+
+// 全局开关（默认启用线性标定）。库内单线程仿真使用，不引入额外同步开销。
+bool g_linear_snr_sigma_enabled = true;
+
+}  // namespace
+
+bool SetLinearSnrAngleSigmaEnabled(bool enabled) {
+  const bool previous = g_linear_snr_sigma_enabled;
+  g_linear_snr_sigma_enabled = enabled;
+  return previous;
+}
+
+bool IsLinearSnrAngleSigmaEnabled() { return g_linear_snr_sigma_enabled; }
+
+double ResolveLinearSnrSigmaDeg(double snr_db) {
+  constexpr double kUradToDeg = 180.0 / kPi * 1.0e-6;
   if (!(snr_db > 0.0)) {
-    return hi_urad * kUradToDeg;
+    return kSigmaLinearHighUrad * kUradToDeg;
   }
-  double t = (hi_db - snr_db) / (hi_db - lo_db);   // 0 在高锚点，1 在低锚点
+  double t = (kSigmaLinearSnrHighDb - snr_db) / (kSigmaLinearSnrHighDb - kSigmaLinearSnrLowDb);
   if (t < 0.0) {
     t = 0.0;
   }
   if (t > 1.0) {
     t = 1.0;
   }
-  const double urad = hi_urad + (lo_urad - hi_urad) * t;
+  const double urad = kSigmaLinearHighUrad + (kSigmaLinearLowUrad - kSigmaLinearHighUrad) * t;
   return urad * kUradToDeg;
 }
 
@@ -97,9 +109,9 @@ double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, d
   // 中译：线性标定开关打开时**只**用 SNR 线性表（覆盖内部 RSS 推导），这正是甲方要的
   //   "直接挂钩"口径；关闭时回落到"仪器地板 ⊕ 焦面光子噪声"的物理模型。
   // 标识：线性标定优先（2026-11-04）。
-  if (model.use_linear_snr_sigma) {
+  if (g_linear_snr_sigma_enabled) {
     const double snr_db = (snr_linear > 0.0) ? 10.0 * std::log10(snr_linear) : 0.0;
-    return ResolveLinearSnrSigmaDeg(model, snr_db);
+    return ResolveLinearSnrSigmaDeg(snr_db);
   }
 
   const double floor_deg = ResolveEffectiveAngularSigmaDeg(model);
@@ -107,7 +119,7 @@ double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, d
   //   同一像元内光子数越多，质心越准；弱目标自然变差。此前该项完全缺失，测角误差是
   //   常数，与 SNR 无关（实测相关系数 −0.007），"能否到 3 µrad"成了配置写死的巧合。
   // 标识：焦面光子噪声项（2026-11-04）。
-  const double gain = static_cast<double>(model.centroid_gain);
+  constexpr double gain = 1.0;  // 质心增益固定（不开放配置，见线性标定常量说明）
   if (!(snr_linear > 0.0) || !(ifov_rad > 0.0) || !(gain > 0.0)) {
     return floor_deg;
   }

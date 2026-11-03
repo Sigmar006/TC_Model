@@ -112,12 +112,16 @@ double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, d
 /**
  * @brief 测角 σ 的**直接线性标定**（dB 域线性插值，单位 deg）。
  *
- * @details σ(SNR_dB) 在两个锚点之间线性插值，区间外按端点钳位：
+ * @details 锚点为库内固定常量（35 dB→1.0 µrad、10 dB→5.0 µrad），区间外按端点钳位：
  *   σ = σ_high + (σ_low − σ_high)·(SNR_high − SNR_dB)/(SNR_high − SNR_low)。
- *   这是"不走内部算法逻辑、直接把 SNR 和误差挂钩"的判定口径，供外部验证程序逐行对账。
+ *   这是"不走内部算法逻辑、直接把 SNR 和误差挂钩"的判定口径，供外部逐行对账。
+ *   是否启用由 `oneq::sbirs_sensor::SetLinearSnrAngleSigmaEnabled` 控制。
  * @param[in] snr_db 线性 SNR 换算的 dB 值（≤0 视为不可用，返回高端锚点 σ）。
  */
-double ResolveLinearSnrSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_db);
+double ResolveLinearSnrSigmaDeg(double snr_db);
+
+/** @brief 当前是否启用"SNR↔测角误差线性标定"（供管线标注日志口径）。 */
+bool IsLinearSnrAngleSigmaEnabled();
 
 /**
  * @brief 高刷新率多帧融合量测（窄视场跟踪）：N 帧独立抽样融合为单周期量测。

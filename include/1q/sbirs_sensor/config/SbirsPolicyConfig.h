@@ -35,30 +35,6 @@ struct ONEQ_API SbirsErrorModelConfig {
   float attitude_sigma_deg{0.0001f};     /**< 卫星姿态误差角度 1-σ，单位 deg */
   float fov_sigma_deg{0.00005f};         /**< 探测器视场（像元/畸变）误差 1-σ，单位 deg */
   float detector_bandwidth_hz{100.0f};   /**< 探测器带宽，用于动态滞后误差，单位 Hz */
-  /**
-   * @brief 焦面质心定位增益 k（无量纲）：逐帧光子噪声项 σ = IFOV / (k·√SNR)。
-   *
-   * @details 2026-11-04：此前测角随机项是**常数 σ**（轨道/姿态/视场三项 RSS），与 SNR
-   *   完全无关（实测相关系数 −0.007），"能不能到 3 µrad"变成配置写死的巧合。本项让
-   *   测角误差随信号强弱变化：IFOV = 像元间距/焦距（当前 30 µm / 2 m = 15 µrad），
-   *   k 由标定确定，典型 0.5–1.0（k=1 时 SNR=30 dB ⇒ 0.47 µrad、SNR=15 dB ⇒
-   *   2.67 µrad）。该光子项与姿态/视场偏置按 RSS 合成。
-   */
-  float centroid_gain{1.0f};
-  /**
-   * @brief 是否用"SNR↔测角误差"的**直接线性标定**替代内部 RSS 算法（2026-11-04 甲方口径）。
-   *
-   * @details 打开后逐帧测角 σ **只**由 SNR 线性决定（dB 域线性插值），不再走
-   *   `√(地板² + (IFOV/(k√SNR))²)` 那条内部推导，便于外部验证程序把"SNR—误差"
-   *   直接对账（现场要求：不走内部算法逻辑，直接把 SNR 和误差挂钩）。
-   */
-  bool use_linear_snr_sigma{true};
-  /** @brief 线性标定锚点：SNR 高端（dB）及对应 σ（µrad）。 */
-  float sigma_linear_snr_high_db{35.0f};
-  float sigma_linear_high_urad{1.0f};
-  /** @brief 线性标定锚点：SNR 低端（dB）及对应 σ（µrad）。 */
-  float sigma_linear_snr_low_db{10.0f};
-  float sigma_linear_low_urad{5.0f};
   float nav_position_sigma_m{50.0f};     /**< 卫星导航定位径向误差 1-σ（典型 ≈50m），仅验收旁路 ECEF 误差行使用 */
   /** @note 甲方 2026-08-27 指标：红外系统测角误差 ≤3 μrad（≈0.000172°）。三项
    *        σ 默认 RSS ≈ 1.95 μrad（3×10⁻⁵°/10⁻⁴°/5×10⁻⁵° 组合），注入即在指标

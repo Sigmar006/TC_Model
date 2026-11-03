@@ -2849,14 +2849,9 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         if (sigma_urad_log > 0.0) {
           nfov += ",倍数=" + oneq::logging::FormatF(measured_urad_log / sigma_urad_log, 2) + "σ";
         }
-        nfov += ",锚点=" + oneq::logging::FormatF(
-                    static_cast<double>(policy.error_model.sigma_linear_snr_high_db), 0) + "dB/" +
-                oneq::logging::FormatF(
-                    static_cast<double>(policy.error_model.sigma_linear_high_urad), 2) + "urad~" +
-                oneq::logging::FormatF(
-                    static_cast<double>(policy.error_model.sigma_linear_snr_low_db), 0) + "dB/" +
-                oneq::logging::FormatF(
-                    static_cast<double>(policy.error_model.sigma_linear_low_urad), 2) + "urad" + ")";
+        // 口径与锚点：线性标定为库内常量（35 dB/1.0urad ~ 10 dB/5.0urad）；关闭时写物理模型。
+        nfov += ",锚点=35dB/1.00urad~10dB/5.00urad,口径=";
+        nfov += foundation::IsLinearSnrAngleSigmaEnabled() ? "线性" : "物理";
       }
       // 高刷新率高精度数据输出（单镜筒轮转口径）：本周期实际帧数 + 单帧/融合 1-σ。
       nfov += " 帧数=" + std::to_string(nfov_frame_count);

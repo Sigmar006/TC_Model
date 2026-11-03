@@ -41,6 +41,21 @@ std::string EncodeAcceptanceLineForFile(const std::string& line);
  * @note 落点/发射点误差口径 = 估计状态与真值状态经**同一推演引擎**的关键点之差，
  *       衡量状态误差传播，不含弹道模型自身偏差。
  */
+/**
+ * @brief 返回库侧编译期的 `sizeof(PrecisionEvaluationConfig)`。
+ *
+ * @details **ABI 自检用**（2026-11-03 事故）。`PrecisionEvaluationConfig` 按值包含
+ *   `fusion::FusionConfig` 等配置结构，只要 1q 的公开头文件增删字段，布局就变。宿主若仍按
+ *   旧头文件编译（典型原因：宿主 `include\1q` 是 1q 源码头文件的**副本**，换 lib 时没同步），
+ *   构造 `PrecisionEvaluationSession` 时库侧会按新布局读用户栈上的旧结构，越界并崩溃
+ *   （现场栈落在 `FusionConfig` 拷贝构造的 `std::string::_Copy`，`precision` 成员始终为空）。
+ *   集成侧在构造会话前调用本函数，与自己编译期的 sizeof 比对，不一致就**先报错再返回**，
+ *   不要硬构造。
+ *
+ * @return 库侧 `sizeof(PrecisionEvaluationConfig)`（字节）。
+ */
+ONEQ_API std::size_t ReportedPrecisionConfigSize();
+
 class ONEQ_API PrecisionEvaluationSession {
  public:
   /**

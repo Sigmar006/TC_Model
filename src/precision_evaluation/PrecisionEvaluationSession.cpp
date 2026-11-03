@@ -160,6 +160,8 @@ struct PrecisionEvaluationSession::Impl {
   std::uint32_t cycles_since_inference{0U};
 };
 
+std::size_t ReportedPrecisionConfigSize() { return sizeof(PrecisionEvaluationConfig); }
+
 PrecisionEvaluationSession::PrecisionEvaluationSession(const PrecisionEvaluationConfig& config)
     : impl_(new Impl(config)) {}
 

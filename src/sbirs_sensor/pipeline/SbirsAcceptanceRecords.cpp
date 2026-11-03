@@ -247,7 +247,7 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
     nav += " 速度误差ECEF=(" + FormatF(dvx, 3) + "," + FormatF(dvy, 3) + "," +
            FormatF(dvz, 3) + ")m/s";
   }
-  nav += " |定位误差|=" + FormatF(err_norm, 1) + "m";
+  nav += " |定位误差|=" + FormatF(err_norm, 3) + "m";
   SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "卫星自身定位误差功能测试", nav);
 }
 

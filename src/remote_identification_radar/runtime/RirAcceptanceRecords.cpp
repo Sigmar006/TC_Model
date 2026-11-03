@@ -1723,7 +1723,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                             truth->acceleration_z_mps2, 4) +
                  "m/s^2 加速度误差=" + FormatVec3(ex, ey, ez, 4) + "m/s^2 加速度误差模=" +
                  FormatF(std::sqrt(ex * ex + ey * ey + ez * ez), 4) +
-                 "m/s^2 真值加速度来源=真值速度差分";
+                 "m/s^2 ";
     }
     Emit(sim_time_sec, cycle, "跟踪滤波功能测试", err_row);
   }

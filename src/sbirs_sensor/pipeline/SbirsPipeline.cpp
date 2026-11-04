@@ -1214,7 +1214,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           satellite_entity_id_, config_.session.orientation.mount_angles_deg,
           oneq::coordinate::EulerAnglesDeg(misalignment_total_deg_.yaw_deg,
                                            misalignment_total_deg_.pitch_deg,
-                                           misalignment_total_deg_.roll_deg));
+                                           misalignment_total_deg_.roll_deg),
+          sim_time_sec, input.cycle_index);
       // 中译：**载荷总指向误差预算**（2026-11-04 甲方 3 µrad 指标）——把四类独立来源
       //   （安装矩阵失准 / 共模姿态 / 通道指向 / LOS 随机）RSS 合成一行，使"≤3 µrad"
       //   可判、可追溯。此前这四项分散：安装误差只在第 10 项的矩阵里（未折算角度），

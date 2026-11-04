@@ -47,7 +47,8 @@ namespace pipeline {
 // satellite_id：卫星实体/融合源 ID（验收行 卫星ID= 标注；0 表示调用方未标注）。
 void WriteSbirsInstallMatrices(std::uint32_t satellite_id,
                                const oneq::coordinate::EulerAnglesDeg& mount_deg,
-                               const oneq::coordinate::EulerAnglesDeg& misalignment_deg);
+                               const oneq::coordinate::EulerAnglesDeg& misalignment_deg,
+                               float sim_time_sec, std::uint32_t cycle);
 
 // 规范口径（验收判定标准 第8项）：每周期一行 卫星ID/真值位置ECEF/实际位置ECEF/
 // 定位误差ECEF/模长/真值速度ECEF/实际速度ECEF/速度误差ECEF。

@@ -101,6 +101,17 @@ class ONEQ_API PrecisionEvaluationSession {
    */
   PrecisionEvaluationReport Summarize() const;
 
+  /**
+   * @brief 同上，但把第 26/27 项验收行的"仿真时间/仿真周期"前缀写成真实值。
+   *
+   * @details 2026-11-04：默认 `Summarize()` 把前缀写成 `0.000s / 0`（历史口径，视为汇总行），
+   *   外部集成的时间戳从 1 开始，这些行会被"按时刻过滤"的验证程序漏掉。宿主已知当前
+   *   周期与步长，改用本重载即可让行前缀与实际写出时刻一致。
+   * @param[in] sim_time_sec 当前仿真时刻（s）。
+   * @param[in] cycle 当前仿真周期号。
+   */
+  PrecisionEvaluationReport Summarize(float sim_time_sec, std::uint32_t cycle) const;
+
   /** @brief 诊断用：当前已缓存"最近一拍误差快照"的目标数（只读，不改会话状态）。 */
   std::size_t DebugLatestErrorCount() const;
 

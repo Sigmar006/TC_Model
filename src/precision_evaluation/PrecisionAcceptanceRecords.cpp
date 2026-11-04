@@ -41,16 +41,21 @@ const char* GradeOf(double score) {
 //   验收通道/入队由引擎线程写"两种绕行方案同样不落盘。成因待定，故保留最朴素的
 //   直接写盘口径（不引入绕行路径），日志缺失按"待定位"记账，不假装已修好。
 
-void WriteSatelliteTargetLine(const char* item, const std::string& content) {
+void WriteSatelliteTargetLine(const char* item, const std::string& content,
+                             float sim_time_sec, std::uint32_t cycle) {
+  // 中译：**不再写死 0.000s/周期 0**（2026-11-04）——外部集成的时间戳从 1 起算，行前缀
+  //   恒为 0 会被"按时刻过滤"的验证程序当成 t=0 的重复行。调用方有真实时刻就传进来。
+  // 标识：精度直写行前缀改真实时刻（2026-11-04）。
   oneq::logging::WriteAcceptanceLog(
       oneq::logging::AcceptanceChannel::kSatelliteTarget,
-      oneq::logging::FormatAcceptanceLine(0.0f, 0U, item, content));
+      oneq::logging::FormatAcceptanceLine(sim_time_sec, cycle, item, content));
 }
 
 }  // namespace
 
 std::vector<std::string> BuildPrecisionKeyMetricsLines(
-    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest, float sim_time_sec,
+    std::uint32_t cycle) {
   // 验收判定标准 第26项（修改）：逐目标一行，只写误差本身（估计-真值/输出角-真值角/
   // 焦平面脱靶量），不写 RMSE/CEP50/CI 等派生统计；无样本的字段省略。
   std::vector<std::string> lines;
@@ -74,14 +79,18 @@ std::vector<std::string> BuildPrecisionKeyMetricsLines(
       content += " 脱靶量m=(" + FormatF(snapshot.focal_x_m, 6) + "," +
                  FormatF(snapshot.focal_y_m, 6) + ")";
     }
-    // 会话汇总行语义：周期/时间用 0（与文档示例一致；行内误差为最近一拍快照）。
+    // 中译：**周期/时刻改用真实值**（2026-11-04）——此前固定写 `仿真时间=0.000s 仿真周期=0`，
+    //   外部集成从第 1 拍起读日志时这些行看起来"只存在于 t=0"，会被时间过滤丢掉。
+    //   行内误差仍是最近一拍快照，但前缀必须是"写出这一行时的时刻/周期"。
+    // 标识：第26项行前缀改真实时刻（2026-11-04）。
     lines.push_back(oneq::logging::FormatAcceptanceLine(
-        0.0f, 0U, "关键精度指标提取功能测试", content));
+        sim_time_sec, cycle, "关键精度指标提取功能测试", content));
   }
   return lines;
 }
 
-std::string BuildPrecisionAhpLine(const PrecisionEvaluationReport& report) {
+std::string BuildPrecisionAhpLine(const PrecisionEvaluationReport& report, float sim_time_sec,
+                                  std::uint32_t cycle) {
   if (!report.ahp_valid) {
     return std::string();
   }
@@ -103,19 +112,24 @@ std::string BuildPrecisionAhpLine(const PrecisionEvaluationReport& report) {
   content += " 底层分=" + scores;
   content += " 综合分=" + FormatF(report.composite_score, 3);
   content += std::string(" 等级=") + GradeOf(report.composite_score);
-  return oneq::logging::FormatAcceptanceLine(0.0f, 0U, "层次分析法功能测试", content);
+  // 中译：同第 26 项，前缀用真实时刻/周期（2026-11-04）。
+  // 标识：第27项行前缀改真实时刻（2026-11-04）。
+  return oneq::logging::FormatAcceptanceLine(sim_time_sec, cycle, "层次分析法功能测试", content);
 }
 
 void WritePrecisionKeyMetricsUnconditional(
-    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest) {
-  const std::vector<std::string> lines = BuildPrecisionKeyMetricsLines(latest);
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest, float sim_time_sec,
+    std::uint32_t cycle) {
+  const std::vector<std::string> lines =
+      BuildPrecisionKeyMetricsLines(latest, sim_time_sec, cycle);
   for (const std::string& line : lines) {
     oneq::logging::WriteAcceptanceLog(oneq::logging::AcceptanceChannel::kSatelliteTarget, line);
   }
 }
 
-void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report) {
-  const std::string line = BuildPrecisionAhpLine(report);
+void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report,
+                                    float sim_time_sec, std::uint32_t cycle) {
+  const std::string line = BuildPrecisionAhpLine(report, sim_time_sec, cycle);
   if (line.empty()) {
     return;
   }

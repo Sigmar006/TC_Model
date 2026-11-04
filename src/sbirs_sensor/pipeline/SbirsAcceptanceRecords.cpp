@@ -137,7 +137,8 @@ const char* StageName(const session::SbirsDetectionLifecycleEvent& event) {
 
 void WriteSbirsInstallMatrices(std::uint32_t satellite_id,
                                const oneq::coordinate::EulerAnglesDeg& mount_deg,
-                               const oneq::coordinate::EulerAnglesDeg& misalignment_deg) {
+                               const oneq::coordinate::EulerAnglesDeg& misalignment_deg,
+                               float sim_time_sec, std::uint32_t cycle) {
   if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -152,7 +153,11 @@ void WriteSbirsInstallMatrices(std::uint32_t satellite_id,
   content += " 理想指向R=" + FormatRotation(r_mount);
   content += " 实际指向R=" + FormatRotation(r_actual);
   content += " 安装误差矩阵R=" + FormatRotation(r_mis);
-  SBIRS_ACCEPTANCE_ITEM(0.0f, 0U, "安装矩阵误差功能测试", content);
+  // 中译：**前缀用真实时刻/周期**（2026-11-04）——此前固定 `0.0f/0U`，于是"首周期写一次 +
+  //   每 300 周期重发"的 200 条行全部显示为 `仿真时间=0.000s 仿真周期=0`，外部集成从第 1
+  //   拍起读日志时会把这些行当成 t=0 的重复行，甚至按时刻过滤直接丢弃。
+  // 标识：第10项行前缀改真实时刻（2026-11-04）。
+  SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "安装矩阵误差功能测试", content);
 }
 
 void WriteSbirsPayloadPointingBudget(std::uint32_t satellite_id, float sim_time_sec,

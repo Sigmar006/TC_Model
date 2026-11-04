@@ -39,9 +39,11 @@ void WritePrecisionAhp(const PrecisionEvaluationReport& report);
 // 无编译期闸门的写出接口（2026-10-21）：现场宿主用"总是写"的路径，避免写盘宏在
 // 不同编译单元里求值不一致；是否调用由会话/宿主决定。
 void WritePrecisionKeyMetricsUnconditional(
-    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest);
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest,
+    float sim_time_sec = 0.0f, std::uint32_t cycle = 0U);
 
-void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report);
+void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report,
+                                    float sim_time_sec = 0.0f, std::uint32_t cycle = 0U);
 
 /**
  * @brief 只格式化不写盘：第26 项验收行（逐目标一行，无样本目标不产出）。
@@ -53,13 +55,15 @@ void WritePrecisionAhpUnconditional(const PrecisionEvaluationReport& report);
  *       LastAcceptanceLines 与宿主 `sbirsfusiondp_1q.cpp` 的写出分支）。
  */
 std::vector<std::string> BuildPrecisionKeyMetricsLines(
-    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest);
+    const std::map<std::uint64_t, TargetKeyErrorSnapshot>& latest,
+    float sim_time_sec = 0.0f, std::uint32_t cycle = 0U);
 
 /**
  * @brief 只格式化不写盘：第27 项验收行（AHP 非法时返回空串）。
  * @note 拆分理由同 BuildPrecisionKeyMetricsLines。
  */
-std::string BuildPrecisionAhpLine(const PrecisionEvaluationReport& report);
+std::string BuildPrecisionAhpLine(const PrecisionEvaluationReport& report,
+                                  float sim_time_sec = 0.0f, std::uint32_t cycle = 0U);
 
 }  // namespace precision_evaluation
 

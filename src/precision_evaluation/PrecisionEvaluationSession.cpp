@@ -566,6 +566,11 @@ const std::vector<std::string>& PrecisionEvaluationSession::LastAcceptanceLines(
 }
 
 PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {
+  return Summarize(0.0f, 0U);
+}
+
+PrecisionEvaluationReport PrecisionEvaluationSession::Summarize(float sim_time_sec,
+                                                               std::uint32_t cycle) const {
   PrecisionEvaluationReport report;
   impl_->last_acceptance_lines.clear();
   const std::vector<double>* series[kPrecisionMetricCount] = {
@@ -592,10 +597,11 @@ PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {
   AhpEvaluation ahp;
   if (!TryEvaluateAhp(impl_->config.ahp, &ahp)) {
     report.ahp_valid = false;
-    WritePrecisionAhpUnconditional(report);  // 内部按 ahp_valid 决定是否写
+    WritePrecisionAhpUnconditional(report, sim_time_sec, cycle);  // 内部按 ahp_valid 决定是否写
     // 缓存本拍验收行（只格式化，不写盘）：库外集成方在可靠线程落盘用。
-    impl_->last_acceptance_lines = BuildPrecisionKeyMetricsLines(impl_->latest_errors);
-    const std::string ahp_line = BuildPrecisionAhpLine(report);
+    impl_->last_acceptance_lines =
+        BuildPrecisionKeyMetricsLines(impl_->latest_errors, sim_time_sec, cycle);
+    const std::string ahp_line = BuildPrecisionAhpLine(report, sim_time_sec, cycle);
     if (!ahp_line.empty()) {
       impl_->last_acceptance_lines.push_back(ahp_line);
     }
@@ -606,11 +612,12 @@ PrecisionEvaluationReport PrecisionEvaluationSession::Summarize() const {
   ComposePrecisionScore(ahp.weights, rmse, references, &report);
   // 2026-10-21：写盘走无闸门接口——开关在 PrecisionAcceptanceRecords.cpp 那一 TU 里的
   // 求值与本 TU 不一致时，第 26/27 项会静默为空（现场已复现：会话跑通、样本有、日志 0 行）。
-  WritePrecisionKeyMetricsUnconditional(impl_->latest_errors);
-  WritePrecisionAhpUnconditional(report);
+  WritePrecisionKeyMetricsUnconditional(impl_->latest_errors, sim_time_sec, cycle);
+  WritePrecisionAhpUnconditional(report, sim_time_sec, cycle);
   // 缓存本拍验收行（只格式化，不写盘）：库外集成方在可靠线程落盘用。
-  impl_->last_acceptance_lines = BuildPrecisionKeyMetricsLines(impl_->latest_errors);
-  const std::string ahp_line = BuildPrecisionAhpLine(report);
+  impl_->last_acceptance_lines =
+        BuildPrecisionKeyMetricsLines(impl_->latest_errors, sim_time_sec, cycle);
+  const std::string ahp_line = BuildPrecisionAhpLine(report, sim_time_sec, cycle);
   if (!ahp_line.empty()) {
     impl_->last_acceptance_lines.push_back(ahp_line);
   }

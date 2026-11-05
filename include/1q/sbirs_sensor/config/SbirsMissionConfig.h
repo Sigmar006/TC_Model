@@ -53,6 +53,14 @@ struct ONEQ_API SbirsWideAreaScanConfig {
   float sigma_at_10db_urad{3.2f};                 /**< 10 dB 处测角 1σ（µrad） */
   SbirsScanAzimuthReference scan_azimuth_reference{
       SbirsScanAzimuthReference::kNadirRelative}; /**< 方位基准（默认相对星下点，便于预警扇区对准） */
+  /**
+   * @brief 启用本模式时，**抑制宽场/宽窄联合的波束日志**（第 12、14 项）。
+   * @details 大幅面模式是对宽场扫描的整体替代，两者同时出数会让外部看到"两套波束"；
+   *   故默认抑制第 12 项（宽视场扫描探测）与第 14 项（宽窄视场联合探测）的行，
+   *   只保留第 11 项（大幅面扫描）与第 13 项（窄场跟踪，跟踪证据不可省）。
+   *   置 false 可恢复同时输出（用于对比验证）。
+   */
+  bool suppress_wide_narrow_logs{true};
 };
 
 /**

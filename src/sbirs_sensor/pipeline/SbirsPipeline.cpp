@@ -847,6 +847,13 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   // 过程：大幅面模式用自己的检测门限（默认 4.5，介于宽场 4.0 与窄场 5.0 之间）。
   const float wide_min_snr_linear =
       wide_area_scan_active ? wide_area.min_snr_linear : policy.detection.wide_min_snr_linear;
+  // 过程：**大幅面模式下抑制"宽场/宽窄联合"两条波束日志**（2026-11-05 甲方要求）——
+  //   大幅面是对宽场扫描的整体替代，两者同时出数会让外部误读成两套波束；
+  //   默认抑制第 12 项与第 14 项，仅保留第 11 项（大幅面）与第 13 项（窄场跟踪）。
+  //   配置 `wide_area_scan.suppress_wide_narrow_logs=false` 可恢复同时输出。
+  // 标识：大幅面模式抑制宽窄波束日志（2026-11-05）。
+  const bool emit_wide_narrow_rows =
+      !(wide_area_scan_active && wide_area.suppress_wide_narrow_logs);
   const config::SbirsEnvironmentConfig& environment_config = config_.session.environment;
   const float sim_time_sec = static_cast<float>(input.cycle_index) * input.dt_sec;
   // 验收判定标准 第58项：本周期场景/环境输入的接口投影 → log/IRExternalInterface.log。
@@ -1244,13 +1251,13 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     //   "没有写驻留时间"。
     // 标识：第12/14项驻留时间字段名（2026-11-02）。
     std::string wfov_row = "卫星ID=" + std::to_string(satellite_entity_id_) + " " + footprint;
-    SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试", wfov_row);
+    if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试", wfov_row); }
     // 规范口径（验收判定标准 第14项·其一）：宽视场扫描覆盖区域与第 12 项同数据、
     // 按本项分行重写。
     std::string joint_cover = "卫星ID=" + std::to_string(satellite_entity_id_) +
                               " 宽视场扫描覆盖区域=" + footprint;
-    SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
-                               joint_cover);
+    if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
+                               joint_cover); }
     // 中译：**第10项改为"首周期 + 周期重发"**（2026-11-02）——原先只在 `仿真周期=0` 写一次，
     //   外部验证程序若从第 1 周期起读（或只 tail 运行中的日志）就"看不到输出"；现场反馈
     //   "外部代码中安装矩阵误差没有输出"即此因。矩阵本身是常值（失准角在 ApplyConfig
@@ -1888,8 +1895,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       wfov_angle += " 宽视场视线角误差方位/俯仰=(" +
                     oneq::logging::FormatF(az_err * kDegToArcsec, 2) + "," +
                     oneq::logging::FormatF(el_err * kDegToArcsec, 2) + ")arcsec";
-      SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试",
-                                 wfov_angle);
+      if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽视场扫描探测功能测试",
+                                 wfov_angle); }
       // 中译：**第14项也要宽视场目标视线角与其误差**（2026-11-02）——判据第14项正文要求
       //   "宽视场目标视线方位/俯仰及误差"，示例第一行同时含覆盖区、驻留时间、宽场视线与
       //   误差；此前第14项只有覆盖区与窄场行，宽场视线/误差只写在第12项，本项缺。
@@ -1904,8 +1911,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       joint_wfov += " 宽视场视线角误差方位/俯仰=(" +
                     oneq::logging::FormatF(az_err * kDegToArcsec, 2) + "," +
                     oneq::logging::FormatF(el_err * kDegToArcsec, 2) + ")arcsec";
-      SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
-                                 "宽窄视场联合探测功能测试", joint_wfov);
+      if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
+                                 "宽窄视场联合探测功能测试", joint_wfov); }
       // 第11项 红外预警卫星大幅面扫描与探测：扫描幅宽（ECI rad）/目标辐射能量链/
       // SNR/探测概率/检测标志（评审 2026-08-26 条2：Pd 复用雷达公共层 Marcum Q 模型
       // （Swerling0 单脉冲），Pfa 由宽场门限系数 k 按高斯尾部 Pfa=0.5·erfc(k/√2) 反推）。
@@ -1974,8 +1981,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     if (!suspect_ids.empty()) {
       std::string joint_list = "卫星ID=" + std::to_string(satellite_entity_id_) +
                                " 宽场疑似列表=[" + suspect_ids + "]";
-      SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
-                                 "宽窄视场联合探测功能测试", joint_list);
+      if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
+                                 "宽窄视场联合探测功能测试", joint_list); }
     }
   }
 
@@ -2990,8 +2997,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                        oneq::logging::FormatF(el_err * 3600.0, 2) + ")arcsec";
       }
       joint_track += " SNR=" + oneq::logging::FormatF(snr_db, 3) + "dB";
-      SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
-                                 "宽窄视场联合探测功能测试", joint_track);
+      if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index,
+                                 "宽窄视场联合探测功能测试", joint_track); }
       WriteSbirsAngleError(satellite_entity_id_, sim_time_sec, input.cycle_index,
                            engaged_id, az_err, el_err);
       // 用例 16 只针对**角度 CV 后端**的后验状态；EKF/IMM 现在也会携带派生角速率
@@ -3049,10 +3056,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         if (SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED()) {
           // 中译：窄视场首次捕获事件——指向超时失败（卫星、目标）。
           // 标识：验收日志 E4——3.2.1.3.2.1 指向超时回退证据（与 E7 release 成对）。
-          SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
+          if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
                                 "卫星ID=" + std::to_string(satellite_entity_id_) +
                                     " 目标ID=" + std::to_string(served_target_id) +
-                                    " 捕获=超时失败");
+                                    " 捕获=超时失败"); }
         }
         append_acquisition_failure(
             selected, attribution::SbirsCaptureFailureReason::kNfovPointingTimeout);
@@ -3066,10 +3073,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         if (SBIRS_DUAL_ACCEPTANCE_LOG_ENABLED()) {
           // 中译：窄视场首次捕获事件——指向被拒失败（卫星、目标）。
           // 标识：验收日志 E4——3.2.1.3.2.1 指向拒绝回退证据（与 E7 release 成对）。
-          SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
+          if (emit_wide_narrow_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
                                 "卫星ID=" + std::to_string(satellite_entity_id_) +
                                     " 目标ID=" + std::to_string(served_target_id) +
-                                    " 捕获=指向被拒");
+                                    " 捕获=指向被拒"); }
         }
         append_acquisition_failure(selected,
                                    attribution::SbirsCaptureFailureReason::kNfovAcquisitionFailed);

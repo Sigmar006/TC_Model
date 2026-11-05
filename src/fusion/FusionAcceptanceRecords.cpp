@@ -5,6 +5,8 @@
 
 #include "fusion/FusionAcceptanceRecords.h"
 
+#include <cstdlib>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -251,7 +253,17 @@ void WriteFusionAcceptance(std::uint32_t cycle, const std::vector<FusedTarget>& 
       }
       content += " 速度精度1σ=" + FormatF(std::sqrt(var_vx + var_vy + var_vz), 3) + "m/s";
     }
-    FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "宽窄视场联合探测功能测试", content);
+    // 过程：**大幅面预警扫描模式下静默本行**（2026-11-05 甲方口径：大幅面只出大幅面）。
+    //   融合模块与红外传感器分属不同 DLL（DataProcessors / Sensors），静态标志不共享，
+    //   故用进程级环境变量做一次性模式通告：Sensors 侧在大幅面启用时置
+    //   `ONEQ_SBIRS_WIDE_AREA=1`，本处按其值跳过"宽窄联合"行。
+    //   未设置时行为不变（联合模式/宽扫模式照常输出）。
+    // 标识：融合侧联合行随红外模式静默（2026-11-05）。
+    const char* wide_area_env = std::getenv("ONEQ_SBIRS_WIDE_AREA");
+    const bool wide_area_mode = (wide_area_env != nullptr && wide_area_env[0] == '1');
+    if (!wide_area_mode) {
+      FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "宽窄视场联合探测功能测试", content);
+    }
     FUSION_ACCEPTANCE_ITEM(sim_time, cycle, "多传感器目标跟踪功能测试", content);
     // 中译：**判据示例第二行：逐源测角 + 红外可探测**（2026-11-02）——判据示例是
     //   `相对卫星ID=4 目标ID=1001 目标方位/俯仰(ECI)=(…)rad 红外可探测=是`；

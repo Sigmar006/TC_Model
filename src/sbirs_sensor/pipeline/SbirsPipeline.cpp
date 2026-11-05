@@ -1,4 +1,6 @@
 ﻿#include "sbirs_sensor/pipeline/SbirsPipeline.h"
+
+#include <cstdlib>
 #include "common/platform/OneqPlatformCompat.h"
 
 #include <algorithm>
@@ -853,6 +855,16 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   //   大幅面模式（wide_area_scan.enabled，优先级最高）：只出大幅面行。
   //   内部处理链照常（窄场跟踪、调度、滤波都在跑），仅验收行按模式过滤。
   // 标识：按模式过滤波束日志（2026-11-05）。
+  // 过程：把"当前是否为大幅面模式"通告给同进程的其它模块（融合 DP 在另一 DLL，
+  //   静态变量不共享，故用环境变量做进程级通告；融合侧据此静默其"宽窄联合"行）。
+  // 标识：大幅面模式进程级通告（2026-11-05）。
+  {
+#if defined(_WIN32)
+    _putenv_s("ONEQ_SBIRS_WIDE_AREA", wide_area_scan_active ? "1" : "0");
+#else
+    setenv("ONEQ_SBIRS_WIDE_AREA", wide_area_scan_active ? "1" : "0", 1);
+#endif
+  }
   const bool emit_wide_area_rows = wide_area_scan_active;
   const bool emit_wfov_rows = !wide_area_scan_active;
   const bool emit_nfov_rows =

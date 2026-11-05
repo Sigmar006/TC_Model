@@ -35,7 +35,7 @@ struct ONEQ_API SbirsErrorModelConfig {
   float attitude_sigma_deg{0.0001f};     /**< 卫星姿态误差角度 1-σ，单位 deg */
   float fov_sigma_deg{0.00005f};         /**< 探测器视场（像元/畸变）误差 1-σ，单位 deg */
   float detector_bandwidth_hz{100.0f};   /**< 探测器带宽，用于动态滞后误差，单位 Hz */
-  float nav_position_sigma_m{50.0f};     /**< 卫星导航定位径向误差 1-σ（典型 ≈50m），仅验收旁路 ECEF 误差行使用 */
+  float nav_position_sigma_m{2.0f};      /**< 卫星导航定位径向误差 1-σ（2026-11-05 甲方：误差模 ≤10 m，取 2 m≈4.5σ 覆盖 6 万样本），仅验收旁路 ECEF 误差行使用 */
   /** @note 甲方 2026-08-27 指标：红外系统测角误差 ≤3 μrad（≈0.000172°）。三项
    *        σ 默认 RSS ≈ 1.95 μrad（3×10⁻⁵°/10⁻⁴°/5×10⁻⁵° 组合），注入即在指标
    *        内且留 35% 余量；经 NFOV 滤波后验收行（红外系统测角误差 RMSE）更低。

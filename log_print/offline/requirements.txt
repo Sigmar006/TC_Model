@@ -1,0 +1,6 @@
+# 绘图程序运行依赖（与开发环境 .venv 完全一致的版本）
+# 内网安装：offline\install.bat 会从 offline\wheels 本地安装，不联网。
+numpy==2.5.4
+pandas==3.1.1
+matplotlib==3.11.2
+scipy==1.18.1

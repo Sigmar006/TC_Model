@@ -1,4 +1,26 @@
-﻿#include "sbirs_sensor/foundation/SbirsErrorModel.h"
+﻿/**
+ * ## 过程：测角误差模型（物理 RSS 与 SNR 线性标定两条口径）（红外处理链 · 第 7 步）
+ * - 上游：真值方位/俯仰/斜距（第 3 步）、相对视线角速度、本拍线性 SNR（第 5 步）、
+ *   IFOV = 像元间距/焦距（硬件配置）、`SbirsErrorModelConfig` 与随机源。
+ * - 本步：产出一帧（或 N 帧融合）的带误差量测：
+ *   · 随机项 σ：默认走"线性 SNR 标定"——35 dB→1 µrad、10 dB→5 µrad，dB 域线性插值、
+ *     区间外按端点钳位（`ResolveLinearSnrSigmaDeg`）；关闭标定时回落到物理模型
+ *     √(σ_floor² + (IFOV/(k·√SNR))²)，σ_floor = √(σ_轨道²+σ_姿态²+σ_视场²)；
+ *   · 确定性偏差：折射 δ = 1.5e-6/(R·|cos β|)（deg）与动态滞后 δ = ω/(2π·f_c)（deg），
+ *     两项对方位/俯仰同加；
+ *   · 距离乘性误差 R_meas = R_true·(1 + Δ)，Δ ~ N(0, range_fraction_sigma)；
+ *   · 融合路径按 N 帧独立抽样后取均值，随机项 1-σ 降为 σ/√N（确定性偏差不衰减）。
+ * - 下游：`SbirsTrackingCoordinator::CorrectTarget` 的量测及其 2×2 量测协方差 R 的 σ 口径
+ *   （`tracking::BuildMeasurementCovariance` 复用同一批 σ），以及 WFOV/Sensor-like 输出角。
+ * - 关键参数：`error_model.orbit_sigma_deg`(5e-5)、`attitude_sigma_deg`(1e-4)、
+ *   `fov_sigma_deg`(5e-5)、`detector_bandwidth_hz`(100)、`range_fraction_sigma`(0.001)、
+ *   `random_seed`(1)；线性标定锚点为库内常量（默认启用，可用
+ *   `SetLinearSnrAngleSigmaEnabled(false)` 关闭）。
+ * - 对应验收项：第 9 项 红外载荷角误差功能测试；第 55 项 红外系统测角误差性能测试；
+ *   第 77 项 红外量测与跟踪滤波交互接口测试（量测 σ 与 NIS）。
+ */
+
+#include "sbirs_sensor/foundation/SbirsErrorModel.h"
 
 #include <cmath>
 #include "common/numerics/Constants.h"
@@ -36,6 +58,7 @@ double SbirsRandomSource::NextStandardNormal() {
   return radius * std::cos(angle);
 }
 
+// 过程：大气折射造成的角度偏差按 1/(R·|cos β|) 衰减——斜距越远、视线越接近天顶，偏差越小。
 double RefractionErrorDeg(double range_m, float elevation_deg) {
   if (range_m <= 0.0) {
     return 0.0;
@@ -50,6 +73,7 @@ double RefractionErrorDeg(double range_m, float elevation_deg) {
   return 1.5e-6 / denominator;
 }
 
+// 过程：一阶滞后环节的稳态误差——视线以 ω 匀速扫过时，滞后 τ=1/(2π·f_c) 秒，即 δ=ω·τ（deg）。
 double DynamicLagErrorDeg(float relative_angular_rate_deg_per_sec, float detector_bandwidth_hz) {
   if (detector_bandwidth_hz <= 0.0f) {
     return 0.0;
@@ -57,6 +81,8 @@ double DynamicLagErrorDeg(float relative_angular_rate_deg_per_sec, float detecto
   return static_cast<double>(relative_angular_rate_deg_per_sec) / (2.0 * kPi * detector_bandwidth_hz);
 }
 
+// 过程：仪器地板 σ_floor = √(σ_轨道² + σ_姿态² + σ_视场²)（deg）——平台与载荷的静态误差
+//       按独立高斯 RSS，不随 SNR 变化。
 double ResolveEffectiveAngularSigmaDeg(const config::SbirsErrorModelConfig& model) {
   const double orbit = static_cast<double>(model.orbit_sigma_deg);
   const double attitude = static_cast<double>(model.attitude_sigma_deg);
@@ -88,6 +114,8 @@ bool SetLinearSnrAngleSigmaEnabled(bool enabled) {
 
 bool IsLinearSnrAngleSigmaEnabled() { return g_linear_snr_sigma_enabled; }
 
+// 过程：dB 域线性插值 t=(35−SNR_dB)/(35−10)，σ = 1 + (5−1)·t（µrad），t 钳到 [0,1] 即区间外
+//       按端点取；最后乘 180/π·1e-6 换成 deg。SNR 非正时直接取弱端 5 µrad。
 double ResolveLinearSnrSigmaDeg(double snr_db) {
   constexpr double kUradToDeg = 180.0 / kPi * 1.0e-6;
   if (!(snr_db > 0.0)) {
@@ -114,6 +142,7 @@ double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, d
     return ResolveLinearSnrSigmaDeg(snr_db);
   }
 
+  // 过程：物理模型口径 —— 仪器地板与焦面光子噪声按平方和合成，光子项随 SNR 增大收敛到 0。
   const double floor_deg = ResolveEffectiveAngularSigmaDeg(model);
   // 中译：**焦面光子噪声项**（2026-11-04）——质心定位的标准极限是 IFOV/(k·√SNR)：
   //   同一像元内光子数越多，质心越准；弱目标自然变差。此前该项完全缺失，测角误差是
@@ -128,6 +157,8 @@ double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, d
   return std::sqrt(floor_deg * floor_deg + photon_deg * photon_deg);
 }
 
+// 过程：单帧路径 —— 随机项 N(0,σ²) 每轴独立抽样，折射/滞后作为确定性公共偏差叠加；
+//       距离误差走乘性模型（与角度误差的加性模型分开）。
 SbirsErrorBearing ApplyAngularErrorModel(const config::SbirsErrorModelConfig& model,
                                          SbirsRandomSource* random, float true_azimuth_deg,
                                          float true_elevation_deg, double true_range_m,
@@ -179,6 +210,8 @@ double Wrap180Deg(double delta_deg) {
 
 }  // namespace
 
+// 过程：融合路径 —— N 帧各抽一次随机角误差后取均值：随机项按 1/√N 收敛，折射/滞后只加一次
+//       （它们是同一几何下的系统偏差，不随帧数抵消）。
 SbirsFusedBearingResult ApplyAngularErrorModelFused(
     const config::SbirsErrorModelConfig& model, SbirsRandomSource* random, float true_azimuth_deg,
     float true_elevation_deg, double true_range_m, float relative_angular_rate_deg_per_sec,
@@ -214,6 +247,7 @@ SbirsFusedBearingResult ApplyAngularErrorModelFused(
     range_factor = model.range_fraction_sigma * random->NextStandardNormal();
   }
   result.bearing.range_m = true_range_m * (1.0 + range_factor);
+  // 过程：融合后 1-σ = 单帧 σ/√N —— 供第 77 项日志把单帧 σ 与融合 σ 并列比较。
   result.fused_sigma_deg = sigma_deg / std::sqrt(static_cast<double>(frame_count));
   return result;
 }

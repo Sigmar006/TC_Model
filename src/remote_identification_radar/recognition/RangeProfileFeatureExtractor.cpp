@@ -3,6 +3,20 @@
  * @brief 宽带一维距离像特征提取器实现。
  */
 
+/**
+ * ## 过程：宽带一维像（HRRP）特征（LRDR 跟踪/识别链 · 第 10 步）
+ * - 上游：场景目标的距离-散射中心表（距离偏移 m + RCS dBsm）、信号带宽、检测 SNR、
+ *   库要求的最大距离分辨率。
+ * - 本步：分辨率 ΔR = c/(2B)，差于库上限则维度不可用；按 SNR 定噪声门后计数散射中心
+ *   （最小间距 0.5 m 内合并）；目标长度 = 首末有效峰跨距；能量集中率 = 前 3 强峰能量
+ *   占比；质量 = 0.5·clamp(SNR/30 dB) + 0.5·clamp(50 m/ΔR)。
+ * - 下游：`RirMatcher` 宽带维（长度/峰数/能量集中率）；验收第 47 项（散射中心、长度、
+ *   峰数、加权贡献）。
+ * - 关键参数：`kConcentrationPeakCount`=3、`kMinimumPeakSeparationM`=0.5 m、
+ *   `max_range_resolution_m`（库 profile 上限）、SNR 归一化 30 dB、分辨率归一化 50 m。
+ * - 对应验收项：第 47 项 宽带一维像特征解算功能测试。
+ */
+
 #include "remote_identification_radar/recognition/RangeProfileFeatureExtractor.h"
 
 #include <algorithm>
@@ -31,6 +45,8 @@ float ToLinearPower(float rcs_dbsm) { return std::pow(10.0f, rcs_dbsm / 10.0f); 
 
 }  // namespace
 
+// 过程：输入门——无散射中心或带宽非法则维度不可用；分辨率 ΔR=c/(2B) 差于库上限同样
+//       判不可用（等效带宽不足，一维像无法分辨目标结构）。
 RirRangeProfileObservation RirRangeProfileFeatureExtractor::Extract(
     const std::vector<session::RirRangeRcsScatterer>& scatterers, float bandwidth_hz, float snr_db,
     float max_range_resolution_m) {
@@ -59,6 +75,7 @@ RirRangeProfileObservation RirRangeProfileFeatureExtractor::Extract(
   peak_offsets_m.reserve(scatterers.size());
   peak_powers.reserve(scatterers.size());
   float total_peak_power = 0.0f;
+  // 过程：最小间距 0.5 m 内视为同一散射中心（合并计数），有效峰功率累加供集中率用。
   for (std::size_t i = 0U; i < scatterers.size(); ++i) {
     const float power = ToLinearPower(scatterers[i].rcs_dbsm);
     if (power < noise_gate) {
@@ -105,6 +122,7 @@ RirRangeProfileObservation RirRangeProfileFeatureExtractor::Extract(
   observation.peak_energy_concentration = top_k_power / total_peak_power;
 
   observation.valid = true;
+  // 过程：质量 = 0.5·clamp(SNR/30 dB) + 0.5·clamp(50 m/ΔR)——信噪比与分辨率等权。
   const float snr_factor = Clamp01(snr_db / 30.0f);
   const float resolution_factor = Clamp01(50.0f / std::max(1.0e-3f, resolution_m));
   observation.quality = 0.5f * snr_factor + 0.5f * resolution_factor;

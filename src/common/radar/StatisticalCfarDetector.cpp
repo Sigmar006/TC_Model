@@ -1,5 +1,21 @@
 ﻿#include "common/radar/StatisticalCfarDetector.h"
 
+/**
+ * ## 过程：统计 CFAR 检测判决（雷达探测链 · 公共核心）
+ * - 上游：`RirSignalDetector`（回波功率 + 处理后单脉冲 SINR + 起伏模型 + 脉冲数）
+ * - 本步：
+ *   ① 由 SINR 代入 Marcum Q 模型算检测概率 Pd（门限 T = Q⁻¹(N, Pfa)）；
+ *   ② 若 SINR < `min_snr_db` 直接把 Pd 置 0（低于最小可检门限，不参与抽签）；
+ *   ③ 以 Pd 与均匀随机数比较得"本拍是否检出"（统计检测，非阈值硬判）；
+ *   ④ 检出后再过 `min_detection_margin_db` 余量门，不足则判不检（抑制边缘虚警）。
+ * - 下游：`RirDetectionResult{detected, snr_db, detection_prob}` → 量测构造 → 跟踪
+ * - 关键参数：`cfar_pfa`（1e-6）、`min_snr_db`（-10 dB）、`min_detection_margin_db`（-2 dB）
+ * - 对应验收项：第 36 项（统计检测门限/结果/概率）
+ *
+ * @note 第 36 项写的 `统计检测门限=` 即本文件的"Pd=50% 所需单脉冲 SNR"，
+ *       与同项 `信噪比=` 同轴，可直接比较（2026-11-04 口径）。
+ */
+
 #include <algorithm>
 #include <cmath>
 

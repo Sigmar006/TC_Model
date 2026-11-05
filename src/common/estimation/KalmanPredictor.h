@@ -6,6 +6,22 @@
 #ifndef COMMON_ESTIMATION_KALMAN_PREDICTOR_H_
 #define COMMON_ESTIMATION_KALMAN_PREDICTOR_H_
 
+/**
+ * ## 过程：卡尔曼/UKF 预测（滤波链 · 公共核心，红外与雷达共用）
+ * - 上游：上一拍后验状态 `(x, P)` 与时间步 `dt`
+ * - 本步：
+ *   ① 状态转移 `x⁻ = F·x`，CV 模型 `F(0,1)=F(2,3)=F(4,5)=dt`；
+ *   ② 协方差传播 `P⁻ = F·P·Fᵀ + Q`；
+ *   ③ 过程噪声 Q 取连续白噪声加速度（CWNA）模型，逐轴
+ *      `Q_轴 = q·[[dt³/3, dt²/2],[dt²/2, dt]]`，q 由各调用方给：
+ *      红外 EKF `process_noise_diff_coeff=20`、雷达 CV `kalman_noise_diff_coeff=30`、
+ *      融合 UKF `track_process_noise=1.0`。
+ * - 下游：量测更新（`EkfUpdater`/`UnscentedUpdater`）→ 后验 → 输出/验收行
+ * - 对应验收项：第 42 项（雷达跟踪滤波）、第 13 项（红外跟踪）、第 15 项（融合航迹）
+ *
+ * @note 本文件只做"预测一半"，量测更新与噪声协方差 R 由各模型自己的更新器提供。
+ */
+
 #include "common/estimation/GaussianState.h"
 #include "common/estimation/IKalmanPredictor.h"
 

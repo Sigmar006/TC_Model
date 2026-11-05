@@ -3,6 +3,21 @@
  * @brief 识别观测构造器实现。
  */
 
+/**
+ * ## 过程：识别观测组装（LRDR 跟踪/识别链 · 第 5 步）
+ * - 上游：生命周期航迹快照（状态/位置/速度/不确定度）、场景目标的各向 RCS 表/极化散
+ *   射矩阵/散射中心表，以及观测上下文（视线角、SNR、带宽、斜距、驻留、拟合速度）。
+ * - 本步：并行调用四个特征提取器组装 `RirFeatureSet`（RCS / 运动 / 极化 / 宽带一维像），
+ *   再乘驻留质量因子 clamp(驻留/0.05 s, 0, 1)（只作用于量测类维度），最后生成 4 bit
+ *   有效维度掩码（"有效且质量>0"才置位）。
+ * - 下游：`RirTracker::UpdateCycle` 的滑动窗口积累与 `RirMatcher` 打分；逐维结果分别落
+ *   验收第 44/45/46/47 项。
+ * - 关键参数：`recognition_dwell_sec`（场景 0.05 s，对齐 `kNominalDwellSec`）、
+ *   `minimum_aspect_coverage_deg`（库 profile 视角覆盖下限）、`max_range_resolution_m`
+ *   （库 profile 分辨率上限）、特征权重见 `RirRecognitionFeatureWeights`。
+ * - 对应验收项：第 47A 项 综合特征识别功能测试的观测入口（分项见 44/45/46/47 项）。
+ */
+
 #include "remote_identification_radar/recognition/RecognitionObservationBuilder.h"
 
 #include <algorithm>
@@ -22,6 +37,8 @@ namespace {
 /** @brief 驻留时间质量标称值（s）：识别配置默认 recognition_dwell_sec。 */
 constexpr float kNominalDwellSec = 0.05f;
 
+// 过程：有效维度掩码 = 4 bit（RCS/运动/极化/宽带）；"有效且质量>0"才置位，
+//       质量 0 表示该维不参与打分（分母也不计）。
 std::uint8_t BuildFeatureMask(const RirFeatureSet& set) {
   std::uint8_t mask = 0U;
   if (set.rcs.valid && set.rcs.quality > 0.0f) {
@@ -40,6 +57,7 @@ std::uint8_t BuildFeatureMask(const RirFeatureSet& set) {
 }
 
 /** @brief 驻留质量因子：驻留越短，观测质量越低（效能级模型）。 */
+// 过程：因子 = clamp(驻留/0.05 s, 0, 1)（1 表示驻留达到标称值），非有限/非正回 0。
 float DwellQualityFactor(float dwell_sec) {
   if (!std::isfinite(dwell_sec) || dwell_sec <= 0.0f) {
     return 0.0f;
@@ -49,6 +67,8 @@ float DwellQualityFactor(float dwell_sec) {
 
 }  // namespace
 
+// 过程：四维特征并行提取——RCS（视线角插值）、运动（滤波后验/多点拟合）、极化（双通
+//       道能量）、宽带一维像（散射中心表），各提取器自带有效性门控。
 RirFeatureSet RirObservationBuilder::Build(const session::RirSceneTarget& target,
                                            const tracking::RirTrackState& snapshot,
                                            const RirObservationContext& context) {
@@ -80,6 +100,7 @@ RirFeatureSet RirObservationBuilder::Build(const session::RirSceneTarget& target
   set.rcs.quality *= dwell_factor;
   set.polarization.quality *= dwell_factor;
   set.range_profile.quality *= dwell_factor;
+  // 过程：维度掩码在质量缩放之后生成，保证"掩码置位 <=> 该维质量>0"的口径一致。
   set.valid_feature_mask = BuildFeatureMask(set);
   return set;
 }

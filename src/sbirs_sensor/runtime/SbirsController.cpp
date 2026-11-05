@@ -1,5 +1,18 @@
 ﻿#include "sbirs_sensor/runtime/SbirsController.h"
 
+/**
+ * ## 过程：红外周期执行编排（红外处理链 · 入口层）
+ * - 上游：`SbirsSession::Step()`（会话层，已做配置解析与状态缓存）
+ * - 本步：① 周期输入校验（周期号/时间步/场景合法性）→ ② 校验失败即拒绝并写诊断 →
+ *         ③ 通过则转交 `SbirsPipeline::RunCycle()` 执行完整处理链（几何→辐射→噪声→SNR
+ *         →宽场检测→窄场调度/捕获→跟踪滤波→输出）
+ * - 下游：`SbirsPipelineResult` 交给会话层组装 `SbirsCycleResult`（含 issues/abort_reason）
+ * - 关键参数：`frame_rate_hz`（来自 `mission.frame_rate_hz=10 Hz`，用于驻留/帧数换算）
+ * - 对应验收项：第 56 项（仿真控制与时钟接口，周期校验口径）、第 12/13 项（帧数与驻留）
+ *
+ * @note 本文件只做"校验 + 转发"，不参与任何物理量计算；物理过程全部在 `SbirsPipeline`。
+ */
+
 #include "1q/sbirs_sensor/session/SbirsInputValidation.h"
 #include "1q/sbirs_sensor/session/SbirsIssueCodes.h"
 #include "common/logging/ProjectLog.h"

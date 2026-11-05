@@ -3,6 +3,23 @@
  * @brief 识别积累与判定状态机实现。
  */
 
+/**
+ * ## 过程：识别积累与判决（LRDR 跟踪/识别链 · 第 12 步）
+ * - 上游：每周期航迹快照 + 按关联键组织的观测输入（场景目标与上下文）、第 11 步匹配结果。
+ * - 本步：每航迹维护 `accumulation_window_sec` 滑动窗口；达到判定门槛
+ *   （`min_confirmed_hits` + `min_observation_count`）后对窗口聚合特征做匹配，按
+ *   `acceptance_score` / `minimum_margin` / 有效维度数三条件判决 kUnknown /
+ *   kCategoryConfirmed / kModelConfirmed；结论在 `result_hold_sec` 内保持，超期置 kStale。
+ *   键复用（hit_count 回落）时清积累但保留已有结论。
+ * - 下游：`RirController` 输出与验收第 47A 项（类别/型号/置信度）；真值正确率由
+ *   `BuildSummary` 汇总，识别结论亦随航迹写入验收行。
+ * - 关键参数：`Options` 默认 min_confirmed_hits=5、accumulation_window_sec=10 s、
+ *   min_observation_count=3、acceptance_score=0.70、minimum_margin=0.10、
+ *   result_hold_sec=30 s、max_range_m=300 km；场景 rir_ground_site_recognition 覆盖为
+ *   1 拍 / 10 s / 0.6 / 0.05 / 30 s。
+ * - 对应验收项：第 47A 项 综合特征识别功能测试（正确率 >60%）。
+ */
+
 #include "remote_identification_radar/recognition/RecognitionTracker.h"
 
 #include <algorithm>
@@ -22,6 +39,7 @@ constexpr std::uint32_t kMinValidDimensionsForModel = 2U;
 /** @brief 有效观测质量下限：全部维度质量低于此值（如短驻留）不计为观测。 */
 constexpr float kMinimumObservationQuality = 0.05f;
 
+// 过程：滑窗聚合用的中位数——按值传参（内部排序不改调用方序列），抗单拍离群。
 float Median(std::vector<float> values) {
   if (values.empty()) {
     return 0.0f;
@@ -30,6 +48,7 @@ float Median(std::vector<float> values) {
   return values[values.size() / 2U];
 }
 
+// 过程：算术均值；空序列返回 0，避免 0/0。
 float Mean(const std::vector<float>& values) {
   if (values.empty()) {
     return 0.0f;
@@ -41,6 +60,7 @@ float Mean(const std::vector<float>& values) {
   return sum / static_cast<float>(values.size());
 }
 
+// 过程：有效维度计数（有效且质量>0）；型号确认要求 ≥2 维且不能只有运动维。
 std::uint8_t CountValidDimensions(const RirFeatureSet& set) {
   std::uint8_t count = 0U;
   if (set.rcs.valid && set.rcs.quality > 0.0f) {
@@ -58,6 +78,7 @@ std::uint8_t CountValidDimensions(const RirFeatureSet& set) {
   return count;
 }
 
+// 过程：仅运动一维有效时禁止型号确认——运动不足以单独定型号（数据口径）。
 bool MotionOnly(const RirFeatureSet& set) {
   return CountValidDimensions(set) == 1U && set.motion.valid && set.motion.quality > 0.0f;
 }
@@ -89,6 +110,8 @@ session::RirRecognitionCategory CategoryToPublic(const std::string& category_id)
 /**
  * @brief 滑动窗口聚合：运动子特征取中位数，其余取均值；质量取均值。
  */
+// 过程：运动子特征（速度/高度/加速度/转弯半径）取中位数抗单拍伪值；峰数取均值后
+//       四舍五入成整数。
 RirFeatureSet AggregateWindow(const std::vector<RirFeatureSet>& window) {
   RirFeatureSet aggregate;
   std::vector<float> rcs_values;
@@ -170,6 +193,7 @@ RirFeatureSet AggregateWindow(const std::vector<RirFeatureSet>& window) {
     aggregate.range_profile.peak_energy_concentration = Mean(rp_concentration_values);
     aggregate.range_profile.quality = Mean(range_profile_quality);
   }
+  // 过程：聚合后重算维度掩码——某维若在窗口内从未有效，则该位不置位。
   aggregate.valid_feature_mask = 0U;
   if (aggregate.rcs.valid && aggregate.rcs.quality > 0.0f) {
     aggregate.valid_feature_mask |=
@@ -192,6 +216,8 @@ RirFeatureSet AggregateWindow(const std::vector<RirFeatureSet>& window) {
 
 }  // namespace
 
+// 过程：结论保持期——距最近结论超过 result_hold_sec 置 kStale：数据不再新鲜，
+//       但不清空结论（长滑行段仍可读到最后一次判定）。
 void RirTracker::ExpireIfHeld(RirTrackState* state, float sim_time_sec) {
   if (state != nullptr && state->has_conclusion && state->conclusion_time_sec >= 0.0f &&
       sim_time_sec - state->conclusion_time_sec > options_.result_hold_sec) {
@@ -199,6 +225,7 @@ void RirTracker::ExpireIfHeld(RirTrackState* state, float sim_time_sec) {
   }
 }
 
+// 过程：退出识别模式只清积累（窗口/计数/首次观测时刻），保留已出结论进保持期。
 void RirTracker::ExitRecognitionMode() {
   for (std::unordered_map<std::uint64_t, RirTrackState>::iterator it = tracks_.begin();
        it != tracks_.end(); ++it) {
@@ -211,6 +238,8 @@ void RirTracker::ExitRecognitionMode() {
   }
 }
 
+// 过程：每周期对每条航迹：取观测 → 组装特征 → 窗口积累 → 门槛判定 → 聚合匹配 → 三态
+//       判决；判定不了时按保持期语义处理既有结论。
 void RirTracker::UpdateCycle(
     const std::vector<tracking::RirTrackState>& tracks,
     const std::unordered_map<std::uint64_t, TrackObservationInput>& observations_by_key,
@@ -263,6 +292,7 @@ void RirTracker::UpdateCycle(
       continue;  // 超出最大识别距离
     }
 
+    // 过程：组装本拍四维特征（RCS/运动/极化/宽带一维像），各维自带有效性与质量。
     const RirFeatureSet features =
         RirObservationBuilder::Build(*input.target, snapshot, input.context);
     if (features.valid_feature_mask == 0U) {
@@ -286,6 +316,7 @@ void RirTracker::UpdateCycle(
     }
 
     // 时间窗维护：按 accumulation_window_sec 裁剪。
+    // 过程：同时累计有效观测数与"已确认航迹上的观测数"（后者是型号确认门槛之一）。
     if (state.window.empty()) {
       state.first_observation_sec = sim_time_sec;
     }
@@ -301,6 +332,8 @@ void RirTracker::UpdateCycle(
       ++state.confirmed_hit_count;
     }
 
+    // 过程：先填通用字段（观测数、积累时长、库版本、周期/批号），判决分支只覆盖状态与
+    //       得分，保证每拍输出都带得上溯源信息。
     session::RirRecognitionResult judgement;
     judgement.observation_count = state.observation_count;
     judgement.accumulation_sec = sim_time_sec - state.first_observation_sec;
@@ -316,6 +349,7 @@ void RirTracker::UpdateCycle(
       continue;
     }
 
+    // 过程：窗口聚合特征用于匹配——压低单拍噪声对判决的影响（积累的意义所在）。
     const RirFeatureSet aggregate = AggregateWindow(state.window);
     if (aggregate.valid_feature_mask == 0U) {
       // 中译：本拍没有可用的特征维度（窗口被裁空/全部维度失效）**不等于**"目标类别未知"，
@@ -328,11 +362,14 @@ void RirTracker::UpdateCycle(
       continue;
     }
 
+    // 过程：特征库匹配——得到最佳型号/大类、best/runner-up 得分与归一化置信度。
     const RirMatchResult match =
         RirMatcher::QueryBestMatch(aggregate, input.context, database, weights);
+    // 过程：统计聚合后的有效维数与"仅运动"标志——型号确认要求 ≥2 维且非仅运动。
     const std::uint8_t valid_dimensions = CountValidDimensions(aggregate);
     const bool motion_only = MotionOnly(aggregate);
 
+    // 过程：把四维质量写进结论（验收第 47A 项与排查日志按此展示特征可用性）。
     judgement.valid_feature_mask = aggregate.valid_feature_mask;
     judgement.feature_scores.rcs_quality = aggregate.rcs.quality;
     judgement.feature_scores.motion_quality = aggregate.motion.quality;
@@ -374,6 +411,8 @@ void RirTracker::UpdateCycle(
       judgement.best_score = match.best_score;
       judgement.runner_up_score = match.runner_up_score;
       judgement.confidence = match.confidence;
+      // 过程：判决三态——得分低于 acceptance_score 判未知；裕度 ≥ minimum_margin 且维度
+      //       达标判型号确认；否则退一级，只判大类确认。
       const float margin = judgement.best_score - judgement.runner_up_score;
       const bool margin_ok = margin >= options_.minimum_margin;
       const bool dimensions_ok = valid_dimensions >= kMinValidDimensionsForModel && !motion_only;
@@ -411,6 +450,8 @@ void RirTracker::UpdateCycle(
       }
     }
 
+    // 过程：结论落盘并刷新结论时刻；首次大类/型号确认时刻只记一次（用于平均首次确认
+    //       时间统计）。
     state.result = judgement;
     state.conclusion_time_sec = sim_time_sec;
     state.has_conclusion = true;
@@ -423,6 +464,7 @@ void RirTracker::UpdateCycle(
   }
 }
 
+// 过程：保持周期（本拍无识别调度/无观测）——只做键重分配清理与结论保持期推进，不积累。
 void RirTracker::HoldCycle(const std::vector<tracking::RirTrackState>& tracks, float sim_time_sec) {
   for (std::size_t i = 0U; i < tracks.size(); ++i) {
     const tracking::RirTrackState& snapshot = tracks[i];
@@ -441,12 +483,14 @@ void RirTracker::HoldCycle(const std::vector<tracking::RirTrackState>& tracks, f
   }
 }
 
+// 过程：按关联键查结论；无记录返回 nullptr（不造空结论，避免"看起来有结论"）。
 const session::RirRecognitionResult* RirTracker::FindResult(std::uint64_t association_key) const {
   const std::unordered_map<std::uint64_t, RirTrackState>::const_iterator found =
       tracks_.find(association_key);
   return found == tracks_.end() ? nullptr : &found->second.result;
 }
 
+// 过程：周期汇总——参与航迹数、各判决态计数、四维可用率、平均置信度与平均首次确认时间。
 session::RirRecognitionCycleSummary RirTracker::BuildSummary(
     const std::vector<tracking::RirTrackState>& tracks) const {
   session::RirRecognitionCycleSummary summary;
@@ -541,6 +585,7 @@ session::RirRecognitionCycleSummary RirTracker::BuildSummary(
   return summary;
 }
 
+// 过程：运行态快照 = 每键积累窗口 + 结论 + 库版本（replay 用值迁移）。
 RirTracker::Snapshot RirTracker::Capture() const {
   Snapshot snapshot;
   snapshot.active_database_version = active_database_version_;
@@ -551,6 +596,7 @@ RirTracker::Snapshot RirTracker::Capture() const {
   return snapshot;
 }
 
+// 过程：以快照整值恢复（先清后建），恢复后的判决流程与回放前一致。
 void RirTracker::Restore(const Snapshot& snapshot) {
   tracks_.clear();
   for (std::size_t i = 0U; i < snapshot.tracks.size(); ++i) {
@@ -559,6 +605,7 @@ void RirTracker::Restore(const Snapshot& snapshot) {
   active_database_version_ = snapshot.active_database_version;
 }
 
+// 过程：清空全部识别运行态（结论与积累一并丢弃，库版本字符串清空）。
 void RirTracker::Reset() {
   tracks_.clear();
   active_database_version_.clear();

@@ -7,6 +7,24 @@
  * 运行期补丁在下一次成功周期边界提交。
  */
 
+/**
+ * ## 过程：会话门面与周期编排（LRDR 探测链 · 第 11 步）
+ * - 上游：宿主每周期下发的 RirCycleInput（时刻/周期号/dt/平台 ECEF/场景目标/RF 场景）、
+ *   RirSessionConfig（hardware/orientation/mission/policy/environment/电源与日志开关）、
+ *   SubmitExternalTrack 的外部引导（位置/速度/窗口）与 TryApplyRuntimeConfig 的运行期补丁。
+ * - 本步：四段式——① 输入校验（电源门 + 周期输入合法性）；② 配置解析（补丁在成功周期边界
+ *   原子提交、指定识别任务生命周期推进、驻留计划按「指定 → 外部窗口 → 库内跟踪 → 搜索」
+ *   排布并按 dt/驻留时长算预算）；③ 控制器执行（探测链主体见 RirController）；
+ *   ④ 输出组装（识别摘要、航迹归属、RF 发射帧、指向来源与驻留计数、门控诊断、指定结论）。
+ * - 下游：RirOutputFrame（对外识别输出）、RirCycleResult（状态/中止原因/issues/旁路证据）、
+ *   验收日志（波位表/驻留行/引导行）、航迹生命周期与排除归因记录器。
+ * - 关键参数：config.{hardware,orientation,mission,policy,environment,sensor_enabled,
+ *   acceptance_log_enabled}、mission.{recognition_dwell_sec,scan_window_deg,scan_center_deg,
+ *   step_scale,max_range_m}、policy.detection.*（透传给控制器）。
+ * - 对应验收项：第 37/37A 项搜索、第 48 项波束扫描、第 49 项调度策略、第 21 项雷达侧引导、
+ *   第 60–66 项雷达对外接口、第 64/65 项点迹与航迹识别输出。
+ */
+
 #include "1q/remote_identification_radar/session/RirSession.h"
 
 #include <algorithm>
@@ -412,6 +430,7 @@ RirOutputFrame RirSession::Step(const RirCycleInput& input) {
   return StepWithResult(input).output_frame;
 }
 
+// 过程：周期入口——压入验收日志开关与输出目录作用域 → 执行周期 → 驱动观测投影/排除归因记录器。
 RirCycleResult RirSession::StepWithResult(const RirCycleInput& input) {
   runtime::RirScopedAcceptanceLogEnable acceptance_log_scope(
       impl_->config.acceptance_log_enabled);
@@ -437,6 +456,7 @@ void RirSession::AttachExclusionCauseRecorder(RirExclusionCauseRecorder* recorde
   impl_->exclusion_cause_recorder = recorder;
 }
 
+// 过程：外部引导输入校验——位置/速度有限、位置非退化（‖p‖ > 1 m）、窗口半宽为正；非法原子拒绝不改状态。
 bool RirSession::SubmitExternalTrack(const session::RirExternalTrackRequest& request) {
   // 校验：位置/速度有限、位置非退化、窗口为正。非法则**原子拒绝**（不改状态）。
   const oneq::coordinate::EcefPositionM& p = request.position_ecef_m;
@@ -478,6 +498,7 @@ session::RirExternalTrackState RirSession::GetExternalTrackState() const {
   return state;
 }
 
+// 过程：外部跟踪中心——有效期判定 → 时延外推 → ECEF→平台 ENU → 视线角 → 可扫描体积门。
 /**
  * @brief 解析外部跟踪在本周期是否产生驻留，并算出外推后的照射中心（局部 ENU）。
  *
@@ -559,6 +580,7 @@ bool RirSession::Impl::ResolveExternalTrackCenter(
   return true;
 }
 
+// 过程：单周期四段式——① 输入/电源门 → ② 补丁与调度解析 → ③ 控制器执行 → ④ 结果组装。
 RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   RirCycleResult result;
   result.input_cycle_index = input.input_cycle_index;
@@ -583,6 +605,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     return result;
   }
 
+  // 过程：① 输入校验——周期号/时刻/dt/平台位置/场景目标/RF 场景合法性；有错误即整周期拒绝、不执行流水线。
   // 校验拒绝：不执行流水线，问题明细入 issues。
   const RirIssueList validation_issues =
       ValidateRirCycleInput(input, config.mission.recognition_dwell_sec);
@@ -597,6 +620,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     return result;
   }
 
+  // 过程：② 配置解析——补丁整域提交，并处理其副作用（mission/scan_center 变更即重建波位表、游标归零）。
   // 补丁提交（下一个成功周期边界）：任务域/电源/识别策略整域；叶子 work_mode 覆盖整域。
   if (has_pending_patch) {
     const config::RirRuntimeConfigPatch& patch = pending_patch;
@@ -639,6 +663,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     has_pending_patch = false;
   }
 
+  // 过程：② 指定识别任务生命周期推进（kNone → kPending → kAcquired|kExpired），识别判定取上一周期口径。
   // 指定识别任务生命周期推进（镜像 AR 限时锁定语义）：
   //   识别达成（上一周期口径）→ 任务完成回到扫描；窗口耗尽仍未识别 →
   //   任务作废（作废沿报告 kAcquisitionTimeout）→ 回到扫描。
@@ -672,6 +697,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   // → ② 确认航迹跟踪驻留（库内航迹预测；保底 1 个搜索槽）→ ③ 搜索波位按运行态
   // 游标填充。无航迹/无指定周期退化为整周期搜索：游标每周期 +1 ≡ 既有
   // "第 N 周期取第 (N-1)%size 个波位"口径。
+  // 过程：② 驻留预算 N = floor(dt / recognition_dwell_sec)（浮点容差 1e-6，下限 1 拍）。
   const float dwell_sec = config.mission.recognition_dwell_sec;
   std::size_t max_dwells = 1U;
   if (input.dt_sec > 0.0 && dwell_sec > 0.0f) {
@@ -681,6 +707,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
         std::floor(input.dt_sec / static_cast<double>(dwell_sec) + 1.0e-6);
     max_dwells = std::max<std::size_t>(1U, static_cast<std::size_t>(dwell_quota));
   }
+  // 过程：② 驻留计划优先级——指定驻留 → 外部引导窗口（吃满预算）→ 库内跟踪（留搜索保底）→ 扫描光栅。
   std::vector<runtime::RirDwellPlan> dwell_plan;
   // 外部窗口是否吃满本周期全部槽位（2026-10-22 外部优先策略）：为 true 时本周期不排
   // 库内跟踪驻留与固定扫描光栅驻留。cue 合理性门降级或窗口无波位时不置位（退回原调度）。
@@ -888,12 +915,14 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   // 检测候选集按「子窗 ∩ 体积」裁剪，指定目标与确认航迹目标在体积内豁免子窗
   // （2026-08-22 甲方批注「设定方位俯仰进行扫描」+「任务范围由用户指定」；
   // 2026-08-29 TAS 跟踪连续性豁免）。
+  // 过程：③ 控制器执行——探测链主体（几何 → 方向图 → 回波 → 噪声/杂波/干扰 → SINR → CFAR → 量测 → 跟踪 → 识别）。
   controller.RunCycle(input, &result.output_frame, next_batch_id, dwell_plan,
                       config.orientation, config.mission.scan_center_deg,
                       config.mission.scan_window_deg, designated_external_target_id);
   result.status = RirCycleStatus::kCompleted;
   result.abort_reason = RirCycleAbortReason::kNone;
   ++next_batch_id;
+  // 过程：④ 输出组装——识别摘要/航迹归属/RF 发射帧/门控诊断逐项回填结果层。
   if (controller.HasLatestSummary()) {
     result.has_recognition_summary = true;
     result.recognition_summary = controller.GetLatestSummary();
@@ -909,6 +938,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   //   kPending + 目标在体积内 → active；kPending + 目标缺席 → kNotRecognized；
   //   kPending + 目标在场景但越界 → kOutsideSteerableVolume（阶段保持 kPending）；
   //   作废沿 → kAcquisitionTimeout；任务完成/作废后 → 指定清零。
+  // 过程：④ 指定识别任务结论回填（active / 回到扫描 + 原因：超时、越界、未识别）。
   const bool pending = advance.phase == RirDesignationPhase::kPending;
   result.designated_target_id =
       (pending || expiry.expiry_cycle) ? designated_external_target_id : 0U;
@@ -925,6 +955,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   } else {
     result.designation_revert_reason = session::RirDesignationRevertReason::kNone;
   }
+  // 过程：④ 指向来源（扫描/指定/外部跟踪）、四类驻留计数、外部引导时间线与如实诊断。
   result.dwell_center_deg = dwell_center;
   // 指向来源与外部跟踪可观测面（加性字段）：让集成方能核对自己提交的位置/速度
   // 是否被正确消费，并区分「外部跟踪指向」与「扫描基准」这两种不同语义。
@@ -1031,6 +1062,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   return result;
 }
 
+// 过程：补丁暂存——不在调用时刻生效，等下一个成功周期边界原子提交。
 bool RirSession::TryApplyRuntimeConfig(const config::RirRuntimeConfigPatch& patch) {
   impl_->pending_patch = patch;
   impl_->has_pending_patch = true;

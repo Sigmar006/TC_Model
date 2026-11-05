@@ -3,6 +3,24 @@
  * @brief RIR 轻量跟踪子集的航迹生命周期管理器实现（阶段 2-T T3，N3 池化）。
  */
 
+/**
+ * ## 过程：航迹生命周期状态机（LRDR 跟踪/识别链 · 第 4 步）
+ * - 上游：第 1 步关联器输出的带键量测（`association_key != 0`）。
+ * - 本步：tentative 累计 `confirm_hits` 转 confirmed；连续失配超过 `max_miss_before_lost`
+ *   转 lost；lost 保持 `max_lost_cycles` 后回收（出表、generation+1、归还对象池）；
+ *   lost 期间再次命中立即恢复 confirmed（重捕）。命中走 CV KF，confirmed 命中且启用 IMM
+ *   时走 IMM；另维护量测位置的最小二乘速度/加速度拟合史供识别运动维使用。
+ * - 下游：`BuildTrackSnapshots` 给识别链与验收（第 39/40 项）读值快照；
+ *   `BuildAssociationSeeds` 回喂关联器构成下一周期波门。
+ * - 关键参数：`confirm_hits`（默认 3，场景 3）、`max_miss_before_lost`（默认 2，场景 4）、
+ *   `max_lost_cycles`（默认 5）、`enable_imm_lifecycle`、`model_count_hint`（场景 2）；
+ *   拟合窗 `kVelocityFitWindow`=20 拍、`kVelocityTrendWindow`=40 拍、加速度 EMA
+ *   `kAccelerationSmoothingCycles`=30 周期、瞬时钳制 `kMaxPlausibleAccelerationMps2`
+ *   =100 m/s²。
+ * - 对应验收项：第 39 项 对典型目标/再入目标进行跟踪功能测试、第 40 项 多目标跟踪功能
+ *   测试、第 19 项 规模目标识别功能测试（在跟/待确认/丢失计数来自本步快照）。
+ */
+
 #include "remote_identification_radar/tracking/RirTrackLifecycle.h"
 
 #include <cmath>
@@ -87,6 +105,7 @@ std::vector<float> BuildImmNoiseDiffCoeffs(std::uint32_t model_count_hint, float
 
 }  // namespace
 
+// 过程：状态机阈值与滤波配置各存一份副本；IMM 开关取生命周期配置，CV KF 始终在线。
 RirTrackLifecycle::RirTrackLifecycle(RirLifecycleConfig config, RirTrackFilterConfig filter_config)
     : lifecycle_config_(config), filter_config_(filter_config), filter_(filter_config),
       imm_enabled_(config.enable_imm_lifecycle) {}
@@ -136,6 +155,7 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
   }
 
   // 值快照工作集（工作单元按值流转，回写阶段经池化指针落盘）。
+  // 过程：快照为 std::map（按键升序），更新过程只读快照、写结果，回写阶段才改航迹表。
   std::map<std::uint64_t, RirTrackState> snapshots;
   for (const auto& entry : tracks_) {
     snapshots[entry.first] = *entry.second;
@@ -143,6 +163,8 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
   std::vector<WorkItem> work_items;
   work_items.reserve(snapshots.size() + unique_measurements.size());
 
+  // 过程：命中侧建工作单元——新键即新建 tentative 航迹（分配 track_id 与首周期号）；
+  //       既有键沿用周期前状态与状态机相位。
   for (const RirTrackMeasurement* measurement : unique_measurements) {
     const std::uint64_t key = measurement->association_key;
     WorkItem work_item;
@@ -175,6 +197,8 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
     work_items.push_back(work_item);
   }
 
+  // 过程：失配侧建工作单元——本周期未命中的既有航迹只做预测外推（滑行），
+  //       连续失配计数由状态机推进。
   for (const auto& entry : snapshots) {
     if (hit_keys.find(entry.first) != hit_keys.end()) {
       continue;
@@ -192,6 +216,7 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
     work_items.push_back(work_item);
   }
 
+  // 过程：逐工作单元推进状态机与滤波——工作集在值上流转，结果先落 results 再统一回写。
   std::vector<WorkResult> results;
   results.reserve(work_items.size());
   for (const WorkItem& work_item : work_items) {
@@ -200,6 +225,7 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
     result.track_after = work_item.track_before;
     RirTrackState& track = result.track_after;
 
+    // 过程：命中——先更新命中/失配计数与量测派生字段，再按命中语义推进状态机与滤波。
     if (work_item.kind == WorkItemKind::kHit) {
       const RirTrackMeasurement& measurement = *work_item.measurement;
       // 加速度差分时间基准=距上次命中的实际经过时间：滑行（失配）周期 CV 外推
@@ -238,12 +264,16 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
       }
       track.rcs = measurement.rcs;
 
+      // 过程：先推进状态机（tentative 累计到 confirm_hits 升 confirmed；lost 重捕立即
+      //       回 confirmed），再做量测更新——状态相位决定滤波是否走重置分支。
       PromoteState(&track, cycle.cycle_index, true);
       // track.velocity 在此仍持有上周期后验速度（速度唯一来源是滤波后验，速度种子
       // 不写入状态）：ApplyHitFilter 以其为基准做周期间差分得到物理加速度。
       ApplyHitFilter(&track, measurement, work_item.status_before, cycle.dt_sec,
                      acceleration_dt_sec, work_item.imm_filter);
     } else {
+      // 过程：失配——返回 should_recycle 表示 lost 已超 max_lost_cycles 应回收；
+      //       否则只做一步预测（协方差随 Q 增长、速度不变）。
       const bool should_recycle = PromoteState(&track, cycle.cycle_index, false);
       if (should_recycle) {
         result.should_recycle = true;
@@ -293,6 +323,7 @@ void RirTrackLifecycle::Update(const RirCycleContext& cycle,
   last_cycle_index_ = cycle.cycle_index;
 }
 
+// 过程：按关联键升序导出值快照并回填键——识别链与验收只读这份副本，不回看航迹表。
 RirTrackSnapshotList RirTrackLifecycle::BuildTrackSnapshots() const {
   RirTrackSnapshotList snapshots;
   snapshots.reserve(tracks_.size());
@@ -304,6 +335,8 @@ RirTrackSnapshotList RirTrackLifecycle::BuildTrackSnapshots() const {
   return snapshots;
 }
 
+// 过程：不可信航迹直接出表（不经 lost 观察期），并同步清 IMM 运行态与速度/加速度
+//       拟合历史，避免同键新航迹继承旧目标的序列。
 bool RirTrackLifecycle::DropTrack(std::uint64_t association_key) {
   const auto track_it = tracks_.find(association_key);
   if (track_it == tracks_.end()) {
@@ -321,6 +354,8 @@ bool RirTrackLifecycle::DropTrack(std::uint64_t association_key) {
   return true;
 }
 
+// 过程：把每条未回收航迹的上一周期后验（位置 + 高斯状态）导出为关联种子；关联器据此
+//       外推波门（tentative/confirmed/lost 全部参与，重捕依赖此路径）。
 std::vector<RirTrackSeed> RirTrackLifecycle::BuildAssociationSeeds() const {
   std::vector<RirTrackSeed> seeds;
   seeds.reserve(tracks_.size());
@@ -346,6 +381,8 @@ const RirTrackState* RirTrackLifecycle::FindTrack(std::uint64_t association_key)
   return found->second;
 }
 
+// 过程：最小二乘速度——对最近 ≤20 拍量测位置拟合直线 v = Cov(t,p)/Var(t)，三轴独立；
+//       时间取相对首样本的偏移避免大数相减丢精度；样本 <5 拍或时间轴退化即不可用。
 bool RirTrackLifecycle::TryGetLeastSquaresVelocity(std::uint64_t association_key,
                                                    Eigen::Vector3f* velocity_mps) const {
   if (velocity_mps == nullptr) {
@@ -398,6 +435,7 @@ bool RirTrackLifecycle::TryGetLeastSquaresVelocity(std::uint64_t association_key
   return true;
 }
 
+// 过程：拟合速度按拍入队，仅保留最近 40 拍（kVelocityTrendWindow），供加速度斜率拟合。
 void RirTrackLifecycle::RecordLeastSquaresVelocity(std::uint64_t association_key,
                                                   float time_sec,
                                                   const Eigen::Vector3f& velocity_mps) {
@@ -411,6 +449,8 @@ void RirTrackLifecycle::RecordLeastSquaresVelocity(std::uint64_t association_key
   }
 }
 
+// 过程：加速度 = “拟合速度—时间”直线的斜率，三轴独立；σ_a≈√12·σ_v/(N^1.5·Δt)，
+//       N=40、σ_v≈200 m/s 时约 2.7 m/s²，足以还原约 5 m/s² 的重力分量。
 bool RirTrackLifecycle::TryGetLeastSquaresAcceleration(std::uint64_t association_key,
                                                        Eigen::Vector3f* acceleration_mps2) const {
   if (acceleration_mps2 == nullptr) {
@@ -462,6 +502,7 @@ bool RirTrackLifecycle::TryGetLeastSquaresAcceleration(std::uint64_t association
   return true;
 }
 
+// 过程：清空全部航迹（槽位归还对象池）与识别侧派生历史，track_id 计数回到 1。
 void RirTrackLifecycle::Reset() {
   for (auto& entry : tracks_) {
     ResetForReuse(*entry.second);
@@ -475,6 +516,8 @@ void RirTrackLifecycle::Reset() {
   last_cycle_index_ = 0U;
 }
 
+// 过程：热更新同步 CV KF 与已建 IMM 运行态；模型数不变才原位重调，否则丢弃运行态，
+//       待下次 confirmed 命中按航迹当前高斯状态惰性重建。
 void RirTrackLifecycle::UpdateConfig(RirLifecycleConfig lifecycle_config,
                                      RirTrackFilterConfig filter_config) {
   lifecycle_config_ = lifecycle_config;
@@ -504,6 +547,7 @@ void RirTrackLifecycle::UpdateConfig(RirLifecycleConfig lifecycle_config,
   }
 }
 
+// 过程：回放快照 = 航迹值副本 + 内部编号计数器（IMM 运行态刻意不入快照）。
 RirLifecycleRuntimeState RirTrackLifecycle::CaptureRuntimeState() const {
   RirLifecycleRuntimeState state;
   state.next_track_id = next_track_id_;
@@ -512,6 +556,7 @@ RirLifecycleRuntimeState RirTrackLifecycle::CaptureRuntimeState() const {
   return state;
 }
 
+// 过程：以快照为权威整值回写（含 generation）；旧航迹槽位先归还对象池再重建。
 void RirTrackLifecycle::RestoreRuntimeState(const RirLifecycleRuntimeState& state) {
   for (auto& entry : tracks_) {
     ResetForReuse(*entry.second);
@@ -541,6 +586,9 @@ void RirTrackLifecycle::RestoreRuntimeState(const RirLifecycleRuntimeState& stat
   last_cycle_index_ = state.last_cycle_index;
 }
 
+// 过程：状态机推进统一委托公共生命周期原语——把 RIR 状态/计数投影到计数器结构，按
+//       confirm_hits / max_miss_before_lost / max_lost_cycles 推进后回读；
+//       返回值 true 表示该航迹本周期应回收（lost 观察期已满）。
 bool RirTrackLifecycle::PromoteState(RirTrackState* track, std::uint32_t cycle_index,
                                      bool hit_this_cycle) {
   oneq::common::tracking::TrackLifecycleCounters counters;
@@ -568,6 +616,8 @@ bool RirTrackLifecycle::PromoteState(RirTrackState* track, std::uint32_t cycle_i
   return should_recycle;
 }
 
+// 过程：把滤波后验写回航迹——状态序 [x, vx, y, vy, z, vz] 拆成三轴位置/速度与速度
+//       模长；加速度另由后验速度差分 + EMA 得到，不取自状态向量。
 void RirTrackLifecycle::ApplyGaussianState(RirTrackState* track, const RirGaussianState& state,
                                            const Eigen::Vector3f& previous_velocity,
                                            float dt_sec) const {
@@ -604,6 +654,9 @@ void RirTrackLifecycle::ApplyGaussianState(RirTrackState* track, const RirGaussi
   track->acceleration_mps2 = track->acceleration.norm();
 }
 
+// 过程：命中更新分派——重置周期（建轨/失跟重捕）走 Initialize 重初始化（可带两点初
+//       速），其余按 IMM 或 CV KF 做一步预测 + 量测更新，最后统一经 ApplyGaussianState
+//       落回航迹。
 void RirTrackLifecycle::ApplyHitFilter(RirTrackState* track, const RirTrackMeasurement& measurement,
                                        RirTrackStatus status_before, float dt_sec,
                                        float acceleration_dt_sec,
@@ -666,6 +719,8 @@ void RirTrackLifecycle::ApplyHitFilter(RirTrackState* track, const RirTrackMeasu
   ApplyGaussianState(track, update_result.posterior, velocity_before_update, acceleration_dt_sec);
 }
 
+// 过程：失配周期只做预测——有 IMM 运行态走 IMM 混合预测，否则 CV KF 一步外推；
+//       速度不变、协方差随 Q 增长（波门随之张开）。
 void RirTrackLifecycle::ApplyMissPredict(RirTrackState* track,
                                          const Eigen::Vector3f& previous_velocity, float dt_sec,
                                          RirImmFilter* imm_filter) const {
@@ -678,6 +733,8 @@ void RirTrackLifecycle::ApplyMissPredict(RirTrackState* track,
                      dt_sec);
 }
 
+// 过程：IMM 激活判据 = 已启用 且 既有航迹 且 周期前状态 confirmed 且 命中既有航迹
+//       （RIR 只实现 confirmed-only，不迁 AR 的 kAllTracks 策略）。
 bool RirTrackLifecycle::ShouldUseImmForMeasurement(bool track_existed_before_cycle,
                                                    RirTrackStatus status_before,
                                                    bool matched_existing_track) const {
@@ -689,6 +746,7 @@ bool RirTrackLifecycle::ShouldUseImmForMeasurement(bool track_existed_before_cyc
          matched_existing_track;
 }
 
+// 过程：失配路径只有 confirmed 航迹才可能有 IMM 运行态，其余走 CV 外推。
 bool RirTrackLifecycle::ShouldUseImmForMiss(RirTrackStatus status_before) const {
   if (!imm_enabled_) {
     return false;
@@ -696,6 +754,8 @@ bool RirTrackLifecycle::ShouldUseImmForMiss(RirTrackStatus status_before) const 
   return status_before == RirTrackStatus::kConfirmed;
 }
 
+// 过程：IMM 配置由生命周期与滤波配置合成——模型数取 model_count_hint（下限 2），
+//       q 档位以滤波器过程噪声系数为低端锚点，自保持概率固定 0.95。
 RirImmFilter::Config RirTrackLifecycle::BuildImmFilterConfig() const {
   RirImmFilter::Config imm_config;
   const std::uint32_t model_count_hint =
@@ -706,6 +766,7 @@ RirImmFilter::Config RirTrackLifecycle::BuildImmFilterConfig() const {
   return imm_config;
 }
 
+// 过程：按关联键惰性建 IMM 运行态，首次以航迹当前高斯状态播种；已存在则直接复用。
 RirImmFilter* RirTrackLifecycle::GetOrCreateImmFilter(std::uint64_t association_key,
                                                       const RirGaussianState& initial_state) {
   const std::unordered_map<std::uint64_t, std::unique_ptr<RirImmFilter>>::iterator found =
@@ -730,6 +791,7 @@ RirImmFilter* RirTrackLifecycle::FindImmFilter(std::uint64_t association_key) co
   return found->second.get();
 }
 
+// 过程：槽位复用清零全部业务字段（含加速度 EMA 起批标志），generation 刻意保留单调。
 void RirTrackLifecycle::ResetForReuse(RirTrackState& track) {
   track.association_key = 0U;
   track.track_id = 0U;
@@ -754,6 +816,7 @@ void RirTrackLifecycle::ResetForReuse(RirTrackState& track) {
   // generation 保持不清零：对象复用代次单调递增（与 AR ResetForReuse 一致）。
 }
 
+// 过程：回收 = 代次 +1 → 业务字段清零 → 归还对象池；旧引用凭 generation 识别失效。
 void RirTrackLifecycle::RecycleTrack(RirTrackState* track) {
   track->generation += 1U;
   ResetForReuse(*track);

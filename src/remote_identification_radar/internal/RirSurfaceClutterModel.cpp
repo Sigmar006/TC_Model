@@ -3,6 +3,27 @@
  * @brief 实现逐目标主瓣地杂波最小物理模型。
  */
 
+/**
+ * ## 过程：主瓣面杂波模型（LRDR 探测链 · 第 10 步）
+ * - 上游：environment.vegetation_cover_profile、hardware.{transmitter,antenna}、目标斜距与
+ *   俯仰视线角、平台海拔、周期总传播损耗、接收机热噪声功率。
+ * - 本步：逐目标求解主瓣地杂波等效噪声（W）：
+ *   ① 擦地角 ψ = clamp(θ_3dB,el/2 − φ, 1°, 89°)（ψ ≤ 0 即主瓣完全离地，杂波为 0）；
+ *   ② 波束下沿与地面的交点距离 s = Re_eff·(√(sin²δ + 2h/Re_eff) − sinδ)（Re_eff = 4/3·R_e，
+ *      超过目标斜距时按目标斜距取）；
+ *   ③ 杂波区面积 A_c = min(R·θ_az·δ_R/cosψ, R²·θ_az·φ_el/sinψ)，距离单元 δ_R = c/(2B)；
+ *   ④ σ₀ = 植被档位表值·sinψ/sin10°（一阶折算）→ 杂波 RCS σ_c = σ₀·A_c；
+ *   ⑤ 杂波回波代入与目标同一雷达方程（主瓣峰值增益 G₀）+ 脉压增益 max(1, Bτ) → CNR →
+ *      经公共单源换算回等效杂波噪声功率。
+ * - 下游：RirController::ResolveTargetClutterPowerW → 检测单元 SINR 分母的杂波项 / 回退
+ *   检测器的 clutter_noise_w、验收第 34 项杂波处理增益。
+ * - 关键参数：σ₀ 档位表（开阔草地 −28 dB … 热带密林 −14 dB，S 波段量级声明值）、
+ *   kMinGrazingDeg = 1°、kMaxGrazingDeg = 89°、kReferenceGrazingDeg = 10°、
+ *   hardware.transmitter.{frequency_hz,bandwidth_hz,pulse_width_s}、hardware.antenna.*。
+ * - 对应验收项：第 34 项杂波信号处理增益功能测试、第 30 项干扰/杂波功率口径、
+ *   第 43 项 RCS 实时探测结果（杂噪比对探测距离的影响）。
+ */
+
 #include "remote_identification_radar/internal/RirSurfaceClutterModel.h"
 
 #include <algorithm>
@@ -50,6 +71,7 @@ float ResolveSigma0Db(config::RirVegetationCoverProfile profile) {
 
 }  // namespace
 
+// 过程：杂波求解入口——档位关闭或斜距/热噪/载频/带宽非正时直接返回 0（本周期不产生杂波项）。
 float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput& input) const {
   const config::RirVegetationCoverProfile profile = input.vegetation_cover_profile;
   if (profile == config::RirVegetationCoverProfile::kDisabled || !(input.range_m > 0.0f) ||
@@ -58,6 +80,7 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
     return 0.0f;
   }
 
+  // 过程：波长 λ = c/f（m），与回波雷达方程同源。
   const float wavelength_m = static_cast<float>(oneq::common::numerics::kLightSpeed) /
                              input.transmitter.frequency_hz;
   // 有效波束宽度与方向图/量测误差同源：nominal 两级回退（0 → λ/L 物理推导）。
@@ -65,6 +88,7 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
       oneq::common::radar::ResolveEffectiveBeamwidth(
           input.antenna.nominal_az_beamwidth_deg, input.antenna.nominal_el_beamwidth_deg,
           input.antenna.antenna_length_m, input.antenna.antenna_width_m, wavelength_m);
+  // 过程：有效波束宽度（nominal → λ/L 孔径推导）→ 弧度，供照射面积计算使用。
   const float az_beamwidth_rad = DegToRad(beamwidth.az_beamwidth_deg);
   const float el_beamwidth_rad = DegToRad(beamwidth.el_beamwidth_deg);
   if (!(az_beamwidth_rad > 0.0f) || !(el_beamwidth_rad > 0.0f)) {
@@ -113,6 +137,7 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
       std::sin(grazing_rad);
   const float clutter_area_m2 = std::min(pulse_limited_area_m2, beam_limited_area_m2);
 
+  // 过程：σ₀(ψ) = σ₀,ref·sinψ/sin10°（一阶折算）→ 杂波 RCS = σ₀·A_c（dB → m²）。
   const float grazing_factor_db =
       10.0f * std::log10(std::sin(grazing_rad) /
                          std::sin(DegToRad(kReferenceGrazingDeg)));
@@ -130,6 +155,7 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
       RirRadarEquations::ComputeEchoPower_dBW(input.transmitter, input.antenna, clutter_rcs_m2,
                                               clutter_range_m, input.propagation_loss_db) +
       RirRadarEquations::ComputePulseCompressionGainDb(input.transmitter);
+  // 过程：CNR = P_c − N_thermal（dB）→ 经公共单源换算回等效杂波噪声功率（W）。
   const float cnr_db =
       clutter_echo_dbw - 10.0f * std::log10(input.thermal_noise_w);
   return oneq::common::radar::ComputeEquivalentClutterNoiseW(input.thermal_noise_w, cnr_db);

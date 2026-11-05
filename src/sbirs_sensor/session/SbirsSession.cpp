@@ -1,5 +1,18 @@
 ﻿#include "1q/sbirs_sensor/session/SbirsSession.h"
 
+/**
+ * ## 过程：红外会话生命周期（红外处理链 · 会话层）
+ * - 上游：外部模型每周期传入 `SbirsCycleInput`（卫星 ECEF/速度、姿态、场景真值、UTC）
+ * - 本步：① 组装控制器（配置映射 `SbirsPipelineConfigMapper`）→ ② `Step()` 转发控制器 →
+ *         ③ 从周期结果抽取探测事件/排除原因（`SbirsDetectionLifecycleRecorder`、
+ *            `SbirsExclusionCauseRecorder`）→ ④ 落验收行（`SbirsAcceptanceRecords`）与文件
+ * - 下游：`SbirsCycleResult`（输出帧 + issues + 事件）返回给外部
+ * - 关键参数：`acceptance_log_enabled`、`satellite_entity_id`（验收行标注）
+ * - 对应验收项：第 24/24B 项（事件）、第 26/27 项（精度行由融合侧写出）、第 58/67 项（接口）
+ *
+ * @note 会话层不改变物理结果，只做编排与旁路记录；同一套处理链同时服务宽场/窄场/联合输出。
+ */
+
 #include <memory>
 #include <utility>
 #include <vector>

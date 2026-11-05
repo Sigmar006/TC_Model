@@ -3,6 +3,19 @@
  * @brief 极化散射矩阵统计特征提取器实现（五量×(均值, 标准差)）。
  */
 
+/**
+ * ## 过程：极化矩阵统计特征（LRDR 跟踪/识别链 · 第 9 步）
+ * - 上游：识别窗口内的极化散射矩阵样本（四元素各含幅度 dBsm 与相位 deg）。
+ * - 本步：逐行由 S = √σ·e^{jφ} 组复散射矩阵，派生五量：|det S|、Span=Σ|S_ij|²、去极化
+ *   系数 (σ_hv+σ_vh)/Span、本征极化方向角 ψ 与椭圆率 τ（Graves 矩阵 SᴴS 的主特征向量）；
+ *   窗口聚合：前四量取算术均值/样本标准差，ψ 用 180° 周期圆统计。
+ * - 下游：验收第 46 项五行输出（行列式/Span/去极化系数/本征角/椭圆率），亦为识别库
+ *   极化模板的统计口径来源。
+ * - 关键参数：`kOffDiagonalFloor`=1e-18（对角占优判据）、`kMeanResultantFloor`=1e-12
+ *   （圆标准差防 ln(0)）；角度单位 deg，Span 为线性功率。
+ * - 对应验收项：第 46 项 极化特征解算功能测试。
+ */
+
 #include "remote_identification_radar/recognition/PolarizationStatsExtractor.h"
 
 #include <algorithm>
@@ -40,6 +53,7 @@ bool IsFiniteRow(const session::RirPolSMatrixSample& row) {
 }
 
 /** @brief 单行五量派生；行非法（含 Span≤0）返回 false。 */
+// 过程：五量 = |det S|、Span=Σ|S_ij|²（线性功率）、(σ_hv+σ_vh)/Span、ψ、τ（deg）。
 bool DeriveRowQuantities(const session::RirPolSMatrixSample& row, double* abs_det, double* span,
                          double* depolarization, double* psi_deg, double* tau_deg) {
   using Complex = std::complex<double>;
@@ -71,11 +85,14 @@ bool DeriveRowQuantities(const session::RirPolSMatrixSample& row, double* abs_de
 
   double local_psi_deg = 0.0;
   double local_tau_deg = 0.0;
+  // 过程：非对角项可忽略（|c|²≤1e-36）时退化为对角占优：ψ 取 0° 或 90°、τ 取 0°。
   if (std::norm(c) <= kOffDiagonalFloor * kOffDiagonalFloor) {
     if (b > a) {
       local_psi_deg = 90.0;
     }
   } else {
+    // 过程：由 ρ=(λ−a)/c 反解本征极化——ψ=½·atan2(2Reρ, 1−|ρ|²)，
+    //       τ=½·asin(2Imρ/(1+|ρ|²))（幅角先钳到 [−1,1] 防 asin 定义域外）。
     const Complex rho = (lambda - a) / c;
     const double rho_abs2 = std::norm(rho);
     const double psi_rad = 0.5 * std::atan2(2.0 * rho.real(), 1.0 - rho_abs2);
@@ -122,6 +139,8 @@ RirPolarizationQuantityStats ArithmeticStats(const std::vector<double>& values) 
 
 }  // namespace
 
+// 过程：ψ 周期 180°——对倍角 2ψ 做单位向量平均，均值角取回 (−90°, 90°]；
+//       圆标准差 std = ½·√(−2·ln R̄)，R̄ 为合向量长度（下限 1e-12 防 ln(0)）。
 RirPolarizationQuantityStats CircularMeanStdDeg(const std::vector<double>& angles_deg) {
   RirPolarizationQuantityStats stats;
   const std::size_t n = angles_deg.size();
@@ -169,6 +188,8 @@ RirPolarizationStatsObservation RirPolarizationStatsExtractor::Extract(
   depolarization_values.reserve(window.size());
   psi_values.reserve(window.size());
   tau_values.reserve(window.size());
+  // 过程：逐行派生五量——非有限行或 Span≤0 行静默跳过；五量同行同进同出，保证均值
+  //       口径一致（不会出现某量样本数与其它量不同）。
   for (const session::RirPolSMatrixSample& row : window) {
     if (!IsFiniteRow(row)) {
       continue;
@@ -190,6 +211,8 @@ RirPolarizationStatsObservation RirPolarizationStatsExtractor::Extract(
   if (abs_det_values.empty()) {
     return observation;
   }
+  // 过程：窗口聚合——|det S|/Span/去极化系数/τ 用算术统计，ψ 用圆统计（避免 179°/1°
+  //       被平均成 90°）；五行均值全部有限才判 valid。
   observation.determinant = ArithmeticStats(abs_det_values);
   observation.span = ArithmeticStats(span_values);
   observation.depolarization = ArithmeticStats(depolarization_values);

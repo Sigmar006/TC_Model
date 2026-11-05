@@ -3,6 +3,20 @@
  * @brief 运动特征提取器实现。
  */
 
+/**
+ * ## 过程：运动特征（LRDR 跟踪/识别链 · 第 7 步）
+ * - 上游：生命周期航迹快照（三轴位置/速度/加速度、速度方差、估计不确定度迹）、平台
+ *   高度，以及识别侧的多点最小二乘速度/加速度（B3）。
+ * - 本步：速度优先取量测拟合值、否则取滤波后验模长；高度 = 平台高度 + z；加速度优先
+ *   取拟合斜率（限 1–50 m/s²），否则取后验差分并受速度方差门控（≤1e5 m²/s²）；再由
+ *   横向加速度 a_lat = |a − (a·v/|v|²)·v| 判直线飞行或反解转弯半径；质量由位置方差给出。
+ * - 下游：`RirMatcher` 运动维（速度/高度/加速度，非直线时补 log10 转弯半径）；验收第 44
+ *   项（速度/高度/加速度/近似直线/识别类别）。
+ * - 关键参数：`kMaxVelocityVarianceForAcceleration`=1e5 m²/s²（σ≈316 m/s）、加速度物理
+ *   窗 1–50 m/s²、直线判据 0.01 m/s²、质量参考方差 (100 m)²。
+ * - 对应验收项：第 44 项 运动特征处理功能测试。
+ */
+
 #include "remote_identification_radar/recognition/MotionFeatureExtractor.h"
 
 #include <algorithm>
@@ -33,6 +47,7 @@ constexpr float kMaxVelocityVarianceForAcceleration = 1.0e5f;
 
 }  // namespace
 
+// 过程：识别只以 confirmed 航迹为对象——未确认航迹返回无效观测（仅积累、不输出）。
 RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrackState& snapshot,
                                                         float platform_altitude_m,
                                                         float estimation_uncertainty_trace,
@@ -54,6 +69,7 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   //       只有约 1.9 km/s（真值约 6 km/s），把弹道族模板全部推到 4σ 之外；拟合速度
   //       （N=20 拍，误差约 200 m/s）才具备型号分辨力。拟合不可用时行为与改动前一致。
   // 标识：B3 运动特征速度来源。
+  // 过程：拟合不可用时的兜底链——快照标量 speed，再退到速度向量模长。
   observation.speed_from_fit = has_velocity_lsq;
   observation.speed_mps = has_velocity_lsq
                               ? velocity_lsq_mps.norm()
@@ -62,6 +78,7 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   observation.acceleration_mps2 = (snapshot.acceleration_mps2 > 0.0f)
                                       ? snapshot.acceleration_mps2
                                       : snapshot.acceleration.norm();
+  // 过程：高度 = 平台高度 + 航迹相对高度 z（m，z 轴向上）。
   observation.altitude_m = platform_altitude_m + snapshot.position.z();
 
   // 加速度维门控（2026-10-16）：速度尚未收敛时，差分加速度是"重置伪值"而非物理量
@@ -97,6 +114,7 @@ RirMotionObservation RirMotionFeatureExtractor::Extract(const tracking::RirTrack
   }
 
   // 横向加速度分解：a_lat = |a - (a·v/|v|²)v|；低速或横向加速度低于阈值记为直线飞行。
+  // 过程：a_lat = v²/R 反解转弯半径；|v|²≤1e-4 或 a_lat<0.01 m/s² 判直线飞行。
   const float speed_sq = snapshot.velocity.squaredNorm();
   if (speed_sq > 1.0e-4f) {
     const float v_dot_a = snapshot.velocity.dot(snapshot.acceleration);

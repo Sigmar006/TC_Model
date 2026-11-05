@@ -4,6 +4,22 @@
  *        （阶段 2-T T2，N1/N2 升级为全局最优指派）。
  */
 
+/**
+ * ## 过程：量测-航迹关联（LRDR 跟踪/识别链 · 第 1 步）
+ * - 上游：检测链输出的目标位置量测（`RirTrackMeasurement`）与生命周期导出的航迹种子
+ *   （`RirTrackLifecycle::BuildAssociationSeeds`，携带上一周期后验高斯状态）。
+ * - 本步：把种子按 CV 外推到本周期，按新息协方差 S = H·P·Hᵀ + R 归一化求马氏距离平方
+ *   d² = νᵀ·S⁻¹·ν；d² ≤ gate_threshold 入波门，波门内代价矩阵经 LAPJV 求全局最优指派
+ *   （方阵增广出"不分配"哑行/哑列），未命中既有航迹的量测分配单调递增的新关联键。
+ * - 下游：`RirTrackLifecycle::Update` 以带键量测推进状态机与滤波；验收第 41 项关联行
+ *   以及识别链"按关联键取观测"的键语义均以本步结果为准。
+ * - 关键参数：`RirAssociationConfig::gate_threshold`（`RirController` 由 policy
+ *   `association.distance_gate_sigma` 平方得到，场景 rir_ground_site_recognition 取 6.0
+ *   → 门限 36）、`default_measurement_noise_std`（未注入动态 R 时的对角 R 标准差，m）、
+ *   `kalman_noise_diff_coeff`（关联侧预测用过程噪声系数，下限 0.001 钳制）。
+ * - 对应验收项：第 41 项 航迹关联功能测试（检测结果/目标位置/检测概率）。
+ */
+
 #include "remote_identification_radar/tracking/RirTrackAssociator.h"
 
 #include <Eigen/Cholesky>
@@ -48,6 +64,7 @@ Eigen::Vector3f PositionOf(const RirGaussianState& state) {
 float ComputeSquaredMahalanobisDistance(const Eigen::Vector3f& predicted_position,
                                         const Eigen::Vector3f& measurement_position,
                                         const RirMeasurementCovariance& innovation_covariance) {
+  // 过程：d² = νᵀ·S⁻¹·ν——用 Cholesky 解 S·y = ν 后取 |y|²（比显式求逆稳定）。
   const Eigen::LLT<RirMeasurementCovariance> llt(innovation_covariance);
   if (llt.info() != Eigen::Success) {
     return std::numeric_limits<float>::infinity();
@@ -60,6 +77,8 @@ float ComputeSquaredMahalanobisDistance(const Eigen::Vector3f& predicted_positio
 
 }  // namespace
 
+// 过程：构造只准备关联侧预测器（公共 CV 预测原语：F 由 dt 生成、Q 按 noise_diff_coeff
+//       缩放）与关联键分配器；键从 initial_next_key 起单调递增，保留值 0 不用。
 RirTrackAssociator::RirTrackAssociator(RirAssociationConfig config) : config_(config) {
   ::oneq::common::estimation::KalmanPredictorConfig predictor_config;
   // 越界 q 钳制口径同 RirTrackFilter/AR 工厂：非法 q 会污染关联门限协方差传播。
@@ -72,6 +91,8 @@ RirTrackAssociator::RirTrackAssociator(RirAssociationConfig config) : config_(co
 RirAssociationResult RirTrackAssociator::Associate(
     const std::vector<RirTrackMeasurement>& measurements, const std::vector<RirTrackSeed>& seeds,
     float dt_sec) {
+  // 过程：dt 非法（非有限或 ≤0）时按 0 处理——退化为零步外推，波门只由协方差决定；
+  //       生命周期侧另有整周期跳过保护，此处不重复拒绝。
   RirAssociationResult result;
   const float effective_dt = (std::isfinite(dt_sec) && dt_sec > 0.0f) ? dt_sec : 0.0f;
   const RirMeasurementMatrix H = BuildPositionMeasurementMatrix();
@@ -80,6 +101,8 @@ RirAssociationResult RirTrackAssociator::Associate(
   std::vector<RirMeasurementCovariance> resolved_covariances;
   viable_measurement_indices.reserve(measurements.size());
   resolved_covariances.reserve(measurements.size());
+  // 过程：先筛量测——剔除位置非有限的检测结果，并为通过者解析量测协方差 R
+  //       （零矩阵/非有限视为"未注入动态 R"，回退配置缺省对角 R）。
   for (std::size_t i = 0U; i < measurements.size(); ++i) {
     if (!IsUsableMeasurement(measurements[i])) {
       // 中译：丢弃位置含非有限值的检测量测。
@@ -102,6 +125,8 @@ RirAssociationResult RirTrackAssociator::Associate(
   std::vector<SeedPrior> seed_priors;
   seed_priors.reserve(seeds.size());
   std::unordered_set<std::uint64_t> seen_seed_keys;
+  // 过程：再筛种子并外推——每颗种子先校验契约（非保留键 0、有高斯状态、数值有限、
+  //       键不重复），通过者按 CV 外推到本周期，投影成位置域先验 p̂ 与 H·P·Hᵀ。
   for (std::size_t i = 0U; i < seeds.size(); ++i) {
     const RirTrackSeed& seed = seeds[i];
     if (seed.association_key == kUnassociatedKey) {
@@ -157,6 +182,8 @@ RirAssociationResult RirTrackAssociator::Associate(
     Eigen::MatrixXf gated_costs(static_cast<Eigen::Index>(rows), static_cast<Eigen::Index>(cols));
     gated_costs.setConstant(std::numeric_limits<float>::infinity());
 
+    // 过程：代价 = 新息马氏距离平方 d²（无量纲 χ² 量），仅波门内写入矩阵；
+    //       波门外保持 +∞，由增广方阵构建器替换为"拒绝代价"（严格劣于任何合法分配）。
     for (std::size_t s = 0U; s < seed_priors.size(); ++s) {
       for (std::size_t m = 0U; m < viable_measurement_indices.size(); ++m) {
         const RirMeasurementCovariance innovation_covariance =
@@ -173,9 +200,13 @@ RirAssociationResult RirTrackAssociator::Associate(
     const Eigen::MatrixXf square_cost =
         oneq::common::tracking::BuildAugmentedSquareCostMatrix(gated_costs,
                                                                config_.gate_threshold);
+    // 过程：矩阵增广成方阵后由 LAPJV 求全局最优指派——最小化总代价，而非逐量测贪心
+    //       最近邻；哑行/哑列承担"该航迹/该量测本周期不分配"的出口。
     const std::vector<int> row_to_col = oneq::common::tracking::SolveAugmentedSquareAssignment(
         square_cost, rows, cols, config_.gate_threshold, assignment_solver_);
 
+    // 过程：回读指派——行=航迹、列=量测；未分配（-1）的行保留为失配，落到哑列的量测
+    //       保持"未关联"，在下一段统一分配新键。
     for (std::size_t r = 0U; r < rows; ++r) {
       const int assigned_col = row_to_col[r];
       if (assigned_col < 0) {
@@ -189,6 +220,8 @@ RirAssociationResult RirTrackAssociator::Associate(
     }
   }
 
+  // 过程：组装输出——命中既有航迹的量测回填原键并置 matched_existing_track；
+  //       未关联量测分新键（单调递增），保证跨周期的目标身份唯一。
   for (std::size_t m = 0U; m < viable_measurement_indices.size(); ++m) {
     const std::size_t source_index = viable_measurement_indices[m];
     RirTrackMeasurement associated = measurements[source_index];
@@ -204,6 +237,8 @@ RirAssociationResult RirTrackAssociator::Associate(
     result.measurements.push_back(associated);
   }
 
+  // 过程：汇总失配——本周期没分到量测的种子键进入 missed_track_keys，生命周期据此累计
+  //       miss_count 并推进状态机（tentative/confirmed → lost）。
   for (std::size_t s = 0U; s < seed_priors.size(); ++s) {
     if (seed_matched[s] == 0U) {
       result.missed_track_keys.push_back(seed_priors[s].key);
@@ -213,6 +248,8 @@ RirAssociationResult RirTrackAssociator::Associate(
   return result;
 }
 
+// 过程：热更新只换门限与过程噪声系数（预测器同步），不动已分配的关联键——键单调性
+//       跨配置保持，已回收的键不会被复用。
 void RirTrackAssociator::UpdateConfig(RirAssociationConfig config) {
   config_ = config;
   ::oneq::common::estimation::KalmanPredictorConfig predictor_config;
@@ -225,16 +262,19 @@ void RirTrackAssociator::Reset() {
   next_key_ = config_.initial_next_key == kUnassociatedKey ? 1U : config_.initial_next_key;
 }
 
+// 过程：运行态只有关联键分配器——航迹表在生命周期侧，故回放快照不含航迹内容。
 RirAssociationRuntimeState RirTrackAssociator::CaptureRuntimeState() const {
   RirAssociationRuntimeState state;
   state.next_key = next_key_;
   return state;
 }
 
+// 过程：恢复键分配器后，新量测分配到的键与回放前一致（重放的确定性依赖此单调性）。
 void RirTrackAssociator::RestoreRuntimeState(const RirAssociationRuntimeState& state) {
   next_key_ = state.next_key;
 }
 
+// 过程：可用性只看位置三轴有限性——协方差、键与标志位由后续步骤分别处理。
 bool RirTrackAssociator::IsUsableMeasurement(const RirTrackMeasurement& measurement) const {
   return measurement.position.allFinite();
 }
@@ -248,6 +288,8 @@ RirMeasurementCovariance RirTrackAssociator::ResolveMeasurementCovariance(
   return covariance;
 }
 
+// 过程：种子外推 = CV 预测一步（mean←F·mean，P←F·P·Fᵀ+Q）；dt=0 时原样返回，
+//       即"零步外推"退化为直接用上一周期后验构成波门。
 RirGaussianState RirTrackAssociator::PredictSeed(const RirTrackSeed& seed, float dt_sec) const {
   return predictor_.Predict(seed.gaussian_state, dt_sec);
 }

@@ -3,6 +3,28 @@
  * @brief 远程识别雷达自持链路控制器实现（阶段 2-S S2）。
  */
 
+/**
+ * ## 过程：主周期探测链编排（LRDR 探测链 · 第 1 步）
+ * - 上游：RirSession 下发的 session::RirCycleInput（场景目标 ENU 位置/速度/RCS/Swerling
+ *   起伏型、外部 RF 场景、平台 ECEF 位置与姿态）＋ 会话解析好的驻留计划（指向/种类/
+ *   目标 ID）＋ hardware/mission/policy/environment 三个配置域。
+ * - 本步：一个识别周期的全链编排，按段串起第 2–10 步：
+ *   ① 平台几何锚点（ECEF→LLA 取海拔）；② 环境传播损耗（植被档位 + 天气 + 逐目标大气）；
+ *   ③ RF 周期解析（发射波形/接收机状态/入射链/饱和）；④ 候选筛选（地球遮挡 → 扇区裁剪）；
+ *   ⑤ 逐驻留主瓣覆盖门 → 逐目标检测链（方向图增益 → 回波功率 → 噪声/杂波/干扰 →
+ *   脉压/MTI/MTD 增益 → SNR/SINR → CFAR 判决）；⑥ 量测构造（误差模型 → 协方差 → 采样）；
+ *   ⑦ 关联 → 生命周期 → 跟踪快照包络门与去重；⑧ 识别特征观测与结论；⑨ 输出组装。
+ * - 下游：session::RirOutputFrame（识别结论 + 特征量测记录）、RirCycleResult 旁路字段
+ *   （识别摘要/航迹归属/RF 发射帧/按目标门控诊断）、验收日志事件（detection_cell、
+ *   interference_link、association、schedule 等）。
+ * - 关键参数：hardware.{transmitter,receiver,antenna,rcs_physics,signal_processing}、
+ *   policy.detection.{cfar_pfa,min_snr_db,min_detection_margin_db,pulse_count,gate_mode,
+ *   random_seed}、mission.{max_range_m,recognition_dwell_sec}、environment.*。
+ * - 对应验收项：第 30 项干扰功率、第 31 项接收机噪声功率、第 32 项目标信号增益、
+ *   第 34 项杂波处理增益、第 36 项恒虚警检测、第 37/37A 项搜索、第 38 项测距测角、
+ *   第 39–42 项跟踪与关联、第 43 项 RCS 实时探测结果、第 70–72 项内部接口。
+ */
+
 #include "remote_identification_radar/runtime/RirController.h"
 #include "common/platform/OneqPlatformCompat.h"
 
@@ -225,6 +247,7 @@ session::RirIssueCause ClassifyRirDetectionExclusionCause(
 
 }  // namespace
 
+// 过程：硬件域热更新——重建检测器配置（热噪声功率随噪声系数/匹配滤波带宽重算），并按需重设随机种子。
 void RirController::SetHardware(const config::RirHardwareConfig& hardware) {
   hardware_ = hardware;
   if (detector_ == nullptr) {
@@ -273,6 +296,7 @@ dwell::RirDetectorConfig RirController::MakeDetectorConfig() const {
   return config;
 }
 
+// 过程：策略域 → 各执行部件配置（识别器/航迹生命周期/关联器/检测器/特征库路径），只在成功周期边界生效。
 void RirController::UpdateRuntime(const config::RirMissionConfig& mission,
                                   const config::RirPolicyConfig& policy) {
   mission_ = mission;
@@ -337,6 +361,7 @@ void RirController::UpdateRuntime(const config::RirMissionConfig& mission,
   }
 }
 
+// 过程：环境域快照 + 大气折射 k 因子预派生（缺省 4/3，供逐目标大气损耗与几何门消费）。
 void RirController::UpdateEnvironment(const config::RirEnvironmentConfig& environment) {
   environment_ = environment;
   // k 因子随气象观测派生（对标 AR EnvironmentService 冻结快照口径；非法输入内部兜底 4/3）。
@@ -344,6 +369,7 @@ void RirController::UpdateEnvironment(const config::RirEnvironmentConfig& enviro
       environment.atmospheric_physics);
 }
 
+// 过程：周期级传播损耗 = 天气附加损耗（dB）+ 植被覆盖档位物理损耗（common 单源，逐周期求解一次）。
 void RirController::ResolveEnvironment(float* propagation_loss_db) const {
   // weather_attenuation_db == 0 表示无天气附加损耗。
   *propagation_loss_db = environment_.weather_attenuation_db;
@@ -351,12 +377,14 @@ void RirController::ResolveEnvironment(float* propagation_loss_db) const {
       config::RirVegetationCoverProfile::kDisabled) {
     return;
   }
+  // 过程：植被档位非 kDisabled 时调传播模型，结果按 dB 直接累加进周期损耗（关闭时恒为天气项）。
   internal::RirEnvironmentSceneState scene_state;
   scene_state.vegetation_cover_profile = environment_.vegetation_cover_profile;
   const internal::RirPropagationResult propagation = propagation_model_.Evaluate(scene_state);
   *propagation_loss_db += propagation.propagation_loss_db;
 }
 
+// 过程：逐目标主瓣地杂波 → 等效噪声功率（W）：擦地角 + 距离单元 + 植被 σ₀ → 杂波 RCS → 雷达方程 → CNR。
 float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_range_m,
                                                 float total_propagation_loss_db,
                                                 float carrier_hz,
@@ -366,6 +394,8 @@ float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_r
       config::RirVegetationCoverProfile::kDisabled) {
     return 0.0f;
   }
+  // 过程：装配杂波模型输入——载频/带宽与回波链同源（决定距离单元 δR = c/2B 与 σ₀ 波段口径），
+  //       热噪声取接收机单源口径（CNR 的分母），避免同一杂波项出现两种噪声底。
   internal::RirSurfaceClutterInput clutter_input;
   clutter_input.vegetation_cover_profile = environment_.vegetation_cover_profile;
   clutter_input.transmitter = hardware_.transmitter;
@@ -385,6 +415,7 @@ float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_r
   return surface_clutter_model_.EvaluateClutterNoiseW(clutter_input);
 }
 
+// 过程：逐目标大气附加损耗（dB）：载频 + 斜距 + 收发高度 + 气象观测 → 分子吸收/折射损耗；物理模型关闭时恒 0。
 float RirController::ComputeTargetAtmosphericLossDb(float carrier_hz, float platform_altitude_m,
                                                     float look_el_deg, bool has_look_angles,
                                                     float slant_range_m,
@@ -403,6 +434,7 @@ float RirController::ComputeTargetAtmosphericLossDb(float carrier_hz, float plat
       std::max(platform_altitude_m + target_position_z_m, 0.0f), look_el_deg, has_look_angles, obs);
 }
 
+// 过程：场景几何——目标 ENU 直角坐标 → 视线极坐标：az = atan2(y, x)、el = atan2(z, √(x²+y²))、R = ‖r‖。
 void RirController::ComputeLookAngles(const session::RirSceneTarget& target, float* look_az_deg,
                                       float* look_el_deg, float* slant_range_m) {
   const Eigen::Vector3f position = PositionOf(target);
@@ -412,6 +444,7 @@ void RirController::ComputeLookAngles(const session::RirSceneTarget& target, flo
   *slant_range_m = position.norm();
 }
 
+// 过程：同上但只取方位/俯仰（跟踪驻留的预测指向用，不需要斜距）。
 void RirController::LookAnglesFromPosition(const Eigen::Vector3f& position, float* look_az_deg,
                                            float* look_el_deg) {
   const float range_hypot = std::sqrt(position.x() * position.x() + position.y() * position.y());
@@ -419,6 +452,7 @@ void RirController::LookAnglesFromPosition(const Eigen::Vector3f& position, floa
   *look_el_deg = oneq::common::numerics::RadToDeg(std::atan2(position.z(), range_hypot));
 }
 
+// 过程：跟踪驻留请求——确认航迹按「末量测位置 + 速度 × 预测时移」外推得到波束中心（不消费场景真值）。
 std::vector<RirDwellPlan> RirController::CollectTrackDwellRequests(std::size_t max_count,
                                                                    float predict_dt_sec) const {
   std::vector<RirDwellPlan> requests;
@@ -445,6 +479,7 @@ std::vector<RirDwellPlan> RirController::CollectTrackDwellRequests(std::size_t m
   return requests;
 }
 
+// 过程：量测协方差 R = J·diag(σ_R², σ_az², σ_el²)·Jᵀ（J 为 ENU 对球坐标的雅可比），对角再垫 1e-6 m² 防奇异。
 tracking::RirMeasurementCovariance RirController::MakeCartesianMeasurementCovariance(
     const session::RirSceneTarget& target, float range_std_m, float angle_std_rad) {
   const Eigen::Vector3f position = PositionOf(target);
@@ -481,6 +516,7 @@ tracking::RirMeasurementCovariance RirController::MakeCartesianMeasurementCovari
   return covariance;
 }
 
+// 过程：按 R 的 Cholesky 因子 L 采样量测噪声（位置 += L·n，n ~ N(0, I)）；R 非正定时不加噪、原样返回。
 tracking::RirTrackMeasurement RirController::SampleMeasurementPosition(
     const tracking::RirTrackMeasurement& measurement) {
   tracking::RirTrackMeasurement sampled = measurement;
@@ -495,6 +531,8 @@ tracking::RirTrackMeasurement RirController::SampleMeasurementPosition(
   return sampled;
 }
 
+// 过程：周期级 RF 解析（第 2–3 步入口）——载频/PRI/驻留内脉冲数 → 发射脉冲串波形 →
+//       接收机工作状态 → 入射链与饱和判定；发射记录逐驻留构建（接收链仍按首驻留解一次）。
 RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
     const session::RirCycleInput& input, const std::vector<RirDwellPlan>& plan) const {
   RirResolvedRfCycle resolved;
@@ -502,6 +540,7 @@ RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
     return resolved;
   }
 
+  // 过程：RF 周期输入——设备号/平台 ECEF/驻留窗（时长 = recognition_dwell_sec）/首驻留指向。
   dwell::RirRfCycleInput rf_input;
   rf_input.sensor_entity_id = EffectiveSensorEntityId();
   rf_input.platform_position_ecef_m = input.platform_position;
@@ -511,6 +550,7 @@ RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
   // 接收侧聚合语义不变（核查 9.2 只改发射记录的逐驻留透出）。
   rf_input.beam_pointing_deg = plan.front().pointing_deg;
 
+  // 过程：载频与 PRI；驻留窗内脉冲数 N = ceil(T_dwell / PRI)（下限 1，与 AR PrepareRfCycle 同口径）。
   const double carrier_hz =
       dwell::RirEmissionFactory::ResolveCarrierHz(hardware_.transmitter, input.input_cycle_index);
   const double pri_s = 1.0 / static_cast<double>(hardware_.transmitter.prf_hz);
@@ -521,6 +561,7 @@ RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
   const std::uint32_t pulse_count =
       static_cast<std::uint32_t>(std::max(1.0, pulse_count_value));
 
+  // 过程：构建自发射（指向/天线/极化/辐射功率/脉冲串波形）；失败即整周期无 RF 链（resolved 保持 false）。
   oneq::electromagnetics::RfSceneEmission own_emission;
   if (!dwell::RirEmissionFactory::TryBuildEmission(
           rf_input, hardware_, static_cast<std::uint64_t>(input.input_cycle_index), carrier_hz,
@@ -551,6 +592,7 @@ RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
     }
   }
 
+  // 过程：接收机工作状态（噪声系数/匹配滤波带宽/线性上限）→ 入射链逐条求解 → 总功率与饱和判定。
   const dwell::RirReceiverOperatingState receiver_state =
       dwell::RirReceiverStateBuilder::Build(rf_input, own_emission, hardware_, carrier_hz);
 
@@ -568,12 +610,15 @@ RirController::RirResolvedRfCycle RirController::ResolveRfCycle(
     return resolved;
   }
 
+  // 过程：透出周期级 RF 结果——自发射身份/波形/入射链/饱和标志（下游检测链与验收日志消费）。
   resolved.incident_links = std::move(front_end.incident_links);
   resolved.receiver_saturated = front_end.receiver_saturated;
   resolved.resolved = true;
   return resolved;
 }
 
+// 过程：单目标检测链（第 3–7 步核心）：饱和门 → 几何/方向图 → 回波功率 → 杂波与大气损耗 →
+//       检测单元 SINR → CFAR 判决 → 量测误差 → 量测采样 → 验收留痕。
 bool RirController::TryBuildMeasurement(
     const session::RirSceneTarget& target, std::size_t source_index, float platform_altitude_m,
     float propagation_loss_db, const session::RirCycleInput& input,
@@ -598,6 +643,7 @@ bool RirController::TryBuildMeasurement(
         session::RirIssueCause::kNone, source_index));
     return false;
   }
+  // 过程：① 场景几何——目标视线方位/俯仰与斜距（后续方向图离轴角、杂波擦地角、雷达方程的几何项）。
   float look_az_deg = 0.0f;
   float look_el_deg = 0.0f;
   float slant_range_m = 0.0f;
@@ -607,12 +653,14 @@ bool RirController::TryBuildMeasurement(
   // （零位附近 az/el 不稳定）→ 方向图增益回退主瓣峰值。
   const Eigen::Vector3f raw_position(target.position_x, target.position_y, target.position_z);
   const bool has_look_angles = raw_position.norm() > 0.1f;
+  // 过程：② 周期有效载频（规划频率优先，回退发射频率）——方向图/杂波/大气/测量误差同源口径。
   const float carrier_hz =
       rf_cycle.carrier_hz > 0.0f ? rf_cycle.carrier_hz : hardware_.transmitter.frequency_hz;
   // 逐目标大气物理附加损耗（与 AR 同口径：全局植被/天气损耗之外的按几何分量）。
   const float atmospheric_loss_db = ComputeTargetAtmosphericLossDb(
       carrier_hz, platform_altitude_m, look_el_deg, has_look_angles, slant_range_m,
       PositionOf(target).z());
+  // 过程：③ 传播损耗合成——全局植被/天气损耗 + 逐目标大气物理附加损耗（dB，进雷达方程双程项）。
   const float total_propagation_loss_db = propagation_loss_db + atmospheric_loss_db;
   // 逐目标主瓣地杂波（植被开启时）：按目标几何（斜距/俯仰擦地）与雷达参数
   // 物理求解，替代旧会话级常数；与检测单元杂波分项同注入点。
@@ -628,6 +676,7 @@ bool RirController::TryBuildMeasurement(
                                  ? static_cast<float>(oneq::common::numerics::kLightSpeed) /
                                        carrier_hz
                                  : 0.0f;
+  // 过程：④ 天线方向图取样（第 3 步）——离轴角 = 目标视线 − 驻留指向 → 单程增益与有效波束宽度。
   // 方向图恒开（2026-08-29 架构还债：删除 enable_directional_pattern 死选项）：
   // 库内驻留调度器给定波束中心，目标离轴增益按（目标视线角 - 驻留中心）衰减
   // （与 AR 冻结指向链路同口径）；无视线角（位置范数 ≤0.1 m 的退化输入）由
@@ -636,10 +685,12 @@ bool RirController::TryBuildMeasurement(
       hardware_.antenna, dwell_center_deg, look_az_deg, look_el_deg, has_look_angles,
       wavelength_m);
 
+  // 过程：⑤ 回波输入量——RCS（m²）/斜距（m）/Swerling 起伏型；RCS 稍后按视角混合值覆盖。
   dwell::RirTargetReturn target_return;
   target_return.rcs_m2 = target.rcs;
   target_return.range_m = slant_range_m;
   target_return.swerling_type = ToInternalSwerling(target.target_swerling_type);
+  // 过程：⑤ 径向速度 v_r = (r·v)/‖r‖（m/s，远离为正），供多普勒与检测单元的接近速度口径使用。
   const Eigen::Vector3f radial_position = PositionOf(target);
   const float radial_range_norm = std::max(radial_position.norm(), 1.0f);
   const float radial_velocity =
@@ -647,6 +698,7 @@ bool RirController::TryBuildMeasurement(
        radial_position.z() * target.velocity_z) /
       radial_range_norm;
 
+  // 过程：⑥ 检测判决（主路径 = 检测单元 SINR 账本；回退 = 效能级 SNR 路径），两条路径统一出 detected/snr_db/Pd。
   dwell::RirDetectionResult detection;
   dwell::RirDetectionCellResult cell;
   bool resolved_cell = false;
@@ -656,6 +708,7 @@ bool RirController::TryBuildMeasurement(
   // N 只折算进误差模型输入，不改写 SNR 透出值，也不影响 Pd（CFAR 内部已按
   // pulse_count 积累）。
   std::uint32_t integration_pulse_count = 1U;
+  // 过程：⑥ 检测单元配置——匹配滤波带宽/单程增益/接收损耗与噪声系数/四项处理增益/MTI-MTD 使能。
   if (rf_cycle.resolved) {
     dwell::RirDetectionCellConfig cell_config;
     cell_config.own_transmit_waveform = rf_cycle.own_transmit_waveform;
@@ -678,6 +731,7 @@ bool RirController::TryBuildMeasurement(
     cell_config.enable_mti_mtd_effects =
         hardware_.signal_processing.enable_mti_mtd_effects && policy_.detection.pulse_count >= 2;
 
+    // 过程：⑥ 检测单元目标量——斜距/接近速度（取 −v_r）/RCS（第 4 步视角混合值）/双程附加损耗/积累脉冲数 N。
     dwell::RirDetectionCellTarget cell_target;
     cell_target.range_m = static_cast<double>(slant_range_m);
     cell_target.closing_radial_velocity_mps = static_cast<double>(-radial_velocity);
@@ -694,6 +748,7 @@ bool RirController::TryBuildMeasurement(
     cell_target.effective_pulse_count =
         static_cast<std::uint32_t>(std::max(1, policy_.detection.pulse_count));
 
+    // 过程：⑥ 检测单元求解（第 6 步）→ 回波/热噪/干扰/杂波分项 + 单脉冲 SINR；成功后交 CFAR 判决（第 7 步）。
     if (dwell::TryResolveRirDetectionCell(cell_config, cell_target, rf_cycle.own_emission_identity,
                                         rf_cycle.incident_links, static_cast<double>(clutter_power_w),
                                         &cell)) {
@@ -711,6 +766,7 @@ bool RirController::TryBuildMeasurement(
     }
   }
 
+  // 过程：⑥ 回退路径（RF 链未解析或检测单元失败）——效能级 SNR 检测，干扰项恒 0，目标不丢。
   if (!resolved_cell) {
     const int fallback_pulse_count = std::max(1, policy_.detection.pulse_count);
     dwell::RirEnvironmentNoise env;
@@ -722,6 +778,7 @@ bool RirController::TryBuildMeasurement(
     integration_pulse_count = static_cast<std::uint32_t>(fallback_pulse_count);
   }
 
+  // 过程：⑦ 准入门——kDetectorGate 用 CFAR 判决结果，kSnrFallback 用 SNR ≥ 6 dB（kSnrFallbackGateDb）真值口径。
   *snr_db = detection.snr_db;
   const bool admitted = policy_.detection.gate_mode == config::RirDetectionGateMode::kSnrFallback
                             ? detection.snr_db >= kSnrFallbackGateDb
@@ -808,10 +865,12 @@ bool RirController::TryBuildMeasurement(
   // 值，角度/距离误差偏大约 √N（N=10 时 3.2 倍）。
   const float integrated_snr_db =
       detection.snr_db + 10.0f * std::log10(static_cast<float>(integration_pulse_count));
+  // 过程：⑧ 量测误差模型——σ_R = 0.5·δ_R/√SNR_eff（δ_R = c/2B）、σ_θ = 0.317·θ_3dB/√SNR_eff，含低 SNR 保护。
   const dwell::RirMeasurementErrorState measurement_error =
       dwell::RirMeasurementErrorModel::Compute(integrated_snr_db,
                                                beam_state.effective_beamwidth_deg,
                                                hardware_.transmitter.bandwidth_hz);
+  // 过程：⑧ 量测构造——位置取场景目标位置（检测器门控模式下再叠加系统偏置与噪声采样），速度不设真值种子。
   tracking::RirTrackMeasurement built;
   built.source_index = source_index;
   built.external_target_id = target.external_target_id;
@@ -830,6 +889,7 @@ bool RirController::TryBuildMeasurement(
   //   有效 RCS 已由检测单元按视角/频率算好（`target_return.rcs_m2`），直接沿用。
   // 标识：量测 RCS 取有效值（2026-10-26）。
   built.rcs = target_return.rcs_m2 > 0.0f ? target_return.rcs_m2 : target.rcs;
+  // 过程：⑧ 量测协方差由误差模型的距离/角度标准差笛卡尔投影得到（关联门与滤波 R 共用）。
   built.measurement_covariance = MakeCartesianMeasurementCovariance(
       target, measurement_error.range_error_std_m, measurement_error.angle_error_std_rad);
   // 6 dB 回退模式保持旧识别门控口径：量测位置取真值，只携带误差协方差；
@@ -882,6 +942,7 @@ bool RirController::TryBuildMeasurement(
   return true;
 }
 
+// 过程：识别观测上下文——视线角/斜距/SNR/带宽/驻留时长，与特征提取器的消费口径同源。
 recognition::RirObservationContext RirController::MakeObservationContext(
     const session::RirSceneTarget& target, float platform_altitude_m, float snr_db) const {
   recognition::RirObservationContext context;
@@ -900,6 +961,7 @@ recognition::RirObservationContext RirController::MakeObservationContext(
   return context;
 }
 
+// 过程：单驻留重载——把单一指向包装成长度为 1 的驻留计划，走与多驻留完全相同的链路。
 void RirController::RunCycle(const session::RirCycleInput& input,
                             session::RirOutputFrame* output_frame, std::uint64_t batch_id,
                             const config::RirAzimuthElevationDeg& dwell_center_deg,
@@ -921,6 +983,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                             const config::RirAzimuthElevationDeg& scan_center_deg,
                             const config::RirAzimuthElevationLimitsDeg& scan_window_deg,
                             std::uint64_t designated_external_target_id) {
+  // 过程：主周期链（第 1 步）——几何锚点 → 环境/RF 解析 → 候选筛选 → 逐驻留检测 → 关联跟踪 → 识别 → 输出。
   // TAS 防御：空计划退化为单条目缺省指向搜索驻留（既有兜底语义不变）。
   static const std::vector<RirDwellPlan> kFallbackPlan(1U);
   // 兜底条目的指向是 (0,0) 常数，不是本周期真实波束指向：验收「指向」行在此不成立，
@@ -946,6 +1009,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
   recognition_mode_active_ = in_identify;
   sim_time_sec_ = input.sim_time_sec;
 
+  // 过程：① 平台几何锚点——平台 ECEF → LLA 取海拔，供杂波地面距离（h）与大气损耗使用。
   float platform_altitude_m = 0.0f;
   oneq::coordinate::LlaPositionDegM platform_lla;
   const bool has_platform_lla =
@@ -954,6 +1018,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     platform_altitude_m = static_cast<float>(platform_lla.altitude_m);
   }
 
+  // 过程：① 周期状态清零——识别摘要/特征量测/航迹归属/发射帧/诊断/逐目标 SNR 台账逐周期重置。
   latest_summary_ = session::RirRecognitionCycleSummary{};
   has_latest_summary_ = false;
   // 出口①与归属视图按周期重置（透出原则：识别链未构建观测的周期为空）。
@@ -970,6 +1035,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                                  input.scene_targets);
   }
 
+  // 过程：② 环境与 RF 解析（第 2–3 步）——周期传播损耗 → 自发射/接收机状态/入射链；发射帧逐驻留落账。
   std::vector<tracking::RirTrackState> track_snapshots;
   if (in_identify) {
     float propagation_loss_db = 0.0f;
@@ -998,6 +1064,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                                 rf_cycle.own_emission_identity, rf_cycle.incident_links);
     }
 
+    // 过程：③ 候选筛选准备——上一周期航迹快照 + 识别结论/确认状态索引（决定候选优先级与子窗豁免）。
     // 上一周期航迹快照先行（子窗豁免判定与候选排序同源消费）。
     const std::vector<tracking::RirTrackState> prior_tracks = lifecycle_->BuildTrackSnapshots();
     std::unordered_map<std::uint64_t, std::uint32_t> recognition_rank_by_target_id;
@@ -1013,6 +1080,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       }
     }
 
+    // 过程：③ 候选集与索引——场景目标按外部 ID 建表，候选结构缓存视线角与退化标志（门控在逐驻留循环内做）。
     std::unordered_map<std::uint64_t, const session::RirSceneTarget*> scene_by_id;
     std::unordered_map<std::uint64_t, float> slant_by_target_id;
     // 候选条目：场景索引 + 缓存的视线角/退化标志（主瓣覆盖门在逐驻留循环内判定）。
@@ -1043,6 +1111,8 @@ void RirController::RunCycle(const session::RirCycleInput& input,
         0.5f * kMainLobeGateBeamwidthScale * gate_beamwidth.az_beamwidth_deg;
     const float main_lobe_half_el_deg =
         0.5f * kMainLobeGateBeamwidthScale * gate_beamwidth.el_beamwidth_deg;
+    // 过程：③ 逐目标门控——地球遮挡（穿地视线硬排除）→ 可扫描体积/任务搜索子窗裁剪（指定目标与确认
+    //       航迹在体积内豁免子窗）；两类排除各发一条 kInfo 归因诊断。
     for (std::size_t i = 0U; i < input.scene_targets.size(); ++i) {
       const session::RirSceneTarget& target = input.scene_targets[i];
       if (target.external_target_id == 0U) {
@@ -1127,6 +1197,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       candidates.push_back(candidate);
     }
 
+    // 过程：③ 候选排序——未识别优先、斜距近者次之（兼顾识别收益与 SNR 余量）。
     std::sort(
         candidates.begin(), candidates.end(),
         [&](const RirCandidate& lhs, const RirCandidate& rhs) {
@@ -1144,6 +1215,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
           return lhs_range < rhs_range;
         });
 
+    // 过程：③ 驻留预算与覆盖记账——scheduled/executed 计数 + 逐候选「是否已被某驻留照到」标志。
     std::vector<tracking::RirTrackMeasurement> measurements;
     const float dwell_sec = mission_.recognition_dwell_sec;
     // 驻留预算按计划计（2026-08-29 TAS：口径从"逐候选"改为"逐驻留"）：
@@ -1153,6 +1225,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     // 逐目标覆盖记账：候选被任一驻留照到即尝试量测（首驻留胜出，不重复尝试）；
     // 从未被照到的候选在循环后发主瓣覆盖排除诊断。
     std::vector<char> candidate_covered(candidates.size(), 0);
+    // 过程：④ 逐驻留执行——主瓣覆盖门（探测⟺波束照到）→ 检测链 → 量测入批（同目标首驻留胜出）。
     for (const RirDwellPlan& dwell : plan) {
       // 每条计划驻留都实际驻留（波束照射与候选是否过检测门无关）。
       ++executed_count;
@@ -1221,6 +1294,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
           session::RirIssueCause::kNone, candidates[k].source_index));
     }
 
+    // 过程：⑤ 跟踪——LAPJV 全局最优关联（马氏距离门）→ 航迹生命周期更新（命中/失配/回收）。
     const tracking::RirAssociationResult association = associator_.Associate(
         measurements, lifecycle_->BuildAssociationSeeds(), static_cast<float>(input.dt_sec));
     tracking::RirCycleContext cycle_context;
@@ -1252,6 +1326,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       WriteRirExternalMeasurements(input.sim_time_sec, input.input_cycle_index, association);
     }
 
+    // 过程：⑤ 输出前处理——包络门剔除发散航迹 + 同一目标只留最优一条（B6，只作用于输出快照）。
     track_snapshots = lifecycle_->BuildTrackSnapshots();
 
     // 中译：输出前先过包络门与去重——发散航迹丢弃、同一目标只留最优一条。
@@ -1274,6 +1349,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       WriteRirClusterCount(input.sim_time_sec, input.input_cycle_index, track_snapshots);
     }
 
+    // 过程：⑥ 识别观测装配——航迹 ↔ 场景目标配对 + 观测上下文 + 量测位置拟合速度/加速度旁路。
     std::unordered_map<std::uint64_t, recognition::RirTracker::TrackObservationInput>
         observations_by_key;
     for (const tracking::RirTrackState& track : track_snapshots) {
@@ -1333,6 +1409,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       }
     }
 
+    // 过程：⑥ 识别积累——多周期特征打分/阈值门 → 类别/型号结论，并组装特征量测记录（出口①）。
     if (database_ != nullptr) {
       // 出口①：采集本周期实际构建的有效特征观测（透出来源），组装公开量测记录。
       std::vector<recognition::RirTracker::CycleFeatureObservation> cycle_observations;
@@ -1367,6 +1444,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       tracker_.HoldCycle(track_snapshots, sim_time_sec_);
     }
 
+    // 过程：⑥ 效能摘要与驻留预算（计划/实际驻留数 × 驻留时长），供结果层与验收第 49 项调度策略。
     latest_summary_ = tracker_.BuildSummary(track_snapshots);
     latest_summary_.dwell_budget.scheduled_dwell_count = scheduled_count;
     latest_summary_.dwell_budget.executed_dwell_count = executed_count;
@@ -1428,6 +1506,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     }
   }
 
+  // 过程：⑦ 输出组装——逐航迹识别结论 + 归属视图（状态/位置/速度/命中数/本周期检测 SNR）。
   last_track_snapshots_ = track_snapshots;
   output_frame->recognition_outputs.clear();
   output_frame->recognition_outputs.reserve(track_snapshots.size());
@@ -1569,6 +1648,8 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       track_snapshots.size());
 }
 
+// 过程：包络门 + 去重——斜距 ≤ 2×max_range_m、高度 ∈ [−1 km, 4500 km]、量值有限；越界即判滤波器发散
+//       并 DropTrack；同 external_target_id 只留「确认 > 待确认 > 丢失 → 位置不确定度小 → 命中次数多」。
 void RirController::GateTrackSnapshots(const oneq::coordinate::LlaPositionDegM& platform_lla,
                                        bool has_platform_lla,
                                        std::vector<tracking::RirTrackState>* snapshots) {

@@ -795,6 +795,31 @@ void SbirsPipeline::SubmitExternalCue(const session::SbirsExternalCue& cue) {
   pending_external_cues_.push_back(cue);
 }
 
+/**
+ * @brief 单周期执行入口：红外从"场景真值"到"跟踪量测/输出帧"的完整处理链。
+ *
+ * ## 红外处理链（本函数内按下列顺序执行；段落名与本文件内注释锚点一致）
+ *
+ * | 步 | 过程 | 关键内容 | 主要实现 |
+ * |---|---|---|---|
+ * | 1 | **扫描基准与指向链** | 扫描方位基准（ECI 绝对 / 相对星下点 `atan2(−y,−x)`）、栅格行/相位、姿态→安装→失准旋转链 | 「方位基准」段、`SbirsBoresightChain` |
+ * | 2 | **场景 ECEF→ECI** | 逐目标按 GMST 旋转到惯性系（滤波与角度都在 ECI 中） | 「过程②」标记处、`SbirsEciScene` |
+ * | 3 | **逐目标几何** | 视线向量、ECI 方位/俯仰（`atan2(y,x)`/`asin(z/‖·‖)`）、距离、相对角速度、地球遮挡/临边判定 | 目标几何段、`SbirsGeometry` |
+ * | 4 | **辐射与大气** | 目标辐射强度 → 入瞳辐照度 → 大气透过率（含壳段气团 τ_geo）→ 背景/路径辐射 | `SbirsRadiometry`、`SbirsEnvironmentModel` |
+ * | 5 | **噪声与 SNR** | NEP、背景光子噪声、读出噪声、焦面像元噪声合成 → 线性 SNR；宽场门限 4.0 / 窄场 5.0 | `SbirsNoiseModel`、`ComputeSnr` |
+ * | 6 | **最大探测距离 d_max** | min(辐射受限, 几何受限, 任务上限)，只出单值 | d_max 段 |
+ * | 7 | **宽场扫描检测门** | 四门：视场（传感器系）→ 遮挡 → SNR → 驻留；候选累积与首次探测事件 | 宽场检测门段 |
+ * | 8 | **候选 → 窄场调度** | 候选排序/占用/排队（单镜筒轮转），见 `SbirsNfovScheduler` | 「NFOV 单镜筒分时轮转阶段」段 |
+ * | 9 | **指向执行** | 转动限速 → 稳定等待 → 共模姿态（相关时间 ORN）/通道指向/振动扰动叠加 | `SbirsPointingCoordinator/Actuator/Disturbance` |
+ * | 10 | **窄场捕获** | 转向→稳定→帧门（几何门 + SNR 门），失败原因归因 | `SbirsNfovAcquisition`、「首次捕获尝试」段 |
+ * | 11 | **窄场跟踪与滤波** | 逐目标量测（同帧免费多跟）、焦面脱靶量、6 维 ECI 恒速 EKF（预测 F/Q、量测 R、更新 K/P）、NIS 门 | 「跟踪段逐目标量测」段、`SbirsTrackingCoordinator` |
+ * | 12 | **量测误差** | 5 项 RSS（轨道/姿态/视场 + 折射 + 动态滞后）或线性 SNR 标定；多帧 σ 按帧数缩放 | `SbirsErrorModel` |
+ * | 13 | **输出与验收** | 宽场/窄场/联合三类行的输出角、跟踪状态、目标状态机迁移、验收行 | `SbirsAcceptanceRecords` |
+ *
+ * 说明：宽视场（宽）、窄视场（窄）、宽窄联合三类输出共用同一套几何/辐射/噪声计算；
+ * 差别只在**门限**（4.0 vs 5.0 线性 SNR）、**视场判定所用的坐标系**（宽场用传感器系矩形视场，
+ * 窄场用锁定后的指向误差）与**是否经过滤波**（窄场进 EKF，宽场只做检测）。
+ */
 SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& input) {
   SbirsPipelineResult result;
   const config::SbirsMissionConfig& mission = config_.session.mission;
@@ -930,6 +955,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
 
   result.executed = true;
 
+  // 过程②：场景 ECEF → ECI（仅绕 z 轴按 GMST 旋转；此后所有角度/滤波/M 矩阵都在 ECI 中）。
   std::vector<SbirsEciSceneTarget> eci_scene;
   eci_scene.reserve(input.scene.size());
   for (const session::SbirsSceneTarget& target : input.scene) {
@@ -1971,6 +1997,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     return result;
   }
 
+  // 过程⑧⑨⑩：窄场调度 → 指向执行 → 捕获（单镜筒轮转；转动期间帧作废，稳定后按剩余时长计帧）。
   // ===== NFOV 单镜筒分时轮转阶段（2026-09-02，冻结契约 sbirs-nfov-shared-pointing） =====
   // 窄场只有一个镜筒：锁定集合无配置上限，每周期按固定顺序轮转服务一个目标（转动
   // 期间帧作废，稳定后按剩余时长计帧）；当前视场内的其余锁定目标同帧免费多跟（共享
@@ -2419,6 +2446,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     result.detections.push_back(detection);
   };
 
+  // 过程⑪：窄场跟踪量测（同帧免费多跟）——量测角 → 6 维 ECI EKF 更新 → 焦面脱靶量 → 状态机迁移。
   // 跟踪段逐目标量测：同帧免费多跟——当前视场内全部锁定目标共享 settled_frames。
   for (const std::uint64_t engaged_id : engaged_ids) {
     const SbirsTargetState state = target_states_[engaged_id];
@@ -3015,6 +3043,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     }
   }
 
+  // 过程⑩（同帧分支）：镜筒不动、已在窄视场内的候选直接捕获，不额外消耗转动时间。
   // 同帧免转动捕获：非服务但已在当前窄视场内的 Awaiting 候选立即尝试捕获（镜筒不动，
   // 捕获命令 = 当前实际指向）。
   if (nfov_pointing_valid) {

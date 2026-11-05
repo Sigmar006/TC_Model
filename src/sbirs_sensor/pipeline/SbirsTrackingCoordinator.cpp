@@ -1,4 +1,27 @@
-﻿#include "sbirs_sensor/pipeline/SbirsTrackingCoordinator.h"
+﻿/**
+ * ## 过程：窄场跟踪滤波（EKF / IMM / 角度 CV-KF）（红外处理链 · 第 14 步）
+ * - 上游：`ApplyAngularErrorModelFused` 产出的带误差量测角（第 7 步）与其 2×2 量测协方差、
+ *   卫星 ECI 位置/速度、本周期 dt、`policy.tracking`（后端选择、q、P0、NIS 丢锁拍数）。
+ * - 本步：三种互斥后端共用一套框架：
+ *   · 预测：6 维 ECI 恒速状态 [x, vx, y, vy, z, vz] 用 F(dt) 线性推进，
+ *     Q = q·[[dt³/3, dt²/2], [dt²/2, dt]] 按轴块对角（q 为加速度白噪声谱密度 m²/s³）；
+ *   · 量测：2 维角度 [az, el]（被动红外不测距），EKF 用解析雅可比 H = ∂h/∂x；
+ *     R 由误差模型按斜距/俯仰/角速度动态合成，多帧融合时 R 再按 1/N 缩小；
+ *   · 更新：K = P Hᵀ(HPHᵀ+R)⁻¹、P⁺ = (I−KH)P；角度 CV-KF 为线性 H 的最短弧新息版本；
+ *   · 门控：NIS = νᵀS⁻¹ν —— 95% 门(5.99) 只用于计数/丢锁，离群门(1000) 用于丢弃量测；
+ *     连续离群 5 拍用当前量测重置角度状态（重捕）；
+ *   · 保护：后验非有限、方差为负或位置越界经 `IsSaneSbirs*` 判为发散，直接释放该目标状态。
+ * - 下游：pipeline 的检测角与跟踪输出（`TryGetPosteriorPosition` 供跟踪位置误差），下一拍指向
+ *   用的预测角（`PredictTarget`），第 77 项内部接口的 NIS/σ/跟踪状态。
+ * - 关键参数：`tracking.estimated_backend`(kEKF)、`tracking.process_noise_diff_coeff`(1.0)、
+ *   `initial_position_std_m`(1000)、`initial_velocity_std_m_per_s`(100)、
+ *   `nis_gate_loss_cycles`(0 ⇒ 兜底 3 拍)、`imm_model_noise_diff_coeffs`(空 ⇒ [1.0, 100.0])。
+ * - 对应验收项：第 18 项 标准卡尔曼滤波功能测试；第 13 项 窄视场跟踪探测功能测试；
+ *   第 15/16 项 多传感器目标跟踪与接力跟踪功能测试（滤波输出）；第 77 项 红外量测与跟踪滤波
+ *   交互接口测试。
+ */
+
+#include "sbirs_sensor/pipeline/SbirsTrackingCoordinator.h"
 
 #include <Eigen/Cholesky>
 
@@ -13,6 +36,7 @@ namespace sbirs_sensor {
 namespace pipeline {
 namespace {
 
+// 过程：2 自由度（方位+俯仰）卡方分布的 95% 分位 = 5.99，用作 NIS 的统计一致性门限。
 constexpr float kSbirsNisChiSquare2Dof95 = 5.99f;
 /**
  * @brief 离群量测门限（2 维 NIS，≈31σ）：超过即丢弃量测，后验保持预测。
@@ -39,6 +63,8 @@ unsigned int ConsecutiveRejectionThreshold(const config::SbirsPolicyConfig& poli
                                                    : kSbirsMaxConsecutiveRejections;
 }
 
+// 过程：NIS = νᵀS⁻¹ν —— 用 Cholesky(LLT) 解 S·x=ν 而非显式求逆，数值更稳；S 非正定
+//       （奇异）时返回 +inf，调用方据此判协方差奇异而不是算出畸形值。
 float ComputeNormalizedInnovationSquared(const tracking::SbirsKalmanUpdateResult& update_result) {
   const Eigen::LLT<tracking::SbirsMeasurementCovariance> llt(update_result.innovation_covariance);
   if (llt.info() != Eigen::Success) {
@@ -48,6 +74,7 @@ float ComputeNormalizedInnovationSquared(const tracking::SbirsKalmanUpdateResult
   return update_result.innovation.dot(solved);
 }
 
+// 过程：角度 CV-KF 的同口径 NIS（同一公式，状态维度不同），保证两种后端的门限可比。
 float ComputeNormalizedInnovationSquared(const tracking::SbirsAngleCvUpdateResult& update_result) {
   const Eigen::LLT<tracking::SbirsMeasurementCovariance> llt(update_result.innovation_covariance);
   if (llt.info() != Eigen::Success) {
@@ -86,6 +113,8 @@ bool TryDeriveAngleRateRadPerSec(const session::SbirsVector3M& target_position_e
     return false;
   }
   const double rho = std::sqrt(rho_squared);
+  // 过程：球坐标角速率解析式 —— ω_az = (x·vy − y·vx)/ρ²、ω_el = (ρ·vz − z·(x·vx + y·vy)/ρ)/R²；
+  //       两式同时含横向与径向速度贡献（径向速度经 ρ、R 的变化进入俯仰速率）。
   const double azimuth_rate = (x * vy - y * vx) / rho_squared;
   const double elevation_rate =
       (rho * vz - z * (x * vx + y * vy) / rho) / range_squared;
@@ -97,12 +126,15 @@ bool TryDeriveAngleRateRadPerSec(const session::SbirsVector3M& target_position_e
   return true;
 }
 
+// 过程：初始化按后端分派 —— 三种后端状态互斥，建其中一种必须清掉另外两种的残留。
 void SbirsTrackingCoordinator::InitializeTarget(std::uint64_t target_id,
                                                 const SbirsEciSceneTarget& target,
                                                 const config::SbirsTrackingConfig& tracking,
                                                 float measured_azimuth_deg,
                                                 float measured_elevation_deg) {
   nis_gate_exceeded_counts_[target_id] = 0U;
+  // 过程：角度 CV-KF 只用首拍量测角建状态 [az, ω_az, el, ω_el]，角速率初值 0、初始角与
+  //       角速率各 1°/s 的 1-σ（见 MakeInitialAngleCvState），不消费真值位置。
   if (tracking.estimated_backend == config::SbirsEstimatedTrackingBackend::kAngleCvKf) {
     const float azimuth_rad = oneq::common::numerics::DegToRad(measured_azimuth_deg);
     const float elevation_rad = oneq::common::numerics::DegToRad(measured_elevation_deg);
@@ -114,6 +146,8 @@ void SbirsTrackingCoordinator::InitializeTarget(std::uint64_t target_id,
     return;
   }
 
+  // 过程：6 维 CV 状态按交错布局 [x, vx, y, vy, z, vz] 赋初值：位置取真值，速度有则填、
+  //       无则保持 0（静止假设）。
   tracking::SbirsGaussianState initial_state;
   initial_state.mean(0) = static_cast<float>(target.position_eci_m.x);
   initial_state.mean(2) = static_cast<float>(target.position_eci_m.y);
@@ -123,6 +157,8 @@ void SbirsTrackingCoordinator::InitializeTarget(std::uint64_t target_id,
     initial_state.mean(3) = static_cast<float>(target.velocity_eci_m_per_s.y);
     initial_state.mean(5) = static_cast<float>(target.velocity_eci_m_per_s.z);
   }
+  // 过程：P0 只放对角 —— 位置 σ²、速度 σ²（默认 1000 m / 100 m/s），位置-速度相关置 0
+  //       （首拍没有可估的相关性，交给后续 Q 演化）。
   const float pos_var = tracking.initial_position_std_m * tracking.initial_position_std_m;
   const float vel_var =
       tracking.initial_velocity_std_m_per_s * tracking.initial_velocity_std_m_per_s;
@@ -138,6 +174,7 @@ void SbirsTrackingCoordinator::InitializeTarget(std::uint64_t target_id,
   if (tracking.estimated_backend != config::SbirsEstimatedTrackingBackend::kImm) {
     return;
   }
+  // 过程：IMM 首次使用前建好各模型组件，并为该目标建一条多模型滤波器（初权均分）。
   if (!imm_initialized_) {
     InitializeImmComponents(tracking);
   }
@@ -145,6 +182,8 @@ void SbirsTrackingCoordinator::InitializeTarget(std::uint64_t target_id,
   CreateImmFilter(target_id, initial_state);
 }
 
+// 过程：一拍 = 预测 + 校正。两步对外分开暴露，是因为指向段要复用同一次预测，
+//       否则同一周期会把滤波状态推进两次。
 SbirsTrackingUpdateResult SbirsTrackingCoordinator::Update(
     std::uint64_t target_id, const config::SbirsPolicyConfig& policy,
     foundation::SbirsRandomSource* random_source, float azimuth_deg, float elevation_deg,
@@ -157,9 +196,12 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::Update(
                        satellite_velocity_eci_m);
 }
 
+// 过程：预测入口按后端分派；三者都是 F(dt)/Q(dt) 推进，只是维度与 q 的物理含义不同。
 SbirsTrackingPredictionResult SbirsTrackingCoordinator::PredictTarget(
     std::uint64_t target_id, const config::SbirsPolicyConfig& policy, float dt_sec,
     const session::SbirsVector3M& satellite_position_eci_m) {
+  // 过程：角度 CV-KF —— 每轴 |1 dt; 0 1| 线性转移，q 是角加速度白噪声谱密度（rad²/s³），
+  //       预测后方位回绕到 (−π, π]、俯仰钳到 ±π/2。
   if (policy.tracking.estimated_backend == config::SbirsEstimatedTrackingBackend::kAngleCvKf) {
     auto state_it = angle_kf_states_.find(target_id);
     if (state_it == angle_kf_states_.end()) {
@@ -174,6 +216,8 @@ SbirsTrackingPredictionResult SbirsTrackingCoordinator::PredictTarget(
 
   tracking::SbirsGaussianState predicted;
   if (policy.tracking.estimated_backend == config::SbirsEstimatedTrackingBackend::kImm) {
+    // 过程：IMM 目标可能只剩快照（restore 后首次推进）—— 按快照重建滤波器并回灌各模型
+    //       状态与权重，保证续跑与不中断逐位一致。
     if (!imm_initialized_) {
       InitializeImmComponents(policy.tracking);
     }
@@ -191,16 +235,20 @@ SbirsTrackingPredictionResult SbirsTrackingCoordinator::PredictTarget(
     filter_it->second->Predict(dt_sec);
     predicted = filter_it->second->GetCombinedState();
   } else {
+    // 过程：EKF 预测 —— x⁻ = F(dt)·x⁺，P⁻ = F·P⁺·Fᵀ + Q，Q 由 q 与 [[dt³/3, dt²/2],
+    //       [dt²/2, dt]] 块按轴拼出（连续白噪声加速度模型）。
     tracking::SbirsEkfPredictorConfig predictor_config;
     predictor_config.noise_diff_coeff = policy.tracking.process_noise_diff_coeff;
     const tracking::SbirsEkfPredictor predictor(
         &cv_transition_model_, predictor_config);
     predicted = predictor.Predict(filter_states_[target_id], dt_sec);
   }
+  // 过程：预测态写回并派生输出角（预测位置减卫星位置 → az/el），供本拍指向命令使用。
   filter_states_[target_id] = predicted;
   return BuildPredictionResult(predicted, satellite_position_eci_m);
 }
 
+// 过程：校正入口 —— 先造量测（真值角 + 误差模型）与量测协方差 R，再按后端分派更新。
 SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     std::uint64_t target_id, const config::SbirsPolicyConfig& policy,
     foundation::SbirsRandomSource* random_source, float azimuth_deg, float elevation_deg,
@@ -214,6 +262,8 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
       policy.error_model, random_source, azimuth_deg, elevation_deg, range_m,
       relative_angular_rate_deg_per_sec, frame_count);
   const foundation::SbirsErrorBearing& bearing = fused.bearing;
+  // 过程：量测转弧度（滤波内部一律 rad），R 由误差模型按斜距/俯仰/角速度动态合成；
+  //       多帧融合时 R 再按 1/N 缩小，与融合后 1-σ 的 σ/√N 口径一致。
   tracking::SbirsMeasurementVector measurement_rad;
   measurement_rad << oneq::common::numerics::DegToRad(bearing.azimuth_deg),
       oneq::common::numerics::DegToRad(bearing.elevation_deg);
@@ -228,6 +278,7 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
   result.measurement_elevation_deg = bearing.elevation_deg;
   result.measurement_covariance = measurement_covariance;
 
+  // 过程：combined 是本拍最终采用的状态 —— 正常时取后验，量测被判离群时等于预测（不再改写）。
   tracking::SbirsGaussianState combined;
   if (policy.tracking.estimated_backend == config::SbirsEstimatedTrackingBackend::kAngleCvKf) {
     auto state_it = angle_kf_states_.find(target_id);
@@ -235,6 +286,7 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
       return result;
     }
     const tracking::SbirsAngleCvUpdater updater;
+    // 过程：线性标准 KF 更新 —— K = P Hᵀ(HPHᵀ+R)⁻¹、P⁺ = (I−KH)P，H 只取 [az, el] 两行。
     const tracking::SbirsAngleCvUpdateResult update_result =
         updater.Update(state_it->second, measurement_rad, measurement_covariance);
     result.has_estimation_nis = true;
@@ -293,6 +345,8 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     for (auto& measurement_model : imm_measurement_models_) {
       measurement_model->SetSatellitePosition(satellite_position_eci_m);
     }
+    // 过程：IMM 校正 —— 各模型并行预测/校正后按量测似然更新模型权重，输出为加权合成状态；
+    //       NIS 取各模型最大值（任一模型与该量测不相容即视为异常）。
     tracking::SbirsImmFilter* const imm_filter = filter_it->second.get();
     imm_filter->Correct(measurement_rad, measurement_covariance);
     combined = imm_filter->GetCombinedState();
@@ -323,6 +377,8 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     filter_states_[target_id] = combined;
   } else {
     angle_measurement_model_.SetSatellitePosition(satellite_position_eci_m);
+    // 过程：EKF 校正 —— H = ∂h/∂x（解析雅可比，只对位置分量非零）、S = HPHᵀ+R、
+    //       K = PHᵀS⁻¹、P⁺ = (I−KH)P；h(x) 是相对卫星视线的 az/el。
     const tracking::SbirsEkfUpdater updater(&angle_measurement_model_);
     const tracking::SbirsKalmanUpdateResult update_result =
         updater.Update(filter_states_[target_id], measurement_rad, measurement_covariance);
@@ -350,6 +406,8 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     filter_states_[target_id] = combined;
   }
 
+  // 过程：NIS 连续超统计门计数 —— 通过则清零，连续超门达阈值（配置 nis_gate_loss_cycles，
+  //       0 时兜底 3 拍）判丢锁，由 pipeline 释放该目标回宽场重捕。
   if (result.estimation_nis_gate_exceeded) {
     ++nis_gate_exceeded_counts_[target_id];
     result.lost_due_to_estimation_nis =
@@ -357,6 +415,8 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
   } else {
     nis_gate_exceeded_counts_[target_id] = 0U;
   }
+  // 过程：输出角由后验状态的位置分量 (0,2,4) 减卫星位置得 LOS，再取 az/el；与量测角同
+  //       参考系（ECI），便于逐拍对比残差。
   session::SbirsVector3M estimated_position;
   estimated_position.x = combined.mean(0);
   estimated_position.y = combined.mean(2);
@@ -385,10 +445,13 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
   return result;
 }
 
+// 过程：本拍无有效量测（跟踪门未通过）时清零统计门计数 —— 滑行期若继续累计连续超门，
+//       几何遮挡会被误判成滤波发散；滤波器状态保持预测，此处不改动。
 void SbirsTrackingCoordinator::MarkMeasurementUnavailable(std::uint64_t target_id) {
   nis_gate_exceeded_counts_[target_id] = 0U;
 }
 
+// 过程：预测态→输出角：位置分量减卫星位置得 LOS，再取 az/el（与校正输出同一口径）。
 SbirsTrackingPredictionResult SbirsTrackingCoordinator::BuildPredictionResult(
     const tracking::SbirsGaussianState& state,
     const session::SbirsVector3M& satellite_position_eci_m) {
@@ -404,6 +467,7 @@ SbirsTrackingPredictionResult SbirsTrackingCoordinator::BuildPredictionResult(
   return result;
 }
 
+// 过程：角度 CV-KF 的状态本身就是 az/el（rad），直接转 deg 输出，无需求 LOS 几何。
 SbirsTrackingPredictionResult SbirsTrackingCoordinator::BuildAnglePredictionResult(
     const tracking::SbirsAngleCvGaussianState& state) {
   SbirsTrackingPredictionResult result;
@@ -412,6 +476,7 @@ SbirsTrackingPredictionResult SbirsTrackingCoordinator::BuildAnglePredictionResu
   return result;
 }
 
+// 过程：释放目标即清空该目标的 EKF/角度 CV-KF/IMM 状态、快照与 NIS 计数，避免下次重捕沿用旧状态。
 void SbirsTrackingCoordinator::ReleaseTarget(std::uint64_t target_id) {
   filter_states_.erase(target_id);
   angle_kf_states_.erase(target_id);
@@ -453,12 +518,14 @@ bool SbirsTrackingCoordinator::TryGetPosteriorPosition(std::uint64_t target_id,
   return std::isfinite(*sigma_x_m) && std::isfinite(*sigma_y_m) && std::isfinite(*sigma_z_m);
 }
 
+// 过程：只把连续超门计数清零、保留滤波器状态（配置重载后重建计数基线，不打断跟踪）。
 void SbirsTrackingCoordinator::ResetNisGateCounts() {
   for (auto& entry : nis_gate_exceeded_counts_) {
     entry.second = 0U;
   }
 }
 
+// 过程：standby 清空全部后端状态与 IMM 初始化标志 —— 回宽场后目标重新初始化，不做跨模式续跟。
 void SbirsTrackingCoordinator::ClearForStandby() {
   filter_states_.clear();
   angle_kf_states_.clear();
@@ -468,6 +535,8 @@ void SbirsTrackingCoordinator::ClearForStandby() {
   imm_initialized_ = false;
 }
 
+// 过程：快照 = 三种后端状态 + NIS 计数 + IMM 各模型状态/权重；IMM 活跃标志由快照是否
+//       非空反推，避免把已定义组件但未建滤波器误写成活跃。
 SbirsTrackingRuntimeState SbirsTrackingCoordinator::CaptureRuntimeState() const {
   SbirsTrackingRuntimeState state;
   state.filter_states = filter_states_;
@@ -485,6 +554,7 @@ SbirsTrackingRuntimeState SbirsTrackingCoordinator::CaptureRuntimeState() const 
   return state;
 }
 
+// 过程：恢复只回灌数据，不重建 IMM 滤波器实例（下次 Predict 时按快照懒建，见 PredictTarget）。
 void SbirsTrackingCoordinator::RestoreRuntimeState(const SbirsTrackingRuntimeState& state) {
   filter_states_ = state.filter_states;
   angle_kf_states_ = state.angle_kf_states;
@@ -494,6 +564,8 @@ void SbirsTrackingCoordinator::RestoreRuntimeState(const SbirsTrackingRuntimeSta
   imm_initialized_ = false;
 }
 
+// 过程：为每个模型建一套 预测器 + 量测模型 + 更新器；q 列表默认 [1.0, 100.0]，跨度覆盖
+//       平稳目标与机动目标两档，按配置可改或增模型数。
 void SbirsTrackingCoordinator::InitializeImmComponents(
     const config::SbirsTrackingConfig& tracking) {
   imm_predictors_owned_.clear();
@@ -525,6 +597,8 @@ void SbirsTrackingCoordinator::InitializeImmComponents(
   imm_initialized_ = true;
 }
 
+// 过程：马尔可夫转移矩阵取对角 0.95（保持）、非对角 0.05/(n−1)（切换），初权 1/n、各模型
+//       初态相同 —— 无先验知识时让数据自己把权重挑出来。
 tracking::SbirsImmFilter* SbirsTrackingCoordinator::CreateImmFilter(
     std::uint64_t target_id, const tracking::SbirsGaussianState& initial_state) {
   const int num_models = static_cast<int>(imm_predictors_.size());

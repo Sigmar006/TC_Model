@@ -3,6 +3,23 @@
  * @brief 动态加权匹配实现。
  */
 
+/**
+ * ## 过程：特征库匹配（LRDR 跟踪/识别链 · 第 11 步）
+ * - 上游：窗口聚合后的 `RirFeatureSet`、观测上下文（SNR/带宽/距离分辨率）、已加载的
+ *   特征库（型号 → profile → 各维模板 μ/σ）与策略权重。
+ * - 本步：逐维高斯相似度 s = exp(−z²/2)（z = |x−μ|/σ）；profile 适用域校验（SNR/分辨率/
+ *   视角覆盖/带宽）；型号得分 = 质量加权平均相似度 × 型号先验，取各 profile 的最大值；
+ *   大类得分取类内最佳型号分；置信度 = 最佳型号分/全部型号分之和，并给出 runner-up
+ *   供最小裕度判决。
+ * - 下游：`RirTracker` 三态判决（`acceptance_score` + `minimum_margin` + 有效维度数）；
+ *   验收第 47A 项的最佳型号/大类/置信度。
+ * - 关键参数：`RirRecognitionFeatureWeights`（policy `feature_weights`）、
+ *   `acceptance_score`（场景 0.6）、`minimum_margin`（场景 0.05）、profile 级
+ *   `min_snr_db`/`max_range_resolution_m`/`minimum_aspect_coverage_deg`/
+ *   `minimum_bandwidth_hz`。
+ * - 对应验收项：第 47A 项 综合特征识别功能测试（识别正确率 >60%）。
+ */
+
 #include "remote_identification_radar/recognition/RecognitionMatcher.h"
 
 #include <algorithm>
@@ -15,6 +32,7 @@ namespace recognition {
 namespace {
 
 /** @brief 连续特征相似度：z = |x - mean| / std，s = exp(-0.5·z²)。 */
+// 过程：σ≤0（模板无离散度）判 0 分；命中时 s∈(0,1]，z 越大分越低。
 float GaussianSimilarity(float value, float mean, float std) {
   if (std <= 0.0f) {
     return 0.0f;
@@ -23,6 +41,8 @@ float GaussianSimilarity(float value, float mean, float std) {
   return std::exp(-0.5f * z * z);
 }
 
+// 过程：三子维等权（各权重 1.0），非直线时补 log10(转弯半径) 一维——对数化让米级到
+//       千公里级的半径可比。
 float MotionSimilarity(const RirMotionObservation& motion, const RirMotionTemplate& tpl) {
   float sum = 0.0f;
   float weight_sum = 0.0f;
@@ -50,6 +70,7 @@ float MotionSimilarity(const RirMotionObservation& motion, const RirMotionTempla
   return weight_sum > 0.0f ? sum / weight_sum : 0.0f;
 }
 
+// 过程：极化维 = 能量差/相对差/能量和三子维的等权平均。
 float PolarizationSimilarity(const RirPolarizationObservation& polarization,
                              const RirPolarizationTemplate& tpl) {
   float sum = 0.0f;
@@ -72,6 +93,7 @@ float PolarizationSimilarity(const RirPolarizationObservation& polarization,
   return weight_sum > 0.0f ? sum / weight_sum : 0.0f;
 }
 
+// 过程：宽带维 = 长度/峰数/能量集中率三子维的等权平均。
 float RangeProfileSimilarity(const RirRangeProfileObservation& range_profile,
                              const RirRangeProfileTemplate& tpl) {
   float sum = 0.0f;
@@ -94,6 +116,7 @@ float RangeProfileSimilarity(const RirRangeProfileObservation& range_profile,
 }
 
 /** @brief profile 是否满足适用条件。 */
+// 过程：四项适用域 = SNR 下限 / 分辨率上限 / 视角覆盖下限 / 最小带宽，缺一即跳过。
 bool Applicable(const RirModelProfile& profile, const RirFeatureSet& features,
                 const RirObservationContext& context) {
   if (context.snr_db < profile.min_snr_db) {
@@ -117,6 +140,7 @@ bool Applicable(const RirModelProfile& profile, const RirFeatureSet& features,
 
 }  // namespace
 
+// 过程：仅对有效维度计算相似度（无效维保留 0），供验收分项行展示打分形态。
 std::array<float, 4> RirMatcher::ComputeFeatureSimilarities(
     const RirFeatureSet& features, const RirModelProfile& profile) {
   std::array<float, 4> similarities = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -136,6 +160,7 @@ std::array<float, 4> RirMatcher::ComputeFeatureSimilarities(
   return similarities;
 }
 
+// 过程：库未加载/无型号或基础权重和为 0 时返回"无候选"（调用方据此保持既有结论）。
 RirMatchResult RirMatcher::QueryBestMatch(
     const RirFeatureSet& features, const RirObservationContext& context,
     const RirFeatureDatabase& database,
@@ -164,6 +189,8 @@ RirMatchResult RirMatcher::QueryBestMatch(
   std::vector<ModelScore> model_scores;
   model_scores.reserve(database.models().size());
 
+  // 过程：逐型号取各适用 profile 的最高分——动态加权：质量 0 的维度既不进分子也不进
+  //       分母，故短驻留/低 SNR 的维度自然退出竞争。
   for (std::size_t m = 0U; m < database.models().size(); ++m) {
     const RirModel& model = database.models()[m];
     float best_profile_score = 0.0f;
@@ -247,6 +274,7 @@ RirMatchResult RirMatcher::QueryBestMatch(
   std::sort(category_scores.begin(), category_scores.end(),
             [](const CategoryScore& lhs, const CategoryScore& rhs) { return lhs.score > rhs.score; });
 
+  // 过程：置信度 = 最佳型号分/全部型号分之和（归一化竞争强度）；runner_up 供最小裕度。
   float total_score = 0.0f;
   for (std::size_t i = 0U; i < model_scores.size(); ++i) {
     total_score += model_scores[i].score;

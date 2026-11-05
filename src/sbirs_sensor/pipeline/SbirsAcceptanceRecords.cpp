@@ -126,6 +126,8 @@ const char* StageName(const session::SbirsDetectionLifecycleEvent& event) {
       return "宽视场搜索";
     case output::SbirsObservationStage::kNarrowFieldAcquisition:
       return "窄视场捕获";
+    case output::SbirsObservationStage::kWideAreaScan:
+      return "大幅面预警扫描";
     case output::SbirsObservationStage::kNarrowFieldTrack:
       return "窄视场跟踪";
     default:

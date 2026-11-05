@@ -1910,6 +1910,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       // SNR/探测概率/检测标志（评审 2026-08-26 条2：Pd 复用雷达公共层 Marcum Q 模型
       // （Swerling0 单脉冲），Pfa 由宽场门限系数 k 按高斯尾部 Pfa=0.5·erfc(k/√2) 反推）。
       std::string energy = "卫星ID=" + std::to_string(satellite_entity_id_);
+      // 过程：标注本条属于哪种扫描模式（大幅面预警扫描 / 宽场扫描），便于外部按模式统计。
+      energy += wide_area_scan_active ? " 模式=大幅面预警扫描" : " 模式=宽场扫描";
       energy += " 扫描幅宽az/el(ECI)=(" +
                 oneq::logging::FormatF(scan_mission.wide_field_fov_az_deg * kDegToRad, 6) + "," +
                 oneq::logging::FormatF(scan_mission.wide_field_fov_el_deg * kDegToRad, 6) + ")rad";

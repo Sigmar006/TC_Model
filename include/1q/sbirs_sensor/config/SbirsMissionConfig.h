@@ -26,6 +26,36 @@ enum class ONEQ_API SbirsScanDirection { kIncreasingAzimuth = 0, kDecreasingAzim
 enum class ONEQ_API SbirsScanAzimuthReference { kEciAbsolute = 0, kNadirRelative };
 
 /**
+ * @brief 大幅面预警扫描模式的**独立参数块**（2026-11-05 甲方新增）。
+ *
+ * @details 与宽场（WFOV 24°）/窄场（NFOV 2.8°）并列的第三种观测模式：
+ *   - **更大画幅的预警扫描**：视场介于宽窄之间（默认 8°，宽 24°、窄 2.8°），
+ *     扫描更慢以换取更长驻留（默认 18°/s，宽场 36°/s）；
+ *   - **独立门限与精度锚点**：检测门限、测角误差锚点都不与宽场共用，
+ *     使该模式的测角精度**落在宽场与窄场之间**（默认 35 dB⇒1.6 µrad、10 dB⇒3.2 µrad，
+ *     宽场为 1.0/5.0、窄场按同一表但 SNR 更高）；
+ *   - 检出后仍按既有链路进窄场调度与跟踪，所以"预警发现"与"精跟"不脱节。
+ *
+ * @note `enabled=false` 时整块不生效，pipeline 行为与改动前逐位一致。
+ */
+struct ONEQ_API SbirsWideAreaScanConfig {
+  bool enabled{false};                            /**< 是否启用大幅面预警扫描模式 */
+  float fov_az_deg{8.0f};                         /**< 大幅面视场方位（deg），须 (narrow, wide) */
+  float fov_el_deg{8.0f};                         /**< 大幅面视场俯仰（deg） */
+  float scan_rate_deg_per_sec{18.0f};             /**< 扫描速率（deg/s）；驻留 = fov/rate */
+  float scan_start_az_deg{180.0f};                /**< 扫描方位起点（ECI，[0,360)） */
+  float scan_span_deg{360.0f};                    /**< 有向扫描跨度（deg，(0,360]） */
+  float scan_el_start_deg{-8.0f};                 /**< 俯仰栅格起始行中心（deg） */
+  float scan_el_span_deg{24.0f};                  /**< 俯仰栅格跨度（deg） */
+  float scan_el_step_deg{4.0f};                   /**< 俯仰栅格行间距（deg），须 ≤ fov_el_deg 才无隙 */
+  float min_snr_linear{4.5f};                     /**< 检测门限（线性 SNR），介于宽 4.0 与窄 5.0 之间 */
+  float sigma_at_35db_urad{1.6f};                 /**< 35 dB 处测角 1σ（µrad），须介于窄场与宽场之间 */
+  float sigma_at_10db_urad{3.2f};                 /**< 10 dB 处测角 1σ（µrad） */
+  SbirsScanAzimuthReference scan_azimuth_reference{
+      SbirsScanAzimuthReference::kNadirRelative}; /**< 方位基准（默认相对星下点，便于预警扇区对准） */
+};
+
+/**
  * @brief SBIRS-inspired 任务与视场参数。
  * @note 纯数据类型 (POD)。WFOV/NFOV 视场、扫描范围与速率、距离门控和帧率共同定义
  *       pipeline 几何门控与扫描相位推进；凝视相关参数仅在 NFOV 通道生效。
@@ -63,6 +93,11 @@ struct ONEQ_API SbirsMissionConfig {
   float narrow_pointing_settle_error_deg{0.0f};            /**< NFOV 指向稳定误差，单位 deg */
   float narrow_pointing_max_slew_rate_deg_per_sec{30.0f};  /**< NFOV 光轴最大转速，单位 deg/s */
   float narrow_pointing_settle_tolerance_deg{0.01f};       /**< NFOV 光轴稳定容差，单位 deg */
+  /**
+   * @brief 大幅面预警扫描模式参数（独立配置块，2026-11-05）。
+   * @note 与 WFOV/NFOV 并列的第三模式；`enabled=false` 时不影响既有行为。
+   */
+  SbirsWideAreaScanConfig wide_area_scan{};
 };
 
 }  // namespace config

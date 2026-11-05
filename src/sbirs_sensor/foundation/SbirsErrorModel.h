@@ -120,6 +120,37 @@ double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, d
  */
 double ResolveLinearSnrSigmaDeg(double snr_db);
 
+/**
+ * @brief 线性测角 σ 锚点的**作用域覆盖**（大幅面预警扫描模式专用，2026-11-05）。
+ *
+ * @details 宽场/窄场共用库内默认锚点（35 dB⇒1.0 µrad、10 dB⇒5.0 µrad）。第三种观测模式
+ *   （大幅面预警扫描）需要自己的一档精度（要求落在宽窄之间），又不能改动前两种模式的既有
+ *   数值，故以"进入设置、离开恢复"的方式覆盖；`enabled=false` 时什么都不做。
+ *   RAII：任何 return/异常路径都会恢复默认锚点。
+ */
+class LinearSigmaScope {
+ public:
+  /**
+   * @param[in] enabled 是否启用覆盖。
+   * @param[in] high_db 强端锚点 SNR（dB）。
+   * @param[in] high_urad 强端锚点 1σ（µrad）。
+   * @param[in] low_db 弱端锚点 SNR（dB）。
+   * @param[in] low_urad 弱端锚点 1σ（µrad）。
+   */
+  LinearSigmaScope(bool enabled, double high_db, double high_urad, double low_db, double low_urad);
+  ~LinearSigmaScope();
+
+  LinearSigmaScope(const LinearSigmaScope&) = delete;
+  LinearSigmaScope& operator=(const LinearSigmaScope&) = delete;
+
+ private:
+  bool prev_active_{false};      /**< 前一次是否处于覆盖状态 */
+  double prev_high_db_{35.0};    /**< 前一次强端锚点 SNR（dB） */
+  double prev_high_urad_{1.0};   /**< 前一次强端锚点 1σ（µrad） */
+  double prev_low_db_{10.0};     /**< 前一次弱端锚点 SNR（dB） */
+  double prev_low_urad_{5.0};    /**< 前一次弱端锚点 1σ（µrad） */
+};
+
 /** @brief 当前是否启用"SNR↔测角误差线性标定"（供管线标注日志口径）。 */
 bool IsLinearSnrAngleSigmaEnabled();
 

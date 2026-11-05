@@ -23,7 +23,8 @@ namespace output {
 enum class ONEQ_API SbirsObservationStage {
   kWideFieldSearch = 0,    /**< WFOV 宽视场搜索 */
   kNarrowFieldAcquisition, /**< NFOV 首次捕获 */
-  kNarrowFieldTrack        /**< NFOV 持续跟踪（估计或真值辅助） */
+  kNarrowFieldTrack,       /**< NFOV 持续跟踪（估计或真值辅助） */
+  kWideAreaScan            /**< 大幅面预警扫描（第三种观测模式，2026-11-05） */
 };
 
 /**

@@ -104,6 +104,19 @@ constexpr double kSigmaLinearLowUrad = 5.0;
 // 全局开关（默认启用线性标定）。库内单线程仿真使用，不引入额外同步开销。
 bool g_linear_snr_sigma_enabled = true;
 
+// 中译：**按观测模式覆盖线性锚点**（2026-11-05 大幅面预警扫描）——宽场/窄场共用上面那组
+//   锚点，第三种模式（大幅面）需要自己的精度档位（落在宽窄之间），又不能改前两种的既有
+//   数值，故用作用域覆盖：进入分支前设置、离开自动恢复（RAII），单线程仿真无需加锁。
+// 标识：大幅面模式精度锚点覆盖（2026-11-05）。
+struct LinearAnchorOverride {
+  bool active{false};
+  double high_db{35.0};
+  double high_urad{1.0};
+  double low_db{10.0};
+  double low_urad{5.0};
+};
+LinearAnchorOverride g_linear_anchor_override;
+
 }  // namespace
 
 bool SetLinearSnrAngleSigmaEnabled(bool enabled) {
@@ -118,18 +131,54 @@ bool IsLinearSnrAngleSigmaEnabled() { return g_linear_snr_sigma_enabled; }
 //       按端点取；最后乘 180/π·1e-6 换成 deg。SNR 非正时直接取弱端 5 µrad。
 double ResolveLinearSnrSigmaDeg(double snr_db) {
   constexpr double kUradToDeg = 180.0 / kPi * 1.0e-6;
+  // 过程：命中某观测模式的作用域覆盖时用该模式自己的锚点（否则用库内默认锚点）。
+  const double high_db = g_linear_anchor_override.active ? g_linear_anchor_override.high_db
+                                                         : kSigmaLinearSnrHighDb;
+  const double high_urad = g_linear_anchor_override.active
+                               ? g_linear_anchor_override.high_urad
+                               : kSigmaLinearHighUrad;
+  const double low_db = g_linear_anchor_override.active ? g_linear_anchor_override.low_db
+                                                        : kSigmaLinearSnrLowDb;
+  const double low_urad = g_linear_anchor_override.active ? g_linear_anchor_override.low_urad
+                                                          : kSigmaLinearLowUrad;
   if (!(snr_db > 0.0)) {
-    return kSigmaLinearHighUrad * kUradToDeg;
+    return high_urad * kUradToDeg;
   }
-  double t = (kSigmaLinearSnrHighDb - snr_db) / (kSigmaLinearSnrHighDb - kSigmaLinearSnrLowDb);
+  double t = (high_db - snr_db) / (high_db - low_db);
   if (t < 0.0) {
     t = 0.0;
   }
   if (t > 1.0) {
     t = 1.0;
   }
-  const double urad = kSigmaLinearHighUrad + (kSigmaLinearLowUrad - kSigmaLinearHighUrad) * t;
+  const double urad = high_urad + (low_urad - high_urad) * t;
   return urad * kUradToDeg;
+}
+
+// 过程：作用域锚点覆盖的构造/析构（进入设置、离开恢复），供 pipeline 在"大幅面预警扫描"
+//       分支内使用；异常/提前 return 都会恢复，不污染宽场/窄场的默认口径。
+LinearSigmaScope::LinearSigmaScope(bool enabled, double high_db, double high_urad, double low_db,
+                                   double low_urad) {
+  prev_active_ = g_linear_anchor_override.active;
+  prev_high_db_ = g_linear_anchor_override.high_db;
+  prev_high_urad_ = g_linear_anchor_override.high_urad;
+  prev_low_db_ = g_linear_anchor_override.low_db;
+  prev_low_urad_ = g_linear_anchor_override.low_urad;
+  if (enabled) {
+    g_linear_anchor_override.active = true;
+    g_linear_anchor_override.high_db = high_db;
+    g_linear_anchor_override.high_urad = high_urad;
+    g_linear_anchor_override.low_db = low_db;
+    g_linear_anchor_override.low_urad = low_urad;
+  }
+}
+
+LinearSigmaScope::~LinearSigmaScope() {
+  g_linear_anchor_override.active = prev_active_;
+  g_linear_anchor_override.high_db = prev_high_db_;
+  g_linear_anchor_override.high_urad = prev_high_urad_;
+  g_linear_anchor_override.low_db = prev_low_db_;
+  g_linear_anchor_override.low_urad = prev_low_urad_;
 }
 
 double ResolveFrameAngularSigmaDeg(const config::SbirsErrorModelConfig& model, double snr_linear,

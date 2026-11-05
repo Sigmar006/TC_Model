@@ -420,6 +420,39 @@ void SbirsTrackingCoordinator::ReleaseTarget(std::uint64_t target_id) {
   imm_snapshots_.erase(target_id);
 }
 
+bool SbirsTrackingCoordinator::TryGetPosteriorPosition(std::uint64_t target_id,
+                                                      session::SbirsVector3M* position_eci_m,
+                                                      double* sigma_x_m, double* sigma_y_m,
+                                                      double* sigma_z_m) const {
+  if (position_eci_m == nullptr || sigma_x_m == nullptr || sigma_y_m == nullptr ||
+      sigma_z_m == nullptr) {
+    return false;
+  }
+  const std::map<std::uint64_t, tracking::SbirsGaussianState>::const_iterator it =
+      filter_states_.find(target_id);
+  if (it == filter_states_.end()) {
+    return false;
+  }
+  // 中译：**后验位置与三轴 1-σ**（2026-11-04 甲方要求第13项补"跟踪位置误差"）——
+  //   位置取 CV 交错布局的 0/2/4，1-σ = sqrt(P_ii)。方差为负或非有限时视为无效后验，
+  //   由调用方写 `不适用(滤波后验无效)`，不写假数值。
+  // 标识：跟踪后验位置/协方差导出（2026-11-04）。
+  const tracking::SbirsGaussianState& state = it->second;
+  const double var_x = static_cast<double>(state.covariance(0, 0));
+  const double var_y = static_cast<double>(state.covariance(2, 2));
+  const double var_z = static_cast<double>(state.covariance(4, 4));
+  if (!(var_x >= 0.0) || !(var_y >= 0.0) || !(var_z >= 0.0)) {
+    return false;
+  }
+  position_eci_m->x = static_cast<float>(state.mean(0));
+  position_eci_m->y = static_cast<float>(state.mean(2));
+  position_eci_m->z = static_cast<float>(state.mean(4));
+  *sigma_x_m = std::sqrt(var_x);
+  *sigma_y_m = std::sqrt(var_y);
+  *sigma_z_m = std::sqrt(var_z);
+  return std::isfinite(*sigma_x_m) && std::isfinite(*sigma_y_m) && std::isfinite(*sigma_z_m);
+}
+
 void SbirsTrackingCoordinator::ResetNisGateCounts() {
   for (auto& entry : nis_gate_exceeded_counts_) {
     entry.second = 0U;

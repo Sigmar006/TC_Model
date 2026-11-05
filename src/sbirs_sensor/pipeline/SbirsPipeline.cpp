@@ -2855,6 +2855,41 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         nfov += ",锚点=35dB/1.00urad~10dB/5.00urad,口径=";
         nfov += foundation::IsLinearSnrAngleSigmaEnabled() ? "线性" : "物理";
       }
+      // 中译：**跟踪位置误差 + 位置协方差**（2026-11-04 甲方要求）——红外只能测角，
+      //   位置来自 6 维 ECI 恒速 EKF 的后验（状态 [x,vx,y,vy,z,vz]，位置在 0/2/4）。
+      //   这里把"后验位置 − 场景真值位置"的三轴差与模长写出，并同时给三轴 1-σ
+      //   （= sqrt(P_ii)），使误差能否用滤波器自身不确定度解释（误差/σ 一栏）可判。
+      //   注意：本 EKF 以真值状态起步（initial_position_std_m=1000 m、速度 100 m/s），
+      //   故该误差反映"从起始时刻起的传播/更新漂移"，不是无先验的绝对定位精度；
+      //   单星测角对沿视线方向的距离不可观测，沿视线分量主要体现协方差增长而非收敛。
+      // 标识：第13项跟踪位置误差与协方差（2026-11-04）。
+      {
+        session::SbirsVector3M posterior_position{};
+        double sigma_x_m = 0.0;
+        double sigma_y_m = 0.0;
+        double sigma_z_m = 0.0;
+        if (context.target != nullptr &&
+            tracking_coordinator_.TryGetPosteriorPosition(engaged_id, &posterior_position,
+                                                          &sigma_x_m, &sigma_y_m, &sigma_z_m)) {
+          const double dx = static_cast<double>(posterior_position.x) - context.target->position_eci_m.x;
+          const double dy = static_cast<double>(posterior_position.y) - context.target->position_eci_m.y;
+          const double dz = static_cast<double>(posterior_position.z) - context.target->position_eci_m.z;
+          const double norm_m = std::sqrt(dx * dx + dy * dy + dz * dz);
+          nfov += " 跟踪位置误差=" + oneq::logging::FormatF(norm_m, 3) + "m";
+          nfov += " 跟踪位置误差三轴ECI=(" + oneq::logging::FormatF(dx, 3) + "," +
+                  oneq::logging::FormatF(dy, 3) + "," + oneq::logging::FormatF(dz, 3) + ")m";
+          nfov += " 跟踪位置协方差1σ=(" + oneq::logging::FormatF(sigma_x_m, 3) + "," +
+                  oneq::logging::FormatF(sigma_y_m, 3) + "," +
+                  oneq::logging::FormatF(sigma_z_m, 3) + ")m";
+          const double sigma_norm_m =
+              std::sqrt(sigma_x_m * sigma_x_m + sigma_y_m * sigma_y_m + sigma_z_m * sigma_z_m);
+          if (sigma_norm_m > 0.0) {
+            nfov += " 位置误差/σ=" + oneq::logging::FormatF(norm_m / sigma_norm_m, 3);
+          }
+        } else {
+          nfov += " 跟踪位置误差=不适用(无滤波后验)";
+        }
+      }
       // 高刷新率高精度数据输出（单镜筒轮转口径）：本周期实际帧数 + 单帧/融合 1-σ。
       nfov += " 帧数=" + std::to_string(nfov_frame_count);
       // 帧数=0 而跟踪状态=跟踪 的周期（现场 144 行）实为几何/SNR 门未过、尚未丢锁：

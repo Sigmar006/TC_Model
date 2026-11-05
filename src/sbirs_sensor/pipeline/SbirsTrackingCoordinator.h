@@ -117,6 +117,20 @@ class SbirsTrackingCoordinator {
   void ResetNisGateCounts();
   void ClearForStandby();
   SbirsTrackingRuntimeState CaptureRuntimeState() const;
+  /**
+   * @brief 取某目标的 EKF **后验位置**与位置协方差对角（验收用，2026-11-04）。
+   *
+   * @details 第 13 项要给出"传感器跟踪位置误差"，即滤波器后验位置与场景真值之差；
+   *   同时给出协方差对角，使误差能否用不确定度解释（误差/σ）可判。
+   *   状态布局为 CV 交错 `[x,vx,y,vy,z,vz]`（ECI），位置在 0/2/4，协方差取 (0,0)/(2,2)/(4,4)。
+   * @param[in] target_id 目标 ID。
+   * @param[out] position_eci_m 后验位置（ECI，m）。
+   * @param[out] sigma_x_m / sigma_y_m / sigma_z_m 位置 1-σ（m，= sqrt(P_ii)）。
+   * @return 该目标存在有效后验且三轴方差非负有限时为 true。
+   */
+  bool TryGetPosteriorPosition(std::uint64_t target_id, session::SbirsVector3M* position_eci_m,
+                               double* sigma_x_m, double* sigma_y_m, double* sigma_z_m) const;
+
   void RestoreRuntimeState(const SbirsTrackingRuntimeState& state);
 
  private:

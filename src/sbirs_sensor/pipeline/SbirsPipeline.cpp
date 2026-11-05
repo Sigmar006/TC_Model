@@ -2420,7 +2420,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       nfov_last_pointing_deg_[satellite_entity_id_] =
           std::make_pair(acquisition_request.command_azimuth_deg,
                          acquisition_request.command_elevation_deg);
-      SBIRS_DUAL_ACCEPTANCE_ITEM(
+      if (emit_joint_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(
           sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
           "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
               std::to_string(target_id) + " 捕获=" + std::string(captured ? "成功" : "失败") +
@@ -2429,7 +2429,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
               oneq::logging::FormatF(selected.command_elevation_deg * kDegToRad, 8) +
               ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB 镜头转向时间=" +
               oneq::logging::FormatF(turn_time_s, 3) + "s 窄视场镜头转动时间=" +
-              oneq::logging::FormatF(turn_time_s, 3) + "s");
+              oneq::logging::FormatF(turn_time_s, 3) + "s"); }
     }
     if (!captured) {
       log_acceptance_release(target_id, "acquisition_ineligible", 0U);
@@ -3042,13 +3042,13 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
           //       窄场角按规范口径写 ECI 弧度（cue 预测命令角）。
           constexpr double kDegToRad = 0.017453292519943295;
           const double selected_snr_db = 10.0 * std::log10(std::max(selected.snr, 1.0e-12));
-          SBIRS_DUAL_ACCEPTANCE_ITEM(
+          if (emit_joint_rows) { SBIRS_DUAL_ACCEPTANCE_ITEM(
               sim_time_sec, input.cycle_index, "宽窄视场联合探测功能测试",
               "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
                   std::to_string(served_target_id) + " 捕获=转向中 窄场方位/俯仰(ECI)=(" +
                   oneq::logging::FormatF(selected.command_azimuth_deg * kDegToRad, 8) + "," +
                   oneq::logging::FormatF(selected.command_elevation_deg * kDegToRad, 8) +
-                  ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB");
+                  ")rad SNR=" + oneq::logging::FormatF(selected_snr_db, 3) + "dB"); }
         }
         append_wfov_detection(selected);
       } else if (pointing_result.status == SbirsPointingAdvanceStatus::kTimedOut) {

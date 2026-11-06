@@ -11,6 +11,8 @@ Purpose: 按当前源码说明 SBIRS 与 RIR 的执行流程、数据来源、�
 
 判定以函数体为准，而非文件头、旧文档或算法名称：存在注释与执行语句不一致时，明确写出现状。公式是对执行语句的转写，不用教科书公式替换实现。源码链接均相对本文件；行号用于定位本次核对版本。
 
+文中的 ECEF、ECI、ENU、LLA 分别为地心地固坐标、地心惯性坐标、东-北-天局部坐标与大地坐标；SNR、SINR 分别为信噪比、信干噪比；FOV、IFOV 分别为视场、瞬时视场，WFOV、NFOV 分别为宽场视场、窄场视场。
+
 ## 1. 流程描述
 
 ### 1.1 边界、坐标与数据性质
@@ -19,7 +21,7 @@ Purpose: 按当前源码说明 SBIRS 与 RIR 的执行流程、数据来源、�
 |---|---|---|
 | 公共入口 | `SbirsSession::StepWithResult` | `RirSession::StepWithResult` |
 | 核心编排 | `SbirsController::RunOnce` → `SbirsPipeline::RunCycle` | `RirSession::Impl::RunCycle` → `RirController::RunCycle` |
-| 宿主提供 | UTC、卫星 ECEF 位置/速度、Body→ECI 姿态、场景目标位置/辐射强度等 | 平台 ECEF 位置、雷达局部 ENU 目标位置/速度/RCS、识别特征样本、可选 RF 场景 |
+| 宿主提供 | UTC、卫星 ECEF 位置/速度、Body→ECI 姿态、场景目标位置/辐射强度等 | 平台 ECEF 位置、雷达局部 ENU 目标位置/速度/雷达截面积（RCS）、识别特征样本、可选射频（RF）场景 |
 | 内部计算参考 | 位置/速度转 ECI；视场门在传感器系；检测角为 ECI 极坐标 | 目标与滤波状态为雷达局部 ENU；RF 传播使用 ECEF |
 | 角度单位 | 内部几何多为 deg，滤波 rad，公开检测 rad | 内部扫描/特征多为 deg，量测角误差 rad |
 | 公开主输出 | `SbirsOutputFrame`：扫描角、检测 ID/时刻/方位/俯仰/线性 SNR/阶段/检测标志 | `RirOutputFrame`：`feature_measurements` 与 `recognition_outputs` 两种产品 |
@@ -80,17 +82,17 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    accTitle: RIR 探测跟踪识别流程
+    accTitle: RIR 检测跟踪识别流程
     accDescr: 展示周期准入、驻留规划、射频与检测单元、量测关联滤波和四维特征识别，标出跟踪反馈。
     subgraph rir_prepare ["入口与照射计划"]
         r_entry["R01 电源 / 校验 / 配置提交"] --> r_plan["R02 指定与外部引导 + R03 驻留计划"]
         r_plan --> r_mode{"kIdentify？"}
-        r_mode -->|否| r_hold["保持已有航迹及结论，不执行探测链"]
+        r_mode -->|否| r_hold["保持已有航迹及结论，不执行检测链"]
         r_mode -->|是| r_rf["R04 周期级 RF 前端"]
     end
     subgraph rir_detect ["目标与驻留循环"]
         r_rf --> r_candidates["遮挡 / 搜索扇区 / 主瓣覆盖门"]
-        r_candidates --> r_physics["R05 方向图 + R06 RCS + R07 损耗 + R08 杂波"]
+        r_candidates --> r_physics["R05 天线方向图 + R06 RCS + R07 损耗 + R08 杂波"]
         r_physics --> r_cell["R09 时频重叠 + R10 SINR 账本"]
         r_cell --> r_decision["R11 CFAR 或 6 dB 模式门"]
         r_decision --> r_measure["R12 偏置 / 协方差 / 合成量测"]
@@ -128,13 +130,13 @@ flowchart TB
 | S04 | 安装、姿态、失准与指向扰动 | R04 | 发射波形、RF 前端与饱和 |
 | S05 | 活动、遮挡、距离和视场门 | R05 | 候选覆盖与天线方向图 |
 | S06 | 大气透过率 | R06 | 有效 RCS |
-| S07 | 辐射、噪声、SNR、最大距离 | R07 | 传播与大气损耗 |
-| S08 | 单帧/多帧量测误差 | R08 | 主瓣/副瓣面杂波 |
+| S07 | 辐射、噪声、SNR、最大作用距离 | R07 | 传播与大气损耗 |
+| S08 | 单帧/多帧量测误差 | R08 | 主瓣/旁瓣面杂波 |
 | S09 | 本星/跨星 cue 与预测 | R09 | 接收窗脉冲数与干扰重叠 |
 | S10 | 连续命中、入列和轮转 | R10 | 四支路处理与 SINR |
 | S11 | 镜筒限速转向和首次捕获 | R11 | 统计检测与准入门 |
 | S12 | 持续跟踪门与稳定帧 | R12 | 量测、偏置与协方差 |
-| S13 | 真值辅助与三种估计后端 | R13 | 关联波门与 LAPJV |
+| S13 | 真值辅助与三种估计后端 | R13 | 关联门与 LAPJV |
 | S14 | 原生观测与归属输出 | R14 | 生命周期与 CV-KF |
 | S15 | 配置、事件、记录与恢复 | R15 | IMM 多模型滤波 |
 | — | — | R16 | 包络剔除与快照去重 |
@@ -142,7 +144,7 @@ flowchart TB
 | — | — | R18 | RCS 特征 |
 | — | — | R19 | 双通道极化特征 |
 | — | — | R20 | 极化矩阵统计旁路 |
-| — | — | R21 | 散射中心/一维像特征 |
+| — | — | R21 | 散射中心/一维距离像特征 |
 | — | — | R22 | 特征装配和质量掩码 |
 | — | — | R23 | 数据库与动态加权匹配 |
 | — | — | R24 | 多周期积累、判决和保持 |
@@ -329,9 +331,9 @@ $$
 
 $a_t,e_t$ 为传感器系目标角，$a_c,e_c$ 为实际扫描中心，$F_a,F_e$ 为全宽 FOV（deg），`wrap` 为最短方位角差，$\chi$ 为线性红外 SNR。宽场门默认 4，窄场默认 6；大幅面覆盖后的宽场门默认 4.5。均为配置，不是在线背景 CFAR 估计。
 
-宽场 FOV 或 SNR 不过时，有合法外部 cue 则进入外部候选路径；否则清锁/命中并给出视场越界轴或 SNR 主因诊断。SNR 归因是反事实损失比较，不是另一套检测算法。最大探测距离是 S07 诊断反解量；真正前置距离门仍是任务 `min/max_range_m`。
+宽场 FOV 或 SNR 不过时，有合法外部 cue 则进入外部候选路径；否则清锁/命中并给出视场越界轴或 SNR 主因诊断。SNR 归因是反事实损失比较，不是另一套检测算法。最大作用距离是 S07 诊断反解量；真正前置距离门仍是任务 `min/max_range_m`。
 
-### 2.6 S06 大气路径透过率
+### 2.6 S06 大气透过率
 
 #### 输入
 
@@ -368,7 +370,7 @@ $RH,T,W,S$ 分别为湿度百分数、温度、天气表值、海况表值。$V$
 
 以目标到卫星线段参数化，解与半径 `Re+100 km` 球的二次方程；两根区间裁到 `[0,1]` 后算球内弦长 $L$，气团数 $X=\operatorname{clip}_{[0,10]}(L/100\mathrm{km})$。$Re$ 为平均地球半径。纯空间路径不入壳，$X=0$，透过率为 1。这里是球壳均匀衰减近似，不是逐层光谱传输或云图追迹。
 
-### 2.7 S07 辐射、噪声、SNR 与最大探测距离
+### 2.7 S07 辐射、噪声、SNR 与最大作用距离
 
 #### 输入
 
@@ -376,7 +378,7 @@ $RH,T,W,S$ 分别为湿度百分数、温度、天气表值、海况表值。$V$
 |---|---|
 | `radiant_intensity_w_per_sr`、`range_m` | 场景辐射强度 $I_t$（W/sr），S02 斜距 $R$（m） |
 | `optical_aperture_m`、`optical_transmission`、`detector_quantum_efficiency`、`integration_time_sec` | 硬件配置：孔径 $D$、光学透过率 $\tau_o$、量子效率 $\eta$、积分时间 $t$ |
-| NEP、背景亮度、像元间距、焦距、波段、读出 RMS | `SbirsHardwareConfig` |
+| 噪声等效功率（NEP）、背景辐射亮度、像元间距、焦距、波段、读出噪声 RMS | `SbirsHardwareConfig` |
 | 路径透过率、宽场门、任务上限 | S06、S03、配置 |
 
 #### 输出
@@ -403,7 +405,7 @@ E_{ph}=\sqrt{P_{bg}t\,hc/\lambda_c},\quad E_{read}=\max(0,P_{read})t,\quad
 E_{nep}=\max(0,P_{nep})t,\quad E_n=\sqrt{E_{nep}^2+E_{ph}^2+E_{read}^2},\quad \chi=E_s/E_n.
 $$
 
-新增符号：$A_o$ 为口径面积；$d_{pix},f_o$ 为像元间距和光学焦距（m）；$\lambda_{lo/hi}$ 为配置波段端点（μm），$\lambda_c$ 为中心波长（m）；$L_{bg}$ 为背景辐射亮度；$P_{read},P_{nep}$ 为配置的读出 RMS 和 NEP 数值；$h,c$ 为普朗克常数、光速。$E_{ph},E_{read},E_{nep},E_n$ 是实现统一使用的噪声能量数值，$\chi$ 是线性 SNR。分项全零时 `ResolveEffectiveNoiseW` 回退 `max(1e-18, noise_equivalent_power_w)`。
+新增符号：$A_o$ 为口径面积；$d_{pix},f_o$ 为像元间距和光学焦距（m）；$\lambda_{lo/hi}$ 为配置波段端点（μm），$\lambda_c$ 为中心波长（m）；$L_{bg}$ 为背景辐射亮度；$P_{read},P_{nep}$ 为配置的读出噪声 RMS 和噪声等效功率（NEP）数值；$h,c$ 为普朗克常数、光速。$E_{ph},E_{read},E_{nep},E_n$ 是实现统一使用的噪声能量数值，$\chi$ 是线性 SNR。分项全零时 `ResolveEffectiveNoiseW` 回退 `max(1e-18, noise_equivalent_power_w)`。
 
 不能沿用旧文档“噪声只有 NEP”或“SNR=功率/NEP”的写法。主流程先合成上述分项，再用信号能量除有效噪声。`ComputeInfraredSnrLinear` 虽保留简单接口，但 `ComputeSnr` 的主执行语句是上述复合噪声链。温度不直接反解热噪声；当前以 NEP 承担探测器噪声。
 
@@ -415,7 +417,7 @@ $$
 
 $r_s,r_t$ 为卫星、目标地心距离，$Re$ 为平均地球半径，$R_{mission}$ 为正的任务距离上限，$\chi_{wide}$ 为当前宽场/大幅面门。反解固定本拍 $\tau_{path}$，没有迭代求不同假想距离的大气透过率。源码入口为 [逐目标反解](../src/sbirs_sensor/pipeline/SbirsPipeline.cpp#L1599)。
 
-验收旁路另由宽场门反推高斯尾虚警率，再调用公共雷达概率函数求 Pd；它不回写宽场检测标志，不进行按 Pd 的随机检测。红外主检测仍是几何门与线性 SNR 阈值。
+验收旁路另由宽场门反推高斯尾虚警概率，再调用公共雷达概率函数求 Pd；它不回写宽场检测标志，不进行按 Pd 的随机检测。红外主检测仍是几何门与线性 SNR 阈值。
 
 ### 2.8 S08 单帧与多帧量测误差
 
@@ -624,6 +626,8 @@ $\Delta t$ 为周期时长，$t_{stable}$ 为可用于稳定帧的时长；剩�
 | IMM(EKF) | 各模型同一 6D 初值；默认 q 列表 `[1,100]`，初始等权 | 多个不同过程噪声 CV-EKF；转移对角 0.95，非对角均分 0.05 |
 | 角度 CV-KF | `[az,az_rate,el,el_rate]`，首测角建轨、角速率 0；角和角速率初始 σ 为 1°、1°/s | 4D 线性双角更新；方位新息用最短弧，俯仰钳 ±π/2 |
 
+表中 EKF 为扩展卡尔曼滤波（EKF），IMM 为交互多模型（IMM），CV-KF 为恒速模型卡尔曼滤波（KF）。
+
 每轴 CV 的预测块及更新统一写成：
 
 $$
@@ -652,7 +656,7 @@ $\sigma_f$ 为三类配置 RSS（deg），$b_{refr},b_{lag}$ 为 S08 两个确�
 
 IMM 使用公共 `ImmFilter` 的混合概率、模型预测/更新、量测高斯似然、log-sum-exp 权重归一化以及带模型间均值离差的协方差组合；与 R15 的共用核一致，但这里各模型更新器是 EKF。
 
-**NIS 分支**（$NIS=\nu^TS^{-1}\nu$，无量纲）：
+**归一化新息平方（NIS）分支**（$NIS=\nu^TS^{-1}\nu$，无量纲）：
 
 | 判据 | 执行结果 |
 |---|---|
@@ -748,12 +752,12 @@ IMM 使用公共 `ImmFilter` 的混合概率、模型预测/更新、量测高�
 
 源码：[RirSession.cpp](../src/remote_identification_radar/session/RirSession.cpp#L588)、[RirInputValidation.cpp](../src/remote_identification_radar/session/RirInputValidation.cpp#L116)。
 
-1. 电源门在最前：关闭则返回 `kPoweredOff`，不执行输入校验/探测/滤波，也未在此分支清空历史航迹。不能写成 SBIRS 式关机清轨。
+1. 电源门在最前：关闭则返回 `kPoweredOff`，不执行输入校验/检测/滤波，也未在此分支清空历史航迹。不能写成 SBIRS 式关机清轨。
 2. 校验正有限 dt、非零周期号、有限 `sim_time_sec`、可转 LLA 的非零有限平台位置。目标位置/速度/RCS 必须有限，位置非零，Swerling 枚举合法，识别样本有限，非零外部 ID 唯一；ID=0 校验允许，但核心候选循环会跳过它。
 3. 有外部 RF 发射时校验完整 RF 场景，且 RF 窗起点必须精确等于 `sim_time_sec`，窗长精确等于当前 `recognition_dwell_sec`。失败早退，不复用上帧产品。
 4. 有效输入后才提交 pending patch：整域 mission/policy/environment，及指定的叶子字段；mission/扫描中心变化重置搜索游标；指定字段变化重开任务窗口。`TryApplyRuntimeConfig` 本身只覆盖暂存补丁并返回 true，没有在该函数体中校验补丁，也不会把多次补丁自动合并。
 5. 电源门早于 pending patch，因此当前已关机实例不能仅靠排队的“开机补丁”经过本路径生效。本文记录这一时序，不替实现改写为成功开机。
-6. controller 只有在 `work_mode==kIdentify` 时执行主探测链；其余模式导出已有快照、推进识别结果保持，不执行新的探测与航迹预测更新。模式名称不能代替实际分支。
+6. controller 只有在 `work_mode==kIdentify` 时执行主检测链；其余模式导出已有快照、推进识别结果保持，不执行新的检测与航迹预测更新。模式名称不能代替实际分支。
 
 ### 2.17 R02 指定任务与外部位置引导
 
@@ -764,7 +768,7 @@ IMM 使用公共 `ImmFilter` 的混合概率、模型预测/更新、量测高�
 | `designated_external_target_id`、`designation_duration_cycles` | 运行配置；指定目标 ID 与窗口周期数 |
 | 上拍识别结果、当前场景目标 | controller、宿主 |
 | `RirExternalTrackRequest` | 调用方 `SubmitExternalTrack`：ECEF 位置/速度、源时刻、有效截止周期、邻域半宽、来源身份 |
-| 平台 ECEF 位置、扫描体积 | 当前输入/配置 |
+| 平台 ECEF 位置、扫描空域 | 当前输入/配置 |
 
 #### 输出
 
@@ -778,7 +782,7 @@ IMM 使用公共 `ImmFilter` 的混合概率、模型预测/更新、量测高�
 
 源码：[指定状态机](../src/remote_identification_radar/session/RirSession.cpp#L129)、[SubmitExternalTrack](../src/remote_identification_radar/session/RirSession.cpp#L464)、[中心解析](../src/remote_identification_radar/session/RirSession.cpp#L514)、[合理性标注](../src/remote_identification_radar/session/RirSession.cpp#L762)。
 
-指定任务在识别模式且 ID 非零时运行：`None→Pending`，截止周期为起始周期加配置时长（饱和相加，时长 0 为无限）；Pending 若上一拍已大类/型号确认则 Acquired，否则到期则 Expired。终态保持到新指令；目标不在场景或不在硬件体积内时本拍不照指定方向，但任务窗口仍可能继续推进。指定指向取当前场景目标角，是仿真算子指定，不是自产航迹滤波指向。
+指定任务在识别模式且 ID 非零时运行：`None→Pending`，截止周期为起始周期加配置时长（饱和相加，时长 0 为无限）；Pending 若上一拍已类别/型号确认则 Acquired，否则到期则 Expired。终态保持到新指令；目标不在场景或不在硬件扫描空域内时本拍不照指定方向，但任务窗口仍可能继续推进。指定指向取当前场景目标角，是仿真算子指定，不是自产航迹滤波指向。
 
 外部请求先检查位置/速度有限、非退化位置、窗口半宽正有限，合法才替换运行态。首个消费周期为 Fresh，未刷新时 Coasting，超过非零截止周期（严格 `>`）为 Expired。位置按源时刻外推：
 
@@ -797,7 +801,7 @@ $\mathbf p(t_0),\mathbf v,t_0$ 为外部 ECEF 位置、速度和 `source_time_s`
 | 变量 | 数据来源与单位 |
 |---|---|
 | `mission.search_mode`、`scan_window_deg`、`scan_center_deg`、`step_scale` | 配置；角度 deg |
-| `orientation.steerable_volume_deg`、名义波束宽/孔径/载频 | 硬件与朝向配置 |
+| `orientation.steerable_volume_deg`、名义波束宽度/孔径/载频 | 硬件与朝向配置 |
 | R02 指定/外部中心与窗口 | 会话状态 |
 | 上拍确认航迹、搜索/外部窗口游标 | controller/运行态 |
 | `dt_sec/recognition_dwell_sec` | 本周期时长、单驻留时长（s） |
@@ -814,8 +818,8 @@ $\mathbf p(t_0),\mathbf v,t_0$ 为外部 ECEF 位置、速度和 `source_time_s`
 
 源码：[RirScanVolume.h](../src/remote_identification_radar/internal/RirScanVolume.h#L91)、[BuildAbsoluteScanWaves](../src/remote_identification_radar/session/RirSession.cpp#L312)、[预算与铺点](../src/remote_identification_radar/session/RirSession.cpp#L704)、[公共光栅](../src/common/radar/ScanScheduleRuntime.h#L86)。
 
-1. `kSectorScan` 取任务 az/el 子窗与硬件体积交集。`kHorizonScan` 仍用任务方位子窗，俯仰改为地平线参数带再交硬件体积：自动下沿 `−θ_el/2`、上沿 `+2°`，手动用配置上下沿。`θ_el` 为有效俯仰全波束宽。扫描表和候选裁剪调用同一个 `ResolveSearchSector`。
-2. 名义波束宽为正直接使用；否则有效孔径和波长能推导时用 `λ/L`（rad）转 deg。扫描轴步长=有效波束宽×`step_scale`，公共内核按起始角点与方位/俯仰优先做蛇形二维遍历，每轴上限 4096 点，必要时补终点。相对方位加 `scan_center.az`；俯仰保持绝对角，不再加中心俯仰。
+1. `kSectorScan` 取任务 az/el 子窗与硬件扫描空域交集。`kHorizonScan` 仍用任务方位子窗，俯仰改为地平线参数带再交硬件扫描空域：自动下沿 `−θ_el/2`、上沿 `+2°`，手动用配置上下沿。`θ_el` 为有效俯仰全波束宽度。扫描表和候选裁剪调用同一个 `ResolveSearchSector`。
+2. 名义波束宽度为正直接使用；否则有效孔径和波长能推导时用 `λ/L`（rad）转 deg。扫描轴步长=有效波束宽度×`step_scale`，公共内核按起始角点与方位/俯仰优先做蛇形二维遍历，每轴上限 4096 点，必要时补终点。相对方位加 `scan_center.az`；俯仰保持绝对角，不再加中心俯仰。
 3. 槽位数取 `max(1, floor(dt/dwell+1e-6))`。先排合法指定驻留一条。
 4. 有合法外部中心：窗口先放中心，按步长生 ±偏移及边界，再按归一化离中心距离排序；最多构造 128 点。Fresh 重置游标，取 `min(剩余槽位,窗口点数)` 个并跨周期续扫。窗口非空即置 `external_monopolizes_budget`，不再补库内/固定光栅；窗口点少于槽位时也不会循环填满所有剩余槽位。
 5. 没有外部占用时，只有 `max_dwells > 已用槽位+4` 才调用 `CollectTrackDwellRequests`，至多分配扣掉 4 后的余量。它按上拍快照顺序取 confirmed 且外部 ID 非零航迹，用 `track.position+track.velocity*dt` 转成指向。没有按协方差大小自适应分配驻留。
@@ -827,7 +831,7 @@ $\mathbf p(t_0),\mathbf v,t_0$ 为外部 ECEF 位置、速度和 `source_time_s`
 
 | 变量 | 数据来源与单位 |
 |---|---|
-| 峰值功率、发射损耗、频率、带宽、脉宽、PRF | `hardware.transmitter`；W、dB、Hz、s |
+| 峰值功率、发射损耗、频率、带宽、脉冲宽度、脉冲重复频率（PRF） | `hardware.transmitter`；W、dB、Hz、s |
 | 接收噪声系数/损耗/极化/线性上限、天线 | `hardware.receiver/antenna` |
 | `dwell_plan`、平台 ECEF、时刻、外部 `rf_scene` | R03/宿主 |
 
@@ -848,9 +852,9 @@ T_r=1/PRF,\quad N_{emit}=\max(1,\lceil T_{dwell}/T_r\rceil),\quad
 P_{rad}=P_{peak}10^{-L_{tx}/10}.
 $$
 
-$T_r,T_{dwell}$ 为脉冲周期、驻留窗长（s），$N_{emit}$ 为生成的发射脉冲数，$P_{peak},L_{tx},P_{rad}$ 为峰值功率、发射损耗和辐射功率。`ResolveCarrierHz` 当前直接取配置频率，不执行跳频。`TryBuildEmission` 将 az/el 单位矢量经局部姿态→ENU→ECEF，并装配天线、极化、带宽、脉宽、PRI 和时序种子。
+$T_r,T_{dwell}$ 为脉冲周期、驻留窗长（s），$N_{emit}$ 为生成的发射脉冲数，$P_{peak},L_{tx},P_{rad}$ 为峰值功率、发射损耗和辐射功率。`ResolveCarrierHz` 当前直接取配置频率，不执行跳频。`TryBuildEmission` 将 az/el 单位矢量经局部姿态→ENU→ECEF，并装配天线、极化、带宽、脉冲宽度、脉冲重复间隔（PRI）和时序种子。
 
-接收前端固定预选带宽 20 MHz、远场下限 1 m、本机同址隔离 120 dB；检测匹配滤波带宽另取发射占用带宽。RF 天线描述用两轴名义波束宽较大者，不是 R05 各向独立方向图的全部参数。
+接收前端固定预选带宽 20 MHz、远场下限 1 m、本机同址隔离 120 dB；检测匹配滤波带宽另取发射占用带宽。RF 天线描述用两轴名义波束宽度较大者，不是 R05 各向独立天线方向图的全部参数。
 
 非同址单程入射功率由自由空间损耗、两端增益、极化及接收损耗求得：
 
@@ -863,34 +867,34 @@ $d$ 为发射机到接收机距离（m），$\lambda$ 为该发射名义载波�
 
 前端只用首驻留求一次入射链；追加逐驻留发射记录仅更改指向和 emission ID，时序参数相同，未逐驻留重新算接收指向或错开活动起点。因此不得画成“每驻留完整重解整个 RF 前端”。构建失败保留 `resolved=false`，后面可能转 R11 的效能级回退。
 
-### 2.20 R05 候选裁剪、主瓣覆盖与方向图
+### 2.20 R05 候选裁剪、主瓣覆盖与天线方向图
 
 #### 输入
 
 | 变量 | 数据来源与单位 |
 |---|---|
 | 目标 ENU 位置、外部 ID | 场景输入 |
-| 硬件体积、搜索域、驻留指向 | R03 |
+| 硬件扫描空域、搜索域、驻留指向 | R03 |
 | 上拍确认状态和识别状态 | 生命周期/识别缓存 |
-| 天线模型、峰值增益、波束宽、孔径、扫描损耗 | 硬件配置 |
+| 天线模型、峰值增益、波束宽度、孔径、扫描损耗 | 硬件配置 |
 
 #### 输出
 
 | 变量 | 数据流向 |
 |---|---|
 | 排序候选、`candidate_covered` | 单目标 R06–R12 |
-| `one_way_antenna_gain_db`、有效 az/el 波束宽 | R10 回波、R12 误差 |
-| 地球遮挡/体积/覆盖排除 issue | 结果层 |
+| `one_way_antenna_gain_db`、有效 az/el 波束宽度 | R10 回波、R12 误差 |
+| 地球遮挡/空域/覆盖排除 issue | 结果层 |
 
 #### 算法
 
-源码：[候选与逐驻留循环](../src/remote_identification_radar/runtime/RirController.cpp#L1149)、[RirBeamControl.h](../src/remote_identification_radar/dwell/RirBeamControl.h)、[公共方向图](../src/common/radar/AntennaPatternRuntime.h#L162)。
+源码：[候选与逐驻留循环](../src/remote_identification_radar/runtime/RirController.cpp#L1149)、[RirBeamControl.h](../src/remote_identification_radar/dwell/RirBeamControl.h)、[公共天线方向图](../src/common/radar/AntennaPatternRuntime.h#L162)。
 
-目标 ID=0 跳过；有平台锚点时 ENU→ECEF 后做球地球遮挡。按真实视线角检查搜索域，指定目标或上拍确认航迹可豁免任务子窗，但仍须在硬件体积。未识别目标优先，其次近距优先；距离相等未加 ID 决胜。
+目标 ID=0 跳过；有平台锚点时 ENU→ECEF 后做球地球遮挡。按真实视线角检查搜索域，指定目标或上拍确认航迹可豁免任务子窗，但仍须在硬件扫描空域。未识别目标优先，其次近距优先；距离相等未加 ID 决胜。
 
-逐驻留对未 covered 候选检查方位最短差和俯仰差是否均在半有效波束宽×覆盖系数内。门通过立即置 covered，再尝试检测；失败后不换下一驻留重试。候选未被任何驻留照到才发覆盖排除。输入位置范数≤0.1 m 的退化路径可跳角门并按峰值增益回退。
+逐驻留对未 covered 候选检查方位最短差和俯仰差是否均在半有效波束宽度×覆盖系数内。门通过立即置 covered，再尝试检测；失败后不换下一驻留重试。候选未被任何驻留照到才发覆盖排除。输入位置范数≤0.1 m 的退化路径可跳角门并按峰值增益回退。
 
-方向图先解析有效全波束宽，取离轴角 $\delta_a,\delta_e$。主瓣模型由枚举配置选择，不是随离轴角自动切换三种主瓣算法：
+天线方向图先解析有效全波束宽度，取离轴角 $\delta_a,\delta_e$。主瓣模型由枚举配置选择，不是随离轴角自动切换三种主瓣算法：
 
 | 配置分支 | 主瓣衰减计算 |
 |---|---|
@@ -898,9 +902,9 @@ $d$ 为发射机到接收机距离（m），$\lambda$ 为该发射名义载波�
 | CosinePower | 每轴指数 `p=ln(0.5)/ln(cos(θ/2))`，两轴 `cos(δ)^p` 相乘转负 dB |
 | SincPattern | 每轴 `arg=π*孔径*sin(δ)/λ`，`−20log10(max(abs(sin(arg)/arg),1e-6))` 相加；零点用极限值 |
 
-$\theta_a,\theta_e$ 为两轴全波束宽，$\lambda$ 为当前波长；三角函数按 rad，角配置先转换。主瓣外用 sinc² 连续延拓或物理孔径 sinc²，并限制增益不超过峰值+配置副瓣电平；任一轴超过 90°走后瓣。
+$\theta_a,\theta_e$ 为两轴全波束宽度，$\lambda$ 为当前波长；三角函数按 rad，角配置先转换。主瓣外用 sinc² 连续延拓或物理孔径 sinc²，并限制增益不超过峰值+配置旁瓣电平；任一轴超过 90°走后瓣。
 
-扫描损耗按驻留指向相对 `boresight_offset_deg` 的两轴角差平方和×`scan_loss_coeff_db_per_deg2`，钳到 `[0,max_scan_loss_db]`。总增益为峰值减离轴衰减再减扫描损耗；后瓣为峰值+后瓣电平−扫描损耗。当前枚举没有旧文档所谓“自定义数列插值方向图”。
+扫描损耗按驻留指向相对 `boresight_offset_deg` 的两轴角差平方和×`scan_loss_coeff_db_per_deg2`，钳到 `[0,max_scan_loss_db]`。总增益为峰值减离轴衰减再减扫描损耗；后瓣为峰值+后瓣电平−扫描损耗。当前枚举没有旧文档所谓“自定义数列插值天线方向图”。
 
 ### 2.21 R06 检测使用的有效 RCS
 
@@ -978,28 +982,28 @@ $e,R,h_m$ 为目标仰角、路径长度、非负中间高度，$f_G$ 为经最�
 
 最后物理损耗=`max(0, L_B*(0.85+0.15*clip(ρ/1.225,0.05,4))+折射差项)`，$\rho$ 为 ISA 中间高度密度（kg/m³）。总损耗为天气+可选 6.5 dB+逐目标物理项，直接作为回波方程附加损耗传入，没有在调用处再乘 2。不能因参数名写着 two-way 就自行把当前公式改成双倍积分。
 
-### 2.23 R08 主瓣与副瓣地面杂波
+### 2.23 R08 主瓣与旁瓣地面杂波
 
 #### 输入
 
 | 变量 | 数据来源与单位 |
 |---|---|
-| 植被档位、天线峰值/副瓣电平和有效波束宽 | 环境/硬件 |
+| 植被档位、天线峰值/旁瓣电平和有效波束宽度 | 环境/硬件 |
 | 目标斜距 $R$、俯仰 $e$、平台高度 $h$ | R05；m、deg |
-| 带宽 $B$、脉宽 $\tau$、载频、总损耗、热噪声 $P_n$ | R04/R07/接收参数 |
+| 带宽 $B$、脉冲宽度 $\tau$、载频、总损耗、热噪声 $P_n$ | R04/R07/接收参数 |
 
 #### 输出
 
 | 变量 | 数据流向 |
 |---|---|
 | `clutter_power_w` | R10 检测单元、R11 回退检测器 |
-| 主瓣项+副瓣项的功率和 | 验收账本；主链未分别透出两项 |
+| 主瓣项+旁瓣项的功率和 | 验收账本；主链未分别透出两项 |
 
 #### 算法
 
-源码：[RirSurfaceClutterModel.cpp](../src/remote_identification_radar/internal/RirSurfaceClutterModel.cpp#L77)、[CNR→瓦](../src/common/radar/VegetationClutterModel.h#L62)。植被关闭或关键正值输入不成立返回 0。
+源码：[RirSurfaceClutterModel.cpp](../src/remote_identification_radar/internal/RirSurfaceClutterModel.cpp#L77)、[杂噪比（CNR）→瓦](../src/common/radar/VegetationClutterModel.h#L62)。植被关闭或关键正值输入不成立返回 0。
 
-共同量：有效地球半径 $R_e'=6371000\times4/3$（m）、距离单元 $\delta R=c/(2B)$（m）。档位参考散射系数 $\sigma_{0,dB}$ 为草地/疏林/落叶林/针叶林/密林 `−28/−22/−18/−16/−14 dB`；代码注明是量级声明值，非实测标定。
+共同量：有效地球半径 $R_e'=6371000\times4/3$（m）、距离单元 $\delta R=c/(2B)$（m）。档位参考后向散射系数 $\sigma_{0,dB}$ 为草地/疏林/落叶林/针叶林/密林 `−28/−22/−18/−16/−14 dB`；代码注明是量级声明值，非实测标定。
 
 主瓣只在 `raw_grazing=θ_el/2−e>0` 时成立，擦地角 $\psi$ 钳 `[1°,89°]`。落地距离与面积为：
 
@@ -1011,11 +1015,11 @@ $$
 A_{main}=\min\left(\frac{s\theta_a\delta R}{\cos\psi},\frac{s^2\theta_a\theta_e}{\sin\psi}\right).
 $$
 
-$\theta_a,\theta_e$ 为两轴全波束宽（在面积式中用 rad），$s$ 为正的主瓣地面斜距。新增距离一致性门要求 `abs(R−s) <= max(3*δR,s*θ_el_rad)`，否则目标距离单元没有该主瓣杂波，主瓣项为 0。
+$\theta_a,\theta_e$ 为两轴全波束宽度（在面积式中用 rad），$s$ 为正的主瓣地面斜距。新增距离一致性门要求 `abs(R−s) <= max(3*δR,s*θ_el_rad)`，否则目标距离单元没有该主瓣杂波，主瓣项为 0。
 
-副瓣另算：只有目标距离不超过 `sqrt(2*Re'*max(h,1 m))` 才认为同距离地面环可见。环半径 `sqrt(max(R²−h²,0))`，俯角 `asin(clip(h/max(R,1),0,1))`，环深 `δR/max(cos(俯角),1e-3)`，面积=周长×环深；单程增益取峰值+最大副瓣电平。主瓣离地不意味着副瓣项也为零。
+旁瓣另算：只有目标距离不超过 `sqrt(2*Re'*max(h,1 m))` 才认为同距离地面环可见。环半径 `sqrt(max(R²−h²,0))`，俯角 `asin(clip(h/max(R,1),0,1))`，环深 `δR/max(cos(俯角),1e-3)`，面积=周长×环深；单程增益取峰值+最大旁瓣电平。主瓣离地不意味着旁瓣项也为零。
 
-每路按自身擦地角修正 `σ0_dB += 10log10(sin(ψ)/sin(10°))`，杂波 RCS=`10^(σ0_dB/10)*面积`，代入公共效能级回波方程，再加 `max(1,Bτ)` 脉压增益。这里保留公共方程的 `τ/13μs` 参考缩放，没有像目标回退路径那样抵消。算 CNR=`杂波回波dBW−10log10(Pn)`，再钳 `[-120,120] dB` 转为 `Pn*10^(CNR/10)`（W）。两路功率相加。
+每路按自身擦地角修正 `σ0_dB += 10log10(sin(ψ)/sin(10°))`，杂波 RCS=`10^(σ0_dB/10)*面积`，代入公共效能级回波方程，再加 `max(1,Bτ)` 脉冲压缩增益。这里保留公共方程的 `τ/13μs` 参考缩放，没有像目标回退路径那样抵消。算杂噪比（CNR）=`杂波回波dBW−10log10(Pn)`，再钳 `[-120,120] dB` 转为 `Pn*10^(CNR/10)`（W）。两路功率相加。
 
 旧文档用固定 `3 dB+植被混合倍数` 代表整个 RIR 杂波，已不符合本入口；也不能把检测层乘目标多普勒响应解释成“单独按静止地物多普勒消除”，见 R10。
 
@@ -1047,7 +1051,7 @@ t_{echo}=2R/c,\quad f_d=2f_cv_{close}/c,\quad
 N=\#\{i<\min(N_{req},N_{emit}):t_i+t_{echo}<t_{win,end}\}.
 $$
 
-$R,c,f_c,v_{close}$ 分别为斜距、光速、载频、接近径向速度，$t_i$ 为第 i 脉冲发射时刻，$N_{req},N_{emit}$ 为请求/生成脉冲数，$t_{win,end}$ 为接收窗末。用二分搜索数满足严格 `<` 的脉冲；只检查到达首沿，未另要求完整回波脉宽落窗。N 可为 0，随后检测器拒绝零脉冲。
+$R,c,f_c,v_{close}$ 分别为斜距、光速、载频、接近径向速度，$t_i$ 为第 i 脉冲发射时刻，$N_{req},N_{emit}$ 为请求/生成脉冲数，$t_{win,end}$ 为接收窗末。用二分搜索数满足严格 `<` 的脉冲；只检查到达首沿，未另要求完整回波脉冲宽度落窗。N 可为 0，随后检测器拒绝零脉冲。
 
 入射链先校验身份非零、功率有限非负、时延非负、多普勒有限、带宽正；排序后身份重复则整个单元失败。排除自身发射身份。
 
@@ -1063,7 +1067,7 @@ $$
 J=\sum_j P_{before,j}\frac{1}{5N_r}\sum_{r,s}\eta_{r,s}.
 $$
 
-$f_{lo/hi,c/j}$ 为检测/干扰频带边缘，$B_j$ 为干扰占用带宽，$P_{before,j}$ 为 RF 前端重叠前到达功率。这里重新按目标回波门求重叠，不用前端整窗 `received_power_w` 代替。N=0 返回 J=0；RGPO 前沿×0.5 公共钩子未由 RIR 适配层启用。
+$f_{lo/hi,c/j}$ 为检测/干扰频带边缘，$B_j$ 为干扰占用带宽，$P_{before,j}$ 为 RF 前端重叠前到达功率。这里重新按目标回波门求重叠，不用前端整窗 `received_power_w` 代替。N=0 返回 J=0；距离波门拖引（RGPO）前沿×0.5 公共钩子未由 RIR 适配层启用。
 
 ### 2.25 R10 回波、四支路处理和 SINR
 
@@ -1071,10 +1075,10 @@ $f_{lo/hi,c/j}$ 为检测/干扰频带边缘，$B_j$ 为干扰占用带宽，$P_
 
 | 变量 | 数据来源与单位 |
 |---|---|
-| 辐射峰值功率、载频、脉宽、匹配滤波带宽 | R04；$P_t,f_c,\tau,B$ |
+| 辐射峰值功率、载频、脉冲宽度、匹配滤波带宽 | R04；$P_t,f_c,\tau,B$ |
 | 单程天线增益、有效 RCS、斜距、损耗 | R05/R06/R07；$G,\sigma,R,L$ |
 | 热噪参数、J、C、N、目标多普勒 | 接收配置/R09/R08 |
-| 四标量处理增益、MTI/MTD 开关/通道数 | `hardware.signal_processing` |
+| 四标量处理增益、动目标指示/动目标检测（MTI/MTD）开关/通道数 | `hardware.signal_processing` |
 
 #### 输出
 
@@ -1108,7 +1112,9 @@ $$
 H_b=\max_k\left(\frac{\sin(N_c\vartheta_k/2)}{N_c\sin(\vartheta_k/2)}\right)^2,\quad A_N=N,\quad F_m=2.
 $$
 
-$PRF$ 为 PRI 倒数，`fold` 将频率折到 `[-PRF/2,PRF/2)`，$N_c$ 为 MTD 通道数（默认 8），$k=0\ldots N_c-1$，$\delta_k,\vartheta_k$ 为通道频差和相位差；$H_b$ 有零分母极限保护及 `1e-30` 下限。$A_N$ 为相干积累，$F_m$ 为两脉冲对消器噪声功率代价。未启用时 `Hm=Hb=AN=Fm=1`，折叠频率字段为 0，而非仍执行了多普勒滤波。
+$PRF$ 为 PRI 倒数，`fold` 将频率折到 `[-PRF/2,PRF/2)`，$N_c$ 为 MTD 通道数（默认 8），$k=0\ldots N_c-1$，$\delta_k,\vartheta_k$ 为通道频差和相位差；$H_b$ 有零分母极限保护及 `1e-30` 下限。$A_N$ 为相参积累，$F_m$ 为两脉冲对消器噪声功率代价。未启用时 `Hm=Hb=AN=Fm=1`，折叠频率字段为 0，而非仍执行了多普勒滤波。
+
+合成信干噪比（SINR）：
 
 $$
 SINR=\frac{P_rG_{pc}G_tH_mH_bA_N}
@@ -1116,7 +1122,7 @@ SINR=\frac{P_rG_{pc}G_tH_mH_bA_N}
 s_{dB}=10\log_{10}\max(SINR,10^{-300}).
 $$
 
-J、C 为 R09/R08 干扰/杂波 W；$s_{dB}$ 即检测输入。实际先算回波/时延/多普勒/脉压/热噪，再算 N 和 J，再赋 C、线性化增益、执行可选 MTI/MTD，最后合成。不是对所有分母项一律除以同一个处理增益。
+J、C 为 R09/R08 干扰/杂波 W；$s_{dB}$ 即检测输入。实际先算回波/时延/多普勒/脉冲压缩/热噪，再算 N 和 J，再赋 C、线性化增益、执行可选 MTI/MTD，最后合成。不是对所有分母项一律除以同一个处理增益。
 
 保留三项实现限制：
 
@@ -1146,7 +1152,7 @@ J、C 为 R09/R08 干扰/杂波 W；$s_{dB}$ 即检测输入。实际先算回�
 
 源码：[StatisticalCfarDetector.cpp](../src/common/radar/StatisticalCfarDetector.cpp)、[RadarEquations.cpp](../src/common/radar/RadarEquations.cpp#L168)、[RirSignalDetector.cpp](../src/remote_identification_radar/dwell/RirSignalDetector.cpp#L80)、[模式准入](../src/remote_identification_radar/runtime/RirController.cpp#L785)。
 
-概率函数将无效 Pfa 回退 1e-6、N<1 回退 1，但检测单元入口先拒绝非正脉冲数。由虚警概率反解归一化能量门 T：
+恒虚警率（CFAR）检测的概率函数将无效 Pfa 回退 1e-6、N<1 回退 1，但检测单元入口先拒绝非正脉冲数。由虚警概率（Pfa）反解归一化能量门 T：
 
 $$
 T=-\ln P_{fa}\quad(N=1),\qquad T=Q_\Gamma^{-1}(N,P_{fa})\quad(N>1),\qquad \chi=10^{s_{dB}/10}.
@@ -1170,10 +1176,10 @@ $Q_\Gamma$ 为正则化上不完全伽马函数（`boost::math::gamma_q`），$N
 
 **两类不同的回退**：
 
-1. RF 或检测单元解析失败：转 `detector_->Detect` 效能级路径，场景标称 RCS、当前离轴增益、热噪、杂波，干扰强制 0。公共回波带 `τ/13μs`，此路径先抵消其参考缩放再加 `max(1,Bτ)` 脉压，扣接收损耗后计算 SNR。没有 R10 的四标量和显式 MTI/MTD 完整账本，也不能声称失败仍完整保留干扰。
+1. RF 或检测单元解析失败：转 `detector_->Detect` 效能级路径，场景标称 RCS、当前离轴增益、热噪、杂波，干扰强制 0。公共回波带 `τ/13μs`，此路径先抵消其参考缩放再加 `max(1,Bτ)` 脉冲压缩，扣接收损耗后计算 SNR。没有 R10 的四标量和显式 MTI/MTD 完整账本，也不能声称失败仍完整保留干扰。
 2. `gate_mode=kSnrFallback`：预先选择的准入模式，无论 CFAR detected 结果如何，controller 只检查 `snr_db>=6.0`。6 dB 是库内常量，不来自上述两个配置门。它并非“默认检测失败才试一次”，而且 R12 不加偏置/随机位置噪声。
 
-前端饱和门更早返回，不会靠上述两种准入恢复。随机种子真正变更时才重设，正常周期持续推进随机状态。当前为统计级 CFAR/Pd 仿真，无 CA/OS-CFAR 训练/保护单元或滑窗噪声估计。
+前端饱和门更早返回，不会靠上述两种准入恢复。随机种子真正变更时才重设，正常周期持续推进随机状态。当前为统计级 CFAR/Pd 仿真，无 CA/OS-CFAR 参考/保护单元或滑窗噪声估计。
 
 ### 2.27 R12 距离/角误差、偏置、协方差和量测采样
 
@@ -1182,7 +1188,7 @@ $Q_\Gamma$ 为正则化上不完全伽马函数（`boost::math::gamma_q`），$N
 | 变量 | 数据来源与单位 |
 |---|---|
 | 已准入的 `detection.snr_db`、N | R11/R09 |
-| 真实 ENU 位置/角、带宽、有效波束宽 | 场景/R05/硬件 |
+| 真实 ENU 位置/角、带宽、有效波束宽度 | 场景/R05/硬件 |
 | 前拍成功量测、时刻和目标真值速度模长 | controller 速度起批路径 |
 | 随机源与 `gate_mode` | 策略运行态 |
 
@@ -1207,7 +1213,7 @@ $$
 \sigma_\theta=\sqrt{(\sigma_a^2+\sigma_e^2)/2}.
 $$
 
-$s_{dB}$ 为检测比值 dB，$s_{eff}$ 为误差模型输入，$N$ 为有效积累脉冲数（回退取策略数），$B$ 在这里取硬件发射带宽，不读取单元波形字段；$\theta_a,\theta_e$ 为有效全波束宽（rad），$\sigma_R,\sigma_\theta$ 单位 m/rad。`s_eff<−10 dB` 时距离 σ 返回 `1.5777*δR`，两轴角 σ 各返回对应波束宽，再合成。固定 20 m 偏置不在随机 σ 内。
+$s_{dB}$ 为检测比值 dB，$s_{eff}$ 为误差模型输入，$N$ 为有效积累脉冲数（回退取策略数），$B$ 在这里取硬件发射带宽，不读取单元波形字段；$\theta_a,\theta_e$ 为有效全波束宽度（rad），$\sigma_R,\sigma_\theta$ 单位 m/rad。`s_eff<−10 dB` 时距离 σ 返回 `1.5777*δR`，两轴角 σ 各返回对应波束宽度，再合成。固定 20 m 偏置不在随机 σ 内。
 
 令真值 ENU 位置为 $\mathbf p$，球坐标到 ENU 的雅可比为 $J=\partial\mathbf p/\partial(r,a,e)$，则：
 
@@ -1233,7 +1239,7 @@ $\mathbf u,\mathbf e_a,\mathbf e_e$ 为径向/方位/俯仰单位基，$r,e$ 为
 
 不过当前接线还少一环：`RunCycle` 只写 `current_measurement_by_target_id_`，全文检索该类未见将其移交/交换到 `prior_measurement_by_target_id_` 的执行语句，后者默认空。因此按当前会话路径运行，速度种子通常始终走“无历史→零”分支。上段是函数在有历史条件下的计算逻辑，不能描述为已经生效的纯量测两点起批能力。
 
-### 2.28 R13 马氏距离波门与 LAPJV 关联
+### 2.28 R13 马氏距离关联门与 LAPJV 关联
 
 #### 输入
 
@@ -1241,7 +1247,7 @@ $\mathbf u,\mathbf e_a,\mathbf e_e$ 为径向/方位/俯仰单位基，$r,e$ 为
 |---|---|
 | 本拍 `RirTrackMeasurement` 列表 | R12；位置和动态 R |
 | `BuildAssociationSeeds()` | 生命周期导出全部未回收航迹的关联键和高斯状态 |
-| `distance_gate_sigma`、过程噪声、dt | 策略/时钟；默认波门系数 3 |
+| `distance_gate_sigma`、过程噪声、dt | 策略/时钟；默认关联门系数 3 |
 
 #### 输出
 
@@ -1262,7 +1268,7 @@ $$
 d_{ij}^2=\nu_{ij}^TS_{ij}^{-1}\nu_{ij}\le g_\sigma^2.
 $$
 
-$i,j$ 为航迹和量测索引，$\hat x_i^-,P_i^-$ 为预测状态，$z_j,R_j$ 为量测/协方差，$g_\sigma$ 为配置波门系数（默认 3，平方门 9）。用 LLT 解线性系统，分解失败/非有限代价视为无穷大。物理距离波门随 P/R 改变，σ 倍数本身不按航迹质量动态改变；9 也不应无条件解释为三维球域 99.7% 置信概率。
+$i,j$ 为航迹和量测索引，$\hat x_i^-,P_i^-$ 为预测状态，$z_j,R_j$ 为量测/协方差，$g_\sigma$ 为配置关联门系数（默认 3，平方门 9）。用 LLT 解线性系统，分解失败/非有限代价视为无穷大。物理距离门随 P/R 改变，σ 倍数本身不按航迹质量动态改变；9 也不应无条件解释为三维球域 99.7% 置信概率。
 
 门内代价组成矩阵，门外保持无穷；公共核扩成带哑行/哑列的方阵，未分配代价取门限，拒绝代价严格更差，再由 LAPJV 求最小总代价一一指派。不是“逐目标贪心最近邻”，也不是按 `external_target_id` 直接归并。
 
@@ -1507,7 +1513,7 @@ $HH_{dB},VV_{dB}$ 为样本 dBsm 数值，$s_{dB},R$ 为 SNR/斜距；$n$ 为相
 
 行列式模、Span、去极化系数、椭圆率取算术均值/样本标准差（n=1 时 std=0）。ψ 有 180° 周期，对倍角正余弦均值取半角，圆标准差为 `0.5*sqrt(−2ln(max(Rbar,1e-12)))`（rad 后转 deg），Rbar 为合向量长度。这里的“窗口”是传入的场景样本列表，不是 R24 的逐拍识别滑窗；不依赖检测 SNR，也不参与 Gaussian 四维识别打分。
 
-### 2.36 R21 散射中心表与宽带一维像特征
+### 2.36 R21 散射中心表与宽带一维距离像（HRRP）特征
 
 #### 输入
 
@@ -1557,8 +1563,8 @@ $HH_{dB},VV_{dB}$ 为样本 dBsm 数值，$s_{dB},R$ 为 SNR/斜距；$n$ 为相
 
 1. 遍历保留快照，根据 external ID 找场景目标；找不到跳过。look/range 来自当前场景位置，platform_altitude 来自平台，B 来自硬件，dwell 来自 mission。上下文 `minimum_aspect_coverage_deg` 固定 0，最大分辨率默认 0。
 2. 有本周期成功量测的 SNR 台账则读取，否则 snr_db 留默认 0。没有统一检查本航迹本拍是否 hit，也没有把“无本拍 SNR”自动标成整个观测无效。
-3. 顺序调用 RCS、运动、双通道极化、极化统计、一维像提取器。它们逻辑上是并列特征，代码是顺序函数调用，不宣称并行线程执行。
-4. 驻留因子 `qd=clip(dwell_sec/0.05,0,1)`；非正/非有限置 0。仅乘 RCS/双通道极化/一维像质量，运动质量不乘此因子。
+3. 顺序调用 RCS、运动、双通道极化、极化统计、一维距离像提取器。它们逻辑上是并列特征，代码是顺序函数调用，不宣称并行线程执行。
+4. 驻留因子 `qd=clip(dwell_sec/0.05,0,1)`；非正/非有限置 0。仅乘 RCS/双通道极化/一维距离像质量，运动质量不乘此因子。
 5. 四位掩码分别为 RCS/运动/极化/距离像：各维 valid 且 quality>0 才置位；极化统计不置第五位。不把“结构里字段存在”当成该维已可用。
 6. `RirTracker::UpdateCycle` 先排除全维无效，再把特征交给本拍观测出口采集，之后才检查最大维质量是否至少 0.05。因此某特征记录可以对外存在却没进积累，更不保证已有类别/型号结论。
 
@@ -1606,7 +1612,7 @@ $x$ 为观测子特征，$\mu,\sigma$ 为库模板均值/标准差（std≤0 返
 | Polarization | energy_difference/relative_difference/energy_sum 三项等权 |
 | RangeProfile | length/peak_count/concentration 三项等权 |
 
-各型号按分排序；同类得分取该类最佳型号分，不求类内和；置信度=`best_model_score/sum(all_model_scores)`，不等于 best_score。runner-up 是第二型号，不是第二大类。分数相等的排序未增加稳定 ID 决胜。
+各型号按分排序；同类得分取该类最佳型号分，不求类内和；置信度=`best_model_score/sum(all_model_scores)`，不等于 best_score。runner-up 是第二型号，不是第二类别。分数相等的排序未增加稳定 ID 决胜。
 
 ### 2.39 R24 特征滑窗、类别/型号判决与保持
 
@@ -1633,10 +1639,10 @@ $x$ 为观测子特征，$\mu,\sigma$ 为库模板均值/标准差（std≤0 返
 源码：[RecognitionTracker.cpp](../src/remote_identification_radar/recognition/RecognitionTracker.cpp#L243)、[窗口聚合](../src/remote_identification_radar/recognition/RecognitionTracker.cpp#L115)。
 
 1. 每关联键维护状态。hit_count 回落清积累，但在 UpdateCycle 路径保留上一结论及其时间；HoldCycle 同类回落却直接删识别状态。两条路径不能统一说成“键复用永远保留结论”。
-2. 无观测目标、距离超过 mission.max_range、全维无效或所有维质量最高值<0.05 时不计观测，并检查已有结论是否超保持期。距离门在识别侧；不是 R05 的全局探测硬距离门。
+2. 无观测目标、距离超过 mission.max_range、全维无效或所有维质量最高值<0.05 时不计观测，并检查已有结论是否超保持期。距离门在识别侧；不是 R05 的全局检测硬距离门。
 3. 有效特征入窗，裁掉距当前 `sim_time` 超出 accumulation_window 的旧项，同时保留至少一项。`observation_count`、confirmed_hit_count 是累计计数，裁窗未同步扣减；`first_observation_sec` 也未随着裁窗首样本前移。因此输出积累秒数不等于当前窗长度。
 4. 观测数未达门或在 confirmed 航迹上积累次数未达门则输出 Accumulating。不是“tentative 完全不积累任何特征”：运动维无效，其他维仍可能入窗，但不会增加 confirmed_hit_count。
-5. 窗口聚合：运动子特征取排序后第 `size/2` 个（偶数取上中位），质量取均值；RCS 仅均值字段与质量取均值，未聚合 std/coverage；双通道极化三个值取均值；一维像长度/集中率取均值，峰数均值四舍五入，resolution 保留最后有效值。聚合后重算四位掩码。
+5. 窗口聚合：运动子特征取排序后第 `size/2` 个（偶数取上中位），质量取均值；RCS 仅均值字段与质量取均值，未聚合 std/coverage；双通道极化三个值取均值；一维距离像长度/集中率取均值，峰数均值四舍五入，resolution 保留最后有效值。聚合后重算四位掩码。
 6. 调 R23 匹配。无候选或聚合无维时，无旧结论才写 Unknown，有结论则保持；这两个分支未调用 `ExpireIfHeld`，不能保证任何缺候选情形都自动 30 s 变 stale。
 7. 有候选按三个判据：best_score<acceptance_score→Unknown；否则 best−runner_up≥minimum_margin 且有效维数≥2、非仅运动→ModelConfirmed；否则→CategoryConfirmed。门检查的是原始 best_score 和分差，不是 confidence 大于 0.7。
 8. 结论路径统一写入 result、当前结论时刻并置 `has_conclusion=true`，包括 Unknown；首次类别/型号确认时间只记一次。保持函数在调用时以“距最后结论严格超过 hold”置 Stale，不清型号/类别字段。退出识别模式清窗口/计数，旧结论通过 HoldCycle 进入保持期。

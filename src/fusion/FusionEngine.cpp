@@ -4,6 +4,7 @@
  */
 
 #include "1q/fusion/FusionEngine.h"
+#include "1q/foundation/TextEncoding.h"
 
 #include <algorithm>
 #include <cmath>
@@ -385,7 +386,10 @@ class FusionEngine::Impl {
   void AppendSample(Track* track, const DetectionRecord& detection, std::uint64_t cycle) {
     MeasurementSample sample;
     sample.source_id = detection.source_id;
-    sample.source_name = detection.source_name;
+    // 过程：外部来源名称在进入融合的边界处归一为 UTF-8（GBK 名称否则会在日志里显示成
+    //   "鍗槦" 这类乱码，因为日志按 UTF-8 写出）。已是 UTF-8 的原样返回。
+    // 标识：融合来源名称 UTF-8 归一（2026-11-06）。
+    sample.source_name = ::oneq::foundation::NormalizeExternalText(detection.source_name);
     sample.has_position = detection.has_position;
     sample.position = detection.position;
     sample.has_bearing = detection.has_bearing;

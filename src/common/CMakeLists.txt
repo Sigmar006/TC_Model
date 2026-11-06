@@ -22,6 +22,7 @@ set(ONEQ_COMMON_SOURCES
     radar/StatisticalCfarDetector.cpp
     radar/VegetationClutterModel.cpp
     rcs/RcsPhysics.cpp
+    text/TextEncoding.cpp
     replay/ReplayTrace.cpp
     timing/TimingRegimeModel.cpp
     logging/AcceptanceFileLog.cpp

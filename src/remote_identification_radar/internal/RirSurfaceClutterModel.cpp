@@ -256,8 +256,29 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
     }
   }
 
-  // 过程：三项同属"进入该距离单元的杂波等效噪声"，功率域相加后返回（日志不分项）。
-  return main_lobe_w + side_lobe_w + rescatter_w;
+  // ---- 多重散射项（2026-11-07 甲方要求）：地面补片之间的二次及更高次散射 ----
+  // 物理：雷达→补片A（一次散射，已由上面三项给出）→ 补片B → … → 雷达。
+  //   相邻补片间距 d ≈ √A_patch（补片自身尺度），单次 bounce 的耦合
+  //     η = σ₀·A_patch/(4π·d²) = σ₀/(4π)
+  //   多次求和为几何级数 Σ_{k≥1} ηᵏ = η/(1−η) ≈ η（η ≪ 1，σ₀ 取参考擦地角）。
+  //   所以多重散射的**均值**只是一次散射项的 η 倍（σ₀=−28 dB 时约 −39 dB），
+  //   再乘调用方给的逐周期随机起伏（dB）——理论上界与随机范围都由这两个量界定，
+  //   不会凭空放大到主导量级。
+  // 标识：多重散射项（2026-11-07）。
+  const float single_bounce_w = main_lobe_w + side_lobe_w + rescatter_w;
+  float multi_scatter_w = 0.0f;
+  if (single_bounce_w > 0.0f) {
+    const float sigma0_ref_lin =
+        std::pow(10.0f, ResolveSigma0Db(profile) / 10.0f);  // σ₀@参考擦地角（线性）
+    const float eta = oneq::common::numerics::Clamp(sigma0_ref_lin / (4.0f * kPi), 0.0f, 1.0e-2f);
+    multi_scatter_w = single_bounce_w * eta;
+  }
+  // 过程：**起伏落在整个杂波项上**（散斑 + 多重散射同乘一份起伏）——甲方要"一个能到达
+  //   雷达的数值 + 随机范围"：均值仍由几何决定，逐周期在 dB 域上下浮动（默认 ±3 dB）。
+  //   没有地面回波的单元（single_bounce_w = 0）起伏后仍为 0，不会被凭空抬成底噪。
+  // 标识：杂波起伏（2026-11-07）。
+  const float fluctuation_gain = std::pow(10.0f, input.clutter_fluctuation_db / 10.0f);
+  return (single_bounce_w + multi_scatter_w) * fluctuation_gain;
 }
 
 }  // namespace internal

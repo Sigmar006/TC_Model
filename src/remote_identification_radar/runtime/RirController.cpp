@@ -389,13 +389,39 @@ void RirController::ResolveEnvironment(float* propagation_loss_db) const {
 }
 
 // 过程：逐目标主瓣地杂波 → 等效噪声功率（W）：擦地角 + 距离单元 + 植被 σ₀ → 杂波 RCS → 雷达方程 → CNR。
+namespace {
+
+/// 杂波起伏幅度（dB，±）：均匀分布，物理上是散斑/植被摆动/风向导致的逐周期去相关。
+constexpr float kClutterJitterHalfSpanDb = 3.0f;
+
+/**
+ * @brief 由（周期、目标ID、检测种子）散列出一次伪随机 → ±3 dB 均匀起伏。
+ * @note 刻意不动 `measurement_rng_`：那会改变量测噪声的既有序列，令历史结果不可比。
+ * @note 2026-11-07 甲方要求：多重散射"理论上能到达雷达的一个数值 + 随机范围"。
+ */
+float ResolveClutterJitterDb(std::uint32_t cycle, std::uint64_t target_id) {
+  std::uint64_t hash = 1469598103934665603ULL;  // FNV-1a 64 起点
+  auto mix = [&hash](std::uint64_t value) {
+    hash ^= value;
+    hash *= 1099511628211ULL;
+    hash ^= hash >> 33;
+  };
+  mix(cycle);
+  mix(target_id);
+  const double unit = static_cast<double>(hash & 0xFFFFFFULL) / 16777216.0;  // [0,1)
+  return static_cast<float>((unit * 2.0 - 1.0) * kClutterJitterHalfSpanDb);
+}
+
+}  // namespace
+
 float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_range_m,
                                                 float total_propagation_loss_db,
                                                 float carrier_hz,
                                                 float bandwidth_hz,
                                                 float platform_altitude_m,
                                                 float target_rcs_m2, float target_height_m,
-                                                float target_ground_range_m) const {
+                                                float target_ground_range_m,
+                                                float clutter_fluctuation_db) const {
   if (environment_.vegetation_cover_profile ==
       config::RirVegetationCoverProfile::kDisabled) {
     return 0.0f;
@@ -420,6 +446,7 @@ float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_r
   clutter_input.target_rcs_m2 = target_rcs_m2;
   clutter_input.target_height_m = target_height_m;
   clutter_input.target_ground_range_m = target_ground_range_m;
+  clutter_input.clutter_fluctuation_db = clutter_fluctuation_db;
   clutter_input.thermal_noise_w = internal::RirRadarEquations::ComputeThermalNoisePower_W(
       hardware_.transmitter, hardware_.receiver);
   return surface_clutter_model_.EvaluateClutterNoiseW(clutter_input);
@@ -684,7 +711,11 @@ bool RirController::TryBuildMeasurement(
       // 地面投影水平距离（ENU 水平分量）。
       target.rcs,
       platform_altitude_m + raw_position.z(),
-      std::sqrt(raw_position.x() * raw_position.x() + raw_position.y() * raw_position.y()));
+      std::sqrt(raw_position.x() * raw_position.x() + raw_position.y() * raw_position.y()),
+      // 多重散射项的逐周期随机起伏：±3 dB 均匀，
+      // 用 (周期, 目标ID, 检测种子) 散列出伪随机数——不动任何既有随机流，
+      // 同种子可复现，换种子换实现。
+      ResolveClutterJitterDb(input.input_cycle_index, target.external_target_id));
   // 与 AR DetectionExecution 同口径：主路径与回退分支波长同源——回退分支的有效
   // 波束宽度同样经 λ/L 物理推导（结果喂量测误差模型）；载频非正时不启用物理推导。
   const float wavelength_m = carrier_hz > 0.0f

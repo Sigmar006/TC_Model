@@ -367,4 +367,28 @@ TEST(RirSurfaceClutterModelTest, TargetGroundRescatterNeedsNearLowTarget) {
   EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(too_low), 0.0f);
 }
 
+/// @brief 多重散射 + 起伏：均值由几何定（一次散射 × σ₀/4π），逐周期在 dB 域浮动 ±3 dB。
+/// @note  起伏落在**整个杂波项**上（甲方口径：给一个能到达雷达的数值 + 随机范围）；
+///        没有地面回波的单元（远距目标）起伏后仍为 0，不会被抬成底噪。
+TEST(RirSurfaceClutterModelTest, ClutterFluctuationScalesWholeTerm) {
+  const RirSurfaceClutterModel model;
+  RirSurfaceClutterInput base = MakeSidelobeInput(20000.0f, 0.3f, -20.0f);
+  base.clutter_fluctuation_db = 0.0f;
+  const float nominal = model.EvaluateClutterNoiseW(base);
+  ASSERT_GT(nominal, 0.0f);
+
+  RirSurfaceClutterInput up = base;
+  up.clutter_fluctuation_db = 3.0f;
+  RirSurfaceClutterInput down = base;
+  down.clutter_fluctuation_db = -3.0f;
+  // ±3 dB ⇒ 功率 ×1.995 / ×0.501（只测起伏增益，多重散射的 −39 dB 结构项可忽略）。
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(up) / nominal, 1.9953f, 0.01f);
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(down) / nominal, 0.5012f, 0.01f);
+
+  // 远距弹道目标（该单元无地面）：起伏后仍为 0。
+  RirSurfaceClutterInput far_target = MakeSidelobeInput(4324000.0f, 26.6f, -20.0f);
+  far_target.clutter_fluctuation_db = 3.0f;
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_target), 0.0f);
+}
+
 }  // namespace remote_identification_radar

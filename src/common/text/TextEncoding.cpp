@@ -62,6 +62,37 @@ static bool ConvertFromCodePage(const std::string& text, UINT code_page, std::st
 }
 #endif
 
+std::string ToSystemAnsiText(const std::string& text) {
+  if (text.empty()) {
+    return text;
+  }
+#if defined(_WIN32)
+  const int wide_len = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
+                                             static_cast<int>(text.size()), nullptr, 0);
+  if (wide_len <= 0) {
+    return text;  // 不是合法 UTF-8：可能本来就是 ANSI，原样返回。
+  }
+  std::vector<wchar_t> wide(static_cast<std::size_t>(wide_len), L'\0');
+  if (::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), &wide[0],
+                            wide_len) <= 0) {
+    return text;
+  }
+  const int ansi_len = ::WideCharToMultiByte(CP_ACP, 0, &wide[0], wide_len, nullptr, 0, nullptr,
+                                             nullptr);
+  if (ansi_len <= 0) {
+    return text;
+  }
+  std::string ansi(static_cast<std::size_t>(ansi_len), '\0');
+  if (::WideCharToMultiByte(CP_ACP, 0, &wide[0], wide_len, &ansi[0], ansi_len, nullptr, nullptr) <=
+      0) {
+    return text;
+  }
+  return ansi;
+#else
+  return text;
+#endif
+}
+
 std::string NormalizeExternalText(const std::string& text) {
   if (text.empty()) {
     return text;

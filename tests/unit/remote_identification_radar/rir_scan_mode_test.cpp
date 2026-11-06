@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file rir_scan_mode_test.cpp
  * @brief 搜索模式（指定空域 / 地平线）扇区解析单测。
  */

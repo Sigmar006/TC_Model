@@ -148,8 +148,19 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
     const float beam_limited_area_m2 = clutter_range_m * clutter_range_m * az_beamwidth_rad *
                                        el_beamwidth_rad / std::sin(grazing_rad);
       const float clutter_area_m2 = std::min(pulse_limited_area_m2, beam_limited_area_m2);
-      main_lobe_w = to_noise_w(clutter_area_m2, clutter_range_m,
-                               input.antenna.main_beam_gain_db, grazing_deg);
+      // 过程：**距离一致性门**（2026-11-06 补）——主瓣地面回波落在"主瓣落地足迹"所在的
+      //   距离单元里，足迹径向长度约 s·θ_el（500 m 量级），单元深度 δR 只有 5 m。
+      //   目标若远离该足迹（例如 200 km 外 0.2° 的低空目标），它所在单元里**没有**地面，
+      //   不能把近处地面的回波记到它头上。容差取 max(3·δR, 足迹径向长度)。
+      //   之前缺这道门：100 km / 200 km / 500 km 的低仰角目标都会被记上 ~47.6 km 处的
+      //   主瓣地面杂波（探针实测 CNR 从 0 直接跳到顶钳位 120 dB）。
+      // 标识：主瓣距离一致性门（2026-11-06）。
+      const float footprint_radial_m = clutter_range_m * el_beamwidth_rad;
+      const float range_tolerance_m = std::max(3.0f * range_cell_m, footprint_radial_m);
+      if (std::fabs(input.range_m - clutter_range_m) <= range_tolerance_m) {
+        main_lobe_w = to_noise_w(clutter_area_m2, clutter_range_m,
+                                 input.antenna.main_beam_gain_db, grazing_deg);
+      }
     }
   }
 

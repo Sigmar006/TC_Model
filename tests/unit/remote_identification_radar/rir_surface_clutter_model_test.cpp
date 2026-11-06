@@ -265,4 +265,18 @@ TEST(RirSurfaceClutterModelTest, SidelobeClutterScalesWithTwoWaySidelobeLevel) {
   EXPECT_NEAR(at_minus_30 / at_minus_40, 100.0f, 1.0f);
 }
 
+/// @brief 主瓣项的距离一致性：地面回波只落在主瓣落地足迹的距离单元里。
+///        目标与足迹相差几公里以上时，它所在单元没有地面，主瓣项必须为 0。
+TEST(RirSurfaceClutterModelTest, MainlobeClutterNeedsTargetInBeamFootprint) {
+  const RirSurfaceClutterModel model;
+  // 低仰角 0.2°：主瓣下沿在约 47.6 km 处落地。
+  const float at_footprint = model.EvaluateClutterNoiseW(MakeSidelobeInput(47600.0f, 0.2f, -300.0f));
+  EXPECT_GT(at_footprint, 0.0f) << "目标与主瓣地面足迹同单元时应算到主瓣杂波";
+
+  // 同样的低仰角、但目标在足迹之外（100/200/500 km）：该单元没有地面 ⇒ 0。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(100000.0f, 0.2f, -300.0f)), 0.0f);
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(200000.0f, 0.2f, -300.0f)), 0.0f);
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(500000.0f, 0.15f, -300.0f)), 0.0f);
+}
+
 }  // namespace remote_identification_radar

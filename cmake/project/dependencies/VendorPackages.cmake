@@ -156,7 +156,11 @@ if(NOT TARGET Eigen3::Eigen)
     if(MSVC AND MSVC_VERSION LESS 1900 AND _oneq_eigen_version STREQUAL "3.4.0")
         oneq_patch_eigen_vs2013("${_oneq_eigen_include_dir}")
     endif()
-    add_library(eigen_vendor INTERFACE IMPORTED)
+    # 中译：**IMPORTED 目标必须 GLOBAL**（2026-11-06）——CMake 3.16 不允许对"非全局可见的
+#   IMPORTED 目标"建 ALIAS（报 "imported but not globally visible"），3.18+ 才放宽。
+#   加 GLOBAL 后 3.16 / 3.2x / 4.x 行为一致，别名照常可用。
+# 标识：vendor 目标 GLOBAL 化（2026-11-06）。
+add_library(eigen_vendor INTERFACE IMPORTED GLOBAL)
     set_target_properties(eigen_vendor PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_oneq_eigen_include_dir}")
     add_library(Eigen3::Eigen ALIAS eigen_vendor)
@@ -186,7 +190,11 @@ if(NOT TARGET nanoflann::nanoflann)
         # 兼容仅分发单头文件、未保留上游 include/ 目录的离线依赖包。
         set(_oneq_nanoflann_include_dir "${_oneq_nanoflann_root}")
     endif()
-    add_library(nanoflann_vendor INTERFACE IMPORTED)
+    # 中译：**IMPORTED 目标必须 GLOBAL**（2026-11-06）——CMake 3.16 不允许对"非全局可见的
+#   IMPORTED 目标"建 ALIAS（报 "imported but not globally visible"），3.18+ 才放宽。
+#   加 GLOBAL 后 3.16 / 3.2x / 4.x 行为一致，别名照常可用。
+# 标识：vendor 目标 GLOBAL 化（2026-11-06）。
+add_library(nanoflann_vendor INTERFACE IMPORTED GLOBAL)
     set_target_properties(nanoflann_vendor PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_oneq_nanoflann_include_dir}")
     add_library(nanoflann::nanoflann ALIAS nanoflann_vendor)
@@ -204,7 +212,11 @@ endif()
 # flatc，使 setup_flatc() 优先命中 target 路径（与 conan provider 行为一致）。
 # ---------------------------------------------------------------------------
 if(NOT TARGET flatbuffers::flatbuffers)
-    add_library(flatbuffers_runtime_vendor INTERFACE IMPORTED)
+    # 中译：**IMPORTED 目标必须 GLOBAL**（2026-11-06）——CMake 3.16 不允许对"非全局可见的
+#   IMPORTED 目标"建 ALIAS（报 "imported but not globally visible"），3.18+ 才放宽。
+#   加 GLOBAL 后 3.16 / 3.2x / 4.x 行为一致，别名照常可用。
+# 标识：vendor 目标 GLOBAL 化（2026-11-06）。
+add_library(flatbuffers_runtime_vendor INTERFACE IMPORTED GLOBAL)
     set_target_properties(flatbuffers_runtime_vendor PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${ONEQ_THIRD_PARTY_DIR}/flatbuffers/include")
     add_library(flatbuffers::flatbuffers ALIAS flatbuffers_runtime_vendor)
@@ -286,7 +298,7 @@ if(NOT TARGET ZLIB::ZLIB)
             "zlib add_subdirectory 未产出 zlibstatic/zlib target；请检查 third_party/zlib。")
     endif()
     # IMPORTED INTERFACE target：链接真实 zlib target，但自身对外是导入目标（不进导出集）。
-    add_library(ZLIB::ZLIB INTERFACE IMPORTED)
+    add_library(ZLIB::ZLIB INTERFACE IMPORTED GLOBAL)
     target_link_libraries(ZLIB::ZLIB INTERFACE ${_oneq_zlib_real_target})
     # zlib 头文件路径：third_party/zlib 根目录含 zlib.h。
     set_target_properties(ZLIB::ZLIB PROPERTIES
@@ -316,7 +328,11 @@ if(NOT TARGET Boost::boost)
             "PACKAGE_MANAGER=none 缺失 boost 头：${_oneq_boost_root}/boost\n"
             "请重跑 scripts\\win\\fetch_third_party.bat（含 boost 源码包下载步骤）。")
     endif()
-    add_library(boost_vendor INTERFACE IMPORTED)
+    # 中译：**IMPORTED 目标必须 GLOBAL**（2026-11-06）——CMake 3.16 不允许对"非全局可见的
+#   IMPORTED 目标"建 ALIAS（报 "imported but not globally visible"），3.18+ 才放宽。
+#   加 GLOBAL 后 3.16 / 3.2x / 4.x 行为一致，别名照常可用。
+# 标识：vendor 目标 GLOBAL 化（2026-11-06）。
+add_library(boost_vendor INTERFACE IMPORTED GLOBAL)
     set_target_properties(boost_vendor PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_oneq_boost_root}")
     add_library(Boost::boost ALIAS boost_vendor)
@@ -346,7 +362,7 @@ if(NOT TARGET SQLite::SQLite3)
         "${ONEQ_THIRD_PARTY_DIR}/sqlite/sqlite3.c")
     target_include_directories(sqlite3_vendor PUBLIC
         "${ONEQ_THIRD_PARTY_DIR}/sqlite")
-    add_library(SQLite::SQLite3 INTERFACE IMPORTED)
+    add_library(SQLite::SQLite3 INTERFACE IMPORTED GLOBAL)
     target_link_libraries(SQLite::SQLite3 INTERFACE sqlite3_vendor)
     message(STATUS "sqlite3 3.53.4: vendored amalgamation @ ${ONEQ_THIRD_PARTY_DIR}/sqlite")
 endif()

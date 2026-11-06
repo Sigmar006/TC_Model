@@ -935,7 +935,7 @@ class FusionEngine::Impl {
 };
 
 FusionEngine::FusionEngine(const FusionConfig& config)
-    : impl_(std::make_unique<Impl>(config)) {}
+    : impl_(std::unique_ptr<Impl>(new Impl(config))) {}
 
 FusionEngine::~FusionEngine() = default;
 

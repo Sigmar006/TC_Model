@@ -580,16 +580,16 @@ void SbirsTrackingCoordinator::InitializeImmComponents(
                                           : tracking.imm_model_noise_diff_coeffs;
   const int num_models = static_cast<int>(q_values.size());
   for (int i = 0; i < num_models; ++i) {
-    auto measurement_model = std::make_unique<tracking::SbirsAngleMeasurementModel>();
+    auto measurement_model = std::unique_ptr<tracking::SbirsAngleMeasurementModel>(new tracking::SbirsAngleMeasurementModel());
     imm_measurement_models_.push_back(std::move(measurement_model));
     tracking::SbirsEkfPredictorConfig predictor_config;
     predictor_config.noise_diff_coeff = q_values[static_cast<std::size_t>(i)];
     auto predictor =
-        std::make_unique<tracking::SbirsEkfPredictor>(&cv_transition_model_, predictor_config);
+        std::unique_ptr<tracking::SbirsEkfPredictor>(new tracking::SbirsEkfPredictor(&cv_transition_model_, predictor_config));
     imm_predictors_.push_back(predictor.get());
     imm_predictors_owned_.push_back(std::move(predictor));
     auto updater =
-        std::make_unique<tracking::SbirsEkfUpdater>(imm_measurement_models_.back().get());
+        std::unique_ptr<tracking::SbirsEkfUpdater>(new tracking::SbirsEkfUpdater(imm_measurement_models_.back().get()));
     imm_updaters_.push_back(updater.get());
     imm_updaters_owned_.push_back(std::move(updater));
   }
@@ -619,7 +619,7 @@ tracking::SbirsImmFilter* SbirsTrackingCoordinator::CreateImmFilter(
   }
   imm_config.initial_weights.setConstant(num_models, initial_weight);
   std::unique_ptr<tracking::SbirsImmFilter> filter =
-      std::make_unique<tracking::SbirsImmFilter>(imm_config, imm_predictors_, imm_updaters_);
+      std::unique_ptr<tracking::SbirsImmFilter>(new tracking::SbirsImmFilter(imm_config, imm_predictors_, imm_updaters_));
   filter->SetModelStates(initial_model_states);
   tracking::SbirsImmFilter* const result = filter.get();
   imm_filters_by_target_[target_id] = std::move(filter);

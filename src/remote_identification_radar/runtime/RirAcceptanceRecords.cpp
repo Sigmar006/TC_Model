@@ -1226,6 +1226,20 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
     //   继续传播（问题定位后再撤掉上限）。
     // 标识：场景接口表规模防护（2026-11-06）。
     static const std::size_t kMaxSceneSamples = 4096U;
+    // 中译：**表规模异常就先写摘要并跳过整表**（2026-11-07）——现场在 44/45 拍崩于本函数
+    //   拼接字符串（0xC0000374 堆破坏），说明这两张表在装配阶段可能已被写坏。坏表再逐元素
+    //   格式化成几十万字符，只会把错误放大且掩盖首因；此处先落"规模异常"证据，再继续下一目标。
+    // 标识：场景接口坏表防护（2026-11-07）。
+    const std::size_t aspect_raw = target.aspect_rcs_samples.size();
+    const std::size_t pol_raw = target.polarization_samples.size();
+    if (aspect_raw > kMaxSceneSamples || pol_raw > kMaxSceneSamples) {
+      std::string summary = "目标序号=" + std::to_string(target_index);
+      summary += " 目标ID=" + std::to_string(target.external_target_id);
+      summary += " 表规模异常=视角RCS:" + std::to_string(aspect_raw) + " 极化:" +
+                 std::to_string(pol_raw) + " 已跳过整表输出";
+      RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, summary);
+      continue;
+    }
     content += " 视角RCS=[";
     const std::size_t aspect_count =
         std::min(target.aspect_rcs_samples.size(), kMaxSceneSamples);

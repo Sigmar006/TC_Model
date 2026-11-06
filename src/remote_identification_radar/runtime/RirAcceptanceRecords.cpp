@@ -2401,16 +2401,15 @@ void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::u
   content += " 方位扫描范围=" + FormatF(az_continuous_min_deg, 3) + "/" +
              FormatF(az_continuous_max_deg, 3) + "°";
   content += " 俯仰扫描范围=" + FormatF(el_min, 3) + "/" + FormatF(el_max, 3) + "°";
-  // 中译：追加扫描配置回显（用户 2026-10-20 要求）——阵面朝向、可扫描体积、任务子窗、
-  //       起始象限、推进顺序、波位步长系数。静态配置只在此行回显一次，不逐驻留重复；
+  // 中译：追加扫描配置回显（用户 2026-10-20 要求）——阵面朝向、任务子窗、起始象限、
+  //       推进顺序、波位步长系数。静态配置只在此行回显一次，不逐驻留重复；
   //       波位总数/间距/单帧时间可由 Rir_scan_pattern.csv 反算，故不落日志。
-  // 标识：第 48 项配置回显。
+  // 2026-11-07 甲方要求：**删掉「可扫描方位/俯仰范围」两项回显**——它们是硬件体积的
+  //   复写，与判据无关，且配置漂移时容易与判据示例对不上。`orientation` 形参保留
+  //   （同族回显后续可能再加，且调用点已按名传参）。
+  // 标识：第 48 项配置回显（去掉可扫描体积，2026-11-07）。
   content += " 阵面方位朝向=" + FormatF(mission.scan_center_deg.az_deg, 3) + "°";
   content += " 阵面俯仰朝向=" + FormatF(mission.scan_center_deg.el_deg, 3) + "°";
-  content += " 可扫描方位范围=" + FormatF(orientation.az_min_deg, 3) + "/" +
-             FormatF(orientation.az_max_deg, 3) + "°(相对朝向)";
-  content += " 可扫描俯仰范围=" + FormatF(orientation.el_min_deg, 3) + "/" +
-             FormatF(orientation.el_max_deg, 3) + "°(绝对)";
   content += " 任务扫描子窗=az[" + FormatF(mission.scan_window_deg.az_min_deg, 3) + "," +
              FormatF(mission.scan_window_deg.az_max_deg, 3) + "]el[" +
              FormatF(mission.scan_window_deg.el_min_deg, 3) + "," +

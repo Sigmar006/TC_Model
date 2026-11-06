@@ -265,6 +265,63 @@ TEST(RirSurfaceClutterModelTest, SidelobeClutterScalesWithTwoWaySidelobeLevel) {
   EXPECT_NEAR(at_minus_30 / at_minus_40, 100.0f, 1.0f);
 }
 
+/// @brief 主瓣判据（严格几何）：只有波束下沿压到"目标距离处地面点"以下才算主瓣杂波。
+///        平台 300 m、0.8° 波束（半宽 0.4°）：
+///        φ = −1.0° 时下沿 −1.4°，20~71 km 处地面俯角 0.5°~0.9° 都在其内 ⇒ 有杂波；
+///        φ = +0.3° 时下沿 −0.1°，地平线方向都在 −0.48° ⇒ 一片地面也照不到 ⇒ 0。
+TEST(RirSurfaceClutterModelTest, MainlobeClutterRequiresBeamEdgeBelowGroundPoint) {
+  const RirSurfaceClutterModel model;
+  // 波束压到地平线以下：主瓣照地（副瓣关掉以隔离主瓣项）。
+  EXPECT_GT(model.EvaluateClutterNoiseW(MakeSidelobeInput(40000.0f, -1.0f, -300.0f)), 0.0f);
+  EXPECT_GT(model.EvaluateClutterNoiseW(MakeSidelobeInput(71000.0f, -1.0f, -300.0f)), 0.0f);
+  // 波束指向地平线以上：下沿仍高出地平线，主瓣完全没碰到地面。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(40000.0f, 0.3f, -300.0f)), 0.0f);
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(71000.0f, 0.08f, -300.0f)), 0.0f);
+  // 超出无线电地平线：该距离处没有地面，主瓣项恒 0（哪怕波束压得很低）。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(100000.0f, -1.0f, -300.0f)), 0.0f);
+}
+
+}  // namespace
+}  // namespace tests
+/// @brief 副瓣杂波几何输入：平台 300 m（无线电地平线约 71.4 km）、4° 波束。
+/// @note  既有用例不填 platform_altitude_m，主瓣项走 h=0 退化分支；副瓣项必须显式给高度，
+///        否则地平线退化成约 4 km，测试几何不成立。
+RirSurfaceClutterInput MakeSidelobeInput(float range_m, float look_el_deg,
+                                         float sidelobe_level_db) {
+  RirSurfaceClutterInput input = MakeInput(RirVegetationCoverProfile::kOpenGrassland, range_m,
+                                           look_el_deg);
+  input.platform_altitude_m = 300.0f;
+  input.antenna.max_sidelobe_level_db = sidelobe_level_db;
+  return input;
+}
+
+/// @brief 主瓣离地（目标仰角 > 半波束宽）且在地平线内时，副瓣项**单独**给出杂波。
+TEST(RirSurfaceClutterModelTest, SidelobeClutterExistsWhenMainlobeIsOffGround) {
+  const RirSurfaceClutterModel model;
+  const float clutter_w = model.EvaluateClutterNoiseW(MakeSidelobeInput(50000.0f, 5.0f, -20.0f));
+  EXPECT_GT(clutter_w, 0.0f) << "主瓣离地后副瓣照地仍应产生杂波";
+  // 主瓣项为 0 的佐证：把副瓣压到 -300 dB（等效关闭）后杂波归零。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(50000.0f, 5.0f, -300.0f)), 0.0f);
+}
+
+/// @brief 超出无线电地平线（约 71.4 km）后副瓣项归零：地面被地球遮挡。
+TEST(RirSurfaceClutterModelTest, SidelobeClutterVanishesBeyondRadioHorizon) {
+  const RirSurfaceClutterModel model;
+  EXPECT_GT(model.EvaluateClutterNoiseW(MakeSidelobeInput(70000.0f, 5.0f, -20.0f)), 0.0f);
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(80000.0f, 5.0f, -20.0f)), 0.0f);
+  // 弹道目标（4,300 km）同仰角不应挂上"同斜距全向地面环"。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(4300000.0f, 26.0f, -20.0f)), 0.0f);
+}
+
+/// @brief 副瓣电平每降 10 dB（单程），杂波功率降 20 dB（双程）——比值固定 100。
+TEST(RirSurfaceClutterModelTest, SidelobeClutterScalesWithTwoWaySidelobeLevel) {
+  const RirSurfaceClutterModel model;
+  const float at_minus_30 = model.EvaluateClutterNoiseW(MakeSidelobeInput(50000.0f, 5.0f, -30.0f));
+  const float at_minus_40 = model.EvaluateClutterNoiseW(MakeSidelobeInput(50000.0f, 5.0f, -40.0f));
+  ASSERT_GT(at_minus_40, 0.0f);
+  EXPECT_NEAR(at_minus_30 / at_minus_40, 100.0f, 1.0f);
+}
+
 /// @brief 主瓣项的距离一致性：地面回波只落在主瓣落地足迹的距离单元里。
 ///        目标与足迹相差几公里以上时，它所在单元没有地面，主瓣项必须为 0。
 TEST(RirSurfaceClutterModelTest, MainlobeClutterNeedsTargetInBeamFootprint) {

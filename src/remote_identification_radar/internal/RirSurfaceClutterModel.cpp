@@ -123,43 +123,46 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
     return oneq::common::radar::ComputeEquivalentClutterNoiseW(input.thermal_noise_w, cnr_db);
   };
 
-  // ---- 主瓣项：主瓣下沿擦地才成立（ψ_raw ≤ 0 即主瓣完全离地，该项 0）----
+  // ---- 主瓣项（2026-11-06 改为严格几何）：波束是否真的照到"目标那个距离处"的地面 ----
+  // 旧写法用"下沿擦地角"反算一个**落地距离**，再把它当成目标处的杂波——近轴近似在
+  // 接近切线时会给出假交点（δ=0.32° 算出 38 km，而解析几何说这条射线根本不落地），
+  // 于是"目标在 5,000 km 外、仰角 0.1°"也会被记上一份近距地面杂波。
+  // 现在按精确三角形几何逐点判定：目标斜距 R 处的地面点俯角 ψ_g 只有满足
+  //   R ≤ 地平线斜距 且 ψ_g ≤ θ_el/2 − φ（波束下沿压到该点以下）
+  // 时，才认为该单元有主瓣地杂波；面积/σ₀ 都在该 R 与 ψ_g 上求。
+  // 标识：主瓣严格几何（2026-11-06）。
   float main_lobe_w = 0.0f;
-  const float raw_grazing_deg = beamwidth.el_beamwidth_deg * 0.5f - input.look_el_deg;
-  if (raw_grazing_deg > 0.0f) {
-    const float grazing_deg =
-        oneq::common::numerics::Clamp(raw_grazing_deg, kMinGrazingDeg, kMaxGrazingDeg);
-    const float grazing_rad = DegToRad(grazing_deg);
-    // 过程：主瓣下沿的地面照射距离（4/3 地球半径射线-球面交点；超过目标斜距时按目标斜距取）。
-    const float sin_delta = std::sin(DegToRad(raw_grazing_deg));
-    float clutter_range_m =
-        re_eff_m * (std::sqrt(sin_delta * sin_delta +
-                              2.0f * std::max(input.platform_altitude_m, 0.0f) / re_eff_m) -
-                    sin_delta);
-    // 退化几何（例如 h=0 时擦地射线与球面无交点）：只跳过主瓣项，副瓣项仍按自己的
-    // 可见性门独立判定，不因主瓣几何坏掉而连带丢失副瓣杂波。
-    if (clutter_range_m > 0.0f) {
-    if (input.range_m > 0.0f && input.range_m < clutter_range_m) {
-      clutter_range_m = input.range_m;
-    }
-    // 过程：擦地面积取脉冲限制与波束限制的较小者（距离单元 c/(2B)，与测距误差同源）。
-    const float pulse_limited_area_m2 =
-        clutter_range_m * az_beamwidth_rad * range_cell_m / std::cos(grazing_rad);
-    const float beam_limited_area_m2 = clutter_range_m * clutter_range_m * az_beamwidth_rad *
-                                       el_beamwidth_rad / std::sin(grazing_rad);
-      const float clutter_area_m2 = std::min(pulse_limited_area_m2, beam_limited_area_m2);
-      // 过程：**距离一致性门**（2026-11-06 补）——主瓣地面回波落在"主瓣落地足迹"所在的
-      //   距离单元里，足迹径向长度约 s·θ_el（500 m 量级），单元深度 δR 只有 5 m。
-      //   目标若远离该足迹（例如 200 km 外 0.2° 的低空目标），它所在单元里**没有**地面，
-      //   不能把近处地面的回波记到它头上。容差取 max(3·δR, 足迹径向长度)。
-      //   之前缺这道门：100 km / 200 km / 500 km 的低仰角目标都会被记上 ~47.6 km 处的
-      //   主瓣地面杂波（探针实测 CNR 从 0 直接跳到顶钳位 120 dB）。
-      // 标识：主瓣距离一致性门（2026-11-06）。
-      const float footprint_radial_m = clutter_range_m * el_beamwidth_rad;
-      const float range_tolerance_m = std::max(3.0f * range_cell_m, footprint_radial_m);
-      if (std::fabs(input.range_m - clutter_range_m) <= range_tolerance_m) {
-        main_lobe_w = to_noise_w(clutter_area_m2, clutter_range_m,
-                                 input.antenna.main_beam_gain_db, grazing_deg);
+  {
+    const float height_m = std::max(input.platform_altitude_m, 0.0f);
+    const float radius_platform_m = re_eff_m + height_m;
+    // 地平线斜距：视线与球面相切处，d_h = √((Re+h)² − Re²)（≈ √(2·Re·h)）。
+    const float horizon_m = std::sqrt(std::max(
+        radius_platform_m * radius_platform_m - re_eff_m * re_eff_m, 0.0f));
+    // 波束能覆盖的最大俯角 = 下沿相对水平线的下压量 = θ_el/2 − φ。
+    const float max_covered_depression_deg =
+        0.5f * beamwidth.el_beamwidth_deg - input.look_el_deg;
+    if (max_covered_depression_deg > 0.0f && input.range_m > height_m &&
+        input.range_m <= horizon_m) {
+      // 三角形 O-A-B：A=平台、B=地面点、|AB|=R、|OA|=Re+h、|OB|=Re。
+      //   cos∠OAB = (a² + R² − Re²) / (2·a·R)，地面点俯角 ψ_g = 90° − ∠OAB。
+      const float r = input.range_m;
+      const float cos_angle =
+          (radius_platform_m * radius_platform_m + r * r - re_eff_m * re_eff_m) /
+          (2.0f * radius_platform_m * r);
+      const float angle_rad = std::acos(oneq::common::numerics::Clamp(cos_angle, -1.0f, 1.0f));
+      const float depression_deg = 90.0f - angle_rad * 57.29577951308232f;
+      if (depression_deg > 0.0f && depression_deg <= max_covered_depression_deg) {
+        const float grazing_deg =
+            oneq::common::numerics::Clamp(depression_deg, kMinGrazingDeg, kMaxGrazingDeg);
+        const float grazing_rad = DegToRad(grazing_deg);
+        // 过程：擦地面积仍取脉冲限制与波束限制的较小者（距离单元 c/(2B)），只是
+        //   距离与擦地角都取目标处的值（不再用下沿落地距离替代）。
+        const float pulse_limited_area_m2 =
+            r * az_beamwidth_rad * range_cell_m / std::cos(grazing_rad);
+        const float beam_limited_area_m2 =
+            r * r * az_beamwidth_rad * el_beamwidth_rad / std::sin(grazing_rad);
+        const float clutter_area_m2 = std::min(pulse_limited_area_m2, beam_limited_area_m2);
+        main_lobe_w = to_noise_w(clutter_area_m2, r, input.antenna.main_beam_gain_db, grazing_deg);
       }
     }
   }

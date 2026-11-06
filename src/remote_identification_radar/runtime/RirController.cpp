@@ -393,6 +393,9 @@ namespace {
 
 /// 杂波起伏幅度（dB，±）：均匀分布，物理上是散斑/植被摆动/风向导致的逐周期去相关。
 constexpr float kClutterJitterHalfSpanDb = 3.0f;
+/// 弥散散射底（相对热噪声，dB）：工程兜底，保证任何检测单元都有可测杂波量级。
+/// −20 dB ⇒ 约 −145 dBW（热噪声 3.0e-13 W 的 1%）；设成 −200 即等于关闭。
+constexpr float kDiffuseFloorToNoiseDb = -20.0f;
 
 /**
  * @brief 由（周期、目标ID、检测种子）散列出一次伪随机 → ±3 dB 均匀起伏。
@@ -447,6 +450,9 @@ float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_r
   clutter_input.target_height_m = target_height_m;
   clutter_input.target_ground_range_m = target_ground_range_m;
   clutter_input.clutter_fluctuation_db = clutter_fluctuation_db;
+  // 弥散散射底：热噪声 × 固定比例（工程兜底，保证每个单元都有非零杂波量级）。
+  clutter_input.diffuse_floor_w = clutter_input.thermal_noise_w *
+                                  std::pow(10.0f, kDiffuseFloorToNoiseDb / 10.0f);
   clutter_input.thermal_noise_w = internal::RirRadarEquations::ComputeThermalNoisePower_W(
       hardware_.transmitter, hardware_.receiver);
   return surface_clutter_model_.EvaluateClutterNoiseW(clutter_input);

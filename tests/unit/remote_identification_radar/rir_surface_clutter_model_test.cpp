@@ -391,4 +391,22 @@ TEST(RirSurfaceClutterModelTest, ClutterFluctuationScalesWholeTerm) {
   EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_target), 0.0f);
 }
 
+/// @brief 弥散散射底（工程兜底）：开启后任何单元都有非零杂波，且同样带 ±3 dB 起伏。
+/// @note  关掉（`diffuse_floor_w = 0`）即回到"纯物理：无地面即 0"。
+TEST(RirSurfaceClutterModelTest, DiffuseFloorGivesEveryCellAClutterValue) {
+  const RirSurfaceClutterModel model;
+  RirSurfaceClutterInput far_target = MakeSidelobeInput(4324000.0f, 26.6f, -20.0f);
+
+  // 关：无地面 ⇒ 0。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_target), 0.0f);
+
+  // 开：恒等于底值（起伏 0 dB）。
+  far_target.diffuse_floor_w = 1.0e-15f;
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_target), 1.0e-15f);
+
+  // 起伏 +3 dB ⇒ 底值 ×1.995。
+  far_target.clutter_fluctuation_db = 3.0f;
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(far_target) / 1.0e-15f, 1.9953f, 0.01f);
+}
+
 }  // namespace remote_identification_radar

@@ -273,12 +273,18 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
     const float eta = oneq::common::numerics::Clamp(sigma0_ref_lin / (4.0f * kPi), 0.0f, 1.0e-2f);
     multi_scatter_w = single_bounce_w * eta;
   }
-  // 过程：**起伏落在整个杂波项上**（散斑 + 多重散射同乘一份起伏）——甲方要"一个能到达
-  //   雷达的数值 + 随机范围"：均值仍由几何决定，逐周期在 dB 域上下浮动（默认 ±3 dB）。
-  //   没有地面回波的单元（single_bounce_w = 0）起伏后仍为 0，不会被凭空抬成底噪。
+  // 过程：**弥散散射底**（工程兜底，2026-11-07 甲方要求）——真实雷达在任何距离单元都能
+  //   测到一点点非相干杂波底（大气/远地物弥散、多次绕射、接收链残余），它不服从"该处
+  //   有没有地面"的几何判据。控制器按热噪声的固定比例给底，于是远距单元不再是硬 0。
+  //   注意顺序：底噪**不参与**多重散射（它不是地面补片间的再散射）。
+  // 标识：弥散散射底（2026-11-07）。
+  const float diffuse_floor_w = input.diffuse_floor_w > 0.0f ? input.diffuse_floor_w : 0.0f;
+
+  // 过程：**起伏落在整个杂波项上**（散斑 + 多重散射 + 弥散底同乘一份起伏）——甲方要
+  //   "一个能到达雷达的数值 + 随机范围"：均值仍由几何决定，逐周期在 dB 域上下浮动 ±3 dB。
   // 标识：杂波起伏（2026-11-07）。
   const float fluctuation_gain = std::pow(10.0f, input.clutter_fluctuation_db / 10.0f);
-  return (single_bounce_w + multi_scatter_w) * fluctuation_gain;
+  return (single_bounce_w + multi_scatter_w + diffuse_floor_w) * fluctuation_gain;
 }
 
 }  // namespace internal

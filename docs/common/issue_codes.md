@@ -209,6 +209,9 @@ Last-reviewed: 2026-08-23
 | `sbirs.validation.invalid_mount_angles` | 输入校验 | 传感器安装欧拉角非法（须为有限值）。 |
 | `sbirs.validation.invalid_narrow_pointing_settle_tolerance` | 输入校验 | 窄视场指向沉降容差非法（须为非负有限值）。 |
 | `sbirs.validation.invalid_narrow_pointing_slew_rate` | 输入校验 | 窄视场指向最大转动速率非法（须为正且有限）。 |
+| `sbirs.validation.invalid_orbit_elements` | 输入校验 | 轨道根数非法（半长轴/偏心率/倾角等不构成合法椭圆轨道）。 |
+| `sbirs.validation.invalid_orbit_epoch` | 输入校验 | 轨道历元 UTC 儒略日非法（须为有限正数）。 |
+| `sbirs.validation.invalid_orbit_propagation_step` | 输入校验 | 轨道传播积分步长非法（须为正有限值）。 |
 | `sbirs.validation.invalid_pointing_disturbance_correlation` | 输入校验 | 指向扰动相关时间非法（须为正且有限）。 |
 | `sbirs.validation.invalid_pointing_disturbance_values` | 输入校验 | 指向扰动幅值与频率非法（须为非负有限值）。 |
 | `sbirs.validation.invalid_pointing_disturbance_vibration_frequency` | 输入校验 | 指向扰动振动频率非法（幅值非零时须为正）。 |

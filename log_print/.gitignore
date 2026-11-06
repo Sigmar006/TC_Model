@@ -1,0 +1,21 @@
+# 开发机虚拟环境（内网改用 offline\ 自带运行时）
+.venv/
+
+# 原始仿真日志与打包文件（体积大，不入库）
+log/
+log.zip
+
+# 解析缓存与 Python 字节码
+viz/.cache/
+__pycache__/
+*.pyc
+
+# 离线运行时装在包内的 Python 运行时与字体缓存（由 offline\install.bat 生成）
+.runtime/
+
+# 离线包二进制（由 offline\build_offline.ps1 生成）
+offline/wheels/
+offline/runtime/
+
+# 交付压缩包
+dist/

@@ -42,6 +42,7 @@ set(ENVELOPE_ATTRIBUTION_HEADERS
     "electro_optical_sensor/session/EosExclusionCauseRecorder.h"
     "electro_optical_sensor/session/EosOutputDebugView.h"
     "electro_optical_sensor/session/EosOutputTypes.h"
+    "precision_evaluation/PrecisionEvaluationInputs.h"
     "remote_identification_radar/session/RirCycleResult.h"
     "remote_identification_radar/session/RirExclusionCauseRecorder.h"
     "remote_identification_radar/session/RirOutputDebugView.h"

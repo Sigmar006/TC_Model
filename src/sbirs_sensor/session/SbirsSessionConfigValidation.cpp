@@ -3,6 +3,7 @@
 #include <cmath>
 #include <string>
 
+#include "1q/satellite_orbit/OrbitPropagator.h"
 #include "1q/sbirs_sensor/session/SbirsIssueCodes.h"
 
 namespace sbirs_sensor {
@@ -301,6 +302,29 @@ session::SbirsIssueList ValidateSbirsSessionConfig(const SbirsSessionConfig& con
   if (config.policy.tracking.nfov_tracking_gate_loss_cycles < 1U) {
     AddError(session::codes::kInvalidTrackingGateLossCycles,
              "tracking nfov_tracking_gate_loss_cycles must be at least 1", &issues);
+  }
+  // 轨道传播（设计说明 5.1.1「卫星轨道传播」）：仅在启用时校验；默认关闭下既有配置
+  // 零行为变化。根数合法性直接委托 satellite_orbit::OrbitPropagator::Initialize
+  // （单一事实来源），用 J2000 历元做只读探针，不写回任何会话状态。
+  if (config.orbit.propagation_enabled) {
+    const bool epoch_ok =
+        std::isfinite(config.orbit.epoch_utc_julian_day) && config.orbit.epoch_utc_julian_day > 0.0;
+    if (!epoch_ok) {
+      AddError(session::codes::kInvalidOrbitEpoch,
+               "orbit epoch UTC Julian day must be positive and finite", &issues);
+    }
+    if (!std::isfinite(config.orbit.propagation_step_sec) ||
+        config.orbit.propagation_step_sec <= 0.0) {
+      AddError(session::codes::kInvalidOrbitPropagationStep,
+               "orbit propagation step size must be positive and finite", &issues);
+    }
+    constexpr double kValidationEpochJd = 2451545.0;  // J2000，仅作校验探针历元
+    satellite_orbit::OrbitPropagator probe;
+    if (!probe.Initialize(config.orbit.orbital_elements,
+                          epoch_ok ? config.orbit.epoch_utc_julian_day : kValidationEpochJd)) {
+      AddError(session::codes::kInvalidOrbitElements,
+               "orbit elements must describe a valid elliptic orbit", &issues);
+    }
   }
   return issues;
 }

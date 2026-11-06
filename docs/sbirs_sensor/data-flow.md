@@ -17,8 +17,14 @@ Answers: SBIRS 的分层架构、数据如何流动、runtime patch 如何迁移
 | 区域 | 职责 |
 |---|---|
 | `sbirs_sensor.hpp` | 模块聚合入口；只聚合稳定 public API，不暴露 foundation/pipeline/runtime/state-machine 内部类型 |
-| `config/` | `SbirsSessionConfig`、runtime patch、semantic builder、config validation；条件五域（hardware / mission / orientation / policy / environment；orientation 为静态安装指向范本） |
+| `config/` | `SbirsSessionConfig`、runtime patch、semantic builder、config validation；条件六域（hardware / mission / orientation / policy / environment / orbit；orientation 为静态安装指向范本，orbit 默认关闭） |
 | `session/` | `SbirsSession`、cycle input/result、scene target、output types、adapter、Recording/Replay、debug/lifecycle |
+
+`SbirsSession` 的卫星几何来源有两条互斥路径：启用 `config.orbit.propagation_enabled`
+时由 `PropagateSatelliteState()` 用 `satellite_orbit::OrbitPropagator` 逐周期推进并写入
+`SbirsCycleInput` 的 `utc_julian_day` / `satellite_position_ecef_m` /
+`satellite_velocity_ecef_m_per_s`；未启用时由调用方直接提供这三个必填字段
+（既有契约不变，传播器不存在时 `PropagateSatelliteState()` 返回 false 且不修改入参）。
 
 SBIRS 不在公开头文件中暴露 `electro_optical_sensor`、`Eos*` 或 `1q/electro_optical_sensor/...`。EOS 仅作为
 foundation 物理算法的迁移参考，不构成 SBIRS 的对外集成依赖。

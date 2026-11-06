@@ -223,6 +223,16 @@ if(_oneq_unit_sbirs_sensor)
         TIMEOUT 60)
 endif()
 
+# satellite_orbit (OPIR 卫星轨道运动模型).
+file(GLOB _oneq_unit_satellite_orbit CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/unit/satellite_orbit/*_test.cpp")
+if(_oneq_unit_satellite_orbit)
+    oneq_add_test_partition(
+        TYPE unit DOMAIN satellite_orbit
+        SOURCES ${_oneq_unit_satellite_orbit}
+        TIMEOUT 60)
+endif()
+
 # sar.
 file(GLOB _oneq_unit_sar CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/unit/sar/*_test.cpp")

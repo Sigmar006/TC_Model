@@ -44,7 +44,7 @@ endforeach()
 set(_unit_domains
     common examples airborne_radar electronic_surveillance_radar electronic_countermeasure
     electro_optical_sensor sbirs_sensor sar navigation fusion threat_assessment target_inference flight_dynamic
-    remote_identification_radar precision_evaluation)
+    remote_identification_radar precision_evaluation satellite_orbit)
 set(_integration_domains
     airborne_radar electro_optical_sensor electronic_surveillance_radar
     sbirs_sensor cross_domain remote_identification_radar)

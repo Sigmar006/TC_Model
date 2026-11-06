@@ -9,6 +9,7 @@
 #include "1q/sbirs_sensor/config/SbirsEnvironmentConfig.h"
 #include "1q/sbirs_sensor/config/SbirsHardwareConfig.h"
 #include "1q/sbirs_sensor/config/SbirsMissionConfig.h"
+#include "1q/sbirs_sensor/config/SbirsOrbitConfig.h"
 #include "1q/sbirs_sensor/config/SbirsOrientationConfig.h"
 #include "1q/sbirs_sensor/config/SbirsPolicyConfig.h"
 #include "1q/sbirs_sensor/config/SbirsRuntimeConfigPatch.h"

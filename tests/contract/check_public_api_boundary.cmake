@@ -103,6 +103,7 @@ set(SBIRS_CONFIG_HEADERS
     "sbirs_sensor/config/SbirsEnvironmentConfig.h"
     "sbirs_sensor/config/SbirsHardwareConfig.h"
     "sbirs_sensor/config/SbirsMissionConfig.h"
+    "sbirs_sensor/config/SbirsOrbitConfig.h"
     "sbirs_sensor/config/SbirsOrientationConfig.h"
     "sbirs_sensor/config/SbirsPolicyConfig.h"
     "sbirs_sensor/config/SbirsRuntimeConfigPatch.h"
@@ -209,13 +210,20 @@ set(TARGET_INFERENCE_HEADERS
     "target_inference/target_inference.hpp"
 )
 
+set(SATELLITE_ORBIT_HEADERS
+    "satellite_orbit/OrbitPropagator.h"
+    "satellite_orbit/satellite_orbit.hpp"
+)
+
 set(PRECISION_EVALUATION_HEADERS
     "precision_evaluation/AhpEvaluator.h"
     "precision_evaluation/DualLosFix.h"
     "precision_evaluation/PrecisionEvaluationConfig.h"
+    "precision_evaluation/PrecisionEvaluationInputs.h"
     "precision_evaluation/PrecisionEvaluationMetrics.h"
     "precision_evaluation/PrecisionEvaluationSession.h"
     "precision_evaluation/PrecisionEvaluationTypes.h"
+    "precision_evaluation/PrecisionPairingSelector.h"
     "precision_evaluation/SbirsBearingAdapter.h"
     "precision_evaluation/precision_evaluation.hpp"
 )
@@ -320,8 +328,11 @@ set(FOUNDATION_HEADERS
 )
 
 # 共享域：外部测试日志打印器（135d52fd「feat(logging): add external test log printer」
-# 引入时漏登白名单，守护自 2026-09-28 起一直报 Missing from boundary）。
+# 引入时漏登白名单，守护自 2026-09-28 起一直报 Missing from boundary）；
+# 卫星通道诊断只读写入器（714c1cba「feat(logging): read only diagnostics for the
+# satellite channel」同样漏登）。
 set(LOGGING_HEADERS
+    "logging/AcceptanceLogWriter.h"
     "logging/ExternalTestLogPrinter.h"
 )
 
@@ -348,6 +359,7 @@ set(EXPECTED_PUBLIC_HEADERS
     ${FUSION_HEADERS}
     ${THREAT_ASSESSMENT_HEADERS}
     ${TARGET_INFERENCE_HEADERS}
+    ${SATELLITE_ORBIT_HEADERS}
     ${PRECISION_EVALUATION_HEADERS}
     ${SAR_MODULE_ENTRY_HEADERS}
     ${SAR_CONFIG_HEADERS}

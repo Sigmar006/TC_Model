@@ -1,5 +1,6 @@
 ﻿#include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <limits>
 #include <fstream>
 #include <iterator>
@@ -213,6 +214,52 @@ TEST(SbirsSessionTest, ExcludedTargetDiagnosticsPropagateToCycleResult) {
 
 }  // namespace
 
+/**
+ * @brief 测试用：临时把 `ONEQ_ACCEPTANCE_LOG_FIXED_NAME=1`（验收日志用固定文件名），
+ *        析构时恢复原值。仅本用例需要——其它用例不按文件名读回。
+ */
+class ScopedFixedAcceptanceName {
+ public:
+  ScopedFixedAcceptanceName() {
+#if defined(_MSC_VER)
+    char* old = nullptr;
+    size_t old_len = 0;
+    if (_dupenv_s(&old, &old_len, "ONEQ_ACCEPTANCE_LOG_FIXED_NAME") == 0 && old != nullptr) {
+      previous_ = old;
+      has_previous_ = true;
+    }
+    std::free(old);
+    _putenv_s("ONEQ_ACCEPTANCE_LOG_FIXED_NAME", "1");
+#else
+    const char* old = std::getenv("ONEQ_ACCEPTANCE_LOG_FIXED_NAME");
+    if (old != nullptr) {
+      previous_ = old;
+      has_previous_ = true;
+    }
+    setenv("ONEQ_ACCEPTANCE_LOG_FIXED_NAME", "1", 1);
+#endif
+  }
+  ~ScopedFixedAcceptanceName() {
+    if (has_previous_) {
+#if defined(_MSC_VER)
+      _putenv_s("ONEQ_ACCEPTANCE_LOG_FIXED_NAME", previous_.c_str());
+#else
+      setenv("ONEQ_ACCEPTANCE_LOG_FIXED_NAME", previous_.c_str(), 1);
+#endif
+    } else {
+#if defined(_MSC_VER)
+      _putenv_s("ONEQ_ACCEPTANCE_LOG_FIXED_NAME", "");
+#else
+      unsetenv("ONEQ_ACCEPTANCE_LOG_FIXED_NAME");
+#endif
+    }
+  }
+
+ private:
+  std::string previous_;
+  bool has_previous_{false};
+};
+
 #if defined(ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG) && ONEQ_ENABLE_OPIR_ACCEPTANCE_LOG
 TEST(SbirsAcceptanceDirectoryTest, RoutesCycleAndDeferredRecordsToSessionDirectory) {
   using namespace oneq::logging;
@@ -220,6 +267,10 @@ TEST(SbirsAcceptanceDirectoryTest, RoutesCycleAndDeferredRecordsToSessionDirecto
   auto config_b = Config();
   config_a.acceptance_log_output_directory = "sbirs_directory_test/a";
   config_b.acceptance_log_output_directory = "sbirs_directory_test/b";
+  // 中译：本用例按**固定文件名**读回内容；验收日志默认改为 `<名>_YYYYMMDD_HHMMSS.log`
+  //   （2026-11-06 甲方要求时间进文件名），这里临时关闭时间戳后缀，测试结束恢复。
+  // 标识：验收日志文件名时间戳（2026-11-06）。
+  ScopedFixedAcceptanceName fixed_name_scope;
   {
     auto session_a = sbirs_sensor::session::SbirsSession::Create(config_a);
     auto session_b = sbirs_sensor::session::SbirsSession::Create(config_b);

@@ -179,6 +179,13 @@ C:\software\workspace\1qfosim\FOSimStudio\log\
 
 > 物理文件与条目的对应关系是权威口径，见 `1q\docs\review\functional_acceptance_test_criteria_ocr.md` 附录。
 
+**文件名带进程启动时间（2026-11-06 起）**：六份验收日志实际落盘名为
+`<名>_<yyyyMMdd_HHmmss>.log`（如 `RadarOutput_20261106_223015.log`），时间取**进程启动时刻**，
+同一进程内 Sensors.dll / DataProcessors.dll 得到同一个后缀，不会把一份日志劈成两半。
+行内**不再写系统时间**（只有 `仿真时间=` 仿真时钟）。
+需要固定文件名（外部核对脚本按 `log/RadarOutput.log` 硬编码读取）时，启动宿主前设
+`set ONEQ_ACCEPTANCE_LOG_FIXED_NAME=1` 即可退回旧命名。
+
 ### 6.2 模型诊断日志（排查问题的主要入口）
 
 ```
@@ -188,7 +195,8 @@ C:\software\workspace\1qfosim\FOSimStudio\bin\App\
   opir_sbirs_diag_<…>.log                  SBIRS： [init] [push] [cycle-result] [issue]
   sbirsfusion_diag_<…>.log                 融合站：[init] [event] [verbose] [predict]
 ```
-每次运行**新建**一个，带时间戳，历史可追溯。
+每次运行**新建**一个，带时间戳，历史可追溯。**行首不再有 `[yyyy-MM-dd HH:mm:ss]`**
+（2026-11-06 起：时间只在文件名里），跨进程拼接日志时按文件名排序即可。
 
 ### 6.3 历史遗留路径（不要再看）
 

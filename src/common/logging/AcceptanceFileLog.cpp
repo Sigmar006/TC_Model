@@ -10,6 +10,8 @@
 #include "common/platform/OneqPlatformCompat.h"
 
 #include <cstdio>
+#include <cstring>
+#include <ctime>
 #include <vector>
 #include <cstdlib>
 #include <fstream>
@@ -282,6 +284,71 @@ std::string ToAbsolutePath(const std::string& path) {
 std::string ToAbsolutePath(const std::string& path) { return path; }
 #endif
 
+/**
+ * @brief 进程启动时刻的本地时间戳（`YYYYMMDD_HHMMSS`），进程内唯一且跨 DLL 一致。
+ *
+ * @details 1q.lib 被多个模型 DLL 各链一份，若各 DLL 各自 `std::time(nullptr)`，跨秒时
+ *   会得到**不同文件名**，把同一份验收日志劈成两个文件（SatelliteTarget 的行由
+ *   Sensors.dll 与 DataProcessors.dll 交替写）。这里取**进程创建时间**，同一进程的
+ *   所有副本结果相同。
+ */
+const std::string& ProcessStartStamp() {
+  static const std::string stamp = []() -> std::string {
+    char buffer[32] = {0};
+#if defined(_MSC_VER)
+    FILETIME creation_ft;
+    FILETIME exit_ft;
+    FILETIME kernel_ft;
+    FILETIME user_ft;
+    if (::GetProcessTimes(::GetCurrentProcess(), &creation_ft, &exit_ft, &kernel_ft,
+                          &user_ft)) {
+      FILETIME local_ft;
+      SYSTEMTIME local_st;
+      if (::FileTimeToLocalFileTime(&creation_ft, &local_ft) &&
+          ::FileTimeToSystemTime(&local_ft, &local_st)) {
+        std::sprintf(buffer, "%04d%02d%02d_%02d%02d%02d",
+                      static_cast<int>(local_st.wYear), static_cast<int>(local_st.wMonth),
+                      static_cast<int>(local_st.wDay), static_cast<int>(local_st.wHour),
+                      static_cast<int>(local_st.wMinute), static_cast<int>(local_st.wSecond));
+        return std::string(buffer);
+      }
+    }
+#endif
+    const std::time_t now = std::time(nullptr);
+    std::tm local_tm;
+    std::memset(&local_tm, 0, sizeof(local_tm));
+#if defined(_MSC_VER)
+    localtime_s(&local_tm, &now);
+#else
+    local_tm = *std::localtime(&now);
+#endif
+    std::sprintf(buffer, "%04d%02d%02d_%02d%02d%02d",
+                  local_tm.tm_year + 1900, local_tm.tm_mon + 1, local_tm.tm_mday,
+                  local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec);
+    return std::string(buffer);
+  }();
+  return stamp;
+}
+
+/**
+ * @brief 把 `_YYYYMMDD_HHMMSS` 插到文件名的 `.log` 之前（无扩展名则追加到末尾）。
+ * @note 可用环境变量 `ONEQ_ACCEPTANCE_LOG_FIXED_NAME=1` 关闭（回到六个固定文件名），
+ *   供"按 log/RadarOutput.log 硬编码读取"的外部核对脚本使用。
+ */
+std::string WithProcessTimestamp(const std::string& path) {
+  const std::string fixed = ReadEnv("ONEQ_ACCEPTANCE_LOG_FIXED_NAME");
+  if (fixed == "1" || fixed == "true") {
+    return path;
+  }
+  const std::string::size_type slash = path.find_last_of("\\/");
+  const std::string::size_type dot = path.find_last_of('.');
+  const std::string stamp = ProcessStartStamp();
+  if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) {
+    return path + "_" + stamp;
+  }
+  return path.substr(0, dot) + "_" + stamp + path.substr(dot);
+}
+
 std::string ResolveDefaultPath(AcceptanceChannel channel) {
   const std::string primary = ReadEnv(EnvName(channel));
   if (!primary.empty()) {
@@ -413,10 +480,16 @@ class ChannelSink {
   }
 
  private:
-  void DoOpen(const char* path) {
-    if (path == nullptr || *path == '\0') {
+  void DoOpen(const char* raw_path) {
+    if (raw_path == nullptr || *raw_path == '\0') {
       return;
     }
+    // 中译：**文件名带进程启动时间戳**（2026-11-06 甲方要求：把每行前面的系统时间去掉、
+    //   改到文件名上）。同一进程内所有模块共用进程创建时刻 ⇒ 文件名一致，
+    //   不会把同一份日志劈成两份；`ONEQ_ACCEPTANCE_LOG_FIXED_NAME=1` 可退回固定名。
+    // 标识：验收日志文件名时间戳（2026-11-06）。
+    const std::string stamped_path = WithProcessTimestamp(std::string(raw_path));
+    const char* path = stamped_path.c_str();
     if (stream_.is_open()) {
       stream_.flush();
       stream_.close();

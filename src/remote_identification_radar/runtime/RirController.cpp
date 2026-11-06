@@ -450,11 +450,14 @@ float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_r
   clutter_input.target_height_m = target_height_m;
   clutter_input.target_ground_range_m = target_ground_range_m;
   clutter_input.clutter_fluctuation_db = clutter_fluctuation_db;
-  // 弥散散射底：热噪声 × 固定比例（工程兜底，保证每个单元都有非零杂波量级）。
-  clutter_input.diffuse_floor_w = clutter_input.thermal_noise_w *
-                                  std::pow(10.0f, kDiffuseFloorToNoiseDb / 10.0f);
+  // 中译：**先算热噪声、再按比例给弥散底**（2026-11-07 修顺序）——原实现先读
+  //   `clutter_input.thermal_noise_w` 再赋值热噪声，读到的是默认 0，于是弥散底恒为 0、
+  //   远距单元杂波恒 0、第 34 项永远不出行（现场 34 个检测单元仍 0 行的直接原因）。
+  // 标识：弥散底赋值顺序（2026-11-07）。
   clutter_input.thermal_noise_w = internal::RirRadarEquations::ComputeThermalNoisePower_W(
       hardware_.transmitter, hardware_.receiver);
+  clutter_input.diffuse_floor_w = clutter_input.thermal_noise_w *
+                                  std::pow(10.0f, kDiffuseFloorToNoiseDb / 10.0f);
   return surface_clutter_model_.EvaluateClutterNoiseW(clutter_input);
 }
 

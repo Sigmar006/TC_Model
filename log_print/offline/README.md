@@ -10,8 +10,8 @@
 ```text
 log_print\
   plot_all.py                一键入口
-  viz\                       绘图代码（5 个模块）
-  figures\                   已生成的 25 张参考图
+  viz\                       绘图代码（7 个模块）
+  figures\                   已生成的 43 张参考图
   offline\
     runtime\python-3.12.8-embed-amd64.zip   Python 3.12.8 免安装运行时（官方 embeddable）
     wheels\                                全部 wheel（numpy/pandas/matplotlib/scipy + 依赖 + pip）
@@ -51,7 +51,7 @@ log_print\figures\         出图目录（自动生成/覆盖）
 ## 三、常用命令
 
 ```bat
-offline\run.bat                          :: 生成全部 25 张图 -> figures\
+offline\run.bat                          :: 生成全部 43 张图 -> figures\
 offline\run.bat --only 1-3               :: 只画 1~3 号图
 offline\run.bat --only 1,5,9             :: 只画指定编号
 offline\run.bat --refresh                :: 忽略缓存，重新解析日志
@@ -90,7 +90,7 @@ offline\run.bat --out-dir  D:\out\run1   :: 指定出图目录
 ## 五、耗时参考
 
 - 首次解析 640 MB 日志：约 10 秒（结果缓存到 `viz\.cache\`，约 170 MB）。
-- 缓存就绪后出 25 张图：约 20~30 秒。
+- 缓存就绪后出 43 张图：约 35~40 秒。
 - 换一批同格式日志后，缓存键（文件大小+mtime）变化会自动重解析，无需手动清理；
   `--refresh` 可强制清缓存重解析。
 

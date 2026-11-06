@@ -568,7 +568,7 @@ def fig22(D):
     # 运动维 2026-11-06 起单独输出“综合识别加权贡献”，与 RCS/极化/一维像同口径并入。
     # 老日志没有该字段：左连接后整列为空，自动退回三维，不影响出图。
     mo = ro.get("motion")
-    if mo is not None and len(mo):
+    if mo is not None and len(mo) and "contrib" in mo.columns:
         m = mo[["tid", "track", "t", "contrib"]].rename(columns={"contrib": "运动"})
         j = j.merge(m, on=["tid", "track", "t"], how="left")
     cols = [c for c in COLS if c in j.columns and j[c].notna().any()]

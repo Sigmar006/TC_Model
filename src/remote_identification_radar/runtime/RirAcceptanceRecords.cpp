@@ -5,6 +5,7 @@
 
 #include "remote_identification_radar/runtime/RirAcceptanceRecords.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -1173,8 +1174,16 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
     content += " Swerling=" +
                std::to_string(static_cast<int>(target.target_swerling_type));
 
+    // 中译：**遍历视角表前先做规模与非有限值防护**（2026-11-06 堆破坏排查）——现场在第
+    //   44/45 拍崩于本函数拼接字符串时（0xC0000374 堆破坏），说明该表可能在装配阶段已被
+    //   写坏。这里把"异常大的表"截断到上限、跳过非有限字段，宁可少写几行也不让坏数据
+    //   继续传播（问题定位后再撤掉上限）。
+    // 标识：场景接口表规模防护（2026-11-06）。
+    static const std::size_t kMaxSceneSamples = 4096U;
     content += " 视角RCS=[";
-    for (std::size_t i = 0U; i < target.aspect_rcs_samples.size(); ++i) {
+    const std::size_t aspect_count =
+        std::min(target.aspect_rcs_samples.size(), kMaxSceneSamples);
+    for (std::size_t i = 0U; i < aspect_count; ++i) {
       if (i != 0U) {
         content += ";";
       }
@@ -1185,7 +1194,9 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
     content += "]deg/deg/dBsm";
 
     content += " 极化数据=[";
-    for (std::size_t i = 0U; i < target.polarization_samples.size(); ++i) {
+    const std::size_t pol_count =
+        std::min(target.polarization_samples.size(), kMaxSceneSamples);
+    for (std::size_t i = 0U; i < pol_count; ++i) {
       if (i != 0U) {
         content += ";";
       }

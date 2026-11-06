@@ -24,7 +24,7 @@ log_print\
 安装后新增：
 
 ```text
-log_print\.runtime\        Python 运行时 + 依赖（约 250 MB，可随时整个删掉）
+log_print\.runtime\        Python 运行时 + 依赖（约 350 MB，可随时整个删掉）
 log_print\viz\.cache\      日志解析缓存（自动生成）
 log_print\figures\         出图目录（自动生成/覆盖）
 ```
@@ -42,7 +42,7 @@ log_print\figures\         出图目录（自动生成/覆盖）
    看到 `Install OK.` 即成功；重复执行是安全的（已装则复用）。
 
 3. **放日志并出图**：
-   - 把 8 个数据文件放进 `log_print\log\`（或放任意目录，用 `--log-dir` 指过去）；
+   - 把 6 个日志文件和天线增益 CSV 放进 `log_print\log\`（或放任意目录，用 `--log-dir` 指过去）；
    - 先自检：`offline\run.bat --doctor`
    - 再出图：`offline\run.bat`
 
@@ -89,9 +89,10 @@ offline\run.bat --out-dir  D:\out\run1   :: 指定出图目录
 
 ## 五、耗时参考
 
-- 首次解析 670 MB 日志：约 1~2 分钟（结果缓存到 `viz\.cache\`）。
-- 缓存就绪后出 25 张图：约 25 秒。
-- 换一批同格式日志后，缓存键（文件大小+mtime）变化会自动重解析，无需手动清理。
+- 首次解析 640 MB 日志：约 10 秒（结果缓存到 `viz\.cache\`，约 170 MB）。
+- 缓存就绪后出 25 张图：约 20~30 秒。
+- 换一批同格式日志后，缓存键（文件大小+mtime）变化会自动重解析，无需手动清理；
+  `--refresh` 可强制清缓存重解析。
 
 ---
 

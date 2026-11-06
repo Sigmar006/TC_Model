@@ -17,6 +17,7 @@ $dst = Join-Path $stage "log_print"
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 
 Copy-Item (Join-Path $app "plot_all.py") $dst -Force
+if (Test-Path (Join-Path $app "README.md")) { Copy-Item (Join-Path $app "README.md") $dst -Force }
 Copy-Item (Join-Path $app "viz") $dst -Recurse -Force
 Copy-Item (Join-Path $app "offline") $dst -Recurse -Force
 if (Test-Path (Join-Path $app "figures")) { Copy-Item (Join-Path $app "figures") $dst -Recurse -Force }

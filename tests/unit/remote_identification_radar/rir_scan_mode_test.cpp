@@ -11,12 +11,18 @@ namespace tests {
 namespace remote_identification_radar {
 namespace {
 
-using config::RirAzimuthElevationLimitsDeg;
-using config::RirHorizonScanConfig;
-using config::RirMissionConfig;
-using config::RirSearchMode;
-using internal::ResolveHorizonBand;
-using internal::ResolveSearchSector;
+// 中译：本文件位于 `tests::remote_identification_radar`，而被测符号在全局
+//   `::remote_identification_radar` 下——用别名显式指向，避免 `config::` / `internal::`
+//   在 tests 命名空间里找不到（WSL/g++ 首次编译该文件时暴露，2026-11-07）。
+namespace rircfg = ::remote_identification_radar::config;
+namespace riri = ::remote_identification_radar::internal;
+
+using rircfg::RirAzimuthElevationLimitsDeg;
+using rircfg::RirHorizonScanConfig;
+using rircfg::RirMissionConfig;
+using rircfg::RirSearchMode;
+using riri::ResolveHorizonBand;
+using riri::ResolveSearchSector;
 
 // 硬件体积：方位相对 ±110°、仰角 0~85°（宿主 LRDR 口径）。
 RirAzimuthElevationLimitsDeg MakeVolume() {

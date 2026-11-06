@@ -50,6 +50,9 @@ constexpr float kMaxGrazingDeg = 89.0f;
 constexpr float kReferenceGrazingDeg = 10.0f;
 // 圆周率：副瓣全向距离环周长用（避免依赖公共常量的可用性）。
 constexpr float kPi = 3.14159265358979323846f;
+// 再散射项的最小目标离地高度（m）：低于它目标几乎贴地，"目标→地面"距离趋于 0、
+// 三次散射退化为二阶，公式不再适用（也避免除零）。
+constexpr float kMinRescatterHeightM = 30.0f;
 
 // σ₀ 档位表（dB，S 波段 @ 参考擦地角量级声明值，非实测标定）：
 // 按覆盖密度分层，林分体积散射强于草地当面散射。
@@ -103,15 +106,11 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
   // 过程：σ₀ 一阶擦地角折算（表值按 10° 声明）——**逐路用各自的擦地角**：
   //   主瓣项用实际擦地角 ψ，副瓣项用地面环俯角 ψ_g（钳到 [1°,89°]）。两路共用同一个
   //   σ₀ 档位表与同一个"面积 → RCS → 回声 → 等效噪声"换算，只是面积/增益/擦地角不同。
-  auto to_noise_w = [&](float area_m2, float clutter_range_m, float one_way_gain_db,
-                        float grazing_deg) -> float {
-    if (!(area_m2 > 0.0f) || !(clutter_range_m > 0.0f)) {
+  auto rcs_to_noise_w = [&](float clutter_rcs_m2, float clutter_range_m,
+                            float one_way_gain_db) -> float {
+    if (!(clutter_rcs_m2 > 0.0f) || !(clutter_range_m > 0.0f)) {
       return 0.0f;
     }
-    const float sigma0_db = ResolveSigma0Db(profile) +
-        10.0f * std::log10(std::sin(DegToRad(grazing_deg)) /
-                           std::sin(DegToRad(kReferenceGrazingDeg)));
-    const float clutter_rcs_m2 = std::pow(10.0f, (sigma0_db + 10.0f * std::log10(area_m2)) / 10.0f);
     // 过程：杂波回波走与目标同一雷达方程（逐路给定单程增益），再叠加脉压能量增益
     //   max(1, B·τ)：与检测单元路径同一 B·τ 口径，避免分子/分母双口径。
     const float clutter_echo_dbw =
@@ -121,6 +120,19 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
         RirRadarEquations::ComputePulseCompressionGainDb(input.transmitter);
     const float cnr_db = clutter_echo_dbw - 10.0f * std::log10(input.thermal_noise_w);
     return oneq::common::radar::ComputeEquivalentClutterNoiseW(input.thermal_noise_w, cnr_db);
+  };
+  // 过程：面积版换算 = σ₀(擦地角) × 面积 → RCS → 同一路径。
+  auto to_noise_w = [&](float area_m2, float clutter_range_m, float one_way_gain_db,
+                        float grazing_deg) -> float {
+    if (!(area_m2 > 0.0f) || !(clutter_range_m > 0.0f)) {
+      return 0.0f;
+    }
+    const float sigma0_db = ResolveSigma0Db(profile) +
+        10.0f * std::log10(std::sin(DegToRad(grazing_deg)) /
+                           std::sin(DegToRad(kReferenceGrazingDeg)));
+    const float clutter_rcs_m2 =
+        std::pow(10.0f, (sigma0_db + 10.0f * std::log10(area_m2)) / 10.0f);
+    return rcs_to_noise_w(clutter_rcs_m2, clutter_range_m, one_way_gain_db);
   };
 
   // ---- 主瓣项（2026-11-06 改为严格几何）：波束是否真的照到"目标那个距离处"的地面 ----
@@ -193,8 +205,59 @@ float RirSurfaceClutterModel::EvaluateClutterNoiseW(const RirSurfaceClutterInput
     side_lobe_w = to_noise_w(ring_area_m2, input.range_m, sidelobe_gain_db, ring_grazing_deg);
   }
 
-  // 过程：两项同属"进入该距离单元的杂波等效噪声"，功率域相加后返回（日志不分项）。
-  return main_lobe_w + side_lobe_w;
+  // ---- 再散射项（2026-11-07 甲方要求）：雷达 → 目标 → 地面 → 雷达（三次散射）----
+  // 物理：目标把入射波再散射到正下方的地面补片，补片按面杂波再回雷达。
+  //   等效 RCS：σ_eff = σ_t · σ_c · R² / (4π · h_t² · R_g²)
+  //     σ_c = σ₀(ψ_g,proj)·A_patch（补片=雷达分辨率单元），h_t=目标离地高度，
+  //     R_g=目标地面投影的水平距离（补片到雷达的距离），R=目标斜距。
+  //   可见性（关键）：投影点必须仍在雷达视线内（R_g ≤ 地平线），否则那条回波被地球挡住
+  //   ——远程弹道目标（R≈5,000 km）因此天然为 0，只有近距低空目标才有这一项。
+  // 量级：20 km 远、100 m 高的 0.1 m² 目标约 −35 dB 相对其自身回波（CNR ~46 dB），
+  //   远低于同一单元的副瓣杂波；属"低但合理"的补充项。
+  // 标识：目标-地面再散射（2026-11-07）。
+  float rescatter_w = 0.0f;
+  if (input.target_rcs_m2 > 0.0f && input.target_height_m > kMinRescatterHeightM &&
+      input.target_ground_range_m > 0.0f) {
+    const float ground_range_m = input.target_ground_range_m;
+    const float height_m = std::max(input.platform_altitude_m, 0.0f);
+    const float radius_platform_m = re_eff_m + height_m;
+    const float horizon_m = std::sqrt(std::max(
+        radius_platform_m * radius_platform_m - re_eff_m * re_eff_m, 0.0f));
+    if (ground_range_m <= horizon_m) {
+      // 过程：投影点擦地角——用"平台→投影点"的斜距做精确三角（斜距 ≈ √(R_g² + h²)）。
+      const float proj_slant_m = std::sqrt(ground_range_m * ground_range_m + height_m * height_m);
+      const float cos_angle =
+          (radius_platform_m * radius_platform_m + proj_slant_m * proj_slant_m -
+           re_eff_m * re_eff_m) /
+          (2.0f * radius_platform_m * proj_slant_m);
+      const float angle_rad = std::acos(oneq::common::numerics::Clamp(cos_angle, -1.0f, 1.0f));
+      const float proj_depression_deg = 90.0f - angle_rad * 57.29577951308232f;
+      if (proj_depression_deg > 0.0f) {
+        const float grazing_deg =
+            oneq::common::numerics::Clamp(proj_depression_deg, kMinGrazingDeg, kMaxGrazingDeg);
+        const float grazing_rad = DegToRad(grazing_deg);
+        // 过程：补片面积 = 距离单元 × 方位波束（投影点的雷达分辨率单元）。
+        const float patch_area_m2 = proj_slant_m * az_beamwidth_rad * range_cell_m /
+                                    std::cos(grazing_rad);
+        const float sigma0_db = ResolveSigma0Db(profile) +
+            10.0f * std::log10(std::sin(grazing_rad) /
+                               std::sin(DegToRad(kReferenceGrazingDeg)));
+        const float patch_rcs_m2 =
+            std::pow(10.0f, (sigma0_db + 10.0f * std::log10(patch_area_m2)) / 10.0f);
+        const float height_to_ground_m = input.target_height_m;
+        const float effective_rcs_m2 =
+            input.target_rcs_m2 * patch_rcs_m2 *
+            (input.range_m * input.range_m) /
+            (4.0f * kPi * height_to_ground_m * height_to_ground_m *
+             ground_range_m * ground_range_m);
+        rescatter_w = rcs_to_noise_w(effective_rcs_m2, input.range_m,
+                                     input.antenna.main_beam_gain_db);
+      }
+    }
+  }
+
+  // 过程：三项同属"进入该距离单元的杂波等效噪声"，功率域相加后返回（日志不分项）。
+  return main_lobe_w + side_lobe_w + rescatter_w;
 }
 
 }  // namespace internal

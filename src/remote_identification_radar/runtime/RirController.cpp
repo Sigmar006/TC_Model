@@ -393,7 +393,9 @@ float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_r
                                                 float total_propagation_loss_db,
                                                 float carrier_hz,
                                                 float bandwidth_hz,
-                                                float platform_altitude_m) const {
+                                                float platform_altitude_m,
+                                                float target_rcs_m2, float target_height_m,
+                                                float target_ground_range_m) const {
   if (environment_.vegetation_cover_profile ==
       config::RirVegetationCoverProfile::kDisabled) {
     return 0.0f;
@@ -414,6 +416,10 @@ float RirController::ResolveTargetClutterPowerW(float look_el_deg, float slant_r
   clutter_input.range_m = slant_range_m;
   clutter_input.look_el_deg = look_el_deg;
   clutter_input.platform_altitude_m = platform_altitude_m;
+  // 再散射项输入（2026-11-07）：目标 RCS / 离地绝对高度 / 地面投影水平距离。
+  clutter_input.target_rcs_m2 = target_rcs_m2;
+  clutter_input.target_height_m = target_height_m;
+  clutter_input.target_ground_range_m = target_ground_range_m;
   clutter_input.thermal_noise_w = internal::RirRadarEquations::ComputeThermalNoisePower_W(
       hardware_.transmitter, hardware_.receiver);
   return surface_clutter_model_.EvaluateClutterNoiseW(clutter_input);
@@ -673,7 +679,12 @@ bool RirController::TryBuildMeasurement(
       rf_cycle.resolved
           ? static_cast<float>(rf_cycle.own_transmit_waveform.occupied_bandwidth_hz)
           : hardware_.transmitter.bandwidth_hz,
-      platform_altitude_m);
+      platform_altitude_m,
+      // 再散射项：目标 RCS（场景输入值）、离地绝对高度（平台海拔 + 相对高度）、
+      // 地面投影水平距离（ENU 水平分量）。
+      target.rcs,
+      platform_altitude_m + raw_position.z(),
+      std::sqrt(raw_position.x() * raw_position.x() + raw_position.y() * raw_position.y()));
   // 与 AR DetectionExecution 同口径：主路径与回退分支波长同源——回退分支的有效
   // 波束宽度同样经 λ/L 物理推导（结果喂量测误差模型）；载频非正时不启用物理推导。
   const float wavelength_m = carrier_hz > 0.0f

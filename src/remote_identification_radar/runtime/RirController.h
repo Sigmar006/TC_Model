@@ -302,7 +302,9 @@ class RirController {
    */
   float ResolveTargetClutterPowerW(float look_el_deg, float slant_range_m,
                                    float total_propagation_loss_db, float carrier_hz,
-                                   float bandwidth_hz, float platform_altitude_m) const;
+                                   float bandwidth_hz, float platform_altitude_m,
+                                   float target_rcs_m2, float target_height_m,
+                                   float target_ground_range_m) const;
 
   /**
    * @brief 逐目标大气物理附加损耗（common 大气单源，与 AR 同口径）。

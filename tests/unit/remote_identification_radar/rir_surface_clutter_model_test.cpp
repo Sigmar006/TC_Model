@@ -336,4 +336,35 @@ TEST(RirSurfaceClutterModelTest, MainlobeClutterNeedsTargetInBeamFootprint) {
   EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(500000.0f, 0.15f, -300.0f)), 0.0f);
 }
 
+/// @brief 再散射项（A：雷达→目标→地面→雷达）：只有近距低空目标才有，且正比于目标 RCS。
+/// @note  远程弹道目标的地面投影在 3,868 km（远超 71.4 km 地平线）⇒ 该项为 0，
+///        因为那条回波路径被地球挡住——这正是"远距目标没有这项杂波"的物理原因。
+TEST(RirSurfaceClutterModelTest, TargetGroundRescatterNeedsNearLowTarget) {
+  const RirSurfaceClutterModel model;
+
+  RirSurfaceClutterInput near_low = MakeSidelobeInput(20000.0f, 0.3f, -300.0f);
+  near_low.target_rcs_m2 = 0.1f;
+  near_low.target_height_m = 400.0f;        // 平台 300 m + 目标相对高度 100 m
+  near_low.target_ground_range_m = 20000.0f;
+  const float rescatter_only = model.EvaluateClutterNoiseW(near_low);
+  EXPECT_GT(rescatter_only, 0.0f) << "近距低空目标应有三阶再散射项";
+
+  // RCS 翻 10 倍 ⇒ 该项功率随之 ×10。
+  RirSurfaceClutterInput stronger = near_low;
+  stronger.target_rcs_m2 = 1.0f;
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(stronger) / rescatter_only, 10.0f, 1.0f);
+
+  // 远程弹道目标：投影 3,868 km 远超地平线 ⇒ 再散射为 0。
+  RirSurfaceClutterInput far_high = MakeSidelobeInput(4324000.0f, 26.6f, -300.0f);
+  far_high.target_rcs_m2 = 0.1f;
+  far_high.target_height_m = 2237900.0f;
+  far_high.target_ground_range_m = 3868000.0f;
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_high), 0.0f);
+
+  // 目标高度低于 30 m 门槛（几乎贴地，三次散射退化为二阶）⇒ 不计。
+  RirSurfaceClutterInput too_low = near_low;
+  too_low.target_height_m = 20.0f;
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(too_low), 0.0f);
+}
+
 }  // namespace remote_identification_radar

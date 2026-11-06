@@ -22,6 +22,25 @@ def _enu(df, c0="e0", c1="e1", c2="e2"):
     return rng, h
 
 
+def _main_track(to):
+    """记录最多的 (tid, track) 组合，作为主跟踪目标，避免把目标号写死。"""
+    g = to.groupby(["tid", "track"]).size()
+    tid, trk = g.idxmax()
+    return int(tid), int(trk)
+
+
+def _range_txt(v, unit="", tol=0.01):
+    """数值近似恒定则说“恒为”，否则给区间。"""
+    v = np.asarray(v, dtype=float)
+    v = v[np.isfinite(v)]
+    if not len(v):
+        return "未记录"
+    med = float(np.median(v))
+    if np.ptp(v) <= tol * max(abs(med), 1e-12):
+        return f"恒为 {med:.2f}{unit}"
+    return f"{v.min():.2f}–{v.max():.2f}{unit}"
+
+
 def _runs(t, ok):
     """把布尔序列切成 [start, end] 连续段。"""
     out = []
@@ -53,7 +72,7 @@ def fig04(D):
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
     title_block(fig, "图 4  检测信噪比、检测概率与门限",
                 f"检测记录 {len(det)} 条（{det['t'].min():.0f}–{det['t'].max():.0f} s），"
-                f"点迹量测 {len(plt_)} 条；CFAR 门限恒为 {thr:.2f} dB")
+                f"点迹量测 {len(plt_)} 条；CFAR 门限 {_range_txt(det['thr'], ' dB')}")
 
     ax = axes[0]
     t = det["t"].to_numpy(float)
@@ -94,7 +113,7 @@ def fig04(D):
     ax.set_title("(c) CFAR 90% 检测距离", fontsize=10.5)
     ax.set_ylim(cfar["r90"].min() / 1e3 * 0.85, cfar["r90"].max() / 1e3 * 1.1)
     ax.annotate(f"R$_{{90}}$ = {cfar['r90'].min()/1e3:.0f}–{cfar['r90'].max()/1e3:.0f} km\n"
-                f"RCS 恒为 {cfar['rcs90'].median():.2f} m²",
+                f"RCS {_range_txt(cfar['rcs90'], ' m²')}",
                 xy=(0.04, 0.88), xycoords="axes fraction", fontsize=8.5,
                 va="top", bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb",
                                     ec="#c8d0d8"))
@@ -104,17 +123,30 @@ def fig04(D):
 
 # ---------------------------------------------------------------- 图 5
 def fig05(D):
-    p = D["radar_ext"]["plot"]
-    p = p[p["tid"] == 109].sort_values("t")
+    ext = D["radar_ext"]
+    p_all = ext["plot"]
+    tid = int(p_all["tid"].value_counts().idxmax())     # 点迹最多的目标
+    p = p_all[p_all["tid"] == tid].sort_values("t")
     rng = p["rng"].to_numpy(float) / 1e3
     pd_ = p["pd"].to_numpy(float)
     snr = p["snr"].to_numpy(float)
     t = p["t"].to_numpy(float)
+    rcs = ext["scene"].loc[ext["scene"]["tid"] == tid, "rcs"].to_numpy(float)
+    if len(p) > 2 and np.ptp(snr) > 0 and np.ptp(pd_) > 0:
+        rho = float(np.corrcoef(snr, pd_)[0, 1])
+    else:
+        rho = 0.0
+    if rho > 0.15:
+        disp = f"同一距离上 $P_d$ 的差异与 SNR 同向（r = {rho:.2f}）"
+    elif rho < -0.15:
+        disp = f"同一距离上 $P_d$ 的差异与 SNR 反向（r = {rho:.2f}）"
+    else:
+        disp = "同一距离上 $P_d$ 的差异与 SNR 无显著线性关系"
 
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
     title_block(fig, "图 5  检测概率–距离包络",
-                f"目标 109 点迹 {len(p)} 条，斜距 {rng.min():.0f}–{rng.max():.0f} km，"
-                f"RCS 恒为 0.1 m²；同一距离上 $P_d$ 的离散来自干扰功率变化")
+                f"目标 {tid} 点迹 {len(p)} 条，斜距 {rng.min():.0f}–{rng.max():.0f} km，"
+                f"RCS {_range_txt(rcs, ' m²')}；{disp}")
 
     ax = axes[0]
     sc = ax.scatter(rng, pd_, c=t, s=8, cmap="viridis", alpha=0.75, linewidths=0)
@@ -312,11 +344,12 @@ def fig07(D):
 # ---------------------------------------------------------------- 图 8
 def fig08(D):
     truth = D["radar_ext"]["scene"]
-    truth = truth[truth["tid"] == 109].sort_values("t")
-    to = D["radar_ext"]["track_out"]
-    to = to[(to["tid"] == 109) & (to["track"] == 1)].sort_values("t")
+    to_all = D["radar_ext"]["track_out"]
+    tid, trk = _main_track(to_all)
+    truth = truth[truth["tid"] == tid].sort_values("t")
+    to = to_all[(to_all["tid"] == tid) & (to_all["track"] == trk)].sort_values("t")
     mt = D["radar_int"]["meas_trk"]
-    mt = mt[mt["tid"] == 109].sort_values("t")
+    mt = mt[mt["tid"] == tid].sort_values("t")
 
     tr, th = _enu(truth)
     fr, fh = _enu(to)
@@ -339,7 +372,8 @@ def fig08(D):
 
     fig, axes = plt.subplots(2, 2, figsize=(12.8, 8.0))
     title_block(fig, "图 8  雷达目标航迹：真值 / 量测 / 滤波",
-                f"目标 109；真值 {len(truth)} 点，量测 {len(mt)} 点，滤波航迹 {len(to)} 点；"
+                f"目标 {tid}（航迹 {trk}）；真值 {len(truth)} 点，量测 {len(mt)} 点，"
+                f"滤波航迹 {len(to)} 点；"
                 f"观测窗 {tm.min():.0f}–{tm.max():.0f} s，之后转入外推")
 
     ax = axes[0, 0]
@@ -444,8 +478,11 @@ def fig09(D):
 
 # ---------------------------------------------------------------- 图 10
 def fig10(D):
-    mo = D["radar_output"]["motion"]
-    mo = mo[(mo["tid"] == 109) & (mo["track"] == 1)].sort_values("t")
+    mo_all = D["radar_output"]["motion"]
+    mo_g = mo_all.groupby(["tid", "track"]).size()
+    tid, trk = mo_g.idxmax()
+    tid, trk = int(tid), int(trk)
+    mo = mo_all[(mo_all["tid"] == tid) & (mo_all["track"] == trk)].sort_values("t")
     t = mo["t"].to_numpy(float)
     sp = mo["speed"].to_numpy(float)
     alt = mo["alt"].to_numpy(float) / 1e3
@@ -454,7 +491,7 @@ def fig10(D):
 
     fig = plt.figure(figsize=(14.2, 7.6))
     title_block(fig, "图 10  目标运动特征：速度–高度与机动判别",
-                f"航迹 1（目标 109）运动特征 {len(mo)} 帧；速度 {sp.min():.0f}–{sp.max():.0f} m/s，"
+                f"航迹 {trk}（目标 {tid}）运动特征 {len(mo)} 帧；速度 {sp.min():.0f}–{sp.max():.0f} m/s，"
                 f"高度 {alt.min():.0f}–{alt.max():.0f} km，弹道判定 {int(ballistic.sum())}/{len(mo)} 帧")
 
     gs = fig.add_gridspec(2, 3, width_ratios=[1.25, 1.0, 1.0])
@@ -479,7 +516,7 @@ def fig10(D):
     ax2.plot(t, acc, color=C["warn"], lw=0.8, alpha=0.75, label="加速度")
     ax2.set_ylabel("加速度 (m/s²)", color=C["warn"])
     ax2.tick_params(axis="y", colors=C["warn"])
-    ax2.set_ylim(0, 55)
+    ax2.set_ylim(min(0.0, float(acc.min())) - 2.0, float(acc.max()) * 1.1 + 1.0)
     ax2.grid(False)
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
@@ -518,9 +555,10 @@ def fig11(D):
 
     fig, axes = plt.subplots(2, 1, figsize=(13.4, 7.2), sharex=True,
                              gridspec_kw={"height_ratios": [1.45, 1.0]})
+    cap = int((res["used"] + res["free"]).max())       # 资源池容量由 used+free 推出
     title_block(fig, "图 11  航迹生命周期与雷达资源占用",
                 f"航迹输出 {len(to)} 条记录（{to['track'].nunique()} 条航迹），"
-                f"特征链路丢失记录 {len(lost)} 条，资源池 128")
+                f"特征链路丢失记录 {len(lost)} 条，资源池 {cap} 槽位")
 
     ax = axes[0]
     tracks = sorted(to["track"].unique())
@@ -542,7 +580,12 @@ def fig11(D):
     ax.set_ylabel("航迹编号 / 目标")
     ax.set_title("(a) 航迹确认（绿）/ 丢失（红）时段", fontsize=10.5)
     ax.set_ylim(-0.7, len(tracks) - 0.3)
-    ax.set_xlim(1100, 4700)
+    t_lo, t_hi = float(to["t"].min()), float(to["t"].max())
+    if "t" in lost.columns and len(lost):
+        t_lo = min(t_lo, float(lost["t"].min()))
+        t_hi = max(t_hi, float(lost["t"].max()))
+    t_pad = 0.02 * max(t_hi - t_lo, 1.0)
+    ax.set_xlim(t_lo - t_pad, t_hi + t_pad)
     ax.grid(axis="y", visible=False)
     style_axes(ax)
 
@@ -558,7 +601,8 @@ def fig11(D):
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("数量 / 槽位")
     ax.set_title("(b) 航迹槽位与确认/丢失去向", fontsize=10.5)
-    ax.set_ylim(-0.2, 5.2)
+    ymax = float(max(res["used"].max(), res["n_conf"].max(), res["n_lost"].max()))
+    ax.set_ylim(-0.2, max(ymax * 1.15, 1.0))
     ax.legend(loc="upper right", fontsize=8.5, ncol=3)
     style_axes(ax)
     return fig
@@ -576,7 +620,7 @@ def fig16(D):
 
     fig = plt.figure(figsize=(14.6, 7.4))
     title_block(fig, "图 16  雷达处理链功率账本",
-                f"脉压增益恒为 {pc:.2f} dB；MTI 增益 {mti:.1f} dB"
+                f"脉压增益 {_range_txt(gn['pc'], ' dB')}；MTI 增益 {mti:.1f} dB"
                 f"（{gn['mti'].min():.0f}…{gn['mti'].max():.0f}）；MTD 增益 {mtd:.1f} dB；"
                 f"输入回波 {np.median(echo['p_echo']):.2e} W → 输出 "
                 f"{np.median(gn['p_after']):.2e} W，SNR 中位 {det['snr_out'].median():.1f} dB")

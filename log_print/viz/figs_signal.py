@@ -109,8 +109,13 @@ def fig17(D):
     ax.set_ylabel("自适应抑制比 (dB)")
     ax.set_title("(d) 抑制能力随干扰强度变化", fontsize=10.5)
     _cbar(fig, sc, ax, "仿真时间 (s)")
-    ax.annotate(f"Pearson r = {rho:.2f}；{len(jg)} 个周期\n"
-                f"强干扰段抑制更充分，弱干扰段受噪声底限制",
+    if rho > 0.15:
+        trend = "抑制比随干扰功率上升"
+    elif rho < -0.15:
+        trend = "抑制比随干扰功率下降"
+    else:
+        trend = "与干扰功率无显著线性关系"
+    ax.annotate(f"Pearson r = {rho:.2f}；{len(jg)} 个周期\n{trend}",
                 xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.3, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
@@ -123,7 +128,27 @@ def fig18(D):
     rng = e["rng"].to_numpy(float) / 1e6            # 10^3 km
     p = e["p_echo"].to_numpy(float)
     t = e["t"].to_numpy(float)
-    early = t <= 2344.0
+
+    # 远近段分界由两段各自做 log–log 拟合的残差平方和最小确定，
+    # 避免把某次想定的分界时刻写死；换数据后自动跟着走。
+    lr, lp = np.log10(rng), np.log10(p)
+
+    def _ss(m):
+        if m.sum() < 12:
+            return np.inf
+        c = np.polyfit(lr[m], lp[m], 1)
+        return float(np.sum((lp[m] - np.polyval(c, lr[m])) ** 2))
+
+    split = float(t.min())
+    best = np.inf
+    for c in np.quantile(t, np.linspace(0.15, 0.90, 151)):
+        m1 = t <= c
+        if m1.sum() < 20 or (~m1).sum() < 20:
+            continue
+        v = _ss(m1) + _ss(~m1)
+        if v < best:
+            best, split = v, float(c)
+    early = t <= split
 
     lg = np.polyfit(np.log10(rng[early]), np.log10(p[early]), 1)
     k = p * (rng * 1e6) ** 4
@@ -132,7 +157,7 @@ def fig18(D):
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.2))
     title_block(fig, "图 18  回波功率的距离律检验",
                 f"回波 {p.min():.2e}–{p.max():.2e} W，斜距 {rng.min()*1e3:.0f}–"
-                f"{rng.max()*1e3:.0f}×10$^3$ km；远段（t ≤ 2344 s）拟合 $P_r$ ∝ "
+                f"{rng.max()*1e3:.0f}×10$^3$ km；远段（t ≤ {split:.0f} s）拟合 $P_r$ ∝ "
                 f"$R^{{{lg[0]:.2f}}}$，近段出现系统性偏离")
 
     ax = axes[0, 0]
@@ -140,7 +165,7 @@ def fig18(D):
                linewidths=0, label=f"远段（{int(early.sum())}）")
     ax.scatter(rng[~early], p[~early], s=16, facecolors="none",
                edgecolors=C["warn"], linewidths=0.8,
-               label=f"近段 t > 2344 s（{int((~early).sum())}）")
+               label=f"近段 t > {split:.0f} s（{int((~early).sum())}）")
     xs = np.linspace(np.log10(rng.min()), np.log10(rng.max()), 60)
     ax.plot(10 ** xs, 10 ** np.polyval(lg, xs), color="#123f63", lw=1.6,
             label=f"远段拟合 {lg[0]:.2f}")
@@ -165,7 +190,7 @@ def fig18(D):
     ax.scatter(t[~early], (k / k0)[~early], s=14, color=C["warn"], zorder=3,
                linewidths=0, label="近段")
     ax.axhline(1.0, color=C["neutral"], ls="--", lw=1.0)
-    ax.axvspan(2344, t.max(), color=C["warn"], alpha=0.07, lw=0)
+    ax.axvspan(split, t.max(), color=C["warn"], alpha=0.07, lw=0)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("$P_r R^4$ / 中位")
     ax.set_title("(b) $P_rR^4$ 恒定性", fontsize=10.5)
@@ -227,7 +252,7 @@ def fig19(D):
                 f"记录滞后最大 {lag.max():.0f} s")
 
     ax = axes[0, 0]
-    t0, t1 = int(W_RADAR[0]), int(W_RADAR[1])
+    t0, t1 = int(tf["t"].min()), int(tf["t"].max())
     M = np.full((len(tracks), t1 - t0 + 1), np.nan)
     for i, tr in enumerate(tracks):
         g = tf[tf["track"] == tr]
@@ -238,7 +263,7 @@ def fig19(D):
     ax.imshow(code, aspect="auto", interpolation="nearest", cmap=cmap,
               vmin=-0.5, vmax=1.5,
               extent=[t0, t1 + 1, len(tracks) - 0.5, -0.5])
-    ax.set_xlim(*W_RADAR)
+    ax.set_xlim(t0, t1 + 1)
     ax.set_yticks(range(len(tracks)))
     ax.set_yticklabels([f"航迹 {int(t)}" for t in tracks])
     ax.set_xlabel("仿真时间 (s)")
@@ -256,8 +281,8 @@ def fig19(D):
         ax.scatter(g["t"], g["t"] - g["rec_cyc"], s=5, color=CYCLE[k], alpha=0.45,
                    linewidths=0, label=f"航迹 {int(tr)}")
     ax.axhline(-1, color=C["warn"], ls="--", lw=1.0, label="滞后 −1 s（同周期）")
-    ax.set_xlim(*W_RADAR)
-    ax.set_ylim(-12, 440)
+    ax.set_xlim(t0 - 20, t1 + 20)
+    ax.set_ylim(-12, max(50.0, float(lag.max()) * 1.15))
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("$t - t_{rec}$ (s)")
     ax.set_title("(b) 记录滞后随时间", fontsize=10.5)
@@ -270,12 +295,13 @@ def fig19(D):
     x = np.arange(len(tracks))
     ax.bar(x, m15, width=0.55, color=C["accent3"], label="掩码 15")
     ax.bar(x, m10, bottom=m15, width=0.55, color=C["accent2"], label="掩码 10")
+    span = max(max(a + b for a, b in zip(m15, m10)), 1)
     for xi, a, b in zip(x, m15, m10):
-        ax.text(xi, a + b + 18, f"{a + b}", ha="center", fontsize=8.5,
+        ax.text(xi, a + b + 0.02 * span, f"{a + b}", ha="center", fontsize=8.5,
                 fontweight="bold")
-        if a > 60:
+        if a > 0.1 * span:
             ax.text(xi, a / 2, f"{a}", ha="center", fontsize=8, color="white")
-        if b > 60:
+        if b > 0.1 * span:
             ax.text(xi, a + b / 2, f"{b}", ha="center", fontsize=8, color="white")
     ax.set_xticks(x)
     ax.set_xticklabels([f"航迹 {int(t)}" for t in tracks])
@@ -283,8 +309,12 @@ def fig19(D):
     ax.set_title("(c) 各航迹掩码构成", fontsize=10.5)
     ax.legend(loc="upper right", fontsize=8.5)
     ax.grid(axis="x", visible=False)
-    ax.annotate("航迹 1/2 以掩码 10 降维运行\n航迹 4 以掩码 10 为主",
-                xy=(0.52, 0.62), xycoords="axes fraction", fontsize=8.2, va="top",
+    per = [f"航迹 {int(tr)} {100.0 * b / max(a + b, 1):.0f}%"
+           for tr, a, b in zip(tracks, m15, m10)]
+    rows = [" · ".join(per[i:i + 2]) for i in range(0, len(per), 2)]
+    ax.annotate("掩码 10 占比：\n" + "\n".join(rows),
+                xy=(0.97, 0.55), xycoords="axes fraction", fontsize=8.2, va="top",
+                ha="right",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
 
@@ -299,14 +329,14 @@ def fig19(D):
         patch.set_edgecolor("#4a4f55")
     for k, tr in enumerate(tracks):
         med = float(np.median(tf[tf["track"] == tr]["t"] - tf[tf["track"] == tr]["rec_cyc"]))
-        ax.text(k + 1, med + 12, f"{med:.0f}", ha="center", fontsize=8,
-                fontweight="bold")
+        ax.text(k + 1, med + 0.02 * max(float(lag.max()), 50.0), f"{med:.0f}",
+                ha="center", fontsize=8, fontweight="bold")
     ax.axhline(-1, color=C["warn"], ls="--", lw=1.0)
     ax.set_xticks(range(1, len(tracks) + 1))
     ax.set_xticklabels([f"航迹 {int(t)}" for t in tracks])
     ax.set_ylabel("$t - t_{rec}$ (s)")
     ax.set_title("(d) 记录滞后分布（箱体 25–75%）", fontsize=10.5)
-    ax.set_ylim(-30, 450)
+    ax.set_ylim(-30, max(50.0, float(lag.max()) * 1.15))
     style_axes(ax)
     return fig
 
@@ -315,29 +345,49 @@ def fig19(D):
 def fig20(D):
     rc = D["radar_output"]["rcs_feat"].sort_values("t")
     tracks = sorted(rc["track"].unique())
-    late = rc["mean"].eq(-10.5).to_numpy()
+    lv = rc["mean"].round(3)                    # 均值档位由数据决定，不写死
+    levels = sorted(float(v) for v in lv.unique())
+    hi, lo = levels[-1], levels[0]
+    ntier = len(levels)
+    n_hi, n_lo = int(lv.eq(hi).sum()), int(lv.eq(lo).sum())
+    t_hi = rc.loc[lv.eq(hi), "t"]
+    t_lo = rc.loc[lv.eq(lo), "t"]
+    t0, t1 = float(rc["t"].min()), float(rc["t"].max())
+    pad = 0.02 * max(t1 - t0, 1.0)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.0))
+    if ntier == 1:
+        head = f"RCS 均值恒为 {hi:.1f} dBsm（{n_hi} 条，{t0:.0f}–{t1:.0f} s）；"
+    elif ntier == 2:
+        head = (f"RCS 均值 {hi:.1f} dBsm（{n_hi} 条，{t_hi.min():.0f}–"
+                f"{t_hi.max():.0f} s）与 {lo:.1f} dBsm（{n_lo} 条，"
+                f"{t_lo.min():.0f}–{t_lo.max():.0f} s）两档；")
+    else:
+        head = (f"RCS 均值共 {ntier} 档（{lo:.1f}–{hi:.1f} dBsm），"
+                f"高档 {n_hi} 条、低档 {n_lo} 条；")
     title_block(fig, "图 20  RCS 特征均值、起伏与收敛",
-                f"RCS 均值在 1240–1598 s 为 {rc['mean'].max():.1f} dBsm（{int((~late).sum())} 条），"
-                f"此后稳定在 {rc['mean'].min():.1f} dBsm（{int(late.sum())} 条）；"
-                f"起伏 σ {rc['std'].min():.2f}–{rc['std'].max():.2f} dB，"
-                f"与均值同步收敛")
+                head + f"起伏 σ {rc['std'].min():.2f}–{rc['std'].max():.2f} dB")
 
     ax = axes[0, 0]
     for k, tr in enumerate(tracks):
         g = rc[rc["track"] == tr]
         ax.scatter(g["t"], g["mean"], s=5, color=CYCLE[k], alpha=0.45,
                    linewidths=0, label=f"航迹 {int(tr)}")
-    for lvl, fc in ((-10.5, "#dbe4ec"), (-6.5, "#f7e4d6")):
-        s0 = float(rc[rc["mean"] == lvl]["std"].median())
-        ax.axhspan(lvl - s0, lvl + s0, color=fc, alpha=0.75, lw=0, zorder=0)
-    ax.axvline(1598, color=C["warn"], ls="--", lw=1.0)
-    ax.text(1615, -6.15, "均值切换 1598 s", color=C["warn"], fontsize=7.8)
-    ax.set_xlim(1240, 2470)
+    shade = ["#f7e4d6", "#dbe4ec", "#dcecdc", "#efe2f2"]
+    for i, lvv in enumerate(levels):
+        s0 = float(rc.loc[lv.eq(lvv), "std"].median())
+        ax.axhspan(lvv - s0, lvv + s0, color=shade[i % len(shade)],
+                   alpha=0.75, lw=0, zorder=0)
+    if ntier >= 2:
+        ax.axvline(t_hi.max(), color=C["warn"], ls="--", lw=1.0)
+        ax.text(t_hi.max() + 0.01 * (t1 - t0), hi + 0.8,
+                f"高档结束 {t_hi.max():.0f} s", color=C["warn"], fontsize=7.8,
+                va="center")
+    ax.set_xlim(t0 - pad, t1 + pad)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("RCS 均值 (dBsm)")
-    ax.set_title("(a) 均值随时间的两档状态", fontsize=10.5)
+    ax.set_title(f"(a) 均值随时间（{'两' if ntier == 2 else ntier} 档）",
+                 fontsize=10.5)
     ax.legend(loc="center right", fontsize=7.8, ncol=2, markerscale=2.5)
     ax.annotate("阴影为各档 ±1σ 中位带宽",
                 xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.2, va="bottom",
@@ -351,7 +401,7 @@ def fig20(D):
                    linewidths=0, label=f"航迹 {int(tr)}")
     ax.axhline(rc["std"].median(), color=C["neutral"], ls="--", lw=1.0,
                label=f"中位 {rc['std'].median():.2f} dB")
-    ax.set_xlim(1240, 2470)
+    ax.set_xlim(t0 - pad, t1 + pad)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("RCS 起伏 σ (dB)")
     ax.set_title("(b) 起伏强度随时间", fontsize=10.5)
@@ -359,10 +409,10 @@ def fig20(D):
     style_axes(ax)
 
     ax = axes[1, 0]
-    for k, lvl in enumerate((-6.5, -10.5)):
-        g = rc[rc["mean"] == lvl]["std"].sort_values().to_numpy(float)
+    for k, lvv in enumerate(levels):
+        g = rc.loc[lv.eq(lvv), "std"].sort_values().to_numpy(float)
         ax.step(g, np.arange(1, len(g) + 1) / len(g), where="post", lw=1.5,
-                color=CYCLE[k], label=f"均值 {lvl:.1f} dBsm（{len(g)} 条）")
+                color=CYCLE[k], label=f"均值 {lvv:.1f} dBsm（{len(g)} 条）")
         ax.axvline(np.median(g), color=CYCLE[k], ls=":", lw=1.0)
         ax.text(np.median(g) + 0.015, 0.55 - 0.08 * k, f"{np.median(g):.2f}",
                 color=CYCLE[k], fontsize=8, ha="left")
@@ -370,30 +420,44 @@ def fig20(D):
     ax.set_xlabel("起伏 σ (dB)")
     ax.set_ylabel("累积概率")
     ax.set_ylim(0, 1.02)
-    ax.set_title("(c) 两档状态的 σ 经验分布", fontsize=10.5)
+    ax.set_title(f"(c) {'两' if ntier == 2 else ntier} 档状态的 σ 经验分布",
+                 fontsize=10.5)
     ax.legend(loc="upper left", fontsize=8.0)
     style_axes(ax)
 
     ax = axes[1, 1]
-    early = rc[rc["mean"].eq(-6.5)]
-    post = rc[rc["mean"].eq(-10.5)]
+    early = rc[lv.eq(hi)]
+    post = rc.loc[lv.eq(lo)]
     names = ["归一化 RCS", "起伏 σ", "起伏度"]
     chg = [100 * (post[c].median() / early[c].median() - 1)
            for c in ("norm", "std", "fluct")]
     y = np.arange(len(names))
     bars = ax.barh(y, chg, height=0.5, color=CYCLE[:3], alpha=0.88)
+    span = max(max(abs(v) for v in chg), 1.0)
+    off = 0.04 * span
     for b, v in zip(bars, chg):
-        ax.text(v - 2.5, b.get_y() + b.get_height() / 2, f"{v:.0f}%",
-                ha="right", va="center", fontsize=9, fontweight="bold")
+        inside = abs(v) > 0.15 * span
+        if inside:
+            tx = v + off if v < 0 else v - off
+            ha, color = ("left" if v < 0 else "right"), "white"
+        else:
+            tx = v - off if v < 0 else v + off
+            ha, color = ("right" if v < 0 else "left"), "#1b2733"
+        ax.text(tx, b.get_y() + b.get_height() / 2, f"{v:.0f}%",
+                ha=ha, va="center", fontsize=9, fontweight="bold", color=color)
     ax.axvline(0, color="#1b2733", lw=1.0)
     ax.set_yticks(y)
     ax.set_yticklabels(names)
-    ax.set_xlim(-75, 8)
-    ax.set_xlabel("后期相对早期的变化 (%)")
-    ax.set_title("(d) 两阶段特征变化", fontsize=10.5)
-    ax.annotate(f"RCS 均值 −6.5 → −10.5 dBsm（−4.0 dB）\n"
-                f"早期 {len(early)} 条（≤ 1598 s）、后期 {len(post)} 条",
-                xy=(0.03, 0.97), xycoords="axes fraction", fontsize=8.2, va="top",
+    ax.set_xlim(min(chg) - 0.12 * span, max(chg) + 0.12 * span)
+    ax.set_xlabel("低档相对高档的变化 (%)")
+    ax.set_title(f"(d) {'两' if ntier == 2 else ntier} 档特征变化", fontsize=10.5)
+    if ntier >= 2:
+        note = (f"RCS 均值 {hi:.1f} → {lo:.1f} dBsm（{lo - hi:+.1f} dB）\n"
+                f"高档 {len(early)} 条、低档 {len(post)} 条")
+    else:
+        note = f"RCS 均值恒为 {hi:.1f} dBsm（无档位切换）"
+    ax.annotate(note, xy=(0.03, 0.97), xycoords="axes fraction", fontsize=8.2,
+                va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     ax.grid(axis="y", visible=False)
     style_axes(ax)
@@ -407,6 +471,11 @@ def fig21(D):
     s1 = tf["s1"].to_numpy(float)
     t = tf["t"].to_numpy(float)
     cls = tf["cls"].astype(str)
+    t0, t1 = float(t.min()), float(t.max())
+    pad = 0.02 * max(t1 - t0, 1.0)
+    s2 = tf["s2"].to_numpy(float)
+    ylo = max(0.0, float(min(s1.min(), s2.min())) - 0.05)
+    yhi = min(1.0, float(max(s1.max(), s2.max())) + 0.05)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.0))
     title_block(fig, "图 21  目标识别置信度与判决结果",
@@ -420,8 +489,8 @@ def fig21(D):
                label="$s_1$（弹道目标）")
     ax.scatter(t, tf["s2"], s=5, color=C["accent2"], alpha=0.45, linewidths=0,
                label="$s_2$（其他类）")
-    ax.set_xlim(*W_RADAR)
-    ax.set_ylim(0.3, 0.78)
+    ax.set_xlim(t0 - pad, t1 + pad)
+    ax.set_ylim(ylo, yhi)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("置信度")
     ax.set_title("(a) 两类置信度时序", fontsize=10.5)
@@ -438,7 +507,7 @@ def fig21(D):
     ax.set_title("(b) 判别余量分布", fontsize=10.5)
     ax.legend(loc="upper right", fontsize=8.5)
     ax.annotate(f"最小 {m.min():.4f}；5% 分位 {np.percentile(m, 5):.4f}\n"
-                f"余量 < 0.01 的样本 {int((m < 0.01).sum())} 条",
+                f"余量 < 0 的样本 {int((m < 0).sum())} 条",
                 xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.3, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
@@ -453,7 +522,7 @@ def fig21(D):
         ax.scatter(g["t"][unknown], np.full(unknown.sum(), k), s=30,
                    marker="v", color=C["warn"], linewidths=0,
                    label="判为未知" if k == 0 else None)
-    ax.set_xlim(*W_RADAR)
+    ax.set_xlim(t0 - pad, t1 + pad)
     ax.set_yticks(range(len(tracks)))
     ax.set_yticklabels([f"航迹 {int(t)}" for t in tracks])
     ax.set_xlabel("仿真时间 (s)")
@@ -490,6 +559,8 @@ def fig22(D):
     g = j.groupby("t")[["RCS", "极化", "HRRP"]].mean().sort_index()
     cols = ["RCS", "极化", "HRRP"]
     colors = [C["accent1"], C["accent2"], C["accent3"]]
+    gt0, gt1 = float(g.index.min()), float(g.index.max())
+    gpad = 0.02 * max(gt1 - gt0, 1.0)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.0))
     title_block(fig, "图 22  识别特征贡献构成",
@@ -501,8 +572,8 @@ def fig22(D):
     ax = axes[0, 0]
     ax.stackplot(g.index, [g[c] for c in cols], labels=cols, colors=colors,
                  alpha=0.85, linewidth=0)
-    ax.set_xlim(1240, 2470)
-    ax.set_ylim(0, 0.78)
+    ax.set_xlim(gt0 - gpad, gt1 + gpad)
+    ax.set_ylim(0, max(0.1, float(g[cols].sum(axis=1).max()) * 1.08))
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("特征贡献")
     ax.set_title("(a) 贡献堆叠（按时刻均值）", fontsize=10.5)
@@ -513,7 +584,7 @@ def fig22(D):
     share = g[cols].div(g[cols].sum(axis=1), axis=0) * 100
     ax.stackplot(share.index, [share[c] for c in cols], labels=cols,
                  colors=colors, alpha=0.85, linewidth=0)
-    ax.set_xlim(1240, 2470)
+    ax.set_xlim(gt0 - gpad, gt1 + gpad)
     ax.set_ylim(0, 100)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("占比 (%)")
@@ -530,13 +601,14 @@ def fig22(D):
             linewidth=0.4)
     ax.axvline(np.median(tot), color=C["warn"], ls="--", lw=1.2,
                label=f"中位 {np.median(tot):.3f}")
-    ax.set_xlim(0.2, 0.8)
+    t_lo, t_hi = float(tot.min()), float(tot.max())
+    t_pad = 0.05 * max(t_hi - t_lo, 0.05)
+    ax.set_xlim(t_lo - t_pad, t_hi + t_pad)
     ax.set_xlabel("三项贡献之和")
     ax.set_ylabel("样本数")
     ax.set_title("(c) 总贡献分布（未归一）", fontsize=10.5)
     ax.legend(loc="center left", fontsize=8.2)
-    ax.annotate(f"取值 {tot.min():.2f}–{tot.max():.2f}，距归一化参考 1.0\n"
-                f"尚差 {1-tot.max():.2f}–{1-tot.min():.2f}，权重未归一",
+    ax.annotate(f"取值 {tot.min():.2f}–{tot.max():.2f}（归一化参考 1.0）",
                 xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.3,
                 va="top", ha="left",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
@@ -554,9 +626,10 @@ def fig22(D):
     ax.set_xticklabels(cols)
     ax.set_ylabel("特征贡献")
     ax.set_title("(d) 各特征贡献分布", fontsize=10.5)
+    yoff = 0.03 * max(float(np.ptp(j[c].to_numpy(float))) for c in cols)
     for k, c in enumerate(cols):
         med = float(np.median(j[c]))
-        ax.text(k + 1, med + 0.008, f"{med:.3f}", ha="center", fontsize=8.5,
+        ax.text(k + 1, med + yoff, f"{med:.3f}", ha="center", fontsize=8.5,
                 fontweight="bold")
     style_axes(ax)
     return fig
@@ -663,10 +736,12 @@ def fig24(D):
                 f"退极化比 {p['depol_m'].min():.4f}–{p['depol_m'].max():.4f}")
 
     ax = axes[0, 0]
+    t0, t1 = float(t.min()), float(t.max())
+    pad = 0.02 * max(t1 - t0, 1.0)
     ax.plot(t, p["det_m"], lw=0.55, color=C["accent1"], alpha=0.8, label="行列式 det")
     ax.plot(t, p["span_m"], lw=0.55, color=C["accent2"], alpha=0.8, label="Span")
     ax.set_yscale("log")
-    ax.set_xlim(*W_RADAR)
+    ax.set_xlim(t0 - pad, t1 + pad)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("功率量 (W)")
     ax.set_title("(a) 行列式与 Span 时序", fontsize=10.5)
@@ -676,15 +751,19 @@ def fig24(D):
     ax = axes[0, 1]
     ax.hist(ratio, bins=32, color=C["accent3"], alpha=0.82, edgecolor="white",
             linewidth=0.4)
-    ax.axvline(2.058, color=C["warn"], ls="--", lw=1.2, label="理论 2.058")
+    ratio_lo = float(ratio.min())
+    ratio_p90 = float(np.percentile(ratio, 90))
+    ax.axvline(ratio_lo, color=C["warn"], ls="--", lw=1.2,
+               label=f"实测下界 {ratio_lo:.3f}")
     ax.axvline(ratio.mean(), color="#123f63", ls=":", lw=1.2,
                label=f"均值 {ratio.mean():.3f}")
     ax.set_xlabel("Span / det")
     ax.set_ylabel("样本数")
     ax.set_title("(b) 不变量比值分布", fontsize=10.5)
     ax.legend(loc="upper right", fontsize=8.2)
-    ax.annotate(f"中位 {ratio_med:.3f}，与理论 2.058 相差 < 0.1%，\n"
-                f"另有 {100*(ratio>2.061).mean():.0f}% 样本落在 2.061–2.069",
+    ax.annotate(f"中位 {ratio_med:.3f}，高出下界 "
+                f"{100*(ratio_med/ratio_lo-1):.2f}%；\n"
+                f"上十分位 {ratio_p90:.3f}–{ratio.max():.3f}",
                 xy=(0.97, 0.55), xycoords="axes fraction", fontsize=8.3,
                 va="top", ha="right",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
@@ -724,6 +803,8 @@ def fig24(D):
 def fig25(D):
     ev = D["sat"]["event"].sort_values(["sat", "tid", "t_event"])
     lanes = sorted(ev.groupby(["sat", "tid"]).size().index.tolist())
+    e0, e1 = float(ev["t_event"].min()), float(ev["t_event"].max())
+    epad = 0.02 * max(e1 - e0, 1.0)
     colors = {"首次探测": C["accent3"], "跟踪中断": C["warn"],
               "跟踪中断(滑行)": C["accent1"]}
     markers = {"首次探测": "o", "跟踪中断": "x", "跟踪中断(滑行)": "."}
@@ -747,7 +828,7 @@ def fig25(D):
                            marker=markers[name], color=colors[name],
                            alpha=0.75, linewidths=0.9,
                            label=name if i == 0 else None)
-    ax.set_xlim(0, 3000)
+    ax.set_xlim(max(0.0, e0 - epad), e1 + epad)
     ax.set_ylim(-0.6, len(lanes) + 0.9)
     ax.set_yticks(range(len(lanes)))
     ax.set_yticklabels([f"卫星 {int(s)} · 目标 {int(t)}" for s, t in lanes])
@@ -773,7 +854,7 @@ def fig25(D):
         for c in range(len(sats)):
             v = int(piv.iloc[r, c])
             ax.text(c, r, f"{v}", ha="center", va="center", fontsize=9.5,
-                    color="white" if v > 100 else "#1b2733",
+                    color="white" if v > 0.15 * piv.to_numpy().max() else "#1b2733",
                     fontweight="bold" if v else "normal")
     ax.set_xticks(range(len(sats)))
     ax.set_xticklabels([f"卫星 {int(s)}" for s in sats])
@@ -789,12 +870,20 @@ def fig25(D):
         g = ev[ev["event"] == name].sort_values("t_event")
         ax.step(g["t_event"], np.arange(1, len(g) + 1), where="post", lw=1.6,
                 color=color, label=f"{name}（{len(g)}）")
-    ax.set_xlim(0, 3000)
+    ax.set_xlim(max(0.0, e0 - epad), e1 + epad)
     ax.set_xlabel("事件时刻 (s)")
     ax.set_ylabel("累计事件数")
     ax.set_title("(c) 累计事件曲线", fontsize=10.5)
     ax.legend(loc="upper left", fontsize=8.2)
-    ax.annotate("滑行中断主导后段事件量", xy=(0.97, 0.30),
+    late = ev["t_event"] >= e0 + 0.75 * (e1 - e0)
+    cnt = ev.loc[late, "event"].value_counts()
+    if len(cnt):
+        note = (f"后 25% 时段 {int(late.sum())} 条事件\n"
+                f"{cnt.index[0]} {int(cnt.iloc[0])} 条"
+                f"（{100 * cnt.iloc[0] / int(late.sum()):.0f}%）")
+    else:
+        note = "后 25% 时段无事件"
+    ax.annotate(note, xy=(0.97, 0.30),
                 xycoords="axes fraction", fontsize=8.3, ha="right", va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
@@ -805,11 +894,16 @@ def fig25(D):
     ax.step(dt, np.arange(1, len(dt) + 1) / len(dt), where="post", lw=1.6,
             color=C["accent1"])
     ax.set_xscale("log")
-    ax.set_xlim(1, 1000)
+    dpos = dt[dt > 0]
+    dt_lo = max(float(dpos.min()) * 0.8, 0.5) if len(dpos) else 0.5
+    ax.set_xlim(dt_lo, max(float(dt.max()) * 1.25, 2.0))
     ax.set_ylim(0, 1.03)
-    share2 = 100.0 * float((dt == 2).mean())
-    ax.axvline(2, color=C["warn"], ls="--", lw=1.1,
-               label=f"2 s：{share2:.1f}% 的间隔")
+    if len(dpos):
+        vals, cnts = np.unique(dpos, return_counts=True)
+        mode = float(vals[np.argmax(cnts)])
+        share_mode = 100.0 * float(cnts.max()) / len(dt)
+        ax.axvline(mode, color=C["warn"], ls="--", lw=1.1,
+                   label=f"{mode:g} s：{share_mode:.1f}% 的间隔")
     ax.axhline(0.5, color=C["neutral"], ls=":", lw=0.9)
     ax.set_xlabel("相邻事件间隔 (s，对数轴)")
     ax.set_ylabel("累积概率")

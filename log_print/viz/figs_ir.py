@@ -184,12 +184,20 @@ def fig13(D):
     ax.set_title("(b) NIS 分布与理论对照", fontsize=10.5)
     ax.set_xlim(0, 30)
     ax.legend(loc="upper right", fontsize=8.5)
+    iqr = float(np.percentile(nis, 75) - np.percentile(nis, 25))
+    iqr_th = 2.0 * np.log(3.0)                  # χ²(2) 的四分位距
+    if iqr > 1.15 * iqr_th:
+        spread = "偏宽 → 新息过散"
+    elif iqr < 0.87 * iqr_th:
+        spread = "偏窄 → 新息偏保守"
+    else:
+        spread = "与理论接近"
     ax.annotate(f"中位 {np.median(nis):.2f}（理论 1.39）\n"
                 f"超门限 {int((~passed).sum())} 条"
                 f"（{100*(~passed).mean():.1f}%）\n"
-                f"实测分布更宽 → 新息过散",
-                xy=(0.40, 0.80), xycoords="axes fraction", fontsize=8.3,
-                va="top", ha="left",
+                f"IQR {iqr:.2f}（理论 {iqr_th:.2f}）：{spread}",
+                xy=(0.97, 0.52), xycoords="axes fraction", fontsize=8.3,
+                va="top", ha="right",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
 
@@ -243,11 +251,14 @@ def fig14(D):
     snr = rad["snr"].to_numpy(float)
     rng = rad["rng"].to_numpy(float) / 1e7            # 10^4 km
     ok_fov = rad["admit"].astype(str).eq("通过").to_numpy()
+    thr = float(rad["thr"].median())
+    above = int((snr > thr).sum())
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.2))
     title_block(fig, "图 14  红外辐射检测与链路通过率",
                 f"辐射计算 {len(rad)} 次，SNR {snr.min():.0f}–{snr.max():.0f}"
-                f"（门限 {rad['thr'].median():.0f}），但仅 {int(ok_fov.sum())} 次通过视场门控")
+                f"（门限 {thr:.0f}）；通过视场门控 {int(ok_fov.sum())} 次"
+                f"（{100 * ok_fov.mean():.2f}%）")
 
     ax = axes[0, 0]
     ax.scatter(rng[~ok_fov], snr[~ok_fov], s=3, color=C["neutral"], alpha=0.18,
@@ -288,8 +299,12 @@ def fig14(D):
     ax.set_xlim(10, 3e5)
     ax.grid(axis="y", visible=False)
     style_axes(ax)
-    ax.annotate(f"视场门控通过率仅 {100*ok_fov.mean():.2f}%\n"
-                f"SNR 全部高于门限 {rad['thr'].median():.0f}",
+    if above == len(snr):
+        gate_txt = f"SNR 全部高于门限 {thr:.0f}"
+    else:
+        gate_txt = (f"SNR 高于门限 {above}/{len(snr)}"
+                    f"（{100 * above / max(len(snr), 1):.1f}%）")
+    ax.annotate(f"视场门控通过率 {100*ok_fov.mean():.2f}%\n{gate_txt}",
                 xy=(0.46, 0.80), xycoords="axes fraction", fontsize=8.3,
                 color=C["warn"], fontweight="bold", va="top")
 
@@ -299,9 +314,10 @@ def fig14(D):
     ax.axvline(np.log10(rad["thr"].median()), color=C["warn"], ls="--", lw=1.1)
     ax.set_xlabel("$\\log_{10}$(SNR)")
     ax.set_ylabel("样本数")
-    ax.set_title("(c) 信噪比分布（远高于门限）", fontsize=10.5)
+    ax.set_title(f"(c) 信噪比分布（{snr.min()/thr:.1f}–{snr.max()/thr:.1f} 倍门限）",
+                 fontsize=10.5)
     ax.annotate(f"中位 {np.median(snr):.0f}，最小 {snr.min():.0f}\n"
-                f"裕量 ≥ {snr.min()/rad['thr'].median():.0f} 倍",
+                f"最低 {snr.min()/thr:.1f} 倍门限",
                 xy=(0.04, 0.94), xycoords="axes fraction", fontsize=8.5, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
@@ -341,9 +357,13 @@ def fig15(D):
     lau = D["sat"]["launch"]
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
+    i_lon, i_lat = float(imp["lon"].median()), float(imp["lat"].median())
+    l_lon, l_lat = float(lau["lon"].median()), float(lau["lat"].median())
     title_block(fig, "图 15  卫星导航误差、UKF 收敛与落点/发射点估计",
                 f"导航位置误差 0–{pe['err'].max():.2f} m（中位 {pe['err'].median():.2f} m），"
-                f"UKF 协方差迹中位 {uk['covtr'].median():.0f}；落点集中于北太平洋，发射点位于东亚")
+                f"UKF 协方差迹中位 {uk['covtr'].median():.0f}；"
+                f"落点中位 ({i_lon:.1f}°, {i_lat:.1f}°)、"
+                f"发射点中位 ({l_lon:.1f}°, {l_lat:.1f}°)")
 
     ax = axes[0, 0]
     for k, (sat, g) in enumerate(pe.groupby("sat")):
@@ -361,17 +381,27 @@ def fig15(D):
     style_axes(ax)
 
     ax = axes[0, 1]
-    ax.plot(uk["t"], uk["covtr"], lw=1.0, color=C["accent4"])
+    uk_t = uk["t"].to_numpy(float)
+    uk_c = uk["covtr"].to_numpy(float)
+    ax.plot(uk_t, uk_c, lw=1.0, color=C["accent4"])
     ax.set_yscale("log")
-    ax.set_xlim(0, 2950)
+    ax.set_xlim(float(uk_t.min()), float(uk_t.max()))
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("协方差迹 tr(P)")
     ax.set_title("(b) UKF 协方差收敛过程", fontsize=10.5)
-    ax.axvspan(2400, 2900, color=C["warn"], alpha=0.08, lw=0)
-    ax.text(2420, uk["covtr"].max() * 0.5, "观测减少\n协方差回升", fontsize=7.8,
-            color=C["warn"], va="top")
-    ax.annotate(f"初始 {uk['covtr'].iloc[0]:.1e}\n稳态中位 "
-                f"{uk['covtr'].median():.0f}\n末段 {uk['covtr'].iloc[-1]:.1e}",
+    # 同一时刻可能有多条记录，取包络（逐时刻最大值）判定末段抬升，
+    # 阈值取全段中位的 10 倍，不写死时间窗。
+    env = uk.groupby("t")["covtr"].max().sort_index()
+    env_t = env.index.to_numpy(float)
+    elevated = env.to_numpy(float) > 10.0 * float(np.median(uk_c))
+    if elevated.any() and (~elevated).any():
+        start = float(env_t[np.where(~elevated)[0][-1] + 1])
+        ax.axvspan(start, float(uk_t.max()), color=C["warn"], alpha=0.08, lw=0)
+        ax.text(0.98, 0.16, f"末段协方差抬升\n（包络 > 10× 全段中位，"
+                f"{start:.0f} s 起）", transform=ax.transAxes, fontsize=7.8,
+                color=C["warn"], va="bottom", ha="right")
+    ax.annotate(f"初始 {uk_c[0]:.1e}\n稳态中位 "
+                f"{np.median(uk_c):.0f}\n末条记录 {uk_c[-1]:.1e}",
                 xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.3,
                 va="bottom", bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb",
                                        ec="#c8d0d8"))
@@ -383,15 +413,24 @@ def fig15(D):
                    linewidths=0, label=f"目标 {int(key)}（{len(g)} 点）")
         ax.plot(g["lon"].iloc[-1], g["lat"].iloc[-1], marker="*", ms=13,
                 color=CYCLE[k], mec="white", mew=0.6, ls="none")
-    ax.set_xlim(-180, -90)
-    ax.set_ylim(30, 65)
+    # 以经度中位为心、±60° 内的点为主群；跨日界线的离群点不参与定窗
+    lon_i = imp["lon"].to_numpy(float)
+    lat_i = imp["lat"].to_numpy(float)
+    dlon = np.abs(((lon_i - float(np.median(lon_i)) + 180.0) % 360.0) - 180.0)
+    keep = dlon <= 60.0
+    out = int((~keep).sum())
+    xpad = 0.05 * max(np.ptp(lon_i[keep]), 1.0)
+    ypad = 0.05 * max(np.ptp(lat_i[keep]), 1.0)
+    ax.set_xlim(float(lon_i[keep].min()) - xpad, float(lon_i[keep].max()) + xpad)
+    ax.set_ylim(float(lat_i[keep].min()) - ypad, float(lat_i[keep].max()) + ypad)
     ax.set_xlabel("经度 (°)")
     ax.set_ylabel("纬度 (°)")
     ax.set_title("(c) 落点估计散布（★ 为末次估计）", fontsize=10.5)
     ax.legend(loc="lower left", fontsize=8, markerscale=2.0)
-    out = int((imp["lon"] > -90).sum())
-    ax.annotate(f"落点半径 1σ {imp['r1'].median()/1e3:.1f} km（中位）\n"
-                f"另有 {out} 个经度 > −90° 的离群点未显示",
+    note = f"落点半径 1σ {imp['r1'].median()/1e3:.1f} km（中位）"
+    if out:
+        note += f"\n另有 {out} 个偏离主群 > 60° 的点未显示"
+    ax.annotate(note,
                 xy=(0.97, 0.95), xycoords="axes fraction", fontsize=8.3,
                 va="top", ha="right",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
@@ -410,8 +449,12 @@ def fig15(D):
             ht = 2 * e["ea"] / 111320.0
             ax.add_patch(Ellipse((e["lon"], e["lat"]), wl, ht, fill=False,
                                  ec=CYCLE[k], lw=1.1, ls="--"))
-    ax.set_xlim(95, 180)
-    ax.set_ylim(20, 70)
+    lon_l = lau["lon"].to_numpy(float)
+    lat_l = lau["lat"].to_numpy(float)
+    xpad = 0.05 * max(np.ptp(lon_l), 1.0)
+    ypad = 0.05 * max(np.ptp(lat_l), 1.0)
+    ax.set_xlim(float(lon_l.min()) - xpad, float(lon_l.max()) + xpad)
+    ax.set_ylim(float(lat_l.min()) - ypad, float(lat_l.max()) + ypad)
     ax.set_xlabel("经度 (°)")
     ax.set_ylabel("纬度 (°)")
     ax.set_title("(d) 发射点估计散布与误差椭圆", fontsize=10.5)

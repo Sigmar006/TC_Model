@@ -1143,7 +1143,18 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
   // （crossings 计数与既有节奏同值：dt·rate=k·span 时相位/行序列与锯齿逐位重合）。
   // rate=0 时 travel 恒 0、腿恒初始方向——凝视行为逐位不变。
   const int row_count = ScanRowCount(scan_mission);
-  const float wrap_span = scan_wrap_span_deg_;
+  // 中译：**相位推进的除零/NaN 防护**（2026-11-05 崩溃排查）——大幅面模式切换栅格时
+  //   `scan_wrap_span_deg_` 可能为 0/非有限（跨度被裁剪或未初始化），此前会做
+  //   `x / wrap_span`、`fmod(x, 2*wrap_span)`，得到 inf/NaN 相位；NaN 一路传到
+  //   `ScanAzimuth`→`LosFromAzimuthElevation`→几何/覆盖区，最终在 `static_cast<int>`
+  //   时变成极大负索引 → 0xC0000005 读 0x0。这里先兜底：跨度非正或非有限时回落到
+  //   配置跨度，再退化到 360°。
+  // 标识：扫描相位除零防护（2026-11-05）。
+  float wrap_span = scan_wrap_span_deg_;
+  if (!(wrap_span > 0.0f) || !std::isfinite(wrap_span)) {
+    wrap_span = (scan_mission.scan_span_deg > 0.0f) ? scan_mission.scan_span_deg : 360.0f;
+    scan_wrap_span_deg_ = wrap_span;
+  }
   const float prev_travel =
       scan_leg_forward_ ? scan_phase_deg_ : 2.0f * wrap_span - scan_phase_deg_;
   const float advanced_travel =

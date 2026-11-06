@@ -5,6 +5,8 @@
 
 #include "fusion/FusionAcceptanceRecords.h"
 
+#include "common/logging/AcceptanceFileLog.h"
+
 #include <cstdlib>
 
 #include <algorithm>
@@ -87,7 +89,11 @@ std::set<std::uint32_t>& KnownSources() {
 // 优先输出输入携带的业务名称；空名称兼容输出「实体<source_id>」。
 std::string SourceLabel(std::uint32_t source_id, const std::string& source_name) {
   if (!source_name.empty()) {
-    return source_name;
+    // 中译：**外部来源名称先归一为 UTF-8**（2026-11-06）——`source_name` 来自宿主模型
+    //   数据（通常 GBK），直接拼进 UTF-8 行会让这一段中文变成乱码（甲方实测"只有
+    //   `红外地面融合站` 那几个字乱"）。已是 UTF-8 的原样返回。
+    // 标识：来源名称 UTF-8 归一（2026-11-06）。
+    return oneq::logging::EnsureUtf8(source_name);
   }
   return "实体" + std::to_string(source_id);
 }

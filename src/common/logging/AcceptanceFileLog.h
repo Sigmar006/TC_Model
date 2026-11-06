@@ -116,6 +116,20 @@ std::string CurrentAcceptanceLogPath(AcceptanceChannel channel);
  *       与 WriteAcceptanceLog 内部用的是同一个转换，不会重复转码。
  */
 std::string EncodeAcceptanceTextForFile(const std::string& text);
+/**
+ * @brief 判断字节串是否已是合法 UTF-8（Windows 用 MB_ERR_INVALID_CHARS 严格校验）。
+ * @param[in] text 待判定内容。
+ * @return 合法 UTF-8 返回 true；非 Windows 平台按"恒为 true"（UTF-8 环境下无需转换）。
+ */
+bool IsValidUtf8(const std::string& text);
+
+/**
+ * @brief 把外部来源的字符串归一为 UTF-8（已是 UTF-8 原样返回，否则按 ANSI/GBK 转换）。
+ * @param[in] text 外部字符串（例如模型数据里的单元名称）。
+ * @return UTF-8 编码的字符串。
+ * @note 用于拼装验收行前归一，避免 GBK 名称混进 UTF-8 行造成局部乱码。
+ */
+std::string EnsureUtf8(const std::string& text);
 /** @brief 只读诊断：通道流的 open/good/fail/bad 与 tellp（排查"行写不进去"）。 */
 std::string CurrentAcceptanceLogStateText(AcceptanceChannel channel);
 void WriteAcceptanceLog(AcceptanceChannel channel, const char* text);

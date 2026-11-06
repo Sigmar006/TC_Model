@@ -10,6 +10,7 @@
 #include "common/platform/OneqPlatformCompat.h"
 
 #include <cstdio>
+#include <vector>
 #include <cstdlib>
 #include <fstream>
 #include <map>
@@ -440,6 +441,14 @@ class ChannelSink {
     if (first_open) {
       std::FILE* truncate_handle = std::fopen(path, "wb");
       if (truncate_handle != nullptr) {
+        // 中译：**首开写 UTF-8 BOM**（2026-11-06 甲方反馈："外部打开中文全乱码、
+        //   数字字母正常"）——文件是合法 UTF-8 但不带 BOM，中文 Windows 的记事本/
+        //   Excel 默认按 ANSI(GBK) 解析，于是所有中文乱码而 ASCII 正常。写入 3 字节
+        //   BOM(EF BB BF) 让这些工具正确识别为 UTF-8；本库与外部按行读取的解析器
+        //   需按 `utf-8-sig` 处理首行（Python 用 encoding='utf-8-sig' 即可）。
+        // 标识：验收日志 UTF-8 BOM（2026-11-06）。
+        static const unsigned char kUtf8Bom[3] = {0xEF, 0xBB, 0xBF};
+        std::fwrite(kUtf8Bom, 1U, 3U, truncate_handle);
         std::fclose(truncate_handle);
       }
     }
@@ -570,7 +579,74 @@ std::string CurrentAcceptanceLogPath(AcceptanceChannel channel) {
   return SinkOf(channel).OpenedPath();
 }
 
+// 中译：**判断一段字节是否已是合法 UTF-8**（2026-11-06 甲方反馈："只有
+//   `红外地面融合站` 那一段中文乱码，其余正常"）——该名称来自宿主模型数据（GBK/ANSI），
+//   与源码里的 UTF-8 字面量被拼进同一行；写出时若整行按 ANSI 再转一次，就会把已是
+//   UTF-8 的部分转坏（或反之）。这里用 Windows 的严格 UTF-8 校验做判据，供下方
+//   "已是 UTF-8 就原样输出"使用。
+// 标识：UTF-8 合法性判定（2026-11-06）。
+bool IsValidUtf8(const std::string& text) {
+#if defined(_WIN32)
+  if (text.empty()) {
+    return true;
+  }
+  const int wide_len = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
+                                             static_cast<int>(text.size()), nullptr, 0);
+  return wide_len > 0;
+#else
+  (void)text;
+  return true;
+#endif
+}
+
+std::string EnsureUtf8(const std::string& text) {
+  if (IsValidUtf8(text)) {
+    return text;
+  }
+#if defined(_WIN32)
+  // 中译：**两级回退**（2026-11-06）——外部名称可能既不是 UTF-8、也不在系统当前 ANSI
+  //   代码页里（例如来自其它代码页的模型库）。先按 CP_ACP(GBK) 试，再按 GB18030(54936)
+  //   试；两者都失败时用 U+FFFD 替换非法字节并保底输出，绝不把坏字节写进日志。
+  // 标识：外部字符串 GB18030 回退（2026-11-06）。
+  static const UINT kFallbackCodePages[2] = {CP_ACP, 54936U /* GB18030 */};
+  for (int i = 0; i < 2; ++i) {
+    const int wide_len = ::MultiByteToWideChar(kFallbackCodePages[i], 0, text.data(),
+                                               static_cast<int>(text.size()), nullptr, 0);
+    if (wide_len <= 0) {
+      continue;
+    }
+    std::vector<wchar_t> wide(static_cast<std::size_t>(wide_len) + 1U, L'\0');
+    if (::MultiByteToWideChar(kFallbackCodePages[i], 0, text.data(),
+                              static_cast<int>(text.size()), &wide[0], wide_len) <= 0) {
+      continue;
+    }
+    const int utf8_len = ::WideCharToMultiByte(CP_UTF8, 0, &wide[0], wide_len, nullptr, 0,
+                                               nullptr, nullptr);
+    if (utf8_len <= 0) {
+      continue;
+    }
+    std::string utf8(static_cast<std::size_t>(utf8_len), '\0');
+    ::WideCharToMultiByte(CP_UTF8, 0, &wide[0], wide_len, &utf8[0], utf8_len, nullptr, nullptr);
+    return utf8;
+  }
+  // 两级都失败：逐字节替换非法序列为 '?'，保证不会写出坏 UTF-8。
+  std::string fallback;
+  fallback.reserve(text.size());
+  for (std::size_t i = 0U; i < text.size(); ++i) {
+    const unsigned char c = static_cast<unsigned char>(text[i]);
+    fallback += (c < 0x80U) ? static_cast<char>(c) : '?';
+  }
+  return fallback;
+#else
+  return text;
+#endif
+}
+
 std::string EncodeAcceptanceTextForFile(const std::string& text) {
+  // 已是合法 UTF-8（源码字面量 + 已归一的外部字符串）→ 原样输出，不再二次转换。
+  if (IsValidUtf8(text)) {
+    return text;
+  }
   return EncodeAcceptanceText(text);
 }
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file TextEncoding.h
  * @brief 外部字符串的编码归一工具（1q 边界统一入口）。
  *

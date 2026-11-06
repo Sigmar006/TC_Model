@@ -1368,12 +1368,14 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       if (has_real_dwell_plan) {
         if (horizon_search_cycle) {
           WriteRirHorizonSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
-                                          input.input_cycle_index, dwell_center_deg.az_deg,
-                                          dwell_center_deg.el_deg, g_acceptance_found_targets);
+                                          input.input_cycle_index, search_sector,
+                                          dwell_center_deg.az_deg, dwell_center_deg.el_deg,
+                                          g_acceptance_found_targets);
         } else {
           WriteRirSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
-                                   input.input_cycle_index, dwell_center_deg.az_deg,
-                                   dwell_center_deg.el_deg, g_acceptance_found_targets);
+                                   input.input_cycle_index, search_sector,
+                                   dwell_center_deg.az_deg, dwell_center_deg.el_deg,
+                                   g_acceptance_found_targets);
         }
       }
       const float gate_sigma = std::max(0.0f, policy_.association.distance_gate_sigma);
@@ -1541,7 +1543,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                        latest_summary_.dwell_budget.dwell_budget_sec,
                        latest_summary_.dwell_budget.dwell_consumed_sec, planned_search,
                        planned_designate, planned_external_track, planned_internal_track,
-                       confirmed, horizon_search_cycle);
+                       confirmed, horizon_search_cycle, search_sector);
     }
   } else {
     track_snapshots = lifecycle_->BuildTrackSnapshots();

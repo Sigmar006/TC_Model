@@ -54,6 +54,18 @@ using oneq::logging::FormatVec3;
 using oneq::logging::YesNo;
 
 /**
+ * @brief 有效搜索扇区的可读文本（`az[min,max]el[min,max]°`）。
+ * @param[in] sector 本周期有效搜索扇区（`internal::ResolveSearchSector` 的结果：
+ *            az 相对阵面朝向、el 绝对，已与可扫描体积求交）。
+ * @note 第 37/37A 项与调度行共用同一口径，避免三处各写一种范围。
+ * @note 2026-11-07 甲方要求：空域扫描日志项补"扫描范围"。
+ */
+std::string FormatScanSectorDeg(const config::RirAzimuthElevationLimitsDeg& sector) {
+  return "az[" + FormatF(sector.az_min_deg, 3) + "," + FormatF(sector.az_max_deg, 3) + "]el[" +
+         FormatF(sector.el_min_deg, 3) + "," + FormatF(sector.el_max_deg, 3) + "]°";
+}
+
+/**
  * @brief 天线有效口径面积（m²）：`Ae = G·λ²/(4π)`。
  * @param[in] gain_dbi 该来波方向的接收增益（dBi；主瓣用主瓣增益，旁瓣来波用链路自带的接收增益）。
  * @param[in] frequency_hz 载频（Hz）。
@@ -1301,6 +1313,7 @@ void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uin
 }
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
+                              const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
                               float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED() || detections.empty()) {
@@ -1310,9 +1323,14 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
   // 行随 WriteRirSchedule 写出——调度统计在该调用点）。项名固定为
   // [空域自主搜索功能测试]，不与 37A 互相替代。检测量测只写目标ID/斜距/量测方位俯仰
   //（Pd 归第36项，不写）。
+  // 中译：**指向行补"扫描范围"**（2026-11-07 甲方要求）——此前第37项只写当前波位指向，
+  //   看不出本周期搜索扇区的边界；补有效搜索扇区（az 相对阵面、el 绝对，已与可扫描体积
+  //   求交），外部可直接核对"雷达在多大范围内搜"。
+  // 标识：第37项扫描范围（2026-11-07）。
   Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
-           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
+           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "° 扫描范围=" +
+           FormatScanSectorDeg(scan_sector_deg));
   std::string found;
   for (std::size_t i = 0U; i < detections.size(); ++i) {
     if (i != 0U) {
@@ -1327,7 +1345,9 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 }
 
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
-                                     std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
+                                     std::uint32_t cycle,
+                                     const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                                     float beam_az_deg, float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections) {
   // 中译：**地平线搜索按“驻留事实”记账**（2026-10-26）——此前 `detections.empty()` 直接
   //   return，只有“地平线波位恰好检到目标”才留下日志，搜索窗抬高后整项几乎不可见。
@@ -1338,9 +1358,12 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
   }
   // 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名，按 §0.9
   // 条目独立判定，不得互相替代。指向角取该波位实际指向（地平线波位 el≈0）。
+  // 中译：同第 37 项——地平线搜索也写有效扫描范围（地平线模式下 el 是地平线窄带）。
+  // 标识：第37A项扫描范围（2026-11-07）。
   Emit(sim_time_sec, cycle, "地平线搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
-           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
+           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "° 扫描范围=" +
+           FormatScanSectorDeg(scan_sector_deg));
   if (detections.empty()) {
     // 中译：**未检出也写"检测与量测信息"行（空列表）**（2026-11-02）——判据第37A项要求
     //   "记录检测与量测信息"，若该行只在检出时出现，本场景（目标都在高空、地平线波位
@@ -2158,7 +2181,8 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
                       std::uint32_t designate_count, std::uint32_t external_track_count,
                       std::uint32_t internal_track_count, std::uint32_t confirmed_tracks,
-                      bool horizon_search_cycle) {
+                      bool horizon_search_cycle,
+                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -2176,7 +2200,8 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   // 标识：调度行扫描模式（2026-11-06）。
   Emit(sim_time_sec, cycle, schedule_item,
        "雷达ID=" + std::to_string(radar_id) + " 扫描模式=" +
-           (horizon_search_cycle ? "地平线扫描" : "指定空域搜索") + " 扫描调度信息=搜索=" +
+           (horizon_search_cycle ? "地平线扫描" : "指定空域搜索") + " 扫描范围=" +
+           FormatScanSectorDeg(scan_sector_deg) + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
            " 驻留=" + std::to_string(external_track_count + internal_track_count) +
            " 预算/已耗时=" + FormatF(budget_sec, 3) + "/" + FormatF(consumed_sec, 3) + "s");

@@ -643,11 +643,13 @@ std::string EnsureUtf8(const std::string& text) {
 }
 
 std::string EncodeAcceptanceTextForFile(const std::string& text) {
-  // 已是合法 UTF-8（源码字面量 + 已归一的外部字符串）→ 原样输出，不再二次转换。
-  if (IsValidUtf8(text)) {
-    return text;
-  }
-  return EncodeAcceptanceText(text);
+  // 过程：**不再做整行编码转换**（2026-11-06）。工程已统一为 UTF-8：源码/字面量经 /utf-8
+  //   编成 UTF-8，外部输入在边界经 `NormalizeExternalText` 归一。此前的"整行按 ACP 转"
+  //   会把已经是 UTF-8 的片段（如外部单元名）再转一次，产出 `鍗槦` 这类合法但错误的字符。
+  //   保留该函数只为公开接口兼容。
+  // 标识：写出通道不再转换编码（2026-11-06）。
+  (void)text;
+  return text;
 }
 
 

@@ -39,6 +39,14 @@ function(apply_msvc_options)
             /Zc:referenceBinding)  # 禁止临时量绑定到非 const 左值引用（标准要求）
     endif()
 
+    # 过程：**强制源码与执行字符集都用 UTF-8**（2026-11-06）。此前只有"源码按 UTF-8 解码"
+    #   （靠 BOM），而窄字符串字面量的**执行字符集仍是本地代码页（GBK）**，于是日志里
+    #   "源码字面量(GBK)" 与 "外部名称(已是 UTF-8)" 混排，写出通道只能整行猜一种编码，
+    #   把已经是 UTF-8 的部分又按 GBK 转一次，出现 `鍗槦-1-1`（应为 `卫星-1-1`）。
+    #   加 /utf-8 后字面量也是 UTF-8，全链路单编码，写出通道不再需要任何转换。
+    # 标识：执行字符集 UTF-8（2026-11-06）。
+    list(APPEND _msvc_common_compile_options /utf-8)
+
     foreach(_target IN LISTS ARG_TARGETS)
         if(NOT TARGET "${_target}")
             message(FATAL_ERROR "Compiler target does not exist: ${_target}")

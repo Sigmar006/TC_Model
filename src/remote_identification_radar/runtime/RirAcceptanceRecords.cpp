@@ -925,13 +925,18 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   // 「总杂波抑制增益」，由本条已落盘的原始/剩余功率直接求比值（10log10 输入/剩余）。
   // 抑制比取目标所在多普勒通道，总增益取全通道合计，两者均为功率比，不引入新观测量。
   if (has_clutter && has_bank) {
+    // 中译：**抑制比取 MTD 的输入/输出**（2026-11-07 修口径）——MTD 的输入是 MTI 剩余杂波，
+    //   输出是目标所在多普勒通道的剩余。此前拿"输入/通道数"当基准，选中通道恰好高于均值时
+    //   就会算出负 dB（现场 0.905/−2.563 dB 混出现象），读起来像"抑制为负"。
+    // 标识：第34项抑制比口径（2026-11-07）。
     const double channel_count = static_cast<double>(oneq::common::radar::kMtiMtdChannelCount);
-    const double original_channel_clutter =
-        clutter_db <= 0.0 ? clutter / channel_count : clutter / FromDb(clutter_db);
+    (void)channel_count;
+    const double mtd_input_clutter =
+        has_bank ? bank.mti_residual_clutter_w : (clutter_db <= 0.0 ? clutter : clutter / FromDb(clutter_db));
     const double residual_total = std::accumulate(bank.clutter_w.begin(), bank.clutter_w.end(), 0.0);
     double ratio_db = 0.0;
     if (oneq::common::radar::TryAcceptancePowerRatioDb(
-            original_channel_clutter, bank.clutter_w[bank.selected_channel], &ratio_db)) {
+            mtd_input_clutter, bank.clutter_w[bank.selected_channel], &ratio_db)) {
       Emit(t, cycle, "杂波信号处理增益功能测试",
            id_sp + "MTD处理后的杂波抑制比=" + FormatF(ratio_db, 3) + "dB");
     }

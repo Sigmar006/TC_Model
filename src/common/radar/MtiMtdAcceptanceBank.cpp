@@ -144,8 +144,19 @@ bool TryResolveMtiMtdAcceptanceBank(const MtiMtdAcceptanceInput& input,
   }
   const double inv_mass = (spectrum_mass > kLinearFloor) ? (1.0 / spectrum_mass) : 0.0;
   candidate.mti_residual_clutter_w = input.clutter_power_w * mti_weighted_mass * inv_mass;
+  // 中译：**MTD 通道功率做能量守恒归一**（2026-11-07）——DFT 各 bin 的响应不构成单位分解，
+  //   `Σ|bin|²` 可以大于 1，直接按 bin 功率分配会让"全通道剩余合计"超过 MTI 剩余，
+  //   于是第 34 项的「总杂波抑制增益」算出**负值**（现场 −2.563 dB），看起来像 MTD 放大杂波。
+  //   这里在保持通道间比例的前提下整体缩放到 Σ = MTI 剩余：物理上 MTD 只重分布不增能。
+  // 标识：MTD 通道能量守恒（2026-11-07）。
+  double clutter_mass_sum = 0.0;
   for (std::size_t k = 0U; k < kMtiMtdChannelCount; ++k) {
-    candidate.clutter_w[k] = input.clutter_power_w * clutter_mass[k] * inv_mass;
+    clutter_mass_sum += clutter_mass[k];
+  }
+  const double clutter_scale =
+      (clutter_mass_sum > kLinearFloor) ? (mti_weighted_mass / clutter_mass_sum) : 0.0;
+  for (std::size_t k = 0U; k < kMtiMtdChannelCount; ++k) {
+    candidate.clutter_w[k] = input.clutter_power_w * clutter_mass[k] * inv_mass * clutter_scale;
   }
 
   candidate.has_jam_channels = input.tone_count > 0U;

@@ -809,6 +809,13 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     echo += " 噪声功率=" + FormatSci(thermal) + "W";
     echo += " 干扰功率=" +
             FormatSci(input.has_cell ? input.cell.interference_power_w : 0.0) + "W";
+    // 中译：**回波功率行补「杂波功率」**（2026-11-07 甲方要求）——第 29 项此前只列
+    //   回波/噪声/干扰三项，杂波只在第 34 项出现；同一检测单元的四个功率分项应在一行
+    //   内可直接对照（SINR 分母就是这三项相加）。口径与噪声/干扰一致：单元内等效
+    //   噪声功率（W，含 MTI 前的原始杂波，未计处理增益）。
+    // 标识：第29项杂波功率（2026-11-07）。
+    echo += " 杂波功率=" +
+            FormatSci(input.has_cell ? input.cell.clutter_power_w : 0.0) + "W";
     // 中译：**口面功率密度**（2026-11-02 甲方要求补 W/m²，保留原 W 不动）——
     //   S = P / Ae，Ae = G·λ²/(4π)：回波走主瓣 ⇒ 用主瓣增益；干扰多自旁瓣进入 ⇒
     //   逐链路用各链路自己的接收增益求密度再按功率等比缩放（不能一律用主瓣口径，

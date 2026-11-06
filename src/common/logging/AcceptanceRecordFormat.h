@@ -77,10 +77,8 @@ inline std::string FormatAcceptanceLine(float sim_time_sec, std::uint32_t cycle,
   ONEQ_SNPRINTF(time_buf, sizeof(time_buf), "%.3f", static_cast<double>(sim_time_sec));
   std::string line;
   line.reserve(64U + (item != nullptr ? std::char_traits<char>::length(item) : 0U) + content.size());
-  // 过程：行首追加真实系统时间戳（本机墙钟），与仿真时间/周期并列。
-  line += "[";
-  line += detail::FormatSystemTimestamp();
-  line += "] 仿真时间=";
+  // 过程：行首保持原格式（仿真时间/周期在前）。
+  line += "仿真时间=";
   line += time_buf;
   line += "s 仿真周期=";
   char cycle_buf[16];
@@ -102,6 +100,12 @@ inline std::string FormatAcceptanceLine(float sim_time_sec, std::uint32_t cycle,
   line += item_text;
   line += "] ";
   line += content_text;
+  // 过程：行尾追加真实系统时间戳（本机墙钟）——放在最后，前面的
+  // "仿真时间=… 仿真周期=… [测试项] 内容" 前缀与解析位置完全不变。
+  // 标识：验收行系统时间戳置于行尾（2026-11-06）。
+  line += " [系统时间=";
+  line += detail::FormatSystemTimestamp();
+  line += "]";
   return line;
 }
 

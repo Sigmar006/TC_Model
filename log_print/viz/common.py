@@ -254,6 +254,57 @@ def to_num(series):
     return np.array([fnum(v) for v in series], dtype=float)
 
 
+# ---------------------------------------------------------------- dB 换算
+# 图上的坐标一律用 dB 表达，不再出现 10^n 对数刻度：
+#   功率 / 功率谱 / 比值 / 计数 / 时间间隔 / 方差  → 10·lg（dBW、dB、dB(m²)…）
+#   长度 / 位置误差                              → 20·lg（dB，相对 1 m）
+# 非正值在对数域无定义，直接返回 NaN，由 matplotlib 跳点、统计时自然被排除。
+def db10(x):
+    """线性功率（或比值/计数/间隔/方差）→ dB。"""
+    a = np.asarray(x, dtype=float)
+    out = np.full(a.shape, np.nan, dtype=float)
+    ok = np.isfinite(a) & (a > 0.0)
+    out[ok] = 10.0 * np.log10(a[ok])
+    return out
+
+
+def db20(x):
+    """长度（或幅度）→ dB，参考 1 m。"""
+    a = np.asarray(x, dtype=float)
+    out = np.full(a.shape, np.nan, dtype=float)
+    ok = np.isfinite(a) & (a > 0.0)
+    out[ok] = 20.0 * np.log10(a[ok])
+    return out
+
+
+# ---------------------------------------------------------------- 分目标
+# 跟踪与特征图一律按目标分开：一行（或一组曲线）只画一个目标，标题与图例
+# 直接写出目标号，避免把不同目标的量测、误差、特征混在一起统计。
+def by_target(df, col: str = "tid"):
+    """按目标列分组，记录多的目标排在前面。
+
+    返回 [(目标号, 子表)]；同一目标的多条航迹留在同一组里，
+    由调用方决定是分行画还是用线型区分。数据里没有该列时退回单组 (None, df)。
+    """
+    if df is None or len(df) == 0 or col not in df.columns:
+        return [(None, df)]
+    vals = df[col]
+    ids = sorted({int(v) for v in vals.dropna().unique()})
+    groups = [(tid, df[vals == float(tid)]) for tid in ids]
+    groups.sort(key=lambda kv: (-len(kv[1]), kv[0]))
+    return groups
+
+
+def target_title(tid, tracks=None) -> str:
+    """统一的目标标签：'目标 109' 或 '目标 109（航迹 1、2）'。"""
+    if tid is None:
+        return "全部目标"
+    if tracks is None or len(tracks) == 0:
+        return f"目标 {int(tid)}"
+    tr = "、".join(str(int(v)) for v in sorted({int(v) for v in tracks}))
+    return f"目标 {int(tid)}（航迹 {tr}）"
+
+
 # ---------------------------------------------------------------- 坐标换算
 _A = 6378137.0
 _F = 1.0 / 298.257223563

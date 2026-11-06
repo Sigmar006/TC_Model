@@ -20,7 +20,7 @@ import pandas as pd
 
 from . import common
 
-CACHE_VERSION = 10
+CACHE_VERSION = 11
 
 
 # ------------------------------------------------------------------ 读取
@@ -285,6 +285,7 @@ P_POL = {
     "ell":   J(rf"航迹=(?P<track>\d+)", rf"目标ID=(?P<tid>\d+)",
                rf"本征极化椭圆率均值/标准差=(?P<m>{_N})°?/(?P<s>{_N})°?"),
 }
+P_POLHEAD = J(rf"航迹=(?P<track>\d+)", rf"目标ID=(?P<tid>\d+)")
 P_POLX = J(f("综合识别加权贡献", "contrib"))
 P_HRRP = J(
     rf"航迹=(?P<track>\d+)",
@@ -456,8 +457,15 @@ def scan_radar_output(path: Path) -> dict[str, pd.DataFrame]:
                     rows.add("rcs_feat", conv(mm.groupdict(), base))
 
             elif msg == "极化特征解算功能测试":
-                k = (t, cyc)
-                row = pol.setdefault(k, dict(base))
+                # 同一周期里多个目标各发若干行，必须按 (t, cyc, 目标) 归并，
+                # 否则后一个目标会覆盖前一个目标的极化特征。
+                mh = P_POLHEAD.search(s_)
+                if mh is None:
+                    continue
+                head = conv(mh.groupdict())
+                k = (t, cyc, int(head["tid"]))
+                row = pol.setdefault(k, dict(base, track=int(head["track"]),
+                                             tid=int(head["tid"])))
                 for name, pat in P_POL.items():
                     mm = pat.search(s_)
                     if mm:

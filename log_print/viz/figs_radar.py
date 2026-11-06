@@ -1,15 +1,21 @@
-﻿# -*- coding: utf-8 -*-
-"""图 4–11、16：雷达检测、跟踪、干扰与资源调度。"""
+# -*- coding: utf-8 -*-
+"""图 4–11、16：雷达检测、跟踪、干扰与资源调度。
+
+坐标口径
+--------
+* 功率 / 功率谱 / 比值等动态范围大的量一律换算成 dB 后线性绘制（10·lg）；
+* 不再使用对数坐标轴，刻度直接写 dBW、dBW/Hz、dB(m)、dB(m²)；
+* 跟踪类图（8–11）按目标分行：一行只对应一个目标，行首标出目标号与航迹号，
+  不同目标的误差、速度、航迹生命周期不再混在同一条曲线上。
+"""
 from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 from matplotlib.patches import Rectangle
 
-from . import extract
-from .common import (C, CYCLE, W_RADAR, enu_to_lla, style_axes,
-                     title_block, fnum)
+from .common import (C, CYCLE, by_target, db10, db20, enu_to_lla, style_axes,
+                     target_title, title_block)
 
 
 # ---------------------------------------------------------------- 公共
@@ -22,11 +28,9 @@ def _enu(df, c0="e0", c1="e1", c2="e2"):
     return rng, h
 
 
-def _main_track(to):
-    """记录最多的 (tid, track) 组合，作为主跟踪目标，避免把目标号写死。"""
-    g = to.groupby(["tid", "track"]).size()
-    tid, trk = g.idxmax()
-    return int(tid), int(trk)
+def _speed(df):
+    return np.hypot(np.hypot(df["v0"].to_numpy(float), df["v1"].to_numpy(float)),
+                    df["v2"].to_numpy(float))
 
 
 def _range_txt(v, unit="", tol=0.01):
@@ -56,22 +60,18 @@ def _runs(t, ok):
     return out
 
 
-def _scatter_legend(ax, **kw):
-    h, l = ax.get_legend_handles_labels()
-    if h:
-        ax.legend(h, l, **kw)
-
-
 # ---------------------------------------------------------------- 图 4
 def fig04(D):
     det = D["radar_int"]["det"].sort_values("t")
     plt_ = D["radar_ext"]["plot"].sort_values("t")
     cfar = D["radar_output"]["cfar"].sort_values("t")
     thr = float(det["thr"].median())
+    n_tid = int(det["tid"].nunique()) if "tid" in det.columns else 0
 
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
     title_block(fig, "图 4  检测信噪比、检测概率与门限",
-                f"检测记录 {len(det)} 条（{det['t'].min():.0f}–{det['t'].max():.0f} s），"
+                f"检测记录 {len(det)} 条（{n_tid} 个目标，"
+                f"{det['t'].min():.0f}–{det['t'].max():.0f} s），"
                 f"点迹量测 {len(plt_)} 条；CFAR 门限 {_range_txt(det['thr'], ' dB')}")
 
     ax = axes[0]
@@ -203,33 +203,35 @@ def fig06(D):
     echo = D["radar_output"]["echo"].sort_values("t")
     jg = D["radar_output"]["jam_gain"].sort_values("t")
 
+    p_db = db10(jp["power"].to_numpy(float))
+    js = db10(echo["p_jam"].to_numpy(float) / echo["p_echo"].to_numpy(float))
+    jn = db10(echo["p_jam"].to_numpy(float) / echo["p_noise"].to_numpy(float))
+    js_med, jn_med = float(np.nanmedian(js)), float(np.nanmedian(jn))
+
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
     title_block(fig, "图 6  干扰功率与抗干扰抑制",
-                f"干扰源 {jp['src'].nunique()} 部（目标 {sorted(jp['src'].unique().astype(int).tolist())}），"
-                f"接收干扰功率 {jp['power'].min():.2e}–{jp['power'].max():.2e} W")
+                f"干扰源 {jp['src'].nunique()} 部（目标 "
+                f"{sorted(jp['src'].unique().astype(int).tolist())}），"
+                f"接收干扰功率 {np.nanmin(p_db):.1f}–{np.nanmax(p_db):.1f} dBW")
 
     ax = axes[0]
     for k, (src, g) in enumerate(jp.groupby("src")):
-        ax.plot(g["t"], g["power"], lw=0.8, color=CYCLE[k],
+        ax.plot(g["t"], db10(g["power"].to_numpy(float)), lw=0.8, color=CYCLE[k],
                 label=f"干扰源 {int(src)}")
-    ax.set_yscale("log")
     ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("接收干扰功率 (W)")
+    ax.set_ylabel("接收干扰功率 (dBW)")
     ax.set_title("(a) 各干扰源接收功率", fontsize=10.5)
     ax.legend(loc="lower right", fontsize=8)
     style_axes(ax)
 
     ax = axes[1]
-    js = echo["p_jam"] / echo["p_echo"]
-    jn = echo["p_jam"] / echo["p_noise"]
     ax.plot(echo["t"], js, lw=1.1, color=C["warn"], label="J/S")
     ax.plot(echo["t"], jn, lw=1.1, color=C["accent4"], label="J/N")
-    ax.set_yscale("log")
     ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("功率比")
+    ax.set_ylabel("功率比 (dB)")
     ax.set_title("(b) 干信比与干噪比", fontsize=10.5)
-    ax.annotate(f"J/S 中位 {np.median(js):.1f} 倍（{10*np.log10(np.median(js)):.1f} dB）\n"
-                f"J/N 中位 {np.median(jn):.1f} 倍（{10*np.log10(np.median(jn)):.1f} dB）",
+    ax.annotate(f"J/S 中位 {js_med:.1f} dB（{10 ** (js_med / 10):.2f} 倍）\n"
+                f"J/N 中位 {jn_med:.1f} dB（{10 ** (jn_med / 10):.2f} 倍）",
                 xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.3, va="bottom",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     ax.legend(loc="center right", fontsize=8)
@@ -237,13 +239,13 @@ def fig06(D):
 
     ax = axes[2]
     suppr = jg["suppr"].to_numpy(float)
-    ax.scatter(jg["p_mti"], suppr, s=9, color=C["accent3"], alpha=0.55,
-               linewidths=0)
-    ax.set_xscale("log")
+    ax.scatter(db10(jg["p_mti"].to_numpy(float)), suppr, s=9, color=C["accent3"],
+               alpha=0.55, linewidths=0)
     ax.axhline(np.median(suppr), color=C["warn"], ls="--", lw=1.0,
                label=f"中位 {np.median(suppr):.1f} dB")
-    ax.set_xlabel("MTI 后残余干扰功率 (W)")
+    ax.set_xlabel("MTI 后残余干扰功率 (dBW)")
     ax.set_ylabel("干扰抑制比 (dB)")
+    ax.set_ylim(float(np.nanmin(suppr)) - 1.0, float(np.nanmax(suppr)) + 2.2)
     ax.set_title("(c) MTI 干扰抑制效果", fontsize=10.5)
     ax.legend(loc="upper right", fontsize=8)
     style_axes(ax)
@@ -309,10 +311,10 @@ def fig07(D):
     ax = fig.add_subplot(gs[1, 1])
     jp = D["radar_output"]["jam_power"]
     for k, (src, g) in enumerate(jp.groupby("src")):
-        ax.plot(g["t"], g["pden"], lw=1.0, color=CYCLE[k], label=f"{int(src)}")
-    ax.set_yscale("log")
+        ax.plot(g["t"], db10(g["pden"].to_numpy(float)), lw=1.0, color=CYCLE[k],
+                label=f"{int(src)}")
     ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("功率谱密度 (W/Hz)")
+    ax.set_ylabel("功率谱密度 (dBW/Hz)")
     ax.set_title("(d) 到达功率谱密度", fontsize=10.5)
     ax.legend(loc="lower right", fontsize=8)
     style_axes(ax)
@@ -343,135 +345,189 @@ def fig07(D):
 
 # ---------------------------------------------------------------- 图 8
 def fig08(D):
-    truth = D["radar_ext"]["scene"]
-    to_all = D["radar_ext"]["track_out"]
-    tid, trk = _main_track(to_all)
-    truth = truth[truth["tid"] == tid].sort_values("t")
-    to = to_all[(to_all["tid"] == tid) & (to_all["track"] == trk)].sort_values("t")
-    mt = D["radar_int"]["meas_trk"]
-    mt = mt[mt["tid"] == tid].sort_values("t")
+    scene = D["radar_ext"]["scene"]
+    to_all = D["radar_ext"]["track_out"].sort_values("t")
+    mt_all = D["radar_int"]["meas_trk"].sort_values("t")
+    groups = by_target(to_all)
 
-    tr, th = _enu(truth)
-    fr, fh = _enu(to)
-    mr, mh = _enu(mt)
-    tt = truth["t"].to_numpy(float)
-    tf = to["t"].to_numpy(float)
-    tm = mt["t"].to_numpy(float)
-    t_end = float(min(tf.max(), tt.max()))          # 真值与航迹的重叠区间
+    # 先把每个目标的数据整理好，画图阶段只做绘制，避免行内逻辑交叉。
+    prepared = []
+    for tid, to in groups:
+        truth = scene[scene["tid"] == tid].sort_values("t") if "tid" in scene.columns else scene
+        meas = mt_all[mt_all["tid"] == tid].sort_values("t") if "tid" in mt_all.columns else mt_all
+        tt = truth["t"].to_numpy(float)
+        tr, th = _enu(truth)
+        mr, mh = _enu(meas)
+        fits = []
+        for trk in sorted(int(v) for v in to["track"].unique()):
+            g = to[to["track"] == trk].sort_values("t")
+            tf = g["t"].to_numpy(float)
+            fr, fh = _enu(g)
+            if len(tt) > 1:
+                e3 = np.sqrt((np.interp(tf, tt, truth["e0"].to_numpy(float))
+                              - g["e0"].to_numpy(float)) ** 2
+                             + (np.interp(tf, tt, truth["e1"].to_numpy(float))
+                                - g["e1"].to_numpy(float)) ** 2
+                             + (np.interp(tf, tt, truth["e2"].to_numpy(float))
+                                - g["e2"].to_numpy(float)) ** 2)
+                dr = fr - np.interp(tf, tt, tr)
+            else:
+                e3 = np.full(len(tf), np.nan)
+                dr = np.full(len(tf), np.nan)
+            fits.append(dict(track=trk, t=tf, rng=fr, h=fh, v=_speed(g),
+                             e3=e3, dr=dr))
+        prepared.append(dict(tid=tid, truth=truth, meas=meas, tt=tt, tr=tr,
+                             th=th, mr=mr, mh=mh, fits=fits,
+                             t_obs=float(meas["t"].max()) if len(meas) else np.nan))
 
-    tv = np.hypot(np.hypot(truth["v0"].to_numpy(float), truth["v1"].to_numpy(float)),
-                  truth["v2"].to_numpy(float))
-    fv = np.hypot(np.hypot(to["v0"].to_numpy(float), to["v1"].to_numpy(float)),
-                  to["v2"].to_numpy(float))
-    m_trk = tf >= tt.min()
+    n = len(prepared)
+    names = "、".join(f"目标 {p['tid']}" for p in prepared)
+    fig = plt.figure(figsize=(18.2, 3.35 * n + 1.35))
+    gs = fig.add_gridspec(n, 5, width_ratios=[0.07, 1, 1, 1, 1])
+    heads = ["距离–高度剖面", "速度–高度剖面（观测窗内）",
+             "斜距误差（观测窗内）", "三维定位误差（dB，相对 1 m）"]
+    title_block(fig, "图 8  雷达多目标航迹：真值 / 量测 / 滤波（按目标分行）",
+                f"{n} 个目标（{names}）；真值 {len(scene)} 点，"
+                f"量测 {len(mt_all)} 点，航迹 {len(to_all)} 条记录；每行只画一个目标")
 
-    # 三维定位误差（相对真值）
-    e3 = np.sqrt((np.interp(tf, tt, truth["e0"].to_numpy(float)) - to["e0"].to_numpy(float)) ** 2
-                 + (np.interp(tf, tt, truth["e1"].to_numpy(float)) - to["e1"].to_numpy(float)) ** 2
-                 + (np.interp(tf, tt, truth["e2"].to_numpy(float)) - to["e2"].to_numpy(float)) ** 2)
+    for i, p in enumerate(prepared):
+        # 首列只放行标题，保证"一行=一个目标"在图上直读。
+        lab = fig.add_subplot(gs[i, 0])
+        lab.axis("off")
+        lab.text(0.5, 0.5, target_title(p["tid"], [f["track"] for f in p["fits"]]),
+                 transform=lab.transAxes, rotation=90, va="center", ha="center",
+                 fontsize=10.0, fontweight="bold", color="#2c3e50")
+        row = [fig.add_subplot(gs[i, j]) for j in range(1, 5)]
+        if i == 0:
+            for ax, h in zip(row, heads):
+                ax.set_title(h, fontsize=10.5)
 
-    fig, axes = plt.subplots(2, 2, figsize=(12.8, 8.0))
-    title_block(fig, "图 8  雷达目标航迹：真值 / 量测 / 滤波",
-                f"目标 {tid}（航迹 {trk}）；真值 {len(truth)} 点，量测 {len(mt)} 点，"
-                f"滤波航迹 {len(to)} 点；"
-                f"观测窗 {tm.min():.0f}–{tm.max():.0f} s，之后转入外推")
+        # (a) 距离–高度
+        ax = row[0]
+        ax.plot(p["tr"] / 1e3, p["th"] / 1e3, color=C["truth"], lw=1.8, label="真值")
+        if len(p["meas"]):
+            ax.plot(p["mr"] / 1e3, p["mh"] / 1e3, "o", ms=2.2, color=C["meas"],
+                    alpha=0.5, label="量测")
+        for k, f in enumerate(p["fits"]):
+            ax.plot(f["rng"] / 1e3, f["h"] / 1e3, color=C["filter"], lw=1.2,
+                    ls="-" if k == 0 else "--", label=f"滤波（航迹 {f['track']}）")
+        ax.set_xlabel("斜距 (km)")
+        ax.set_ylabel("海拔高度 (km)")
+        ax.legend(loc="upper left", fontsize=7.4)
+        style_axes(ax)
 
-    ax = axes[0, 0]
-    ax.plot(tr / 1e3, th / 1e3, color=C["truth"], lw=1.8, label="真值")
-    ax.plot(mr / 1e3, mh / 1e3, "o", ms=2.4, color=C["meas"], alpha=0.55,
-            label="量测")
-    m = tf <= t_end
-    ax.plot(fr[m] / 1e3, fh[m] / 1e3, color=C["filter"], lw=1.3, label="滤波")
-    ax.set_xlabel("斜距 (km)")
-    ax.set_ylabel("海拔高度 (km)")
-    ax.set_title("(a) 距离–高度剖面", fontsize=10.5)
-    ax.legend(loc="upper left", fontsize=8.5)
-    style_axes(ax)
+        # (b) 速度–高度（观测窗内）
+        ax = row[1]
+        ts = p["tt"]
+        tv = _speed(p["truth"]) if len(p["truth"]) else np.array([])
+        if len(ts):
+            ax.plot(tv, p["th"] / 1e3, color=C["truth"], lw=1.8, label="真值")
+        t_end = p["t_obs"]
+        if not np.isfinite(t_end):
+            t_end = max((float(f["t"].max()) for f in p["fits"]), default=np.nan)
+        for k, f in enumerate(p["fits"]):
+            m = f["t"] <= t_end
+            ax.plot(f["v"][m], f["h"][m] / 1e3, color=C["filter"], lw=1.2,
+                    ls="-" if k == 0 else "--", label=f"滤波（航迹 {f['track']}）")
+        ax.set_xlabel("速度 (m/s)")
+        ax.set_ylabel("海拔高度 (km)")
+        ax.legend(loc="upper right", fontsize=7.4)
+        style_axes(ax)
 
-    ax = axes[0, 1]
-    ax.plot(tv, th / 1e3, color=C["truth"], lw=1.8, label="真值")
-    m = m_trk & (tf <= tm.max())
-    ax.plot(fv[m], fh[m] / 1e3, color=C["filter"], lw=1.3, label="滤波")
-    ax.set_xlabel("速度 (m/s)")
-    ax.set_ylabel("海拔高度 (km)")
-    ax.set_title("(b) 速度–高度剖面（观测窗内）", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8.5)
-    style_axes(ax)
+        # (c) 斜距误差（观测窗内）：真值 − 滤波 / 真值 − 量测
+        ax = row[2]
+        for k, f in enumerate(p["fits"]):
+            m = f["t"] <= t_end
+            ax.plot(f["t"][m], f["dr"][m] / 1e3, color=C["filter"], lw=1.3,
+                    ls="-" if k == 0 else "--", label=f"真值 − 滤波 {f['track']}")
+        if len(p["meas"]) and len(ts) > 1:
+            dm = p["mr"] - np.interp(p["meas"]["t"].to_numpy(float), ts, p["tr"])
+            ax.plot(p["meas"]["t"], dm / 1e3, ".", ms=2.6, color=C["meas"],
+                    alpha=0.55, label="真值 − 量测")
+        ax.set_xlabel("仿真时间 (s)")
+        ax.set_ylabel("斜距误差 (km)")
+        ax.legend(loc="center right", fontsize=7.2)
+        style_axes(ax)
 
-    ax = axes[1, 0]
-    m = m_trk & (tf <= tm.max())
-    ax.plot(tf[m], (fr[m] - np.interp(tf[m], tt, tr)) / 1e3,
-            color=C["filter"], lw=1.4, label="真值 − 滤波")
-    ax.plot(tm, (mr - np.interp(tm, tt, tr)) / 1e3, ".", ms=3.0,
-            color=C["meas"], alpha=0.6, label="真值 − 量测")
-    ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("斜距误差 (km)")
-    ax.set_title("(c) 观测窗内斜距误差", fontsize=10.5)
-    ax.set_xlim(tm.min() - 40, tm.max() + 40)
-    ax.legend(loc="upper left", fontsize=8.5)
-    style_axes(ax)
+        # (d) 三维定位误差（dB）。误差为 0 时取 1 mm 下限，避免整段变成 NaN。
+        ax = row[3]
+        base = float(ts.min()) if len(ts) else -np.inf
+        for k, f in enumerate(p["fits"]):
+            m = f["t"] >= base
+            ax.plot(f["t"][m], db20(np.clip(f["e3"][m], 1e-3, None)),
+                    color=C["filter"], lw=1.2, ls="-" if k == 0 else "--",
+                    label=f"航迹 {f['track']}")
+        ax.set_xlabel("仿真时间 (s)")
+        ax.set_ylabel("三维定位误差 (dB)")
+        ax.legend(loc="lower right", fontsize=7.4)
+        style_axes(ax)
 
-    ax = axes[1, 1]
-    ax.semilogy(tf[m_trk], np.clip(e3[m_trk] / 1e3, 1e-4, None),
-                color=C["filter"], lw=1.2)
-    ax.axvline(tm.max(), color=C["warn"], ls="--", lw=1.0, label="观测结束")
-    ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("三维定位误差 (km)")
-    ax.set_title("(d) 定位误差随跟踪时长", fontsize=10.5)
-    ax.annotate(f"观测窗内中位 {np.median(e3[m_trk & (tf <= tm.max())])/1e3:.2f} km\n"
-                f"外推末段 {e3[m_trk].max()/1e3:.0f} km",
-                xy=(0.04, 0.9), xycoords="axes fraction", fontsize=8.5, va="top",
-                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
-    ax.legend(loc="lower right", fontsize=8.5)
-    style_axes(ax)
+        # 行内结论：观测窗中位与外推末段，km 与 dB 两种读数都给。
+        f0 = p["fits"][0] if p["fits"] else None
+        if f0 is not None:
+            in_win = (f0["t"] >= base) & (f0["t"] <= t_end)
+            med = float(np.nanmedian(f0["e3"][in_win])) if in_win.any() else np.nan
+            last = float(f0["e3"][-1]) if len(f0["e3"]) else np.nan
+            txt = (f"观测窗中位 {med/1e3:.2f} km（{float(db20(max(med, 1e-3))):.1f} dB）\n"
+                   f"外推末段 {last/1e3:.0f} km（{float(db20(max(last, 1e-3))):.1f} dB）")
+            ax.annotate(txt, xy=(0.03, 0.86), xycoords="axes fraction",
+                        fontsize=7.6, va="top",
+                        bbox=dict(boxstyle="round,pad=0.3", fc="#f7f9fb",
+                                  ec="#c8d0d8"))
     return fig
 
 
 # ---------------------------------------------------------------- 图 9
 def fig09(D):
     m = D["radar_output"]["meas"].sort_values("t")
-    t = m["t"].to_numpy(float)
-    dr = m["dr"].to_numpy(float) / 1e3
-    daz = m["daz"].to_numpy(float)
-    dele = m["del"].to_numpy(float)
-    rng = m["rng"].to_numpy(float) / 1e3
+    groups = by_target(m)
 
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
-    title_block(fig, "图 9  量测误差时序特性",
-                f"量测 {len(m)} 点；斜距误差 {np.nanmin(dr):.2f}–{np.nanmax(dr):.1f} km，"
-                f"方位/俯仰误差峰值 {np.nanmax(np.abs(daz)):.2f}°/{np.nanmax(np.abs(dele)):.2f}°")
-
-    roll = m["dr"].abs().rolling(45, min_periods=5).max() / 1e3
+    title_block(fig, "图 9  量测误差时序特性（按目标）",
+                f"量测 {len(m)} 点，{len(groups)} 个目标"
+                f"（{'、'.join(target_title(t) for t, _ in groups)}）；"
+                f"逐目标统计，不同目标的误差不合并")
 
     ax = axes[0]
-    ax.plot(t, dr, lw=0.5, color=C["accent2"], alpha=0.55, label="逐周期误差")
-    ax.plot(t, roll, lw=1.5, color="#7a3b12", label="45 s 滑动峰值")
+    note = []
+    for k, (tid, g) in enumerate(groups):
+        t = g["t"].to_numpy(float)
+        dr = g["dr"].to_numpy(float) / 1e3
+        ax.plot(t, dr, lw=0.5, color=CYCLE[k], alpha=0.55, label=target_title(tid))
+        ax.plot(t, g["dr"].abs().rolling(45, min_periods=5).max() / 1e3, lw=1.4,
+                color=CYCLE[k])
+        note.append(f"{target_title(tid)}：中位 {np.nanmedian(np.abs(dr)):.2f} km、"
+                    f"峰值 {np.nanmax(np.abs(dr)):.2f} km")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("斜距误差 (km)")
-    ax.set_title("(a) 斜距误差", fontsize=10.5)
-    ax.annotate(f"峰值 {np.nanmax(np.abs(dr)):.1f} km\n呈锯齿：跟踪更新后复位",
-                xy=(0.03, 0.92), xycoords="axes fraction", fontsize=8.3, va="top",
-                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
-    ax.legend(loc="center right", fontsize=8)
+    ax.set_title("(a) 斜距误差（细线逐周期，粗线 45 s 滑动峰值）", fontsize=10.5)
+    ax.legend(loc="center right", fontsize=7.4)
+    ax.annotate("\n".join(note), xy=(0.03, 0.92), xycoords="axes fraction",
+                fontsize=7.6, va="top",
+                bbox=dict(boxstyle="round,pad=0.3", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
 
     ax = axes[1]
-    ax.plot(t, daz, lw=0.6, color=C["accent1"], alpha=0.85, label="方位误差")
-    ax.plot(t, dele, lw=0.6, color=C["accent4"], alpha=0.85, label="俯仰误差")
+    for k, (tid, g) in enumerate(groups):
+        ax.plot(g["t"], g["daz"], lw=0.6, color=CYCLE[k], alpha=0.85,
+                label=f"{target_title(tid)} 方位")
+        ax.plot(g["t"], g["del"], lw=0.6, color=CYCLE[k], alpha=0.55, ls="--",
+                label=f"{target_title(tid)} 俯仰")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("角度误差 (°)")
-    ax.set_title("(b) 角度量测误差", fontsize=10.5)
-    ax.legend(loc="upper left", fontsize=8)
+    ax.set_title("(b) 角度量测误差（实线方位 / 虚线俯仰）", fontsize=10.5)
+    ax.legend(loc="upper left", fontsize=6.8, ncol=1)
     style_axes(ax)
 
     ax = axes[2]
-    sc = ax.scatter(rng, dr, c=t, s=5, cmap="viridis", alpha=0.6, linewidths=0)
-    cb = fig.colorbar(sc, ax=ax, pad=0.02)
-    cb.set_label("仿真时间 (s)", fontsize=8)
-    cb.ax.tick_params(labelsize=7)
+    for k, (tid, g) in enumerate(groups):
+        ax.scatter(g["rng"].to_numpy(float) / 1e3, g["dr"].to_numpy(float) / 1e3,
+                   s=5, color=CYCLE[k], alpha=0.55, linewidths=0,
+                   label=target_title(tid))
     ax.set_xlabel("斜距 (km)")
     ax.set_ylabel("斜距误差 (km)")
     ax.set_title("(c) 误差随距离的变化", fontsize=10.5)
+    ax.legend(loc="best", fontsize=7.8, markerscale=2.0)
     style_axes(ax)
     return fig
 
@@ -479,71 +535,86 @@ def fig09(D):
 # ---------------------------------------------------------------- 图 10
 def fig10(D):
     mo_all = D["radar_output"]["motion"]
-    mo_g = mo_all.groupby(["tid", "track"]).size()
-    tid, trk = mo_g.idxmax()
-    tid, trk = int(tid), int(trk)
-    mo = mo_all[(mo_all["tid"] == tid) & (mo_all["track"] == trk)].sort_values("t")
-    t = mo["t"].to_numpy(float)
-    sp = mo["speed"].to_numpy(float)
-    alt = mo["alt"].to_numpy(float) / 1e3
-    acc = mo["acc"].to_numpy(float)
-    ballistic = mo["cls"].astype(str).eq("弹道目标").to_numpy()
+    groups = by_target(mo_all)
+    n = len(groups)
 
-    fig = plt.figure(figsize=(14.2, 7.6))
-    title_block(fig, "图 10  目标运动特征：速度–高度与机动判别",
-                f"航迹 {trk}（目标 {tid}）运动特征 {len(mo)} 帧；速度 {sp.min():.0f}–{sp.max():.0f} m/s，"
-                f"高度 {alt.min():.0f}–{alt.max():.0f} km，弹道判定 {int(ballistic.sum())}/{len(mo)} 帧")
+    fig = plt.figure(figsize=(18.2, 3.35 * n + 1.35))
+    gs = fig.add_gridspec(n, 5, width_ratios=[0.07, 1, 1, 1, 1])
+    heads = ["速度–高度相图", "速度与加速度时序", "目标类别判定", "速度分布"]
+    title_block(fig, "图 10  目标运动特征：速度–高度与机动判别（按目标分行）",
+                f"{n} 个目标（{'、'.join(f'目标 {t}' for t, _ in groups)}）；"
+                f"每行的速度、加速度与类别判定只属于该目标")
 
-    gs = fig.add_gridspec(2, 3, width_ratios=[1.25, 1.0, 1.0])
+    for i, (tid, g) in enumerate(groups):
+        g = g.sort_values("t")
+        t = g["t"].to_numpy(float)
+        sp = g["speed"].to_numpy(float)
+        alt = g["alt"].to_numpy(float) / 1e3
+        acc = g["acc"].to_numpy(float)
+        ballistic = g["cls"].astype(str).eq("弹道目标").to_numpy()
+        lab = fig.add_subplot(gs[i, 0])
+        lab.axis("off")
+        lab.text(0.5, 0.5, target_title(tid, g["track"]), transform=lab.transAxes,
+                 rotation=90, va="center", ha="center", fontsize=10.0,
+                 fontweight="bold", color="#2c3e50")
+        row = [fig.add_subplot(gs[i, j]) for j in range(1, 5)]
+        if i == 0:
+            for ax, h in zip(row, heads):
+                ax.set_title(h, fontsize=10.5)
 
-    ax = fig.add_subplot(gs[:, 0])
-    sc = ax.scatter(sp, alt, c=t, s=8, cmap="viridis", linewidths=0)
-    cb = fig.colorbar(sc, ax=ax, pad=0.02)
-    cb.set_label("仿真时间 (s)", fontsize=8)
-    cb.ax.tick_params(labelsize=7)
-    ax.set_xlabel("速度 (m/s)")
-    ax.set_ylabel("高度 (km)")
-    ax.set_title("(a) 速度–高度相图", fontsize=10.5)
-    style_axes(ax)
+        ax = row[0]
+        sc = ax.scatter(sp, alt, c=t, s=8, cmap="viridis", linewidths=0)
+        cb = fig.colorbar(sc, ax=ax, pad=0.02)
+        cb.set_label("时间 (s)", fontsize=7.5)
+        cb.ax.tick_params(labelsize=7)
+        ax.set_xlabel("速度 (m/s)")
+        ax.set_ylabel("高度 (km)")
+        ax.annotate(f"速度 {sp.min():.0f}–{sp.max():.0f} m/s\n"
+                    f"高度 {alt.min():.0f}–{alt.max():.0f} km",
+                    xy=(0.03, 0.96), xycoords="axes fraction", fontsize=7.4,
+                    va="top", bbox=dict(boxstyle="round,pad=0.3", fc="#f7f9fb",
+                                        ec="#c8d0d8"))
+        style_axes(ax)
 
-    ax = fig.add_subplot(gs[0, 1:3])
-    ax.plot(t, sp, color=C["accent1"], lw=1.0, label="速度")
-    ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("速度 (m/s)", color=C["accent1"])
-    ax.tick_params(axis="y", colors=C["accent1"])
-    ax.set_title("(b) 速度与加速度时序", fontsize=10.5)
-    ax2 = ax.twinx()
-    ax2.plot(t, acc, color=C["warn"], lw=0.8, alpha=0.75, label="加速度")
-    ax2.set_ylabel("加速度 (m/s²)", color=C["warn"])
-    ax2.tick_params(axis="y", colors=C["warn"])
-    ax2.set_ylim(min(0.0, float(acc.min())) - 2.0, float(acc.max()) * 1.1 + 1.0)
-    ax2.grid(False)
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=8.5)
-    style_axes(ax)
-    for s in ("top", "right"):
-        ax2.spines[s].set_visible(False)
+        ax = row[1]
+        ax.plot(t, sp, color=C["accent1"], lw=1.0, label="速度")
+        ax.set_xlabel("仿真时间 (s)")
+        ax.set_ylabel("速度 (m/s)", color=C["accent1"])
+        ax.tick_params(axis="y", colors=C["accent1"])
+        ax2 = ax.twinx()
+        ax2.plot(t, acc, color=C["warn"], lw=0.8, alpha=0.75, label="加速度")
+        ax2.set_ylabel("加速度 (m/s²)", color=C["warn"])
+        ax2.tick_params(axis="y", colors=C["warn"])
+        ax2.set_ylim(min(0.0, float(acc.min())) - 2.0, float(acc.max()) * 1.1 + 1.0)
+        ax2.grid(False)
+        h1, l1 = ax.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=8.0)
+        style_axes(ax)
+        for s in ("top", "right"):
+            ax2.spines[s].set_visible(False)
 
-    ax = fig.add_subplot(gs[1, 1])
-    ax.fill_between(t, 0, ballistic.astype(float), step="post",
-                    color=C["accent3"], alpha=0.55, lw=0)
-    ax.plot(t, ballistic.astype(float), drawstyle="steps-post",
-            color=C["accent3"], lw=1.2)
-    ax.set_yticks([0, 1])
-    ax.set_yticklabels(["未知", "弹道目标"])
-    ax.set_ylim(-0.1, 1.1)
-    ax.set_xlabel("仿真时间 (s)")
-    ax.set_title("(c) 目标类别判定", fontsize=10.5)
-    ax.grid(axis="y", visible=False)
-    style_axes(ax)
+        ax = row[2]
+        ax.fill_between(t, 0, ballistic.astype(float), step="post",
+                        color=C["accent3"], alpha=0.55, lw=0)
+        ax.plot(t, ballistic.astype(float), drawstyle="steps-post",
+                color=C["accent3"], lw=1.2)
+        ax.set_yticks([0, 1])
+        ax.set_yticklabels(["未知", "弹道目标"])
+        ax.set_ylim(-0.1, 1.1)
+        ax.set_xlabel("仿真时间 (s)")
+        ax.annotate(f"弹道判定 {int(ballistic.sum())}/{len(ballistic)} 帧",
+                    xy=(0.03, 0.88), xycoords="axes fraction", fontsize=7.6,
+                    va="top", bbox=dict(boxstyle="round,pad=0.3", fc="#f7f9fb",
+                                        ec="#c8d0d8"))
+        ax.grid(axis="y", visible=False)
+        style_axes(ax)
 
-    ax = fig.add_subplot(gs[1, 2])
-    ax.hist(sp, bins=40, color=C["accent1"], alpha=0.85)
-    ax.set_xlabel("速度 (m/s)")
-    ax.set_ylabel("帧数")
-    ax.set_title("(d) 速度分布", fontsize=10.5)
-    style_axes(ax)
+        ax = row[3]
+        ax.hist(sp, bins=40, color=C["accent1"], alpha=0.85)
+        ax.set_xlabel("速度 (m/s)")
+        ax.set_ylabel("帧数")
+        style_axes(ax)
     return fig
 
 
@@ -553,33 +624,34 @@ def fig11(D):
     lost = D["radar_int"]["trk_lost"]
     res = D["radar_ext"]["res"].sort_values("t")
 
+    tids = sorted(int(v) for v in to["tid"].unique())
+    color_of = {tid: CYCLE[k % len(CYCLE)] for k, tid in enumerate(tids)}
+    pairs = sorted({(int(r.tid), int(r.track)) for r in to[["tid", "track"]].itertuples()})
+
     fig, axes = plt.subplots(2, 1, figsize=(13.4, 7.2), sharex=True,
                              gridspec_kw={"height_ratios": [1.45, 1.0]})
     cap = int((res["used"] + res["free"]).max())       # 资源池容量由 used+free 推出
-    title_block(fig, "图 11  航迹生命周期与雷达资源占用",
-                f"航迹输出 {len(to)} 条记录（{to['track'].nunique()} 条航迹），"
+    title_block(fig, "图 11  航迹生命周期与雷达资源占用（按目标）",
+                f"航迹输出 {len(to)} 条记录（{len(pairs)} 条航迹 / {len(tids)} 个目标），"
                 f"特征链路丢失记录 {len(lost)} 条，资源池 {cap} 槽位")
 
     ax = axes[0]
-    tracks = sorted(to["track"].unique())
-    for k, trk in enumerate(tracks):
-        g = to[to["track"] == trk]
+    for k, (tid, trk) in enumerate(pairs):
+        g = to[(to["tid"] == tid) & (to["track"] == trk)].sort_values("t")
         t = g["t"].to_numpy(float)
         ok = g["state"].astype(str).eq("确认").to_numpy()
         for a, b in _runs(t, ok):
             ax.plot([a, b], [k, k], lw=8, solid_capstyle="butt",
-                    color=C["accent3"], alpha=0.9)
+                    color=color_of[tid], alpha=0.9)
         m = ~ok
         if m.any():
             ax.plot(t[m], np.full(m.sum(), k), lw=8, solid_capstyle="butt",
-                    color=C["warn"], alpha=0.75)
-    l = lost.groupby("track").size()
-    ax.set_yticks(range(len(tracks)))
-    ax.set_yticklabels([f"航迹 {int(x)}\n目标 {int(to[to['track'] == x]['tid'].iloc[0])}"
-                        for x in tracks])
-    ax.set_ylabel("航迹编号 / 目标")
-    ax.set_title("(a) 航迹确认（绿）/ 丢失（红）时段", fontsize=10.5)
-    ax.set_ylim(-0.7, len(tracks) - 0.3)
+                    color=C["warn"], alpha=0.45)
+    ax.set_yticks(range(len(pairs)))
+    ax.set_yticklabels([f"目标 {tid}\n航迹 {trk}" for tid, trk in pairs])
+    ax.set_ylabel("目标 / 航迹")
+    ax.set_title("(a) 各目标航迹的确认（目标色）/ 非确认（浅红）时段", fontsize=10.5)
+    ax.set_ylim(-0.7, len(pairs) - 0.3)
     t_lo, t_hi = float(to["t"].min()), float(to["t"].max())
     if "t" in lost.columns and len(lost):
         t_lo = min(t_lo, float(lost["t"].min()))
@@ -653,15 +725,16 @@ def fig16(D):
     ax = fig.add_subplot(1, 2, 2)
     mg = echo[["cyc", "p_jam", "p_echo", "p_noise"]].merge(
         det[["cyc", "snr_out"]], on="cyc", how="inner")
-    js = 10 * np.log10(mg["p_jam"] / mg["p_echo"])
+    js = db10(mg["p_jam"].to_numpy(float) / mg["p_echo"].to_numpy(float))
     ax.scatter(js, mg["snr_out"], s=11, color=C["accent4"], alpha=0.65,
                linewidths=0)
     ax.set_xlabel("干信比 J/S (dB)")
     ax.set_ylabel("检测 SNR (dB)")
     ax.set_title("(b) 输出 SNR 随干信比的变化", fontsize=10.5)
-    rho = float(np.corrcoef(js, mg["snr_out"])[0, 1])
+    ok = np.isfinite(js)
+    rho = float(np.corrcoef(js[ok], mg["snr_out"].to_numpy(float)[ok])[0, 1])
     ax.annotate(f"Pearson r = {rho:.3f}，{len(mg)} 个处理周期\n"
-                f"J/S 中位 {js.median():.0f} dB",
+                f"J/S 中位 {np.nanmedian(js):.0f} dB",
                 xy=(0.04, 0.09), xycoords="axes fraction", fontsize=8.5,
                 va="bottom", bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb",
                                        ec="#c8d0d8"))
@@ -674,7 +747,7 @@ FIGURES = [
     ("05", "fig05_pd_range", "图 5 检测概率–距离包络", fig05),
     ("06", "fig06_jamming_power", "图 6 干扰功率与抑制", fig06),
     ("07", "fig07_jammer_timeline", "图 7 干扰源参数与几何", fig07),
-    ("08", "fig08_track_states", "图 8 雷达轨迹三态", fig08),
+    ("08", "fig08_track_states", "图 8 雷达多目标轨迹三态", fig08),
     ("09", "fig09_meas_error", "图 9 量测误差时序", fig09),
     ("10", "fig10_speed_altitude", "图 10 速度–高度与机动判别", fig10),
     ("11", "fig11_track_gantt", "图 11 航迹生命周期", fig11),

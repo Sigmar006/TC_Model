@@ -1,13 +1,21 @@
-﻿# -*- coding: utf-8 -*-
-"""图 12–15：红外覆盖、跟踪、辐射检测与卫星导航/落点。"""
+# -*- coding: utf-8 -*-
+"""图 12–15：红外覆盖、跟踪、辐射检测与卫星导航/落点。
+
+坐标口径
+--------
+* 信噪比、接收功率、协方差迹等一律换算成 dB 后线性绘制，不再出现对数刻度；
+* 跟踪图（13）按目标分色分线，NIS、视线角速率与门限通过率逐目标统计；
+* 辐射检测（14）的链路各阶段记录量也用 dB 表示，柱端仍标原始条数。
+"""
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 
-from . import extract
-from .common import C, CYCLE, W_IR, style_axes, title_block, to_num
+from .common import (C, CYCLE, W_IR, by_target, db10, style_axes,
+                     target_title, title_block)
 
 
 def _valid_centers(wfov):
@@ -141,76 +149,89 @@ def fig12(D):
 # ---------------------------------------------------------------- 图 13
 def fig13(D):
     tr = D["ir_int"]["ir_trk"].sort_values("t")
-    nis = tr["nis"].to_numpy(float)
-    t = tr["t"].to_numpy(float)
+    groups = by_target(tr)
     gate = 5.991
-    passed = nis <= gate
+    gate_db = float(db10(gate))
+    nis_all = tr["nis"].to_numpy(float)
+    passed = nis_all <= gate
+    nis_db = db10(nis_all)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.2, 8.0))
-    title_block(fig, "图 13  红外跟踪滤波与 NIS 一致性检验",
-                f"跟踪记录 {len(tr)} 条，NIS 中位 {np.median(nis):.2f}，"
-                f"95% 分位 {np.percentile(nis, 95):.2f}；χ²(2, 95%) 门限 {gate}，"
+    title_block(fig, "图 13  红外跟踪滤波与 NIS 一致性检验（按目标）",
+                f"跟踪记录 {len(tr)} 条，{len(groups)} 个目标"
+                f"（{'、'.join(target_title(t) for t, _ in groups)}）；"
+                f"NIS 中位 {np.median(nis_all):.2f}（{float(db10(np.median(nis_all))):.2f} dB），"
+                f"χ²(2, 95%) 门限 {gate}（{gate_db:.2f} dB），"
                 f"通过率 {100*passed.mean():.1f}%")
 
     ax = axes[0, 0]
-    ax.scatter(t[passed], nis[passed], s=4, color=C["accent1"], alpha=0.45,
-               linewidths=0, label="门限内")
-    ax.scatter(t[~passed], nis[~passed], s=5, color=C["warn"], alpha=0.6,
-               linewidths=0, label="超门限")
-    roll = tr["nis"].rolling(101, min_periods=10).median()
-    ax.plot(t, roll, color="#123f63", lw=1.5, label="101 点滑动中位")
-    ax.axhline(gate, color=C["warn"], ls="--", lw=1.1,
-               label=f"门限 {gate}")
-    ax.set_yscale("symlog", linthresh=1)
-    ax.set_ylim(0, 240)
+    for k, (tid, g) in enumerate(groups):
+        t = g["t"].to_numpy(float)
+        nis = g["nis"].to_numpy(float)
+        y = db10(nis)
+        ok = nis <= gate
+        ax.scatter(t[ok], y[ok], s=3.5, color=CYCLE[k], alpha=0.35, linewidths=0,
+                   label=target_title(tid))
+        if (~ok).any():
+            ax.scatter(t[~ok], y[~ok], s=7, facecolors="none",
+                       edgecolors=C["warn"], linewidths=0.6)
+        roll = pd.Series(y).rolling(101, min_periods=10).median().to_numpy()
+        ax.plot(t, roll, color=CYCLE[k], lw=1.3)
+    ax.axhline(gate_db, color=C["warn"], ls="--", lw=1.1,
+               label=f"门限 {gate_db:.2f} dB")
     ax.set_xlim(*W_IR)
     ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("NIS")
-    ax.set_title("(a) NIS 时序与门限", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8, ncol=3)
+    ax.set_ylabel("NIS (dB)")
+    ax.set_title("(a) NIS 时序与门限（空心点为超门限）", fontsize=10.5)
+    ax.legend(loc="lower left", fontsize=7.2, ncol=3)
     style_axes(ax)
 
     ax = axes[0, 1]
-    bins = np.arange(0, 30.5, 0.5)
-    ax.hist(nis, bins=bins, color=C["accent1"], alpha=0.75, edgecolor="white",
-            linewidth=0.4)
-    xs = np.linspace(0.01, 30, 500)
-    pdf = 0.5 * np.exp(-xs / 2.0) * len(nis) * 0.5
-    ax.plot(xs, pdf, color=C["warn"], lw=1.5, label="χ²(2) 理论密度")
-    ax.axvline(gate, color=C["warn"], ls="--", lw=1.1)
-    ax.axvline(np.median(nis), color="#123f63", ls=":", lw=1.1)
-    ax.set_xlabel("NIS")
-    ax.set_ylabel("样本数")
+    lo = float(np.nanmin(nis_db)) - 1.0
+    hi = float(np.nanmax(nis_db)) + 1.0
+    bins = np.linspace(lo, hi, 62)
+    for k, (tid, g) in enumerate(groups):
+        ax.hist(db10(g["nis"].to_numpy(float)), bins=bins, density=True,
+                histtype="step", lw=1.4, color=CYCLE[k],
+                label=f"{target_title(tid)}（{len(g)} 条）")
+    xs = np.linspace(lo, hi, 400)
+    nu = 10 ** (xs / 10.0)
+    pdf = 0.5 * np.exp(-nu / 2.0) * (np.log(10.0) / 10.0) * nu
+    ax.plot(xs, pdf, color=C["warn"], lw=1.6, label="χ²(2) 理论密度")
+    ax.axvline(gate_db, color=C["warn"], ls="--", lw=1.1)
+    ax.axvline(float(np.nanmedian(nis_db)), color="#123f63", ls=":", lw=1.1)
+    ax.set_xlabel("NIS (dB)")
+    ax.set_ylabel("概率密度 (1/dB)")
     ax.set_title("(b) NIS 分布与理论对照", fontsize=10.5)
-    ax.set_xlim(0, 30)
-    ax.legend(loc="upper right", fontsize=8.5)
-    iqr = float(np.percentile(nis, 75) - np.percentile(nis, 25))
-    iqr_th = 2.0 * np.log(3.0)                  # χ²(2) 的四分位距
-    if iqr > 1.15 * iqr_th:
-        spread = "偏宽 → 新息过散"
-    elif iqr < 0.87 * iqr_th:
-        spread = "偏窄 → 新息偏保守"
-    else:
-        spread = "与理论接近"
-    ax.annotate(f"中位 {np.median(nis):.2f}（理论 1.39）\n"
-                f"超门限 {int((~passed).sum())} 条"
-                f"（{100*(~passed).mean():.1f}%）\n"
-                f"IQR {iqr:.2f}（理论 {iqr_th:.2f}）：{spread}",
-                xy=(0.97, 0.52), xycoords="axes fraction", fontsize=8.3,
-                va="top", ha="right",
-                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
+    ax.legend(loc="upper right", fontsize=7.6)
+    note = []
+    for tid, g in groups:
+        nis = g["nis"].to_numpy(float)
+        iqr = float(np.percentile(nis, 75) - np.percentile(nis, 25))
+        iqr_th = 2.0 * np.log(3.0)                  # χ²(2) 的四分位距
+        if iqr > 1.15 * iqr_th:
+            spread = "偏宽"
+        elif iqr < 0.87 * iqr_th:
+            spread = "偏窄"
+        else:
+            spread = "接近理论"
+        note.append(f"{target_title(tid)}：中位 {float(db10(np.median(nis))):.2f} dB、"
+                    f"超门限 {int((nis > gate).sum())} 条、{spread}")
+    ax.annotate("\n".join(note), xy=(0.02, 0.97), xycoords="axes fraction",
+                fontsize=7.4, va="top", ha="left",
+                bbox=dict(boxstyle="round,pad=0.3", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
 
     ax = axes[1, 0]
-    for k, (tid, g) in enumerate(tr.groupby("tid")):
+    for k, (tid, g) in enumerate(groups):
         ax.scatter(g["t"], np.degrees(g["los_rate"].to_numpy(float)), s=2.5,
                    color=CYCLE[k], alpha=0.35, linewidths=0,
-                   label=f"目标 {int(tid)}")
+                   label=target_title(tid))
     ax.set_xlim(*W_IR)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("视线角速率 (°/s)")
-    ax.set_title("(c) 视线角速率随时间", fontsize=10.5)
-    ax.legend(loc="lower right", fontsize=8, ncol=2, markerscale=4.0)
+    ax.set_title("(c) 视线角速率随时间（按目标）", fontsize=10.5)
+    ax.legend(loc="lower right", fontsize=7.8, ncol=2, markerscale=4.0)
     ax.annotate(f"中位 {np.degrees(np.median(tr['los_rate'])):.2f} °/s\n"
                 f"最大 {np.degrees(tr['los_rate'].max()):.2f} °/s",
                 xy=(0.03, 0.08), xycoords="axes fraction", fontsize=8.3, va="bottom",
@@ -218,19 +239,22 @@ def fig13(D):
     style_axes(ax)
 
     ax = axes[1, 1]
-    sats = sorted(tr["sat"].unique())
-    rate = [float((tr[tr["sat"] == s]["nis"] <= gate).mean()) * 100 for s in sats]
-    n = [int((tr["sat"] == s).sum()) for s in sats]
-    bars = ax.bar([f"卫星 {int(s)}" for s in sats], rate, width=0.5,
-                  color=[CYCLE[k] for k in range(len(sats))], alpha=0.88)
-    for b, r, c in zip(bars, rate, n):
-        ax.text(b.get_x() + b.get_width() / 2, r + 2, f"{r:.1f}%",
-                ha="center", fontsize=9, fontweight="bold")
-        ax.text(b.get_x() + b.get_width() / 2, r / 2, f"{c} 条", ha="center",
-                fontsize=8.5, color="white")
+    rates, labels = [], []
+    for tid, g in groups:
+        nis = g["nis"].to_numpy(float)
+        rates.append(100.0 * float((nis <= gate).mean()))
+        sats = sorted(int(v) for v in g["sat"].unique())
+        labels.append(f"{target_title(tid)}\n卫星 {'、'.join(str(s) for s in sats)}")
+    bars = ax.bar(range(len(rates)), rates, width=0.55,
+                  color=[CYCLE[k] for k in range(len(rates))], alpha=0.88)
+    for b, r in zip(bars, rates):
+        ax.text(b.get_x() + b.get_width() / 2, r + 2, f"{r:.1f}%", ha="center",
+                fontsize=9, fontweight="bold")
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, fontsize=8)
     ax.set_ylim(0, 105)
     ax.set_ylabel("NIS 门限通过率 (%)")
-    ax.set_title("(d) 各卫星跟踪一致性", fontsize=10.5)
+    ax.set_title("(d) 各目标跟踪一致性", fontsize=10.5)
     ax.axhline(100 * passed.mean(), color=C["neutral"], ls="--", lw=1.0)
     ax.text(0.99, 100 * passed.mean() + 1.5, f"整体 {100*passed.mean():.1f}%",
             transform=ax.get_yaxis_transform(), ha="right", va="bottom",
@@ -249,32 +273,32 @@ def fig14(D):
     trk = D["ir_int"]["ir_trk"]
 
     snr = rad["snr"].to_numpy(float)
+    snr_db = db10(snr)
     rng = rad["rng"].to_numpy(float) / 1e7            # 10^4 km
     ok_fov = rad["admit"].astype(str).eq("通过").to_numpy()
     thr = float(rad["thr"].median())
-    above = int((snr > thr).sum())
+    thr_db = float(db10(thr))
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.2))
     title_block(fig, "图 14  红外辐射检测与链路通过率",
-                f"辐射计算 {len(rad)} 次，SNR {snr.min():.0f}–{snr.max():.0f}"
-                f"（门限 {thr:.0f}）；通过视场门控 {int(ok_fov.sum())} 次"
+                f"辐射计算 {len(rad)} 次，SNR {np.nanmin(snr_db):.1f}–{np.nanmax(snr_db):.1f} dB"
+                f"（门限 {thr_db:.1f} dB）；通过视场门控 {int(ok_fov.sum())} 次"
                 f"（{100 * ok_fov.mean():.2f}%）")
 
     ax = axes[0, 0]
-    ax.scatter(rng[~ok_fov], snr[~ok_fov], s=3, color=C["neutral"], alpha=0.18,
+    ax.scatter(rng[~ok_fov], snr_db[~ok_fov], s=3, color=C["neutral"], alpha=0.18,
                linewidths=0, label=f"视场排除（{int((~ok_fov).sum())}）")
-    cx, med, lo, hi = _bin_stat(rng, snr, 42)
+    cx, med, lo, hi = _bin_stat(rng, snr_db, 42)
     ax.fill_between(cx, lo, hi, color=C["accent1"], alpha=0.18, lw=0,
                     label="10–90% 分位")
     ax.plot(cx, med, color="#123f63", lw=1.5, label="分箱中位")
-    ax.scatter(rng[ok_fov], snr[ok_fov], s=26, color=C["accent3"], alpha=0.9,
+    ax.scatter(rng[ok_fov], snr_db[ok_fov], s=26, color=C["accent3"], alpha=0.9,
                edgecolors="white", linewidths=0.4,
                label=f"视场通过（{int(ok_fov.sum())}）")
-    ax.axhline(rad["thr"].median(), color=C["warn"], ls="--", lw=1.1,
-               label=f"SNR 门限 {rad['thr'].median():.0f}")
-    ax.set_yscale("log")
+    ax.axhline(thr_db, color=C["warn"], ls="--", lw=1.1,
+               label=f"SNR 门限 {thr_db:.1f} dB")
     ax.set_xlabel("卫星–目标斜距 ($10^4$ km)")
-    ax.set_ylabel("接收信噪比")
+    ax.set_ylabel("接收信噪比 (dB)")
     ax.set_title("(a) 信噪比–距离关系", fontsize=10.5)
     ax.legend(loc="lower left", fontsize=7.8, markerscale=1.6)
     style_axes(ax)
@@ -285,38 +309,30 @@ def fig14(D):
     vals = [len(geom[geom["stage"].astype(str).eq("WFOV")]), int(ok_fov.sum()),
             int(rad["snr_res"].astype(str).eq("通过").sum()), len(cand),
             len(obs), len(trk)]
+    vals_db = db10(np.asarray(vals, dtype=float))
     colors = ["#9fb3c8", C["accent1"], C["accent4"], C["accent3"],
               C["accent2"], "#123f63"]
     y = np.arange(len(stages))[::-1]
-    ax.barh(y, vals, color=colors, alpha=0.9, height=0.6)
-    ax.set_xscale("log")
+    ax.barh(y, vals_db, color=colors, alpha=0.9, height=0.6)
     ax.set_yticks(y)
     ax.set_yticklabels(stages)
-    ax.set_xlabel("记录数（对数轴）")
+    ax.set_xlabel("记录数 (dB，相对 1 条)")
     ax.set_title("(b) 红外链路各阶段记录量", fontsize=10.5)
-    for yy, v in zip(y, vals):
-        ax.text(v * 1.35, yy, f"{v:,}", va="center", fontsize=8.5)
-    ax.set_xlim(10, 3e5)
+    for yy, v, d in zip(y, vals, vals_db):
+        ax.text(d + 0.4, yy, f"{v:,}", va="center", fontsize=8.5)
+    ax.set_xlim(0, float(np.nanmax(vals_db)) * 1.18)
     ax.grid(axis="y", visible=False)
     style_axes(ax)
-    if above == len(snr):
-        gate_txt = f"SNR 全部高于门限 {thr:.0f}"
-    else:
-        gate_txt = (f"SNR 高于门限 {above}/{len(snr)}"
-                    f"（{100 * above / max(len(snr), 1):.1f}%）")
-    ax.annotate(f"视场门控通过率 {100*ok_fov.mean():.2f}%\n{gate_txt}",
-                xy=(0.46, 0.80), xycoords="axes fraction", fontsize=8.3,
-                color=C["warn"], fontweight="bold", va="top")
 
     ax = axes[1, 0]
-    ax.hist(np.log10(snr), bins=60, color=C["accent1"], alpha=0.8,
+    ax.hist(snr_db, bins=60, color=C["accent1"], alpha=0.8,
             edgecolor="white", linewidth=0.3)
-    ax.axvline(np.log10(rad["thr"].median()), color=C["warn"], ls="--", lw=1.1)
-    ax.set_xlabel("$\\log_{10}$(SNR)")
+    ax.axvline(thr_db, color=C["warn"], ls="--", lw=1.1)
+    ax.set_xlabel("信噪比 (dB)")
     ax.set_ylabel("样本数")
     ax.set_title(f"(c) 信噪比分布（{snr.min()/thr:.1f}–{snr.max()/thr:.1f} 倍门限）",
                  fontsize=10.5)
-    ax.annotate(f"中位 {np.median(snr):.0f}，最小 {snr.min():.0f}\n"
+    ax.annotate(f"中位 {float(db10(np.median(snr))):.1f} dB，最小 {np.nanmin(snr_db):.1f} dB\n"
                 f"最低 {snr.min()/thr:.1f} 倍门限",
                 xy=(0.04, 0.94), xycoords="axes fraction", fontsize=8.5, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
@@ -324,25 +340,29 @@ def fig14(D):
 
     ax = axes[1, 1]
     prx = rad["p_rx"].to_numpy(float)
-    pn = prx / np.clip(rad["tau"].to_numpy(float), 1e-3, None)
-    cx, med, lo, hi = _bin_stat(rng, pn, 36)
+    pn_db = db10(prx / np.clip(rad["tau"].to_numpy(float), 1e-3, None))
+    cx, med, lo, hi = _bin_stat(rng, pn_db, 36)
     ax.fill_between(cx, lo, hi, color=C["accent4"], alpha=0.18, lw=0,
                     label="10–90% 分位")
     ax.plot(cx, med, "o-", ms=2.6, lw=1.2, color=C["accent4"], label="分箱中位")
-    lg = np.polyfit(np.log10(cx), np.log10(med), 1)
-    xs = np.linspace(np.log10(rng.min()), np.log10(rng.max()), 50)
-    ax.plot(10 ** xs, 10 ** np.polyval(lg, xs), color=C["warn"], lw=1.4,
-            label=f"拟合斜率 {lg[0]:.2f}")
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xticks([3.8, 4.0, 4.2, 4.4, 4.6, 4.8])
-    ax.set_xticklabels(["3.8", "4.0", "4.2", "4.4", "4.6", "4.8"])
+    # 幂律指数仍按 log–log 拟合求，再换算到 dB 坐标上画直线（−20 dB/十倍程 ↔ R⁻²）。
+    # 只对正距离、有限中位的箱做拟合；样本不足时不出拟合线，避免整张图失败。
+    ok = (cx > 0) & np.isfinite(med)
+    lg = None
+    if ok.sum() >= 2:
+        lg = np.polyfit(np.log10(cx[ok]), med[ok], 1)
+        xs = np.linspace(float(cx[ok].min()), float(cx[ok].max()), 80)
+        ax.plot(xs, lg[0] * np.log10(xs) + lg[1], color=C["warn"], lw=1.4,
+                label=f"拟合 {lg[0]:.1f} dB/十倍程")
     ax.set_xlabel("斜距 ($10^4$ km)")
-    ax.set_ylabel("归一化接收功率 $P_r/\\tau$ (W)")
+    ax.set_ylabel("归一化接收功率 $P_r/\\tau$ (dBW)")
     ax.set_title("(d) 接收功率随距离衰减", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8)
-    ax.annotate(f"$P_r/\\tau$ ∝ $R^{{{lg[0]:.2f}}}$（理论 $R^{{-2}}$）\n"
-                f"{np.median(prx):.2e} W（原始 $P_r$ 中位）",
+    ax.legend(loc="upper left", fontsize=8)
+    if lg is None:
+        fit = "拟合样本不足，未出拟合线"
+    else:
+        fit = f"$P_r/\\tau$ ∝ $R^{{{lg[0]/10.0:.2f}}}$（理论 $R^{{-2}}$）"
+    ax.annotate(f"{fit}\n中位 {float(db10(np.median(prx))):.1f} dBW（原始 $P_r$ 中位）",
                 xy=(0.04, 0.06), xycoords="axes fraction", fontsize=8.3, va="bottom",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
@@ -361,7 +381,7 @@ def fig15(D):
     l_lon, l_lat = float(lau["lon"].median()), float(lau["lat"].median())
     title_block(fig, "图 15  卫星导航误差、UKF 收敛与落点/发射点估计",
                 f"导航位置误差 0–{pe['err'].max():.2f} m（中位 {pe['err'].median():.2f} m），"
-                f"UKF 协方差迹中位 {uk['covtr'].median():.0f}；"
+                f"UKF 协方差迹中位 {float(db10(uk['covtr'].median())):.0f} dB；"
                 f"落点中位 ({i_lon:.1f}°, {i_lat:.1f}°)、"
                 f"发射点中位 ({l_lon:.1f}°, {l_lat:.1f}°)")
 
@@ -382,26 +402,27 @@ def fig15(D):
 
     ax = axes[0, 1]
     uk_t = uk["t"].to_numpy(float)
-    uk_c = uk["covtr"].to_numpy(float)
-    ax.plot(uk_t, uk_c, lw=1.0, color=C["accent4"])
-    ax.set_yscale("log")
+    uk_db = db10(uk["covtr"].to_numpy(float))
+    ax.plot(uk_t, uk_db, lw=1.0, color=C["accent4"])
     ax.set_xlim(float(uk_t.min()), float(uk_t.max()))
     ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("协方差迹 tr(P)")
+    ax.set_ylabel("协方差迹 tr(P) (dB，相对 1 m²)")
     ax.set_title("(b) UKF 协方差收敛过程", fontsize=10.5)
-    # 同一时刻可能有多条记录，取包络（逐时刻最大值）判定末段抬升，
-    # 阈值取全段中位的 10 倍，不写死时间窗。
-    env = uk.groupby("t")["covtr"].max().sort_index()
-    env_t = env.index.to_numpy(float)
-    elevated = env.to_numpy(float) > 10.0 * float(np.median(uk_c))
-    if elevated.any() and (~elevated).any():
-        start = float(env_t[np.where(~elevated)[0][-1] + 1])
+    # 同一时刻可能有多条记录，取包络（逐时刻最大值）判定末段抬升；
+    # 阈值取全段中位 +10 dB（即 10 倍），不写死时间窗。
+    env = db10(uk.groupby("t")["covtr"].max().sort_index().to_numpy(float))
+    env_t = np.sort(uk["t"].unique()).astype(float)
+    med_db = float(np.nanmedian(uk_db))
+    elevated = np.isfinite(env) & (env > med_db + 10.0)
+    calm = np.where(~elevated)[0]
+    if len(env_t) == len(elevated) and calm.size and calm[-1] + 1 < len(env_t):
+        start = float(env_t[calm[-1] + 1])
         ax.axvspan(start, float(uk_t.max()), color=C["warn"], alpha=0.08, lw=0)
-        ax.text(0.98, 0.16, f"末段协方差抬升\n（包络 > 10× 全段中位，"
+        ax.text(0.98, 0.16, f"末段协方差抬升\n（包络 > 中位 +10 dB，"
                 f"{start:.0f} s 起）", transform=ax.transAxes, fontsize=7.8,
                 color=C["warn"], va="bottom", ha="right")
-    ax.annotate(f"初始 {uk_c[0]:.1e}\n稳态中位 "
-                f"{np.median(uk_c):.0f}\n末条记录 {uk_c[-1]:.1e}",
+    ax.annotate(f"初始 {uk_db[0]:.0f} dB\n稳态中位 {med_db:.0f} dB\n"
+                f"末条记录 {uk_db[-1]:.0f} dB",
                 xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.3,
                 va="bottom", bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb",
                                        ec="#c8d0d8"))

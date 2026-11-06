@@ -5,11 +5,11 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from matplotlib.colors import Normalize, LogNorm
+from matplotlib.colors import Normalize
 from scipy.interpolate import RectBivariateSpline
 
 from . import extract
-from .common import C, style_axes, title_block
+from .common import C, db10, style_axes, title_block
 
 SIDE = ["top", "right"]
 
@@ -216,10 +216,14 @@ def fig03(D):
                 f"指定驻留 {int((beam['kind'] == '指定驻留').sum())}")
 
     ax = axes[0]
+    # 驻留密度用 dB 表示（相对 1 次）：色标仍是“越密越亮”，但刻度可读。
     hb = ax.hexbin(beam["az"], beam["el"], gridsize=(72, 32), cmap="magma",
-                   mincnt=1, norm=LogNorm())
+                   mincnt=1)
+    cnt_db = db10(np.maximum(np.asarray(hb.get_array(), dtype=float), 1.0))
+    hb.set_array(cnt_db)
+    hb.set_clim(float(np.nanmin(cnt_db)), float(np.nanmax(cnt_db)))
     cb = fig.colorbar(hb, ax=ax, pad=0.02)
-    cb.set_label("驻留次数", fontsize=8)
+    cb.set_label("驻留次数 (dB，相对 1 次)", fontsize=8)
     cb.ax.tick_params(labelsize=7)
     ax.set_xlabel("波束方位 (°)")
     ax.set_ylabel("波束俯仰 (°)")

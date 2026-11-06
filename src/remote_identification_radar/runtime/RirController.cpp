@@ -1000,13 +1000,12 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                             const config::RirAzimuthElevationDeg& dwell_center_deg,
                             const config::RirAzimuthElevationLimitsDeg& steerable_volume_deg,
                             const config::RirAzimuthElevationDeg& scan_center_deg,
-                            const config::RirAzimuthElevationLimitsDeg& scan_window_deg,
                             std::uint64_t designated_external_target_id) {
   // 单驻留重载 = 单条目搜索驻留计划（直连调用方与既有行为兼容）。
   std::vector<RirDwellPlan> single_dwell_plan(1U);
   single_dwell_plan.front().pointing_deg = dwell_center_deg;
   RunCycle(input, output_frame, batch_id, single_dwell_plan, steerable_volume_deg,
-           scan_center_deg, scan_window_deg, designated_external_target_id);
+           scan_center_deg, designated_external_target_id);
 }
 
 void RirController::RunCycle(const session::RirCycleInput& input,
@@ -1014,7 +1013,6 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                             const std::vector<RirDwellPlan>& dwell_plan,
                             const config::RirAzimuthElevationLimitsDeg& steerable_volume_deg,
                             const config::RirAzimuthElevationDeg& scan_center_deg,
-                            const config::RirAzimuthElevationLimitsDeg& scan_window_deg,
                             std::uint64_t designated_external_target_id) {
   // 过程：主周期链（第 1 步）——几何锚点 → 环境/RF 解析 → 候选筛选 → 逐驻留检测 → 关联跟踪 → 识别 → 输出。
   // TAS 防御：空计划退化为单条目缺省指向搜索驻留（既有兜底语义不变）。

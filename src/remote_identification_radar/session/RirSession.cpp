@@ -921,7 +921,7 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
   // 过程：③ 控制器执行——探测链主体（几何 → 方向图 → 回波 → 噪声/杂波/干扰 → SINR → CFAR → 量测 → 跟踪 → 识别）。
   controller.RunCycle(input, &result.output_frame, next_batch_id, dwell_plan,
                       config.orientation, config.mission.scan_center_deg,
-                      config.mission.scan_window_deg, designated_external_target_id);
+                      designated_external_target_id);
   result.status = RirCycleStatus::kCompleted;
   result.abort_reason = RirCycleAbortReason::kNone;
   ++next_batch_id;

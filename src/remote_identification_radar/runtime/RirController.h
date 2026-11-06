@@ -97,9 +97,10 @@ class RirController {
    *            el 绝对，deg）；缺省无界 = 不裁剪（直连调用方与既有行为兼容）。
    *            指定识别目标的驻留/探测门始终以此为界。
    * @param[in] scan_center_deg 转台当前朝向（ENU az/el，deg）。
-   * @param[in] scan_window_deg 任务扫描子窗（用户指定的作战搜索扇区，az 相对
-   *            scan_center、el 绝对，deg）；缺省无界 = 不额外收窄。实际搜索扇区
-   *            = scan_window ∩ steerable_volume：搜索态检测候选按此裁剪。
+   * @note 搜索扇区不再由形参传入，而是由**mission 配置单源**解析
+   *       （`internal::ResolveSearchSector`：`scan_window_deg` 的 az 窗口 + 按
+   *       `search_mode` 取仰角口径 ∩ `steerable_volume_deg`）；这样"波位在哪儿扫"
+   *       与"候选在哪儿收"永远同一口径。
    * @param[in] designated_external_target_id 当前指定识别目标外部 ID（0 = 无）。
    *            该目标即便落在 scan_window 外，只要仍在 steerable_volume 内即豁免
    *            子窗裁剪（算子显式指派高于常规搜索扇区）。
@@ -114,8 +115,6 @@ class RirController {
                     config::RirAzimuthElevationLimitsDeg{-180.0f, 180.0f, -90.0f, 90.0f},
                 const config::RirAzimuthElevationDeg& scan_center_deg =
                     config::RirAzimuthElevationDeg(),
-                const config::RirAzimuthElevationLimitsDeg& scan_window_deg =
-                    config::RirAzimuthElevationLimitsDeg{-180.0f, 180.0f, -90.0f, 90.0f},
                 std::uint64_t designated_external_target_id = 0U);
 
   /**
@@ -135,8 +134,6 @@ class RirController {
                     config::RirAzimuthElevationLimitsDeg{-180.0f, 180.0f, -90.0f, 90.0f},
                 const config::RirAzimuthElevationDeg& scan_center_deg =
                     config::RirAzimuthElevationDeg(),
-                const config::RirAzimuthElevationLimitsDeg& scan_window_deg =
-                    config::RirAzimuthElevationLimitsDeg{-180.0f, 180.0f, -90.0f, 90.0f},
                 std::uint64_t designated_external_target_id = 0U);
 
   /**

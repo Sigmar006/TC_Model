@@ -214,3 +214,79 @@ rm -rf local               # Linux
 | 实际编译 `1q_lib` | 产出 `1q.lib`（VS2017/v141，33.8 MB），退出码 0 |
 | 交付树（VS2013/v120）| `CMakeCache.txt` 中 `PACKAGE_MANAGER:STRING=none`，交付 `1q.lib` 147.9 MB |
 | `third_party/` 依赖 | 9/9 就绪 |
+
+---
+
+## 9. Linux 构建（CMake 3.16 + g++ 7，已实测）
+
+> 本节命令已用 **Ubuntu 18.04 + g++ 7.5.0 + CMake 3.16.9** 容器实测通过：
+> `configure` 成功、`cmake --build --target 1q_lib` 成功，产出 **`lib/lib1q.a`（46 MB）**。
+
+### 9.1 依赖
+
+| 项 | 要求 | 说明 |
+|---|---|---|
+| 编译器 | **GCC ≥ 5**（实测 7.5 通过；13.3 亦通过）| 需支持 C++11 |
+| CMake | **≥ 3.16**（实测 3.16.9 / 4.3.3 通过）| 老版本 3.10 未验证 |
+| make / ninja | 任一 | 示例用 Unix Makefiles |
+| `third_party/` | 同 §2 | 构建期不联网 |
+
+```bash
+sudo apt-get update && sudo apt-get install -y g++ make cmake
+# 若仓库 cmake 版本低于 3.16，用官方二进制：
+# curl -sSL -o cmake.tgz https://github.com/Kitware/CMake/releases/download/v3.16.9/cmake-3.16.9-Linux-x86_64.tar.gz
+# sudo mkdir -p /opt && sudo tar xzf cmake.tgz -C /opt && export PATH=/opt/cmake-3.16.9-Linux-x86_64/bin:$PATH
+```
+
+### 9.2 配置（产物落到 `build/`，不污染源码树）
+
+```bash
+cd <1q 根目录>
+cmake -S . -B build -G "Unix Makefiles" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_STANDARD=11 \
+  -DPACKAGE_MANAGER=none \
+  -DBUILD_SHARED_LIBS=OFF \
+  -DENABLE_TESTING=OFF -DENABLE_EXAMPLES=OFF -DENABLE_INSTALL=OFF -DENABLE_PCH=OFF \
+  -DONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=ON \
+  -DONEQ_ENABLE_RIR_ACCEPTANCE_LOG=ON \
+  -DONEQ_ENABLE_FUSION_ACCEPTANCE_LOG=ON \
+  -DONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG=ON \
+  -DONEQ_ENABLE_PRECISION_EVALUATION_LOG=ON
+```
+
+> **注意**：`ENABLE_PCH=OFF`。g++ 7 下 PCH 非必需，关掉可避免 `.gch` 与 `-std=c++11` 的偶发不匹配。
+
+### 9.3 编译
+
+```bash
+cmake --build build --target 1q_lib -j"$(nproc)"
+# 产物：build/lib/lib1q.a
+ls -lh build/lib/lib1q.a
+```
+
+### 9.4 一次性兼容修复（已入库，勿回退）
+
+Linux/老工具链曾卡在两处，已在仓库修好（提交 `3ba804e5`），回顾如下：
+
+| 现象 | 根因 | 现状 |
+|---|---|---|
+| `add_library cannot create ALIAS target "nanoflann::nanoflann" because target "nanoflann_vendor" is imported but not globally visible` | CMake **3.16 不允许**给"非 GLOBAL 的 IMPORTED 目标"建 ALIAS（3.18+ 才放宽）| 6 个 vendor 目标已加 `GLOBAL`（`cmake/project/dependencies/VendorPackages.cmake`）|
+| `'make_unique' is not a member of 'std'` | `std::make_unique` 属 **C++14**，工程下限是 C++11 | 5 处改为 `std::unique_ptr<T>(new T(...))`（`FusionEngine.cpp`、`SbirsTrackingCoordinator.cpp`）|
+
+### 9.5 已验证矩阵
+
+| 工具链 | 配置 | 编译 | 产物 |
+|---|---|---|---|
+| MSVC v120（VS2013 工具集）+ CMake 4.3.3 | ✅ | ✅ | `1q.lib` 148 MB |
+| **g++ 7.5.0 + CMake 3.16.9**（Ubuntu 18.04）| ✅ | ✅ | **`lib1q.a` 46 MB** |
+| g++ 13.3 + CMake 4.x（Ubuntu 24.04）| ✅ | 头文件级验证通过 | — |
+
+### 9.6 常见问题（Linux 专有）
+
+| 报错 | 处理 |
+|---|---|
+| `Could NOT find Boost` / `Eigen3` | 确认 `third_party/` 已就绪；本工程只用头文件（`boost/`、`Eigen/`），无需系统安装 |
+| `sqlite3.c: No such file` | `third_party/sqlite/` 缺 amalgamation，见 §2 |
+| `fatal error: flatbuffers/flatbuffers.h` | `third_party/flatbuffers` 不全（需 `include/` + `CMakeLists.txt`）|
+| 链接时 `lib1q.a` 找不到 zlib/sqlite 符号 | `PACKAGE_MANAGER=none` 下这两个由源码编译；不要同时用系统 `-lz` |

@@ -1253,20 +1253,13 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
   }
 }
 
-bool IsHorizonSearchCycle(const std::vector<RirDwellPlan>& dwell_plan, float half_beam_deg) {
-  // 中译：第37/37A 二选一判据（2026-11-02）——只要本周期存在**贴地平线**的搜索驻留，
-  //   整周期就按"地平线搜索"记账：37A 写指向/调度/检测，37 一行不写。
-  //   原实现按"本周期首个非跟踪驻留的俯仰"判，导致同一周期里 37A 的指向行与 37 的调度行
-  //   同时出现（"地平线搜索时空中还在搜索"）。
-  // 标识：地平线搜索周期判定（2026-11-02）。
-  for (const RirDwellPlan& dwell : dwell_plan) {
-    if (dwell.kind == RirDwellKind::kSearch &&
-        std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
-            static_cast<double>(half_beam_deg)) {
-      return true;
-    }
-  }
-  return false;
+bool IsHorizonSearchCycle(config::RirSearchMode search_mode) {
+  // 中译：**地平线周期由搜索模式唯一决定**（2026-11-06 甲方口径）——地平线扫描模式整周期
+  //   按第 37A 项记账；指定空域搜索模式恒为 false，日志里不出现任何地平线内容。
+  //   旧实现按"驻留俯仰是否接近 0°"反推，会让扇区模式在低仰角时混入 37A 行，
+  //   外部无法通过配置核对该项归属，也和第 34 项杂波的触发几何混为一谈。
+  // 标识：地平线周期纯模式判定（2026-11-06）。
+  return search_mode == config::RirSearchMode::kHorizonScan;
 }
 
 void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
@@ -2207,11 +2200,12 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
   // 波位排列表/扫描轨迹全量在 Rir_scan_pattern.csv（index,az_deg,el_deg）；日志不再
   // 重复当前波束指向，搜索驻留只写波位序号（=波位表游标，可索引 CSV）。
   // 指定/跟踪驻留带种类与目标 ID 标记。
-  // 2026-09-28 追加：本模型无独立地平线搜索模式，故以波位表内俯仰接近 0°（|el| ≤
-  // 半波束宽）的搜索驻留作为地平线波位，按其实际指向独立写出第 37A 项「方位/俯仰
-  // 指向信息」行；该项的扫描调度信息行随 WriteRirSchedule 一并写出。
+  // 地平线模式（第 37A 项）：**每个搜索驻留都写**"方位/俯仰指向信息"行——模式本身就是
+  // "低仰角带扫描"，驻留全在该带内，不再按 |el| ≤ 半波束宽二次筛（那会漏掉带内偏上的
+  // 波位，出现"搜索驻留数=N、指向行只有几条"的对不上）。指定空域模式一行都不写。
+  // 该项的扫描调度信息行随 WriteRirSchedule 一并写出。
+  // 标识：第37A 指向行整带覆盖（2026-11-06）。
   const std::string scan_csv_path = ResolveRirScanPatternCsvPath();
-  constexpr double kHorizonElevationToleranceDeg = 0.5;
   std::size_t search_dwell_count = 0U;
   for (const RirDwellPlan& dwell : dwell_plan) {
     if (dwell.kind == RirDwellKind::kSearch) {
@@ -2236,12 +2230,10 @@ void WriteRirDwellScan(std::uint64_t radar_id, float sim_time_sec, std::uint32_t
                std::to_string(dwell.scan_pattern_index) + " 指向=" +
                FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) +
                "° 波位排列表已输出至" + scan_csv_path);
-      // 中译：37A 的指向行只在**地平线搜索周期**写（2026-11-02）——否则整周期既有 37 的
-      //   调度行、又有 37A 的指向行，等于"地平线搜索与空中搜索同时在跑"。
-      // 标识：37A 指向行归属互斥（2026-11-02）。
-      if (horizon_search_cycle &&
-          std::fabs(static_cast<double>(dwell.pointing_deg.el_deg)) <=
-              kHorizonElevationToleranceDeg) {
+      // 中译：37A 的指向行**只在**地平线搜索模式写（2026-11-06 甲方口径）——地平线模式
+      //   整周期每个搜索驻留都写；指定空域搜索模式一行不写，日志里不出现任何地平线内容。
+      // 标识：37A 指向行按模式整带写出（2026-11-06）。
+      if (horizon_search_cycle) {
         Emit(sim_time_sec, cycle, "地平线搜索功能测试",
              "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
                  FormatPairDeg(dwell.pointing_deg.az_deg, dwell.pointing_deg.el_deg, 3) + "°");

@@ -259,8 +259,9 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 
 /**
  * @brief 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名。
- * @note **与第37项互斥**（2026-11-02）：判定口径为"本周期是否存在贴地平线的搜索驻留"，
- *       存在则整周期只写 37A（指向/调度/检测三类行），不写任何 37 行；反之亦然。
+ * @note **与第37项互斥且由模式唯一决定**（2026-11-06 甲方口径）：`search_mode ==
+ *       kHorizonScan` 时整周期只写 37A（指向/调度/检测三类行），不写任何 37 行；
+ *       `kSectorScan`（指定空域搜索）时整周期只写 37，**不出现任何地平线内容**。
  *       判定函数见 `IsHorizonSearchCycle`。
  */
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
@@ -268,12 +269,13 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
                                      const std::vector<RirSearchDetectionLite>& detections);
 
 /**
- * @brief 本周期是否属于"地平线搜索周期"（第37/37A 二选一判据，2026-11-02）。
- * @param[in] dwell_plan 本周期驻留计划。
- * @param[in] half_beam_deg 地平线判据的半波束宽（= 0.5×max(方位/俯仰波束宽)）。
- * @return 存在任一搜索驻留其俯仰 |el| ≤ 半波束宽时返回 true。
+ * @brief 本周期是否属于"地平线搜索周期"（第37/37A 二选一判据）。
+ * @param[in] search_mode 任务的搜索模式。
+ * @return `kHorizonScan` 为 true；`kSectorScan` 恒为 false。
+ * @note **由模式唯一决定**（2026-11-06 甲方口径）：不再用"驻留俯仰是否接近 0°"反推——
+ *   那会让指定空域模式在地平线附近混入 37A 行，外部无法按配置核对本项归属。
  */
-bool IsHorizonSearchCycle(const std::vector<RirDwellPlan>& dwell_plan, float half_beam_deg);
+bool IsHorizonSearchCycle(config::RirSearchMode search_mode);
 
 /**
  * @param[in] platform_lla 平台 LLA（雷达局部 ENU 的绝对锚点；量测位置 LLA 换算用）。

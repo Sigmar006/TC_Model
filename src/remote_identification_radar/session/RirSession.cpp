@@ -904,17 +904,12 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     acceptance_scan_pattern_logged = true;
   }
   if (RIR_ACCEPTANCE_LOG_ENABLED()) {
-    // 中译：37/37A 互斥判据与控制器共用同一函数，避免两处各判一套（2026-11-02）。
-    // 标识：第37/37A 互斥（驻留行侧，2026-11-02）。
-    const float horizon_half_beam_deg =
-        0.5f * std::max(config.hardware.antenna.nominal_az_beamwidth_deg,
-                        config.hardware.antenna.nominal_el_beamwidth_deg);
-    // 中译：**地平线周期由模式决定**（2026-11-06）——地平线扫描模式下整周期都算
-    // 地平线周期；指定空域模式保留"存在贴地平线驻留"的既有兜底口径，行为不倒退。
-    // 标识：地平线周期模式化（2026-11-06）。
+    // 中译：37/37A 归属与控制器共用同一函数（`IsHorizonSearchCycle`），且**只看搜索模式**
+    //   （2026-11-06 甲方口径）：地平线模式整周期 37A；指定空域搜索模式整周期 37，
+    //   不出现任何地平线内容。
+    // 标识：第37/37A 归属纯模式判定（2026-11-06）。
     const bool horizon_search_cycle =
-        config.mission.search_mode == config::RirSearchMode::kHorizonScan ||
-        runtime::IsHorizonSearchCycle(dwell_plan, horizon_half_beam_deg);
+        runtime::IsHorizonSearchCycle(config.mission.search_mode);
     runtime::WriteRirDwellScan(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                input.input_cycle_index, dwell_plan, horizon_search_cycle);
   }

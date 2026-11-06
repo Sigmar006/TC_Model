@@ -1023,20 +1023,13 @@ void RirController::RunCycle(const session::RirCycleInput& input,
   // 按「未经过具体流程步骤则不输出」抑制该项日志（2026-09-28）。
   const bool has_real_dwell_plan = !dwell_plan.empty();
   const std::vector<RirDwellPlan>& plan = has_real_dwell_plan ? dwell_plan : kFallbackPlan;
-  // 中译：**地平线搜索周期判定**（2026-11-02）——第37（空域自主搜索）与第37A（地平线搜索）
-  //   必须二选一：只要本周期存在贴地平线（|el| ≤ 半波束宽）的搜索驻留，整周期的指向/调度/
-  //   检测行全部写 37A，37 一行不写；否则反之。原实现按"首个非跟踪驻留"判，同一周期会
-  //   同时出现 37A 指向行与 37 调度行。
-  // 标识：第37/37A 互斥判定（2026-11-02）。
-  const float horizon_half_beam_deg =
-      0.5f * std::max(hardware_.antenna.nominal_az_beamwidth_deg,
-                      hardware_.antenna.nominal_el_beamwidth_deg);
-  // 中译：地平线周期由**搜索模式**决定（2026-11-06）：地平线扫描模式整周期按 37A 记账；
-  //   指定空域模式沿用"存在贴地平线驻留"的兜底口径，既有日志不倒退。
-  // 标识：地平线周期模式化（2026-11-06）。
-  const bool horizon_search_cycle =
-      mission_.search_mode == config::RirSearchMode::kHorizonScan ||
-      IsHorizonSearchCycle(plan, horizon_half_beam_deg);
+  // 中译：**地平线周期判定：只看搜索模式**（2026-11-06 甲方口径）——第37（空域自主搜索）
+  //   与第37A（地平线搜索）必须二选一，归属由 `mission.search_mode` 唯一决定：
+  //   地平线模式整周期只写 37A；指定空域搜索模式整周期只写 37，**不出现任何地平线内容**。
+  //   旧实现按"驻留俯仰是否接近 0°"反推，用户明确要求去掉：扇区模式在地平线附近也会
+  //   冒出 37A 行，外部无法按配置核对归属。
+  // 标识：第37/37A 归属纯模式判定（2026-11-06）。
+  const bool horizon_search_cycle = IsHorizonSearchCycle(mission_.search_mode);
   // 验收"指向"行与接收链回退口径按计划首条目；发射记录逐驻留
   //（见 ResolveRfCycle / last_emission_frame_，核查 9.2）。
   const config::RirAzimuthElevationDeg& dwell_center_deg = plan.front().pointing_deg;
@@ -1361,9 +1354,8 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     // 验收事件 association（3.2.2.3.1.1）：全局最优关联结果——命中对（键/量测
     // 索引/马氏代价）与漏检航迹键（量测清单经 detection_cell 事件逐目标留痕）。
     if (RIR_ACCEPTANCE_LOG_ENABLED()) {
-      // 验收判定标准 第37项/第37A项：本周期主驻留指向俯仰接近 0°（|el| ≤ 半波束宽）
-      // 时判为地平线搜索，按 37A 独立项名写出（与 37 项同批字段）；其余按 37 项写出。
-      // 本模型无独立地平线搜索模式，判据为「波束实际指向接近地平线」。
+      // 验收判定标准 第37项/第37A项：归属**只看搜索模式**（2026-11-06 甲方口径）——
+      //   地平线模式整周期写 37A（与 37 项同批字段），指定空域模式整周期写 37。
       if (has_real_dwell_plan) {
         if (horizon_search_cycle) {
           WriteRirHorizonSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,

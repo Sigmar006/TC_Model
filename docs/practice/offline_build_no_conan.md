@@ -42,6 +42,34 @@ cmake -S . -B local -G Ninja \
 cmake --build local --target 1q_lib -j
 ```
 
+### Linux 实测补充（WSL2 / Ubuntu 24.04 / gcc 13.3 / CMake 3.28 / Ninja 1.11，2026-11-07）
+
+按上面的 Linux 命令**原样执行会在 `flatc` 处失败**：第三方 `third_party/flatbuffers` 的
+`src/reflection.cpp` 在 gcc 13 下触发 `-Wstringop-overflow` 类告警，而工程开了 `-Werror`，
+于是"告警即错误"。这是**工具链版本差**（老 flatbuffers + 新 gcc），不是 1q 代码问题。
+
+实测可用的做法（把第三方告警降级、不影响本库代码的告警）：
+
+```bash
+cmake -S . -B local-wsl -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DPACKAGE_MANAGER=none -DCMAKE_CXX_STANDARD=11 \
+  -DBUILD_SHARED_LIBS=OFF -DENABLE_TESTING=OFF -DENABLE_EXAMPLES=OFF \
+  -DENABLE_INSTALL=ON -DENABLE_PCH=ON \
+  -DCMAKE_CXX_FLAGS="-Wno-error -Wno-stringop-overflow -Wno-array-bounds -Wno-restrict" \
+  -DONEQ_ENABLE_OPIR_ACCEPTANCE_LOG=ON -DONEQ_ENABLE_RIR_ACCEPTANCE_LOG=ON \
+  -DONEQ_ENABLE_FUSION_ACCEPTANCE_LOG=ON -DONEQ_ENABLE_INFERENCE_ACCEPTANCE_LOG=ON \
+  -DONEQ_ENABLE_PRECISION_EVALUATION_LOG=ON
+cmake --build local-wsl --target 1q_lib -j 8
+```
+
+实测结果：**367 个目标全部编译通过**，产物 `local-wsl/lib/lib1q.a`（48 MB，含
+`MtiMtdAcceptanceBank.cpp.o` / `RirAcceptanceRecords.cpp.o` / `TextEncoding.cpp.o` /
+`AcceptanceFileLog.cpp.o`）。构建目录约 1.7 GB，验证完可整目录删除（不要提交）。
+
+另外：本节脚本若带 UTF-8 BOM，`bash script.sh` 会报 `#!/usr/bin/env: No such file or directory`
+（BOM 落在 shebang 前），但脚本仍会继续执行——想要干净的话，`.sh` 文件不要带 BOM。
+（C/C++ 源文件必须带 BOM，`.sh` 相反。）
+
 **产物位置（实测）**
 - Windows 多配置生成器：`local/Release/lib/1q.lib` ← **这就是"类似 .lib 的静态库"**
 - Linux 单配置（Ninja/Make）：`local/lib/lib1q.a`

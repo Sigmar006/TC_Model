@@ -35,9 +35,9 @@ from viz import figs_antenna, figs_radar, figs_ir, figs_signal   # noqa: E402
 
 MODULES = [figs_antenna, figs_radar, figs_ir, figs_signal]
 
+# 出图真正需要的数据文件（Rir_scan_pattern.csv 当前未被任何图使用，故不在检查项内）
 DATA_FILES = [f for f, _ in extract.SCANNERS.values()] + [
     "RadarAntennaGainPatterndata.csv",
-    "Rir_scan_pattern.csv",
 ]
 
 

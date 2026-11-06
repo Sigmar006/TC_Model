@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
 
-from .common import (C, CYCLE, W_RADAR, by_target, db10, style_axes,
+from .common import (C, CYCLE, W_RADAR, by_target, db10, empty_fig, style_axes,
                      target_title, title_block)
 
 COLS = ["RCS", "极化", "HRRP"]
@@ -748,15 +748,23 @@ def fig23(D):
 
 # ---------------------------------------------------------------- 图 24
 def fig24(D):
-    p_all = D["radar_output"]["pol_feat"].sort_values("t")
-    groups = by_target(p_all)
-    det_db = db10(p_all["det_m"].to_numpy(float))
-    span_db = db10(p_all["span_m"].to_numpy(float))
-    ratio = (p_all["span_m"] / p_all["det_m"]).to_numpy(float)
+    pol = D["radar_output"]["pol_feat"].sort_values("t")
+    # 有的目标只输出“目标类型/加权概率”一行，极化统计量整组缺失（窗口无效时
+    # C++ 侧整行省略）；这类空组必须剔除，否则 dB、箱线图与图例都会拿到全 NaN。
+    stats = [c for c in ("det_m", "span_m", "depol_m", "ori_m", "ell_m")
+             if c in pol.columns]
+    pol = pol.dropna(subset=stats) if stats else pol
+    if pol.empty:
+        return empty_fig("图 24 极化不变量", "本批日志无极化统计特征记录")
+    groups = by_target(pol)
+    det_db = db10(pol["det_m"].to_numpy(float))
+    span_db = db10(pol["span_m"].to_numpy(float))
+    ratio = (pol["span_m"] / pol["det_m"]).to_numpy(float)
+    ratio = ratio[np.isfinite(ratio)]
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.0))
     title_block(fig, "图 24  极化不变量与散射结构（按目标）",
-                f"{len(p_all)} 组极化特征，{len(groups)} 个目标"
+                f"{len(pol)} 组极化特征，{len(groups)} 个目标"
                 f"（{'、'.join(target_title(t_, g['track']) for t_, g in groups)}）；"
                 f"行列式 {np.nanmin(det_db):.1f}–{np.nanmax(det_db):.1f} dBW，"
                 f"Span {np.nanmin(span_db):.1f}–{np.nanmax(span_db):.1f} dBW；"
@@ -779,6 +787,9 @@ def fig24(D):
     ax = axes[0, 1]
     for k, (tid, g) in enumerate(groups):
         rr = (g["span_m"] / g["det_m"]).to_numpy(float)
+        rr = rr[np.isfinite(rr)]
+        if not len(rr):
+            continue
         v, f = _ecdf(rr)
         ax.step(v, f, where="post", lw=1.5, color=CYCLE[k],
                 label=f"{target_title(tid, g['track'])}（{len(v)}）")
@@ -815,7 +826,7 @@ def fig24(D):
     ax.set_xticklabels([target_title(t_, g["track"]) for t_, g in groups], fontsize=8)
     ax.set_ylabel("椭圆率角 (°)")
     ax.set_title("(d) 各目标椭圆率分布", fontsize=10.5)
-    ax.annotate(f"整体 {p_all['ell_m'].min():.1f}…{p_all['ell_m'].max():.1f}°",
+    ax.annotate(f"整体 {pol['ell_m'].min():.1f}…{pol['ell_m'].max():.1f}°",
                 xy=(0.97, 0.06), xycoords="axes fraction", fontsize=8.3,
                 va="bottom", ha="right",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))

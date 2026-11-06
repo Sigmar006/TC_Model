@@ -45,12 +45,73 @@ def _bin_stat(x, y, nbins=40):
     return (np.asarray(cx), np.asarray(med), np.asarray(lo), np.asarray(hi))
 
 
+def _panel_los(ax, det):
+    """目标视线角分布。日志里方位/俯仰是 rad，图上统一按 ° 画。"""
+    for k, (sat, g) in enumerate(det.groupby("sat")):
+        ax.scatter(np.degrees(g["az"].to_numpy(float)),
+                   np.degrees(g["el"].to_numpy(float)), s=4, color=CYCLE[k],
+                   alpha=0.5, linewidths=0, label=f"卫星 {int(sat)}")
+    ax.set_xlabel("方位视线角 (°)")
+    ax.set_ylabel("俯仰视线角 (°)")
+    ax.legend(loc="lower left", fontsize=7.5, markerscale=1.8)
+    ax.annotate(f"方位 {np.degrees(det['az'].min()):.2f}…{np.degrees(det['az'].max()):.2f}°\n"
+                f"俯仰 {np.degrees(det['el'].min()):.2f}…{np.degrees(det['el'].max()):.2f}°",
+                xy=(0.97, 0.95), xycoords="axes fraction", fontsize=8.3,
+                va="top", ha="right",
+                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
+    style_axes(ax)
+
+
+def _panel_maxrange(ax, mr):
+    """各卫星最大作用距离分布。"""
+    mr = mr[mr["rmax"].notna()]
+    sats = sorted(int(v) for v in mr["sat"].unique())
+    data = [mr[mr["sat"] == s]["rmax"].to_numpy(float) / 1e7 for s in sats]
+    parts = ax.violinplot(data, showmedians=True, showextrema=False, widths=0.75)
+    for k, body in enumerate(parts["bodies"]):
+        body.set_facecolor(CYCLE[k])
+        body.set_alpha(0.7)
+        body.set_edgecolor("none")
+    parts["cmedians"].set_color("#1b2733")
+    ax.set_xticks(range(1, len(data) + 1))
+    ax.set_xticklabels([f"卫星 {s}" for s in sats])
+    ax.set_ylabel("最大作用距离 ($10^7$ m)")
+    ax.annotate(f"整体 {mr['rmax'].min()/1e7:.3f}–{mr['rmax'].max()/1e7:.3f}×10$^7$ m\n"
+                f"相当于 {mr['rmax'].min()/1e3:.0f}–{mr['rmax'].max()/1e3:.0f} km",
+                xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.3, va="bottom",
+                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
+    ax.grid(axis="x", visible=False)
+    style_axes(ax)
+
+
+def _fig12_partial(det, mr):
+    """本批日志没有宽视场覆盖消息：只画视线角与最大作用距离，并注明缺项。"""
+    fig, axes = plt.subplots(1, 2, figsize=(13.4, 5.2))
+    title_block(fig, "图 12  红外覆盖与可用性（本批缺宽视场覆盖记录）",
+                f"未找到「宽视场扫描探测功能测试」消息，覆盖中心与覆盖时段从略；"
+                f"保留目标视线角 {len(det)} 条、最大作用距离 {len(mr)} 条")
+    _panel_los(axes[0], det)
+    axes[0].set_title("(a) 目标视线角分布", fontsize=10.5)
+    _panel_maxrange(axes[1], mr)
+    axes[1].set_title("(b) 各卫星最大作用距离分布", fontsize=10.5)
+    return fig
+
+
 # ---------------------------------------------------------------- 图 12
 def fig12(D):
-    wf = D["sat"]["wfov"].sort_values("t")
-    mr = D["sat"]["maxrange"].sort_values("t")
-    det = D["sat"]["ir_detect"].sort_values("t")
-    ok, lat, lon = _valid_centers(wf)
+    sat = D["sat"]
+    det = sat["ir_detect"].sort_values("t")
+    mr = sat["maxrange"].sort_values("t")
+    wf = sat.get("wfov")
+
+    ok = np.zeros(0, dtype=bool)
+    if wf is not None and len(wf):
+        wf = wf.sort_values("t")
+        ok, lat, lon = _valid_centers(wf)
+    if wf is None or len(wf) == 0 or not ok.any():
+        # 日志里没有宽视场覆盖消息（或全部无效）时不要把整张图判为失败。
+        return _fig12_partial(det, mr)
+
     vv = wf[ok].copy()
     vv["lat"] = lat[ok]
     vv["lon"] = lon[ok]
@@ -109,40 +170,11 @@ def fig12(D):
     ax.grid(axis="y", visible=False)
     style_axes(ax)
 
-    ax = axes[1, 0]
-    for k, (sat, g) in enumerate(det.groupby("sat")):
-        ax.scatter(g["az"], g["el"], s=4, color=CYCLE[k], alpha=0.5,
-                   linewidths=0, label=f"卫星 {int(sat)}")
-    ax.set_xlabel("方位视线角 (°)")
-    ax.set_ylabel("俯仰视线角 (°)")
-    ax.set_title("(c) 目标视线角分布", fontsize=10.5)
-    ax.legend(loc="lower left", fontsize=7.5, markerscale=1.8)
-    ax.annotate(f"方位 {det['az'].min():.2f}…{det['az'].max():.2f}°\n"
-                f"俯仰 {det['el'].min():.2f}…{det['el'].max():.2f}°",
-                xy=(0.97, 0.95), xycoords="axes fraction", fontsize=8.3,
-                va="top", ha="right",
-                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
-    style_axes(ax)
+    _panel_los(axes[1, 0], det)
+    axes[1, 0].set_title("(c) 目标视线角分布", fontsize=10.5)
 
-    ax = axes[1, 1]
-    mr = mr[mr["rmax"].notna()]
-    data = [mr[mr["sat"] == s]["rmax"].to_numpy(float) / 1e7 for s in sorted(mr["sat"].unique())]
-    parts = ax.violinplot(data, showmedians=True, showextrema=False, widths=0.75)
-    for k, body in enumerate(parts["bodies"]):
-        body.set_facecolor(CYCLE[k])
-        body.set_alpha(0.7)
-        body.set_edgecolor("none")
-    parts["cmedians"].set_color("#1b2733")
-    ax.set_xticks(range(1, len(data) + 1))
-    ax.set_xticklabels([f"卫星 {int(s)}" for s in sorted(mr["sat"].unique())])
-    ax.set_ylabel("最大作用距离 ($10^7$ m)")
-    ax.set_title("(d) 各卫星最大作用距离分布", fontsize=10.5)
-    ax.annotate(f"整体 {mr['rmax'].min()/1e7:.3f}–{mr['rmax'].max()/1e7:.3f}×10$^7$ m\n"
-                f"相当于 {mr['rmax'].min()/1e3:.0f}–{mr['rmax'].max()/1e3:.0f} km",
-                xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.3, va="bottom",
-                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
-    ax.grid(axis="x", visible=False)
-    style_axes(ax)
+    _panel_maxrange(axes[1, 1], mr)
+    axes[1, 1].set_title("(d) 各卫星最大作用距离分布", fontsize=10.5)
     return fig
 
 

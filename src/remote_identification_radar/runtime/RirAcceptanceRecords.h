@@ -311,6 +311,31 @@ bool TryComputeDetectionRangeAtPd(double current_range_m, double current_snr_db,
                                   double* max_range_m);
 
 /**
+ * @brief 第36项：把当前 SNR 折算到**标称 RCS** 后反解 90% 探测概率的最大探测距离。
+ *
+ * @details 判据要求给出的是"标称 RCS（1 m²）下的 90% 探测距离"，不是"当前目标 RCS 下"的——
+ *   同一部雷达对不同 RCS 目标给出的距离不可比，验收要的是**本雷达的能力基准**。
+ *   回波功率与 RCS 成正比（`P_r ∝ σ`），故先做 RCS 归一：
+ *   `SNR_nom = SNR_now · (σ_nom/σ_now)`，再套四次方根定律
+ *   `R = R_now · (SNR_nom/SNR_req)^(1/4)`。
+ *   当前 RCS ≤ 0 或非有限时退化为"不改 RCS"（等价于按当前值）。
+ *
+ * @param[in]  current_range_m 当前斜距（m，须 > 0）。
+ * @param[in]  current_snr_db  当前单脉冲 SNR（dB，对应 current_rcs_m2）。
+ * @param[in]  current_rcs_m2  当前目标 RCS（m²；≤0 或非有限 = 不折算）。
+ * @param[in]  nominal_rcs_m2  标称 RCS（m²，须 > 0；判据口径 1.0）。
+ * @param[in]  pd_target       目标检测概率（0,1）。
+ * @param[in]  pfa             虚警概率（0,1）。
+ * @param[in]  num_pulses      积累脉冲数（≥1）。
+ * @param[out] max_range_m     反解出的标称 RCS 下最大探测距离（m）。
+ * @return 入参合法且反解有解时为 true；否则不改输出。
+ */
+bool TryComputeDetectionRangeAtPdForRcs(double current_range_m, double current_snr_db,
+                                        double current_rcs_m2, double nominal_rcs_m2,
+                                        double pd_target, double pfa, int num_pulses,
+                                        double* max_range_m);
+
+/**
  * @brief 雷达局部 ENU 位置换斜距与视线角（与 RirController::ComputeLookAngles 同口径）。
  * @param[in] east_m 东向坐标（m）。
  * @param[in] north_m 北向坐标（m）。

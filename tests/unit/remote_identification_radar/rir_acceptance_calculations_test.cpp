@@ -132,6 +132,42 @@ TEST(RirAcceptanceItem36Test, RangeScalesAsFourthRootOfSnrRatio) {
   EXPECT_NEAR(range_at_plus8db_m / range_at_required_m, std::pow(10.0, 8.0 / 40.0), 1.0e-6);
 }
 
+// 标称 RCS 归一（2026-11-04 口径）：把当前 RCS 折算到标称 1 m² 后，距离按
+// (σ_nom/σ_now)^(1/4) 放大；判决依据是"本雷达对标称 RCS 的能力基准"。
+TEST(RirAcceptanceItem36Test, NominalRcsNormalizationScalesByFourthRoot) {
+  const double pfa = 1.0e-6;
+  const int pulses = 1;
+  const double reference_range_m = 1.0e6;
+  const double current_rcs_m2 = 0.1;
+  const double nominal_rcs_m2 = 1.0;
+
+  double range_at_current_m = 0.0;
+  double range_at_nominal_m = 0.0;
+  ASSERT_TRUE(runtime::TryComputeDetectionRangeAtPdForRcs(
+      reference_range_m, 20.0, current_rcs_m2, current_rcs_m2, 0.90, pfa, pulses, &range_at_current_m));
+  ASSERT_TRUE(runtime::TryComputeDetectionRangeAtPdForRcs(
+      reference_range_m, 20.0, current_rcs_m2, nominal_rcs_m2, 0.90, pfa, pulses, &range_at_nominal_m));
+  EXPECT_NEAR(range_at_nominal_m / range_at_current_m,
+              std::pow(nominal_rcs_m2 / current_rcs_m2, 0.25), 1.0e-6);
+}
+
+// 当前 RCS 缺失（≤0）时退化为不折算；标称 RCS 非法则整体拒绝且不改输出。
+TEST(RirAcceptanceItem36Test, NominalRcsFallsBackAndRejectsInvalid) {
+  const double pfa = 1.0e-6;
+  const int pulses = 1;
+  double range_plain = 0.0;
+  double range_fallback = 0.0;
+  ASSERT_TRUE(runtime::TryComputeDetectionRangeAtPd(3.4e6, 12.0, 0.90, pfa, pulses, &range_plain));
+  ASSERT_TRUE(runtime::TryComputeDetectionRangeAtPdForRcs(3.4e6, 12.0, 0.0, 1.0, 0.90, pfa, pulses,
+                                                          &range_fallback));
+  EXPECT_NEAR(range_fallback, range_plain, 1.0e-9) << "当前 RCS 未知时不应凭空折算";
+
+  double unchanged = 123.0;
+  EXPECT_FALSE(runtime::TryComputeDetectionRangeAtPdForRcs(3.4e6, 12.0, 0.1, 0.0, 0.90, pfa, pulses,
+                                                           &unchanged));
+  EXPECT_EQ(unchanged, 123.0);
+}
+
 // 非法入参必须原子拒绝（不改输出）。
 TEST(RirAcceptanceItem36Test, RejectsInvalidInput) {
   double max_range_m = 123.0;

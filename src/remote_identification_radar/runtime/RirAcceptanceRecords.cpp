@@ -372,6 +372,10 @@ std::string FormatChannelWatts(const std::array<double, oneq::common::radar::kMt
   return text;
 }
 
+// 判据第36项口径：90% 探测距离按**标称 RCS = 1 m²** 报（本雷达能力基准）。
+// 不放进配置：这是验收定义，改它等于改判据口径，不是任务参数。
+constexpr float kNominalRcsM2 = 1.0f;
+
 bool TryBuildAcceptanceBank(const RirDetectionAcceptInput& input,
                             oneq::common::radar::MtiMtdAcceptanceResult* bank) {
   if (bank == nullptr || !input.has_cell) {
@@ -496,6 +500,25 @@ bool TryComputeDetectionRangeAtPd(double current_range_m, double current_snr_db,
   }
   *max_range_m = computed_range_m;
   return true;
+}
+
+bool TryComputeDetectionRangeAtPdForRcs(double current_range_m, double current_snr_db,
+                                       double current_rcs_m2, double nominal_rcs_m2,
+                                       double pd_target, double pfa, int num_pulses,
+                                       double* max_range_m) {
+  if (!std::isfinite(nominal_rcs_m2) || nominal_rcs_m2 <= 0.0) {
+    return false;
+  }
+  // 中译：**RCS 归一**（2026-11-04）——回波功率与 RCS 成正比，故把当前 SNR 折算到标称 RCS：
+  //   SNR_nom = SNR_now · (σ_nom/σ_now)。当前 RCS 缺失/非正时不折算（等价按当前值），
+  //   保证退化行为与旧口径一致，而不是凭空放大。
+  // 标识：标称RCS归一（2026-11-04）。
+  double snr_nominal_db = current_snr_db;
+  if (std::isfinite(current_rcs_m2) && current_rcs_m2 > 0.0) {
+    snr_nominal_db += 10.0 * std::log10(nominal_rcs_m2 / current_rcs_m2);
+  }
+  return TryComputeDetectionRangeAtPd(current_range_m, snr_nominal_db, pd_target, pfa,
+                                      num_pulses, max_range_m);
 }
 
 bool TryLookPolarFromEnuM(float east_m, float north_m, float up_m, float* range_m, float* az_deg,
@@ -970,12 +993,19 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   if (input.has_cell && input.range_m > 0.0f) {
     const double snr_now_db = static_cast<double>(input.cell.processed_single_pulse_sinr_db);
     double max_range_m = 0.0;
-    if (TryComputeDetectionRangeAtPd(static_cast<double>(input.range_m), snr_now_db, 0.90,
-                                     input.cfar_pfa, static_cast<int>(std::max(1U, pulses)),
-                                     &max_range_m)) {
+    // 中译：**90% 探测距离按标称 RCS（1 m²）报**（2026-11-04）——判据要的是"标称 RCS 的
+    //   90% 探测概率的探测距离"，即本雷达的能力基准；此前用的是**当前目标 RCS**，
+    //   同一部雷达对小 RCS 目标报出的距离偏小、且随目标变化，不可比也不满足判据口径。
+    //   行内明确写 `标称RCS=1.000m^2`，并保留 `目标RCS=` 供溯源（两值不同轴）。
+    // 标识：第36项标称RCS口径（2026-11-04）。
+    if (TryComputeDetectionRangeAtPdForRcs(
+            static_cast<double>(input.range_m), snr_now_db, static_cast<double>(input.rcs_m2),
+            static_cast<double>(kNominalRcsM2), 0.90, input.cfar_pfa,
+            static_cast<int>(std::max(1U, pulses)), &max_range_m)) {
       Emit(t, cycle, "恒虚警检测功能测试",
            id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
-               "m 依据RCS=" + FormatF(input.rcs_m2, 3) + "m^2");
+               "m 标称RCS=" + FormatF(kNominalRcsM2, 3) + "m^2 目标RCS=" +
+               FormatF(input.rcs_m2, 3) + "m^2");
     }
   }
 

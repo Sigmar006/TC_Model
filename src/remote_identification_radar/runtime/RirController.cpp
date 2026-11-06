@@ -1031,7 +1031,12 @@ void RirController::RunCycle(const session::RirCycleInput& input,
   const float horizon_half_beam_deg =
       0.5f * std::max(hardware_.antenna.nominal_az_beamwidth_deg,
                       hardware_.antenna.nominal_el_beamwidth_deg);
-  const bool horizon_search_cycle = IsHorizonSearchCycle(plan, horizon_half_beam_deg);
+  // 中译：地平线周期由**搜索模式**决定（2026-11-06）：地平线扫描模式整周期按 37A 记账；
+  //   指定空域模式沿用"存在贴地平线驻留"的兜底口径，既有日志不倒退。
+  // 标识：地平线周期模式化（2026-11-06）。
+  const bool horizon_search_cycle =
+      mission_.search_mode == config::RirSearchMode::kHorizonScan ||
+      IsHorizonSearchCycle(plan, horizon_half_beam_deg);
   // 验收"指向"行与接收链回退口径按计划首条目；发射记录逐驻留
   //（见 ResolveRfCycle / last_emission_frame_，核查 9.2）。
   const config::RirAzimuthElevationDeg& dwell_center_deg = plan.front().pointing_deg;
@@ -1126,8 +1131,6 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     // 实际搜索扇区 = 任务扫描子窗 ∩ 硬件可扫描体积（子窗缺省无界时等于体积，
     // 与既有行为兼容）。搜索态候选按此扇区裁剪；指定识别目标与确认航迹目标
     // 在硬件体积内豁免子窗（跟踪连续性高于搜索子窗，2026-08-29 TAS）。
-    const config::RirAzimuthElevationLimitsDeg search_sector =
-        internal::IntersectScanSector(scan_window_deg, steerable_volume_deg);
     // 主瓣覆盖门半宽（半功率宽×系数，驻留指向每轴各开这么宽）：与方向图同一
     // 波束宽度源（有效波束宽度，nominal → λ/L 物理推导），且同一载频口径
     // （与 TryBuildMeasurement 一致：规划频率优先，兜底发射频率）。
@@ -1144,6 +1147,12 @@ void RirController::RunCycle(const session::RirCycleInput& input,
         0.5f * kMainLobeGateBeamwidthScale * gate_beamwidth.az_beamwidth_deg;
     const float main_lobe_half_el_deg =
         0.5f * kMainLobeGateBeamwidthScale * gate_beamwidth.el_beamwidth_deg;
+    // 中译：**候选裁剪与波位表同源**（2026-11-06）——同一 `ResolveSearchSector` 决定
+    //   仰角口径（地平线模式用窄带），确保"波位在哪儿扫"与"候选在哪儿收"不分叉。
+    //   声明放在波束宽解析之后：地平线自适应带要用 θ_el。
+    // 标识：搜索模式扇区解析（控制器侧，2026-11-06）。
+    const config::RirAzimuthElevationLimitsDeg search_sector = internal::ResolveSearchSector(
+        mission_, steerable_volume_deg, gate_beamwidth.el_beamwidth_deg);
     // 过程：③ 逐目标门控——地球遮挡（穿地视线硬排除）→ 可扫描体积/任务搜索子窗裁剪（指定目标与确认
     //       航迹在体积内豁免子窗）；两类排除各发一条 kInfo 归因诊断。
     for (std::size_t i = 0U; i < input.scene_targets.size(); ++i) {

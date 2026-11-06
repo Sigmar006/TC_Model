@@ -152,6 +152,33 @@ inline void LoadRirOrientation(const examples::JsonValue& j, rir_cfg::RirOrienta
   LoadRirAzElLimits(j, v);
 }
 
+/** @brief 搜索模式字符串 → 枚举；未知串保持默认（kSectorScan），不静默改成地平线。 */
+inline rir_cfg::RirSearchMode RirSearchModeFromString(const std::string& text) {
+  if (text == "kHorizonScan") {
+    return rir_cfg::RirSearchMode::kHorizonScan;
+  }
+  return rir_cfg::RirSearchMode::kSectorScan;
+}
+
+/**
+ * @brief 地平线扫描参数（2026-11-06）。
+ * @note 只在地 `mission.search_mode == kHorizonScan` 时生效；缺省 `el_band_auto=true`
+ *   表示仰角带随俯仰波束自适应（[−θ_el/2, +2°]），此时下面两个角度值被忽略。
+ */
+inline void LoadRirHorizonScan(const examples::JsonValue& j,
+                               rir_cfg::RirHorizonScanConfig* v) {
+  if (j.IsNull()) return;
+  if (j.Has("el_band_auto")) {
+    v->el_band_auto = j["el_band_auto"].AsBool();
+  }
+  if (j.Has("el_lower_deg")) {
+    v->el_lower_deg = static_cast<float>(j["el_lower_deg"].AsDouble());
+  }
+  if (j.Has("el_upper_deg")) {
+    v->el_upper_deg = static_cast<float>(j["el_upper_deg"].AsDouble());
+  }
+}
+
 inline void LoadRirMission(const examples::JsonValue& j, rir_cfg::RirMissionConfig* v) {
   if (j.IsNull()) return;
   if (j.Has("work_mode")) {
@@ -175,6 +202,12 @@ inline void LoadRirMission(const examples::JsonValue& j, rir_cfg::RirMissionConf
   }
   // 任务扫描子窗（用户指定作战搜索扇区）；缺省保持无界 [-180,180]×[-90,90]。
   LoadRirAzElLimits(j["scan_window_deg"], &v->scan_window_deg);
+  // 搜索模式（2026-11-06）：缺省 kSectorScan = 既有行为；kHorizonScan 时仰角改用
+  // 地平线窄带（方位仍取上面的 scan_window_deg）。
+  if (j.Has("search_mode")) {
+    v->search_mode = RirSearchModeFromString(j["search_mode"].AsString());
+  }
+  LoadRirHorizonScan(j["horizon_scan"], &v->horizon_scan);
 }
 
 inline void LoadRirDetectionPolicy(const examples::JsonValue& j,

@@ -281,6 +281,21 @@ session::RirIssueList ValidateRirSessionConfig(const RirSessionConfig& config) {
     }
   }
 
+  // 地平线扫描参数（2026-11-06）：`search_mode == kHorizonScan` 且手动给带时，
+  // 仰角带须有限、有序、落在 [-90,90]；自适应模式（el_band_auto=true）忽略这两个值，
+  // 不参与校验（带由俯仰波束宽解析，波束宽本身另有校验）。
+  if (mission.search_mode == RirSearchMode::kHorizonScan && !mission.horizon_scan.el_band_auto) {
+    const float lower = mission.horizon_scan.el_lower_deg;
+    const float upper = mission.horizon_scan.el_upper_deg;
+    if (!IsFinite(lower) || !IsFinite(upper) || lower > upper || lower < -90.0f ||
+        upper > 90.0f) {
+      PushIssue(&issues, session::codes::kHorizonScanBandInvalid,
+                "mission.horizon_scan.el_lower_deg / el_upper_deg",
+                "Horizon scan elevation band must be finite, ordered and within [-90,90] "
+                "when el_band_auto is false.");
+    }
+  }
+
   // 可扫描体积（orientation 第五域）：az 相对域 [-180,180]、el 绝对域 [-90,90]。
   {
     const RirAzimuthElevationLimitsDeg& volume = config.orientation;

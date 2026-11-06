@@ -325,8 +325,12 @@ std::vector<oneq::common::radar::AzimuthElevationDeg> BuildAbsoluteScanWaves(
   const config::RirMissionConfig& mission = config.mission;
   // 实际搜索扇区 = 任务扫描子窗 ∩ 硬件可扫描体积（子窗缺省无界时退化为体积）：
   // 扫描波位仅在该扇区内推进（甲方「任务范围由用户指定」）。
-  const config::RirAzimuthElevationLimitsDeg sector = internal::IntersectScanSector(
-      mission.scan_window_deg, config.orientation);
+  // 中译：**搜索扇区按模式单源解析**（2026-11-06）——方位仍取任务子窗，仰角按
+  //   `search_mode` 切换（指定空域用子窗 el；地平线扫描用地平线窄带，默认
+  //   [−θ_el/2, +2°]）。扫描波位表与检测候选裁剪共用这一个函数，避免两处口径分叉。
+  // 标识：搜索模式扇区解析（2026-11-06）。
+  const config::RirAzimuthElevationLimitsDeg sector = internal::ResolveSearchSector(
+      mission, config.orientation, beamwidth.el_beamwidth_deg);
   const float az_step = beamwidth.az_beamwidth_deg * mission.step_scale;
   const float el_step = beamwidth.el_beamwidth_deg * mission.step_scale;
   const std::vector<oneq::common::radar::AzimuthElevationDeg> relative_pattern =
@@ -905,7 +909,11 @@ RirCycleResult RirSession::Impl::RunCycle(const RirCycleInput& input) {
     const float horizon_half_beam_deg =
         0.5f * std::max(config.hardware.antenna.nominal_az_beamwidth_deg,
                         config.hardware.antenna.nominal_el_beamwidth_deg);
+    // 中译：**地平线周期由模式决定**（2026-11-06）——地平线扫描模式下整周期都算
+    // 地平线周期；指定空域模式保留"存在贴地平线驻留"的既有兜底口径，行为不倒退。
+    // 标识：地平线周期模式化（2026-11-06）。
     const bool horizon_search_cycle =
+        config.mission.search_mode == config::RirSearchMode::kHorizonScan ||
         runtime::IsHorizonSearchCycle(dwell_plan, horizon_half_beam_deg);
     runtime::WriteRirDwellScan(controller.EffectiveSensorEntityId(), input.sim_time_sec,
                                input.input_cycle_index, dwell_plan, horizon_search_cycle);

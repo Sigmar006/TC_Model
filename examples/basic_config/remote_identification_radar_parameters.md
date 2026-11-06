@@ -90,7 +90,15 @@
 | `scan_sequence` | 枚举字符串 | 二维扫描推进顺序，例如 `kAzimuthFirst`。 |
 | `step_scale` | 倍数 | 波位步长相对波束宽度的比例。 |
 | `scan_window_deg.az_min_deg` / `az_max_deg` | deg | 当前任务扫描子窗的方位范围。 |
-| `scan_window_deg.el_min_deg` / `el_max_deg` | deg | 当前任务扫描子窗的俯仰范围。 |
+| `scan_window_deg.el_min_deg` / `el_max_deg` | deg | 当前任务扫描子窗的俯仰范围（**指定空域搜索模式**下生效）。 |
+| `search_mode` | — | 搜索模式：`kSectorScan`（缺省，指定空域搜索）或 `kHorizonScan`（地平线扫描）。 |
+| `horizon_scan.el_band_auto` | — | 地平线扫描仰角带是否随俯仰波束自适应（缺省 `true`）。 |
+| `horizon_scan.el_lower_deg` / `el_upper_deg` | deg | 手动仰角带（仅 `el_band_auto=false` 时生效）。 |
+
+> 搜索模式只切换**仰角**口径：方位范围在两种模式下都由 `scan_window_deg` 的 az 区间决定。
+> `kHorizonScan` 时仰角改用地平线窄带——自适应口径为 `[−θ_el/2, +2°]`（θ_el 为有效俯仰
+> 波束宽），目的是让主瓣下沿掠过地平线、覆盖掠海/掠地目标，并使第 34 项杂波链路具备
+> 触发几何。
 
 ## 算法策略参数
 

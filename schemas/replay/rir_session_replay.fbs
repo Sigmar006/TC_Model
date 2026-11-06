@@ -1,4 +1,4 @@
-// rir_session_replay.fbs
+﻿// rir_session_replay.fbs
 // RIR 模块 replay FlatBuffers schema：session_config、runtime_config_patch 与
 // failure_marker 载荷。字段与以下公开头一一对应（新增公开配置字段必须同步扩展）：
 //   include/1q/remote_identification_radar/config/RirSessionConfig.h
@@ -102,6 +102,12 @@ table RirMissionConfig {
   scan_sequence:int;        // oneq::foundation::ScanSequence
   step_scale:float;
   scan_window_deg:RirAzimuthElevationLimitsDeg;  // 任务扫描子窗（缺省无界=不收窄）
+  // 2026-11-06 加性字段：搜索模式与地平线扫描参数。
+  // 旧回放没有这两项时按默认（kSectorScan / 自适应带），语义不回归。
+  search_mode:int;          // RirSearchMode
+  horizon_el_band_auto:bool;
+  horizon_el_lower_deg:float;
+  horizon_el_upper_deg:float;
 }
 
 // ---- policy 域 ----

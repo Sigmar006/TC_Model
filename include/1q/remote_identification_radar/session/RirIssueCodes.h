@@ -67,6 +67,10 @@ constexpr char kRecognitionTimeRangeInvalid[] = "rir.validation.recognition_time
 /** @brief 扫描策略非法（步长系数须为正）。 */
 constexpr char kScanStrategyInvalid[] = "rir.validation.scan_strategy_invalid";
 
+/** @brief 地平线扫描仰角带非法（手动模式下须有限、有序，且落在 [-90,90]）。
+ *         自适应模式下（el_band_auto=true）这两个值被忽略，不参与校验。 */
+constexpr char kHorizonScanBandInvalid[] = "rir.validation.horizon_scan_band_invalid";
+
 /** @brief 扫描波位单轴采样数超内核上限（4096），波位表会被静默截断；
  *         需加大步长（step_scale/波束宽）或缩小扫描扇区。 */
 constexpr char kScanWaveAxisSamplesTruncated[] =

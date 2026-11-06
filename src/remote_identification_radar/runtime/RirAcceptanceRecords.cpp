@@ -2177,8 +2177,13 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   //   地平线周期写 37A、其余写 37，保证两项互斥、不重复成行。
   // 标识：第37/37A 调度行互斥（2026-11-02）。
   const char* schedule_item = horizon_search_cycle ? "地平线搜索功能测试" : "空域自主搜索功能测试";
+  // 中译：**调度行补"扫描模式"**（2026-11-06）——此前该行只说"搜索=几个驻留"，看不出
+  //   本周期走的是地平线扫描还是指定空域搜索；模式化之后在这里落盘，外部可直接对照
+  //   第 37/37A 两项的归属是否与配置一致。
+  // 标识：调度行扫描模式（2026-11-06）。
   Emit(sim_time_sec, cycle, schedule_item,
-       "雷达ID=" + std::to_string(radar_id) + " 扫描调度信息=搜索=" +
+       "雷达ID=" + std::to_string(radar_id) + " 扫描模式=" +
+           (horizon_search_cycle ? "地平线扫描" : "指定空域搜索") + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
            " 驻留=" + std::to_string(external_track_count + internal_track_count) +
            " 预算/已耗时=" + FormatF(budget_sec, 3) + "/" + FormatF(consumed_sec, 3) + "s");

@@ -373,6 +373,26 @@ CMake 开关 `ONEQ_ENABLE_RIR_ACCEPTANCE_LOG`（默认 OFF）门控。开启后�
 **结论（与单测 A/B 一致）**：外部引导只改指向、不改搜索空域；"背对目标"后能否探测取决于
 `scan_window` 是否覆盖目标方向。该轮同时意外拿到"西安目标（99）+ 引导 + 探测"的完整证据链。
 
+## 搜索模式：指定空域搜索 / 地平线扫描（2026-11-06）
+
+`mission.search_mode` 二选一，两种模式**共用方位子窗**（`scan_window_deg` 的 az 区间），
+只切换仰角口径：
+
+| 模式 | 仰角口径 | 搜索结果 |
+|---|---|---|
+| `kSectorScan`（缺省） | `scan_window_deg` 的 el 区间 | 既有行为，逐位不变 |
+| `kHorizonScan` | 地平线窄带：自适应 `[−θ_el/2, +2°]`，或 `horizon_scan` 手动给带 | 波束下沿掠过地平线，掠海/掠地目标可被照射 |
+
+三条实现约束：
+
+1. **单源**：波位表（`RirSession::BuildAbsoluteScanWaves`）与检测候选裁剪
+   （`RirController`）都调 `internal::ResolveSearchSector()`，不允许各算一套。
+2. **验收归属**：地平线模式整周期按第 37A 项记账；指定空域模式保留
+   "存在贴地平线驻留即按 37A"的既有兜底，日志不倒退。调度行新增
+   `扫描模式=地平线扫描|指定空域搜索`。
+3. **杂波前提**：地平线模式的价值之一是让第 34 项杂波链路具备几何触发条件
+   （主瓣下沿擦地才有杂波），推导见 [clutter_chain.md](clutter_chain.md)。
+
 ## 设计变更规则
 
 1. 新增/删除/改变 public SPI 时，同步本文档集、consumer tests 与

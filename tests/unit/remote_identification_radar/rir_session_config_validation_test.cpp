@@ -27,6 +27,39 @@ bool HasCode(const session::RirIssueList& issues, const char* code) {
 }
 
 
+TEST(RirSessionConfigValidationTest, RejectsInvertedHorizonScanBandWhenManual) {
+  // 2026-11-06：地平线扫描手动给带时必须有序；自适应模式忽略这两个值。
+  RirSessionConfig session_config;
+  session_config.mission.search_mode = config::RirSearchMode::kHorizonScan;
+  session_config.mission.horizon_scan.el_band_auto = false;
+  session_config.mission.horizon_scan.el_lower_deg = 3.0f;
+  session_config.mission.horizon_scan.el_upper_deg = -1.0f;
+  EXPECT_TRUE(HasCode(ValidateRirSessionConfig(session_config),
+                      session::codes::kHorizonScanBandInvalid));
+
+  // 自适应模式：同样的倒序值不参与校验（带由俯仰波束宽解析）。
+  session_config.mission.horizon_scan.el_band_auto = true;
+  EXPECT_FALSE(HasCode(ValidateRirSessionConfig(session_config),
+                       session::codes::kHorizonScanBandInvalid));
+
+  // 指定空域模式下地平线参数不生效，倒序值也不校验。
+  session_config.mission.search_mode = config::RirSearchMode::kSectorScan;
+  session_config.mission.horizon_scan.el_band_auto = false;
+  EXPECT_FALSE(HasCode(ValidateRirSessionConfig(session_config),
+                       session::codes::kHorizonScanBandInvalid));
+}
+
+TEST(RirSessionConfigValidationTest, RejectsHorizonScanBandOutsideElevationDomain) {
+  // 手动带越界（下沿 < −90°）同样拒绝：带是绝对仰角口径。
+  RirSessionConfig session_config;
+  session_config.mission.search_mode = config::RirSearchMode::kHorizonScan;
+  session_config.mission.horizon_scan.el_band_auto = false;
+  session_config.mission.horizon_scan.el_lower_deg = -95.0f;
+  session_config.mission.horizon_scan.el_upper_deg = 0.0f;
+  EXPECT_TRUE(HasCode(ValidateRirSessionConfig(session_config),
+                      session::codes::kHorizonScanBandInvalid));
+}
+
 TEST(RirSessionConfigValidationTest, AcceptsPhysicalApertureWhenNominalBeamwidthIsZero) {
   RirSessionConfig session_config;
   session_config.hardware.antenna.nominal_az_beamwidth_deg = 0.0f;

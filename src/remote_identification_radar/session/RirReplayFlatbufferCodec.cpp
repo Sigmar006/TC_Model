@@ -693,7 +693,9 @@ flatbuffers::Offset<cfb::RirMissionConfig> EncodeMissionConfig(
       *builder, static_cast<int>(value.work_mode), EncodeAzEl(builder, value.scan_center_deg),
       value.max_range_m, value.recognition_dwell_sec,
       static_cast<int>(value.scan_start_position), static_cast<int>(value.scan_sequence),
-      value.step_scale, EncodeAzElLimits(builder, value.scan_window_deg));
+      value.step_scale, EncodeAzElLimits(builder, value.scan_window_deg),
+      static_cast<int>(value.search_mode), value.horizon_scan.el_band_auto,
+      value.horizon_scan.el_lower_deg, value.horizon_scan.el_upper_deg);
 }
 
 void DecodeMissionConfig(const cfb::RirMissionConfig* value, config::RirMissionConfig* out) {
@@ -716,6 +718,13 @@ void DecodeMissionConfig(const cfb::RirMissionConfig* value, config::RirMissionC
     out->scan_window_deg.el_min_deg = window->el_min_deg();
     out->scan_window_deg.el_max_deg = window->el_max_deg();
   }
+  // 中译：搜索模式与地平线参数（2026-11-06 加性字段）——旧回放缺这两项时按默认
+  //   （kSectorScan + 自适应带）解，回放行为与录制时一致，不会凭空改用模式。
+  // 标识：回放搜索模式（2026-11-06）。
+  out->search_mode = static_cast<config::RirSearchMode>(value->search_mode());
+  out->horizon_scan.el_band_auto = value->horizon_el_band_auto();
+  out->horizon_scan.el_lower_deg = value->horizon_el_lower_deg();
+  out->horizon_scan.el_upper_deg = value->horizon_el_upper_deg();
 }
 
 flatbuffers::Offset<cfb::RirPolicyConfig> EncodePolicyConfig(

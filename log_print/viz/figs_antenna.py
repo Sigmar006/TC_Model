@@ -9,7 +9,7 @@ from matplotlib.colors import Normalize
 from scipy.interpolate import RectBivariateSpline
 
 from . import extract
-from .common import C, db10, style_axes, title_block
+from .common import C, db10, empty_fig, style_axes, title_block
 
 SIDE = ["top", "right"]
 
@@ -206,8 +206,11 @@ def fig02(D):
 # ---------------------------------------------------------------- 图 3
 def fig03(D):
     d = extract.load("radar_output", verbose=False)
-    beam = d["beam"]
-    bs = d["beam_sum"].sort_values("t")
+    beam = d.get("beam")
+    if beam is None or len(beam) == 0:
+        return empty_fig("图 3 波束扫描与驻留调度",
+                         "本批日志无「波束扫描功能测试」记录，本图从略")
+    bs = d.get("beam_sum")
 
     fig, axes = plt.subplots(1, 3, figsize=(15.2, 4.9))
     title_block(fig, "图 3  波束扫描与驻留调度",
@@ -256,7 +259,9 @@ def fig03(D):
     style_axes(ax)
 
     ax2 = ax.inset_axes([0.03, 0.62, 0.38, 0.33])
-    ax2.plot(bs["t"], bs["n"], color=C["neutral"], lw=0.8)
+    if bs is not None and len(bs):
+        bs = bs.sort_values("t")
+        ax2.plot(bs["t"], bs["n"], color=C["neutral"], lw=0.8)
     ax2.set_xlim(0, 2400)
     ax2.set_title("周期搜索驻留数", fontsize=7, pad=1.5)
     ax2.tick_params(labelsize=6)

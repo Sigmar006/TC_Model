@@ -2,6 +2,7 @@
 """公共样式、路径与坐标换算工具。"""
 from __future__ import annotations
 
+import functools
 import math
 import os
 import tempfile
@@ -275,6 +276,26 @@ def db20(x):
     ok = np.isfinite(a) & (a > 0.0)
     out[ok] = 20.0 * np.log10(a[ok])
     return out
+
+
+# ---------------------------------------------------------------- 缺表降级
+def needs(*specs, title: str = ""):
+    """装饰器：本图依赖的日志表缺失时改画一张说明卡，而不是抛 KeyError。
+
+    specs 每项为 (模块键, 表名, 日志消息名)，模块键取 radar_output / radar_ext /
+    radar_int / ir_int / ir_ext / sat。任一表缺失或为空即判定本批数据不足。
+    """
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(D, *args, **kwargs):
+            for mod, tab, msg in specs:
+                df = (D.get(mod) or {}).get(tab)
+                if df is None or len(df) == 0:
+                    name = title or getattr(fn, "__name__", "图")
+                    return empty_fig(name, f"本批日志无「{msg}」记录，本图从略")
+            return fn(D, *args, **kwargs)
+        return wrapper
+    return deco
 
 
 # ---------------------------------------------------------------- 分目标

@@ -14,8 +14,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-from .common import (C, CYCLE, by_target, db10, db20, enu_to_lla, style_axes,
-                     target_title, title_block)
+from .common import (C, CYCLE, by_target, db10, db20, enu_to_lla, needs,
+                     style_axes, target_title, title_block)
 
 
 # ---------------------------------------------------------------- 公共
@@ -61,6 +61,10 @@ def _runs(t, ok):
 
 
 # ---------------------------------------------------------------- 图 4
+@needs(("radar_int", "det", "雷达信号处理与检测判决交互接口测试"),
+       ("radar_ext", "plot", "雷达对外目标信息输出接口测试-点迹量测"),
+       ("radar_output", "cfar", "恒虚警检测功能测试"),
+       title="图 4 检测 SNR 与门限")
 def fig04(D):
     det = D["radar_int"]["det"].sort_values("t")
     plt_ = D["radar_ext"]["plot"].sort_values("t")
@@ -122,6 +126,9 @@ def fig04(D):
 
 
 # ---------------------------------------------------------------- 图 5
+@needs(("radar_ext", "plot", "雷达对外目标信息输出接口测试-点迹量测"),
+       ("radar_ext", "scene", "目标场景接口测试"),
+       title="图 5 检测概率–距离包络")
 def fig05(D):
     ext = D["radar_ext"]
     p_all = ext["plot"]
@@ -198,6 +205,10 @@ def fig05(D):
 
 
 # ---------------------------------------------------------------- 图 6
+@needs(("radar_output", "jam_power", "干扰功率计算功能测试"),
+       ("radar_output", "echo", "回波功率计算功能测试"),
+       ("radar_output", "jam_gain", "干扰信号处理增益功能测试"),
+       title="图 6 干扰功率与抑制")
 def fig06(D):
     jp = D["radar_output"]["jam_power"].sort_values("t")
     echo = D["radar_output"]["echo"].sort_values("t")
@@ -253,6 +264,8 @@ def fig06(D):
 
 
 # ---------------------------------------------------------------- 图 7
+@needs(("radar_ext", "jam_in", "外部干扰输入雷达接口测试"),
+       title="图 7 干扰源参数与几何")
 def fig07(D):
     ji = D["radar_ext"]["jam_in"].sort_values("t")
     fig = plt.figure(figsize=(13.2, 7.4))
@@ -344,6 +357,10 @@ def fig07(D):
 
 
 # ---------------------------------------------------------------- 图 8
+@needs(("radar_ext", "scene", "目标场景接口测试"),
+       ("radar_ext", "track_out", "雷达对外目标信息输出接口测试-航迹识别"),
+       ("radar_int", "meas_trk", "雷达检测量测与航迹处理交互接口测试"),
+       title="图 8 雷达多目标轨迹三态")
 def fig08(D):
     scene = D["radar_ext"]["scene"]
     to_all = D["radar_ext"]["track_out"].sort_values("t")
@@ -478,6 +495,8 @@ def fig08(D):
 
 
 # ---------------------------------------------------------------- 图 9
+@needs(("radar_output", "meas", "对目标的角度和距离进行测量功能测试"),
+       title="图 9 量测误差时序")
 def fig09(D):
     m = D["radar_output"]["meas"].sort_values("t")
     groups = by_target(m)
@@ -533,6 +552,8 @@ def fig09(D):
 
 
 # ---------------------------------------------------------------- 图 10
+@needs(("radar_output", "motion", "运动特征处理功能测试"),
+       title="图 10 速度–高度与机动判别")
 def fig10(D):
     mo_all = D["radar_output"]["motion"]
     groups = by_target(mo_all)
@@ -619,6 +640,10 @@ def fig10(D):
 
 
 # ---------------------------------------------------------------- 图 11
+@needs(("radar_ext", "track_out", "雷达对外目标信息输出接口测试-航迹识别"),
+       ("radar_int", "trk_lost", "雷达航迹与特征识别交互接口测试"),
+       ("radar_ext", "res", "雷达资源状态与日志接口测试"),
+       title="图 11 航迹生命周期")
 def fig11(D):
     to = D["radar_ext"]["track_out"].sort_values("t")
     lost = D["radar_int"]["trk_lost"]
@@ -681,6 +706,10 @@ def fig11(D):
 
 
 # ---------------------------------------------------------------- 图 16
+@needs(("radar_output", "echo", "回波功率计算功能测试"),
+       ("radar_output", "gain", "目标信号增益功能测试"),
+       ("radar_int", "det", "雷达信号处理与检测判决交互接口测试"),
+       title="图 16 处理链功率账本")
 def fig16(D):
     echo = D["radar_output"]["echo"].sort_values("t")
     gn = D["radar_output"]["gain"].sort_values("t")

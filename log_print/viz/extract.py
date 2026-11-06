@@ -253,17 +253,14 @@ P_ASSOC = J(
     f("检测概率", "pd"),
     s("关联结果", "result", r".+$"),
 )
-P_MOTION = J(
-    rf"航迹=(?P<track>\d+)",
-    rf"目标ID=(?P<tid>\d+)",
-    rf"速度=(?P<speed>{_N})m/s",
-    rf"高度=(?P<alt>{_N})m",
-    rf"加速度=(?P<acc>{_N})m/s\^2",
-    s("近似直线", "straight"),
-    s("速度来源", "v_src"),
-    s("加速度来源", "a_src"),
-    s("识别类别", "cls"),
-)
+P_MOTION = re.compile(
+    rf"航迹=(?P<track>\d+) 目标ID=(?P<tid>\d+) 速度=(?P<speed>{_N})m/s "
+    rf"高度=(?P<alt>{_N})m 加速度=(?P<acc>{_N})m/s\^2 "
+    rf"近似直线=(?P<straight>\S+) 速度来源=(?P<v_src>\S+) "
+    rf"加速度来源=(?P<a_src>\S+)"
+    # 2026-11-06 起该行中间多了“综合识别加权贡献”，老日志没有，两者都要认。
+    rf"(?: 综合识别加权贡献=(?P<contrib>{_N}))? "
+    rf"识别类别=(?P<cls>\S+)")
 P_RCSF = J(
     rf"航迹=(?P<track>\d+)",
     rf"目标ID=(?P<tid>\d+)",

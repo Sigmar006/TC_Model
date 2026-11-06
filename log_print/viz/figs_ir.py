@@ -14,7 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 
-from .common import (C, CYCLE, W_IR, by_target, db10, style_axes,
+from .common import (C, CYCLE, W_IR, by_target, db10, needs, style_axes,
                      target_title, title_block)
 
 
@@ -98,6 +98,9 @@ def _fig12_partial(det, mr):
 
 
 # ---------------------------------------------------------------- 图 12
+@needs(("sat", "ir_detect", "多传感器目标跟踪功能测试"),
+       ("sat", "maxrange", "最大探测距离计算功能测试"),
+       title="图 12 红外覆盖与可用性")
 def fig12(D):
     sat = D["sat"]
     det = sat["ir_detect"].sort_values("t")
@@ -179,6 +182,8 @@ def fig12(D):
 
 
 # ---------------------------------------------------------------- 图 13
+@needs(("ir_int", "ir_trk", "红外量测与跟踪滤波交互接口测试"),
+       title="图 13 红外跟踪与 NIS")
 def fig13(D):
     tr = D["ir_int"]["ir_trk"].sort_values("t")
     groups = by_target(tr)
@@ -297,6 +302,12 @@ def fig13(D):
 
 
 # ---------------------------------------------------------------- 图 14
+@needs(("ir_int", "ir_rad", "红外辐射噪声与检测判决交互接口测试"),
+       ("ir_int", "ir_geom", "红外场景几何与视场门控交互接口测试"),
+       ("ir_int", "ir_cand", "红外宽场候选与窄场调度交互接口测试"),
+       ("ir_ext", "ir_obs", "红外观测与航迹输出接口测试"),
+       ("ir_int", "ir_trk", "红外量测与跟踪滤波交互接口测试"),
+       title="图 14 红外辐射检测")
 def fig14(D):
     rad = D["ir_int"]["ir_rad"]
     geom = D["ir_int"]["ir_geom"]
@@ -402,6 +413,11 @@ def fig14(D):
 
 
 # ---------------------------------------------------------------- 图 15
+@needs(("sat", "pos_err", "卫星自身定位误差功能测试"),
+       ("sat", "ukf", "UKF滤波"),
+       ("sat", "impact", "落点预报与信息分发功能测试"),
+       ("sat", "launch", "发射点预测功能测试"),
+       title="图 15 卫星导航与落点")
 def fig15(D):
     pe = D["sat"]["pos_err"].sort_values("t")
     uk = D["sat"]["ukf"].sort_values("t")

@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
 
-from .common import (C, CYCLE, W_RADAR, by_target, db10, empty_fig, style_axes,
-                     target_title, title_block)
+from .common import (C, CYCLE, W_RADAR, by_target, db10, empty_fig, needs,
+                     style_axes, target_title, title_block)
 
 COLS = ["RCS", "极化", "HRRP"]
 
@@ -65,6 +65,9 @@ def _tier_txt(g):
 
 
 # ---------------------------------------------------------------- 图 17
+@needs(("radar_output", "jam_gain", "干扰信号处理增益功能测试"),
+       ("radar_output", "noise", "噪声增益功能测试"),
+       title="图 17 MTD 八通道")
 def fig17(D):
     jg = D["radar_output"]["jam_gain"].sort_values("t")
     nz = D["radar_output"]["noise"]
@@ -152,6 +155,8 @@ def fig17(D):
 
 
 # ---------------------------------------------------------------- 图 18
+@needs(("radar_output", "echo", "回波功率计算功能测试"),
+       title="图 18 回波距离律")
 def fig18(D):
     e_all = D["radar_output"]["echo"].sort_values("t")
     groups = by_target(e_all)
@@ -279,6 +284,8 @@ def fig18(D):
 
 
 # ---------------------------------------------------------------- 图 19
+@needs(("radar_int", "trk_feat", "雷达航迹与特征识别交互接口测试"),
+       title="图 19 特征新鲜度")
 def fig19(D):
     tf = D["radar_int"]["trk_feat"].sort_values("t")
     groups = by_target(tf)
@@ -378,6 +385,8 @@ def fig19(D):
 
 
 # ---------------------------------------------------------------- 图 20
+@needs(("radar_output", "rcs_feat", "RCS统计特征处理功能测试"),
+       title="图 20 RCS 特征")
 def fig20(D):
     rc = D["radar_output"]["rcs_feat"].sort_values("t")
     groups = by_target(rc)
@@ -456,6 +465,8 @@ def fig20(D):
 
 
 # ---------------------------------------------------------------- 图 21
+@needs(("radar_int", "trk_feat", "雷达航迹与特征识别交互接口测试"),
+       title="图 21 识别置信度")
 def fig21(D):
     tf = D["radar_int"]["trk_feat"].sort_values("t")
     groups = by_target(tf)
@@ -543,6 +554,10 @@ def fig21(D):
 
 
 # ---------------------------------------------------------------- 图 22
+@needs(("radar_output", "rcs_feat", "RCS统计特征处理功能测试"),
+       ("radar_output", "pol_feat", "极化特征解算功能测试"),
+       ("radar_output", "hrrp", "宽带一维像特征解算功能测试"),
+       title="图 22 识别特征加权概率")
 def fig22(D):
     ro = D["radar_output"]
     r = ro["rcs_feat"][["tid", "track", "t", "contrib"]].rename(columns={"contrib": "RCS"})
@@ -641,6 +656,8 @@ def fig22(D):
 
 
 # ---------------------------------------------------------------- 图 23
+@needs(("radar_output", "hrrp", "宽带一维像特征解算功能测试"),
+       title="图 23 HRRP 瀑布")
 def fig23(D):
     h_all = D["radar_output"]["hrrp"].sort_values("t")
     groups = by_target(h_all)
@@ -747,6 +764,8 @@ def fig23(D):
 
 
 # ---------------------------------------------------------------- 图 24
+@needs(("radar_output", "pol_feat", "极化特征解算功能测试"),
+       title="图 24 极化不变量")
 def fig24(D):
     pol = D["radar_output"]["pol_feat"].sort_values("t")
     # 有的目标只输出“目标类型/加权概率”一行，极化统计量整组缺失（窗口无效时
@@ -835,6 +854,8 @@ def fig24(D):
 
 
 # ---------------------------------------------------------------- 图 25
+@needs(("sat", "event", "特殊事件监测与提示功能测试"),
+       title="图 25 事件时间轴")
 def fig25(D):
     ev = D["sat"]["event"].sort_values(["sat", "tid", "t_event"])
     lanes = sorted(ev.groupby(["sat", "tid"]).size().index.tolist())

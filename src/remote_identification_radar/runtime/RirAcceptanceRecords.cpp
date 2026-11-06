@@ -1785,6 +1785,17 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                      oneq::common::acceptance::FilterStageText(motion_feature.speed_from_fit);
       motion_text += std::string(" 加速度来源=") +
                      oneq::common::acceptance::FilterStageText(motion_feature.acceleration_from_fit);
+      // 中译：**运动维度的综合识别加权贡献**（2026-11-06 甲方要求）——与 RCS/极化/一维像
+      //   各行同口径：取最佳候选的综合得分里"运动"这一维（基权重 × 本维质量 × 归一化系数）
+      //   所占的数值，外部据此核对"运动这一维到底给判型贡献了多少"。无最佳候选（未识别）
+      //   时整字段省略（§0 规则 3：无有效值不写 0.000 占位）。
+      // 标识：运动特征加权贡献字段（2026-11-06）。
+      double motion_contribution = 0.0;
+      if (TryRecognitionContribution(result, feature_weights,
+                                     session::RirRecognitionFeatureDimension::kMotion,
+                                     &motion_contribution)) {
+        motion_text += " 综合识别加权贡献=" + FormatF(motion_contribution, 6);
+      }
       motion_text += " 识别类别=" + category_text;
       Emit(sim_time_sec, cycle, "运动特征处理功能测试", motion_text);
     }

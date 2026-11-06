@@ -599,8 +599,83 @@ bool IsValidUtf8(const std::string& text) {
 #endif
 }
 
+// 中译：**修复"UTF-8 被当成 GBK 读"的二次编码**（2026-11-06）——现场外部单元名
+//   `卫星-1-1` 在日志里显示成 `鍗槦-1-1`：这是把已是 UTF-8 的字节又按 GBK 解了一遍再编成
+//   UTF-8 的典型结果，字节本身是合法 UTF-8，所以常规校验发现不了。做法是把字符串按
+//   GBK 编回字节、再把字节按 UTF-8 解；只有"回退成功且还原出常用汉字"时才采用，
+//   否则原样返回（避免把正常中文误改）。
+// 标识：GBK 误读修复（2026-11-06）。
+#if defined(_WIN32)
+bool TryRepairGbkMisreadUtf8(const std::string& text, std::string* out) {
+  if (text.empty() || out == nullptr) {
+    return false;
+  }
+  const int wide_len = ::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                                             nullptr, 0);
+  if (wide_len <= 0) {
+    return false;
+  }
+  std::vector<wchar_t> wide(static_cast<std::size_t>(wide_len), L'\0');
+  if (::MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), &wide[0],
+                            wide_len) <= 0) {
+    return false;
+  }
+  const int gbk_len = ::WideCharToMultiByte(CP_ACP, 0, &wide[0], wide_len, nullptr, 0, nullptr,
+                                            nullptr);
+  if (gbk_len <= 0) {
+    return false;
+  }
+  std::string gbk(static_cast<std::size_t>(gbk_len), '\0');
+  ::WideCharToMultiByte(CP_ACP, 0, &wide[0], wide_len, &gbk[0], gbk_len, nullptr, nullptr);
+  // 把 GBK 字节按 UTF-8 重新解释：成功且产生常用汉字，才是"误读"。
+  const int back_len = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, gbk.data(),
+                                             static_cast<int>(gbk.size()), nullptr, 0);
+  if (back_len <= 0) {
+    return false;
+  }
+  std::vector<wchar_t> back(static_cast<std::size_t>(back_len), L'\0');
+  if (::MultiByteToWideChar(CP_UTF8, 0, gbk.data(), static_cast<int>(gbk.size()), &back[0],
+                            back_len) <= 0) {
+    return false;
+  }
+  int common = 0;
+  int rare = 0;
+  for (int i = 0; i < back_len; ++i) {
+    const wchar_t wc = back[i];
+    if (wc >= 0x4E00 && wc <= 0x9FFF) {
+      // 常用汉字区（U+4E00–U+9FFF 的常见段）与生僻段粗略区分：U+9E00 以上多为生僻字。
+      if (wc < 0x9E00) {
+        ++common;
+      } else {
+        ++rare;
+      }
+    }
+  }
+  if (common <= 0 || rare > common) {
+    return false;
+  }
+  const int utf8_len = ::WideCharToMultiByte(CP_UTF8, 0, &back[0], back_len, nullptr, 0, nullptr,
+                                             nullptr);
+  if (utf8_len <= 0) {
+    return false;
+  }
+  std::string repaired(static_cast<std::size_t>(utf8_len), '\0');
+  ::WideCharToMultiByte(CP_UTF8, 0, &back[0], back_len, &repaired[0], utf8_len, nullptr, nullptr);
+  *out = repaired;
+  return true;
+}
+#endif
+
 std::string EnsureUtf8(const std::string& text) {
   if (IsValidUtf8(text)) {
+#if defined(_WIN32)
+    // 已是合法 UTF-8，但仍可能是"UTF-8 被当 GBK 读"的二次编码（如 鍗槦-1-1）；
+    // 修复成功则返回修复结果，否则原样返回。
+    std::string repaired;
+    if (TryRepairGbkMisreadUtf8(text, &repaired)) {
+      return repaired;
+    }
+#endif
     return text;
   }
 #if defined(_WIN32)

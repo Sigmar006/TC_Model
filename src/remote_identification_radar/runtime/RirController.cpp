@@ -1155,6 +1155,9 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     // 标识：搜索模式扇区解析（控制器侧，2026-11-06）。
     const config::RirAzimuthElevationLimitsDeg search_sector = internal::ResolveSearchSector(
         mission_, steerable_volume_deg, gate_beamwidth.el_beamwidth_deg);
+    // 中译：日志里的 `扫描范围=` 由写入层折算成**绝对方位**（甲方口径：要"当前实际扫哪儿"，
+    //   不要相对阵面朝向的角），这里只把阵面朝向一并传下去——相对→绝对只有一处实现。
+    // 标识：扫描范围绝对口径（2026-11-07）。
     // 过程：③ 逐目标门控——地球遮挡（穿地视线硬排除）→ 可扫描体积/任务搜索子窗裁剪（指定目标与确认
     //       航迹在体积内豁免子窗）；两类排除各发一条 kInfo 归因诊断。
     for (std::size_t i = 0U; i < input.scene_targets.size(); ++i) {
@@ -1368,12 +1371,12 @@ void RirController::RunCycle(const session::RirCycleInput& input,
       if (has_real_dwell_plan) {
         if (horizon_search_cycle) {
           WriteRirHorizonSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
-                                          input.input_cycle_index, search_sector,
+                                          input.input_cycle_index, search_sector, scan_center_deg.az_deg,
                                           dwell_center_deg.az_deg, dwell_center_deg.el_deg,
                                           g_acceptance_found_targets);
         } else {
           WriteRirSearchDetections(EffectiveSensorEntityId(), input.sim_time_sec,
-                                   input.input_cycle_index, search_sector,
+                                   input.input_cycle_index, search_sector, scan_center_deg.az_deg,
                                    dwell_center_deg.az_deg, dwell_center_deg.el_deg,
                                    g_acceptance_found_targets);
         }
@@ -1543,7 +1546,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                        latest_summary_.dwell_budget.dwell_budget_sec,
                        latest_summary_.dwell_budget.dwell_consumed_sec, planned_search,
                        planned_designate, planned_external_track, planned_internal_track,
-                       confirmed, horizon_search_cycle, search_sector);
+                       confirmed, horizon_search_cycle, search_sector, scan_center_deg.az_deg);
     }
   } else {
     track_snapshots = lifecycle_->BuildTrackSnapshots();

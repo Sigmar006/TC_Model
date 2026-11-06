@@ -5,6 +5,9 @@
 
 #include "remote_identification_radar/runtime/RirAcceptanceRecords.h"
 
+// 方位归一化助手（`NormalizeAzimuthDeg`）：扫描范围写绝对方位时把 [0,360) 折回。
+#include "common/radar/ScanScheduleRuntime.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -54,14 +57,20 @@ using oneq::logging::FormatVec3;
 using oneq::logging::YesNo;
 
 /**
- * @brief 有效搜索扇区的可读文本（`az[min,max]el[min,max]°`）。
- * @param[in] sector 本周期有效搜索扇区（`internal::ResolveSearchSector` 的结果：
- *            az 相对阵面朝向、el 绝对，已与可扫描体积求交）。
+ * @brief 有效搜索扇区的可读文本（`az[min,max]el[min,max]°`，**均为绝对角**）。
+ * @param[in] sector 本周期有效搜索扇区，az 已折算成**绝对方位**（阵面朝向 + 相对边界，
+ *            折到 [0,360)），el 本来就是绝对仰角；由 `RirController` 在调用前完成折算。
  * @note 第 37/37A 项与调度行共用同一口径，避免三处各写一种范围。
- * @note 2026-11-07 甲方要求：空域扫描日志项补"扫描范围"。
+ * @note 2026-11-07 甲方口径：写"当前实际的扫描范围"，不要相对阵面朝向的相对角。
  */
-std::string FormatScanSectorDeg(const config::RirAzimuthElevationLimitsDeg& sector) {
-  return "az[" + FormatF(sector.az_min_deg, 3) + "," + FormatF(sector.az_max_deg, 3) + "]el[" +
+std::string FormatScanSectorDeg(const config::RirAzimuthElevationLimitsDeg& sector,
+                                float scan_center_az_deg) {
+  // 过程：az 相对 → **绝对**（阵面朝向 + 相对边界，折到 [0,360)）；el 本来就是绝对仰角。
+  const float az_min =
+      oneq::common::radar::NormalizeAzimuthDeg(scan_center_az_deg + sector.az_min_deg);
+  const float az_max =
+      oneq::common::radar::NormalizeAzimuthDeg(scan_center_az_deg + sector.az_max_deg);
+  return "az[" + FormatF(az_min, 3) + "," + FormatF(az_max, 3) + "]el[" +
          FormatF(sector.el_min_deg, 3) + "," + FormatF(sector.el_max_deg, 3) + "]°";
 }
 
@@ -1314,7 +1323,7 @@ void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uin
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
-                              float beam_az_deg, float beam_el_deg,
+                              float scan_center_az_deg, float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED() || detections.empty()) {
     return;
@@ -1330,7 +1339,7 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
   Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
            FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "° 扫描范围=" +
-           FormatScanSectorDeg(scan_sector_deg));
+           FormatScanSectorDeg(scan_sector_deg, scan_center_az_deg));
   std::string found;
   for (std::size_t i = 0U; i < detections.size(); ++i) {
     if (i != 0U) {
@@ -1347,7 +1356,8 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
                                      std::uint32_t cycle,
                                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
-                                     float beam_az_deg, float beam_el_deg,
+                                     float scan_center_az_deg, float beam_az_deg,
+                                     float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections) {
   // 中译：**地平线搜索按“驻留事实”记账**（2026-10-26）——此前 `detections.empty()` 直接
   //   return，只有“地平线波位恰好检到目标”才留下日志，搜索窗抬高后整项几乎不可见。
@@ -1363,7 +1373,7 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
   Emit(sim_time_sec, cycle, "地平线搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
            FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "° 扫描范围=" +
-           FormatScanSectorDeg(scan_sector_deg));
+           FormatScanSectorDeg(scan_sector_deg, scan_center_az_deg));
   if (detections.empty()) {
     // 中译：**未检出也写"检测与量测信息"行（空列表）**（2026-11-02）——判据第37A项要求
     //   "记录检测与量测信息"，若该行只在检出时出现，本场景（目标都在高空、地平线波位
@@ -2182,7 +2192,8 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
                       std::uint32_t designate_count, std::uint32_t external_track_count,
                       std::uint32_t internal_track_count, std::uint32_t confirmed_tracks,
                       bool horizon_search_cycle,
-                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg) {
+                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                      float scan_center_az_deg) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -2201,7 +2212,7 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   Emit(sim_time_sec, cycle, schedule_item,
        "雷达ID=" + std::to_string(radar_id) + " 扫描模式=" +
            (horizon_search_cycle ? "地平线扫描" : "指定空域搜索") + " 扫描范围=" +
-           FormatScanSectorDeg(scan_sector_deg) + " 扫描调度信息=搜索=" +
+           FormatScanSectorDeg(scan_sector_deg, scan_center_az_deg) + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
            " 驻留=" + std::to_string(external_track_count + internal_track_count) +
            " 预算/已耗时=" + FormatF(budget_sec, 3) + "/" + FormatF(consumed_sec, 3) + "s");

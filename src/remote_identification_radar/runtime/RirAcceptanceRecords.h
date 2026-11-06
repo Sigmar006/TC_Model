@@ -255,12 +255,14 @@ void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uin
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
                               const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
-                              float beam_az_deg, float beam_el_deg,
+                              float scan_center_az_deg, float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections);
 
 /**
  * @param[in] scan_sector_deg 本周期**有效搜索扇区**（`ResolveSearchSector` 的结果：
- *            az 相对阵面朝向、el 绝对，已与可扫描体积求交）；行内写 `扫描范围=`。
+ *            az 相对阵面朝向、el 绝对，已与可扫描体积求交）。
+ * @param[in] scan_center_az_deg 阵面当前朝向方位（deg）——写入时把扇区 az 折成**绝对方位**。
+ * @note 行内 `扫描范围=` 一律写绝对角（甲方口径：要"当前实际扫哪儿"，不要相对角）。
  *
  * @brief 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名。
  * @note **与第37项互斥且由模式唯一决定**（2026-11-06 甲方口径）：`search_mode ==
@@ -271,7 +273,8 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
                                      std::uint32_t cycle,
                                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
-                                     float beam_az_deg, float beam_el_deg,
+                                     float scan_center_az_deg, float beam_az_deg,
+                                     float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections);
 
 /**
@@ -394,7 +397,8 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
                       std::uint32_t designate_count, std::uint32_t external_track_count,
                       std::uint32_t internal_track_count,
                       std::uint32_t confirmed_tracks, bool horizon_search_cycle,
-                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg);
+                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                      float scan_center_az_deg);
 
 /**
  * @brief 验收判定标准 第48项：逐驻留波束指向行（2026-08-29 TAS：一周期多驻留）。

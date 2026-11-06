@@ -778,13 +778,10 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     const double jam_density =
         AggregateInterferenceDensityWPerM2(input.incident_links, carrier_hz);
     if (std::isfinite(echo_density)) {
-      echo += " 回波功率密度=" + FormatSci(echo_density) + "W/m^2";
     }
     if (std::isfinite(noise_density)) {
-      echo += " 噪声等效输入功率密度=" + FormatSci(noise_density) + "W/m^2";
     }
     if (std::isfinite(jam_density)) {
-      echo += " 干扰功率密度=" + FormatSci(jam_density) + "W/m^2";
     }
     Emit(t, cycle, "回波功率计算功能测试", echo);
   }
@@ -806,7 +803,6 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
       const double thermal_density = PowerDensityWPerM2(
           thermal, static_cast<double>(input.one_way_antenna_gain_dbi), input.center_frequency_hz);
       if (std::isfinite(thermal_density)) {
-        noise_row += " 热噪声等效输入功率密度=" + FormatSci(thermal_density) + "W/m^2";
       }
       Emit(t, cycle, "接收机噪声功率计算功能测试", noise_row);
     }
@@ -1106,7 +1102,6 @@ void WriteRirInterferenceLinks(
         link.received_power_before_overlap_w, link.receive_antenna_gain_dbi,
         link.emission_waveform.center_frequency_hz);
     if (std::isfinite(link_density)) {
-      content += " 到达功率密度=" + FormatSci(link_density) + "W/m^2";
     }
     RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "干扰功率计算功能测试", content);
   }

@@ -19,7 +19,7 @@ from matplotlib.lines import Line2D
 from .common import (C, CYCLE, W_RADAR, by_target, db10, empty_fig, needs,
                      style_axes, target_title, title_block)
 
-COLS = ["RCS", "极化", "HRRP"]
+COLS = ["RCS", "极化", "HRRP", "运动"]
 
 
 # ---------------------------------------------------------------- 小工具
@@ -565,13 +565,21 @@ def fig22(D):
     h = ro["hrrp"][["tid", "track", "t", "contrib"]].rename(columns={"contrib": "HRRP"})
     j = (r.merge(p, on=["tid", "track", "t"]).merge(h, on=["tid", "track", "t"])
          .dropna(subset=["tid", "track"]))
+    # 运动维 2026-11-06 起单独输出“综合识别加权贡献”，与 RCS/极化/一维像同口径并入。
+    # 老日志没有该字段：左连接后整列为空，自动退回三维，不影响出图。
+    mo = ro.get("motion")
+    if mo is not None and len(mo):
+        m = mo[["tid", "track", "t", "contrib"]].rename(columns={"contrib": "运动"})
+        j = j.merge(m, on=["tid", "track", "t"], how="left")
+    cols = [c for c in COLS if c in j.columns and j[c].notna().any()]
+    j = j.dropna(subset=cols)
     groups = by_target(j)
-    colors = [C["accent1"], C["accent2"], C["accent3"]]
+    colors = [C["accent1"], C["accent2"], C["accent3"], C["accent4"]][:len(cols)]
 
     # 主目标＝同时刻特征最多的目标；堆叠图只画它，避免把不同目标的加权概率平均。
     p_tid, pj = groups[0]
-    g = pj.groupby("t")[COLS].mean().sort_index()
-    tot = j[COLS].sum(axis=1).to_numpy(float)
+    g = pj.groupby("t")[cols].mean().sort_index()
+    tot = j[cols].sum(axis=1).to_numpy(float)
     gt0, gt1 = float(g.index.min()), float(g.index.max())
     gpad = 0.02 * max(gt1 - gt0, 1.0)
 
@@ -579,25 +587,26 @@ def fig22(D):
     title_block(fig, "图 22  识别特征加权概率构成（按目标）",
                 f"{len(j)} 组同时刻特征，{len(groups)} 个目标"
                 f"（{'、'.join(target_title(t, gg['track']) for t, gg in groups)}）；"
+                f"特征维度 {'、'.join(cols)}；"
                 f"(a)(c)(d) 画主目标 {p_tid}（{len(pj)} 组）；"
-                f"三项加权概率之和 {tot.min():.2f}–{tot.max():.2f}（≤1）")
+                f"{len(cols)} 项加权概率之和 {tot.min():.2f}–{tot.max():.2f}（≤1）")
 
     ax = axes[0, 0]
-    ax.stackplot(g.index, [g[c] for c in COLS], labels=COLS, colors=colors,
+    ax.stackplot(g.index, [g[c] for c in cols], labels=cols, colors=colors,
                  alpha=0.85, linewidth=0)
     ax.set_xlim(gt0 - gpad, gt1 + gpad)
-    ax.set_ylim(0, max(0.1, float(g[COLS].sum(axis=1).max()) * 1.32))
+    ax.set_ylim(0, max(0.1, float(g[cols].sum(axis=1).max()) * 1.32))
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("加权概率")
     ax.set_title(f"(a) 目标 {p_tid} 的加权概率堆叠", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8.2, ncol=3)
+    ax.legend(loc="upper right", fontsize=8.2, ncol=len(cols))
     style_axes(ax)
 
     ax = axes[0, 1]
-    means = np.asarray([[float(gg[c].mean()) for c in COLS] for _, gg in groups])
+    means = np.asarray([[float(gg[c].mean()) for c in cols] for _, gg in groups])
     x = np.arange(len(groups))
     bottom = np.zeros(len(groups))
-    for i, c in enumerate(COLS):
+    for i, c in enumerate(cols):
         ax.bar(x, means[:, i], bottom=bottom, width=0.6, color=colors[i],
                label=c, alpha=0.9)
         bottom += means[:, i]
@@ -606,25 +615,24 @@ def fig22(D):
                 fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels([target_title(t, gg["track"]) for t, gg in groups], fontsize=8)
-    ax.set_ylim(0, max(0.05, float(bottom.max()) * 1.15))
+    ax.set_ylim(0, max(0.05, float(bottom.max()) * 1.30))
     ax.set_ylabel("平均加权概率")
-    ax.set_title("(b) 各目标平均加权概率（逐目标，不跨目标平均）", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8.2, ncol=3)
+    ax.set_title(f"(b) 各目标平均加权概率（柱顶为 {len(cols)} 项之和）",
+                 fontsize=10.5)
+    ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.98), fontsize=8.2,
+              ncol=len(cols))
     ax.grid(axis="x", visible=False)
-    ax.annotate("柱顶为三项之和",
-                xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.0, va="top",
-                bbox=dict(boxstyle="round,pad=0.3", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
 
     ax = axes[1, 0]
-    ax.hist(pj[COLS].sum(axis=1).to_numpy(float), bins=40, color=C["accent4"],
+    ax.hist(pj[cols].sum(axis=1).to_numpy(float), bins=40, color=C["accent4"],
             alpha=0.82, edgecolor="white", linewidth=0.4)
-    med = float(np.median(pj[COLS].sum(axis=1)))
+    med = float(np.median(pj[cols].sum(axis=1)))
     ax.axvline(med, color=C["warn"], ls="--", lw=1.2, label=f"中位 {med:.3f}")
     lo, hi = float(tot.min()), float(tot.max())
     t_pad = 0.05 * max(hi - lo, 0.05)
     ax.set_xlim(lo - t_pad, hi + t_pad)
-    ax.set_xlabel("三项加权概率之和")
+    ax.set_xlabel(f"{len(cols)} 项加权概率之和")
     ax.set_ylabel("样本数")
     ax.set_title(f"(c) 目标 {p_tid} 的加权概率之和分布（未归一）", fontsize=10.5)
     ax.legend(loc="center left", fontsize=8.2)
@@ -635,22 +643,25 @@ def fig22(D):
     style_axes(ax)
 
     ax = axes[1, 1]
-    bp = ax.boxplot([pj[c].to_numpy(float) for c in COLS], widths=0.5,
+    bp = ax.boxplot([pj[c].to_numpy(float) for c in cols], widths=0.5,
                     patch_artist=True, showfliers=False,
                     medianprops=dict(color="#1b2733", lw=1.2))
     for k, patch in enumerate(bp["boxes"]):
         patch.set_facecolor(colors[k])
         patch.set_alpha(0.75)
         patch.set_edgecolor("#4a4f55")
-    ax.set_xticks(range(1, len(COLS) + 1))
-    ax.set_xticklabels(COLS)
+    ax.set_xticks(range(1, len(cols) + 1))
+    ax.set_xticklabels(cols)
     ax.set_ylabel("加权概率")
     ax.set_title(f"(d) 目标 {p_tid} 各特征加权概率分布", fontsize=10.5)
-    yoff = 0.03 * max(float(np.ptp(pj[c].to_numpy(float))) for c in COLS)
-    for k, c in enumerate(COLS):
-        m = float(np.median(pj[c]))
-        ax.text(k + 1, m + yoff, f"{m:.3f}", ha="center", fontsize=8.5,
-                fontweight="bold")
+    # 中位数标在箱体上方（上须之外），避免压在箱线或离群点上。
+    tops = [float(np.max(bp["whiskers"][2 * k + 1].get_ydata()))
+            for k in range(len(cols))]
+    for k, c in enumerate(cols):
+        m = float(np.median(pj[c].to_numpy(float)))
+        ax.text(k + 1, tops[k] + 0.02 * max(max(tops), 0.05), f"中位 {m:.3f}",
+                ha="center", fontsize=8.0, fontweight="bold")
+    ax.set_ylim(0, max(tops) * 1.30 + 0.01)
     style_axes(ax)
     return fig
 

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include "common/platform/OneqPlatformCompat.h"
 #include <cstdio>
+#include <ctime>
 #include <cstdlib>
 #include <string>
 
@@ -45,13 +46,41 @@ inline void RewriteBeamWording(std::string* text) {
 
 }  // namespace detail
 
+namespace detail {
+
+// 中译：**真实系统时间前缀**（2026-11-06 甲方要求）——每行验收记录在"仿真时间/仿真周期"之前
+//   追加写盘当时的本机时间（年-月-日 时:分:秒），便于外部按真实时间归档、定位与外部系统对账；
+//   仿真时间仍是模型内部的物理时刻，两者并存不冲突。Windows 用 localtime_s，POSIX 用 localtime_r。
+// 标识：验收行系统时间戳（2026-11-06）。
+inline std::string FormatSystemTimestamp() {
+  const std::time_t now = std::time(nullptr);
+  std::tm local_tm{};
+#if defined(_WIN32)
+  if (localtime_s(&local_tm, &now) != 0) {
+    return std::string("1970-01-01 00:00:00");
+  }
+#else
+  if (localtime_r(&now, &local_tm) == nullptr) {
+    return std::string("1970-01-01 00:00:00");
+  }
+#endif
+  char buffer[32];
+  const std::size_t written = std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &local_tm);
+  return std::string(buffer, written);
+}
+
+}  // namespace detail
+
 inline std::string FormatAcceptanceLine(float sim_time_sec, std::uint32_t cycle, const char* item,
                                         const std::string& content) {
   char time_buf[32];
   ONEQ_SNPRINTF(time_buf, sizeof(time_buf), "%.3f", static_cast<double>(sim_time_sec));
   std::string line;
   line.reserve(64U + (item != nullptr ? std::char_traits<char>::length(item) : 0U) + content.size());
-  line += "仿真时间=";
+  // 过程：行首追加真实系统时间戳（本机墙钟），与仿真时间/周期并列。
+  line += "[";
+  line += detail::FormatSystemTimestamp();
+  line += "] 仿真时间=";
   line += time_buf;
   line += "s 仿真周期=";
   char cycle_buf[16];

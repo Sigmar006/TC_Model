@@ -143,7 +143,15 @@ bool TryResolveMtiMtdAcceptanceBank(const MtiMtdAcceptanceInput& input,
     }
   }
   const double inv_mass = (spectrum_mass > kLinearFloor) ? (1.0 / spectrum_mass) : 0.0;
-  candidate.mti_residual_clutter_w = input.clutter_power_w * mti_weighted_mass * inv_mass;
+  // 中译：**MTI 剩余杂波不得超过输入杂波**（2026-11-07）——`MtiPowerResponse` 是两脉冲对消的
+  //   未归一功率响应（峰值 4，位于 ±PRF/2），按谱加权后可以 > 1，于是剩余杂波被"放大"
+  //   1.8 倍，第 34 项的「总杂波抑制增益」恒为负（现场 −2.563 dB）。这里对剩余功率取上限
+  //   `min(加权结果, 输入)`：对消器可以抑制、最差不放大，物理上成立；目标响应 `mti_gain_db`
+  //   仍按原定义输出，不受影响。
+  // 标识：MTI 剩余杂波上限（2026-11-07）。
+  const double raw_residual = input.clutter_power_w * mti_weighted_mass * inv_mass;
+  candidate.mti_residual_clutter_w =
+      (raw_residual < input.clutter_power_w) ? raw_residual : input.clutter_power_w;
   // 中译：**MTD 通道功率做能量守恒归一**（2026-11-07）——DFT 各 bin 的响应不构成单位分解，
   //   `Σ|bin|²` 可以大于 1，直接按 bin 功率分配会让"全通道剩余合计"超过 MTI 剩余，
   //   于是第 34 项的「总杂波抑制增益」算出**负值**（现场 −2.563 dB），看起来像 MTD 放大杂波。
@@ -153,8 +161,15 @@ bool TryResolveMtiMtdAcceptanceBank(const MtiMtdAcceptanceInput& input,
   for (std::size_t k = 0U; k < kMtiMtdChannelCount; ++k) {
     clutter_mass_sum += clutter_mass[k];
   }
+  // 缩放目标：Σ通道 = 上面的（已限幅）MTI 剩余，通道间比例保持不变：
+  //   Σ_k clutter·mass[k]·inv_mass·scale = residual
+  //   ⇒ scale = residual / (clutter·inv_mass·Σmass)
+  const double channel_denominator =
+      input.clutter_power_w * inv_mass * clutter_mass_sum;
   const double clutter_scale =
-      (clutter_mass_sum > kLinearFloor) ? (mti_weighted_mass / clutter_mass_sum) : 0.0;
+      (channel_denominator > kLinearFloor)
+          ? (candidate.mti_residual_clutter_w / channel_denominator)
+          : 0.0;
   for (std::size_t k = 0U; k < kMtiMtdChannelCount; ++k) {
     candidate.clutter_w[k] = input.clutter_power_w * clutter_mass[k] * inv_mass * clutter_scale;
   }

@@ -3,6 +3,7 @@
  * @brief RIR 验收行与天线三维增益 CSV。
  */
 
+#include <mutex>
 #include "remote_identification_radar/runtime/RirAcceptanceRecords.h"
 
 // 方位归一化助手（`NormalizeAzimuthDeg`）：扫描范围写绝对方位时把 [0,360) 折回。
@@ -2214,8 +2215,14 @@ void WriteRirExternalResourceStatus(
   //   "恢复"；此外每 kIssueHeartbeatCycles 周期补一条心跳，保留"持续存在"的证据。
   // 标识：告警沿触发（2026-10-21）。
   constexpr std::uint32_t kIssueHeartbeatCycles = 100U;
+  // 中译：**告警沿触发表加锁**（2026-11-08）——两张表是进程级静态容器，多个雷达实例
+  //   （或宿主同进程多会话）并发写会破坏哈希桶并写坏堆：2026-11-06 那次
+  //   `0xC0000374` 正是落在这条路径之后的字符串构造处。锁覆盖查表、去重与恢复行输出。
+  // 标识：告警沿触发表并发保护（2026-11-08）。
+  static std::mutex last_issue_mutex;
   static std::unordered_map<std::uint64_t, std::set<std::string>> last_issue_keys;
   static std::unordered_map<std::uint64_t, std::uint32_t> last_issue_cycle;
+  std::lock_guard<std::mutex> issue_lock(last_issue_mutex);
   std::set<std::string>& previous_keys = last_issue_keys[radar_id];
   std::set<std::string> current_keys;
   const std::uint32_t last_cycle = last_issue_cycle[radar_id];

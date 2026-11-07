@@ -620,9 +620,16 @@ void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environm
     //   补一条心跳，保留"该目标仍在场景中"的周期性证据。
     // 标识：第 58 项目标行变化沿（2026-10-21）。
     constexpr std::uint32_t kSceneHeartbeatCycles = 100U;
+    // 中译：**去重表加锁**（2026-11-08）——三颗卫星各自在自己的线程里跑 RunCycle，
+    //   而这张 `last_scene_rows` 是进程级静态 map：并发 find/insert 会破坏红黑树
+    //   并把堆写坏（现场 0xC0000005/0xC0000374 就落在随后的字符串构造处）。
+    //   锁只覆盖查表与更新，落盘调用放在锁内（日志通道自身有锁，锁序恒定，不会死锁）。
+    // 标识：场景行去重表并发保护（2026-11-08）。
+    static std::mutex last_scene_rows_mutex;
     static std::map<std::string, std::pair<std::string, std::uint32_t>> last_scene_rows;
     const std::string scene_key =
         std::to_string(satellite_id) + ":" + std::to_string(target.target_id);
+    std::lock_guard<std::mutex> scene_lock(last_scene_rows_mutex);
     std::map<std::string, std::pair<std::string, std::uint32_t>>::iterator cached =
         last_scene_rows.find(scene_key);
     const bool changed = cached == last_scene_rows.end() || cached->second.first != row;

@@ -3,7 +3,7 @@ r"""一键绘图入口。
 
 用法
 ----
-    .\.venv\Scripts\python.exe plot_all.py                 # 生成全部 43 张图
+    .\.venv\Scripts\python.exe plot_all.py                 # 生成全部 54 张图
     .\.venv\Scripts\python.exe plot_all.py --only 1,2,3    # 只画指定编号
     .\.venv\Scripts\python.exe plot_all.py --refresh       # 忽略缓存重新解析日志
     .\.venv\Scripts\python.exe plot_all.py --list          # 列出图目录
@@ -31,11 +31,11 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 from viz import common, extract                      # noqa: E402
-from viz import (figs_antenna, figs_ir, figs_ir_pro, figs_radar,
+from viz import (figs_antenna, figs_geo, figs_ir, figs_ir_pro, figs_radar,
                  figs_radar_pro, figs_sat_pro, figs_signal)  # noqa: E402
 
 MODULES = [figs_antenna, figs_radar, figs_ir, figs_signal, figs_radar_pro,
-           figs_ir_pro, figs_sat_pro]
+           figs_ir_pro, figs_sat_pro, figs_geo]
 
 # 出图真正需要的数据文件。Rir_scan_pattern.csv 不在其列：图 3 的搜索驻留自带
 # seq/az/el，波位表只作为换数据时的一致性核对基准（extract.scan_pattern()）。

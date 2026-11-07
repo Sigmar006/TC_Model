@@ -11,7 +11,7 @@
 log_print\
   plot_all.py                一键入口
   viz\                       绘图代码（7 个模块）
-  figures\                   已生成的 43 张参考图
+  figures\                   已生成的 54 张参考图
   offline\
     runtime\python-3.12.8-embed-amd64.zip   Python 3.12.8 免安装运行时（官方 embeddable）
     wheels\                                全部 wheel（numpy/pandas/matplotlib/scipy + 依赖 + pip）
@@ -51,7 +51,7 @@ log_print\figures\         出图目录（自动生成/覆盖）
 ## 三、常用命令
 
 ```bat
-offline\run.bat                          :: 生成全部 43 张图 -> figures\
+offline\run.bat                          :: 生成全部 54 张图 -> figures\
 offline\run.bat --only 1-3               :: 只画 1~3 号图
 offline\run.bat --only 1,5,9             :: 只画指定编号
 offline\run.bat --refresh                :: 忽略缓存，重新解析日志
@@ -98,14 +98,14 @@ offline\run.bat --out-dir  D:\out\run1   :: 指定出图目录
 - 标记与线型由 `marker_map()` / `ls_map()` 在图内分配，只用于同一面板内的辅助区分；
   红外 36–39 固定“颜色＝卫星，标记/线型＝目标”，图例写在图内。
 - 换一批日志时实体号若变化，颜色自动跟着新编号重排，不需要改代码；
-  `figures\` 里的 43 张参考图对应本批样例，仅用于对照版式。
+  `figures\` 里的 54 张参考图对应本批样例，仅用于对照版式。
 
 ---
 
 ## 六、耗时参考
 
 - 首次解析 640 MB 日志：约 10 秒（结果缓存到 `viz\.cache\`，约 170 MB）。
-- 缓存就绪后出 43 张图：约 35~40 秒。
+- 缓存就绪后出 54 张图：约 33 秒。
 - 换一批同格式日志后，缓存键（文件大小+mtime）变化会自动重解析，无需手动清理；
   `--refresh` 可强制清缓存重解析。
 

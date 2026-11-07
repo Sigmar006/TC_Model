@@ -188,13 +188,13 @@ def title_block(fig, title: str, subtitle: str = "") -> None:
                  ha="center", va="top")
 
 
-def finish(fig) -> None:
-    """统一留出标题区，然后收缩布局。"""
+def finish(fig, *, bottom: float = 0.006) -> None:
+    """统一留出标题区，然后收缩布局；bottom 给图脚注留白。"""
     if getattr(fig, "_finished", False):
         return
     top = 0.895 if getattr(fig, "_has_sub", False) else 0.935
     try:
-        fig.tight_layout(rect=(0.008, 0.006, 0.992, top))
+        fig.tight_layout(rect=(0.008, bottom, 0.992, top))
     except Exception:
         pass
     fig._finished = True

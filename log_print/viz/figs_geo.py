@@ -7,6 +7,11 @@
   不转 dB（与图 40 的轨道高度同口径）；dB 只用于跨数量级的量。
 * 一张图只画一个实体：44–49 按目标序位分幅，50–54 按卫星序位分幅。标题里的编号
   取自当次日志，序位只是图号占位；本批不足该序位时改画说明卡，不臆造曲线。
+* 图 44–49 每条量都画三份：场景真值（`radar_ext.scene` 的 `位置ENU`，源码注释
+  写明为场景真值）、点迹量测（`radar_ext.plot` 的斜距/方位/俯仰，高度用关联行的
+  LLA）、滤波航迹（`radar_output.kf` 的 ECEF）。三者按 (仿真时间, 目标ID) 对齐；
+  真值不外推，只截到与滤波同段的时间窗，量测点少于滤波点时按点打标记。
+  本批点迹由场景 ENU 直接换算，量测与真值之差 ≤ 1 m（图上残差由数据现算）。
 * “探测高度”取航迹关联/落点预测同源的 LLA 高度（`assoc.h`），并与滤波航迹
   ECEF→LLA 的高度并列，两者同源不同环节，便于核对；“运动特征”里的 `高度`
   是站心 ENU 的 u 分量（= R·sin el），不是海拔高度，不在此图混用。
@@ -24,7 +29,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from .common import (C, by_target, color_map, ecef_to_lla, empty_fig, enu_to_ecef,
-                     needs, style_axes, target_title, title_block)
+                     finish, needs, style_axes, target_title, title_block)
 
 
 def _rng_txt(v, unit="", nd=0):
@@ -74,8 +79,96 @@ def _kf_range_km(g):
                     g["z"].to_numpy(float) - z0) / 1e3
 
 
+# ---------------------------------------------------------------- 真值 / 量测
+def _scene_truth(D, tid):
+    """场景真值：`radar_ext.scene` 的 `位置ENU` → ECEF / LLA / 斜距，统一换成 km。
+
+    返回按 t 升序的 dict（t/x/y/z/h/rng）；本批没有该目标的场景行时返回 None。
+    """
+    ext = D.get("radar_ext") or {}
+    sc = ext.get("scene")
+    if sc is None or len(sc) < 2 or "tid" not in sc.columns:
+        return None
+    s = sc[sc["tid"] == tid].sort_values("t")
+    if len(s) < 2:
+        return None
+    e0 = s["e0"].to_numpy(float)
+    e1 = s["e1"].to_numpy(float)
+    e2 = s["e2"].to_numpy(float)
+    x, y, z = enu_to_ecef(e0, e1, e2)
+    _, _, h = ecef_to_lla(x, y, z)
+    return {"t": s["t"].to_numpy(float), "x": x / 1e3, "y": y / 1e3,
+            "z": z / 1e3, "h": h / 1e3,
+            "rng": np.hypot(np.hypot(e0, e1), e2) / 1e3}
+
+
+def _truth_at(tr, key, tq):
+    """真值按时间线性插值到查询时刻；超出真值时段置 NaN，不外推。"""
+    tq = np.asarray(tq, dtype=float)
+    if tr is None:
+        return np.full(tq.shape, np.nan)
+    v = np.interp(tq, tr["t"], tr[key])
+    v[(tq < tr["t"][0]) | (tq > tr["t"][-1])] = np.nan
+    return v
+
+
+def _truth_window(tr, lo, hi):
+    """把真值截到 [lo, hi]：与滤波同段才好逐点比对，也不让发射段压扁纵轴。"""
+    if tr is None:
+        return None
+    m = (tr["t"] >= lo) & (tr["t"] <= hi)
+    if not np.any(m):
+        return None
+    return {k: v[m] for k, v in tr.items()}
+
+
+def _resid(a, b, nd=3):
+    """a−b 的极值与 rms；只统计两侧都有效的点，小于 1 km 时改用 m（免得写成 -0.000）。"""
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    m = np.isfinite(a) & np.isfinite(b)
+    if not np.any(m):
+        return "无重合点"
+    d = a[m] - b[m]
+    unit, scale = " km", 1.0
+    if float(np.abs(d).max()) < 1.0:
+        unit, scale, nd = " m", 1e3, 1
+    d = d * scale
+    return f"{_rng_txt(d, unit, nd)}，rms {float(np.sqrt((d ** 2).mean())):.{nd}f}{unit}"
+
+
+def _max_abs(a, b):
+    """a−b 的最大绝对值（无重合点返回 nan）。"""
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    m = np.isfinite(a) & np.isfinite(b)
+    return float(np.abs(a[m] - b[m]).max()) if np.any(m) else float("nan")
+
+
+def _overlap(a, b, tol=0.01):
+    """量测与真值是否重合到绘图精度（km）；重合时在注释里点明，免得被当成漏画。"""
+    mx = _max_abs(a, b)
+    return "（与真值重合）" if np.isfinite(mx) and mx <= tol else ""
+
+
+def _plot_ecef_km(p):
+    """点迹（斜距/方位/俯仰）→ ENU → ECEF（km）。
+
+    方位口径与源码 `TryLookPolarFromEnuM` 一致：az = atan2(北, 东)，即自东向逆时针，
+    故 e = r·cos(el)·cos(az)、n = r·cos(el)·sin(az)、u = r·sin(el)。
+    """
+    r = p["rng"].to_numpy(float)
+    az = np.radians(p["az"].to_numpy(float))
+    el = np.radians(p["el"].to_numpy(float))
+    x, y, z = enu_to_ecef(r * np.cos(el) * np.cos(az),
+                          r * np.cos(el) * np.sin(az),
+                          r * np.sin(el))
+    return x / 1e3, y / 1e3, z / 1e3
+
+
 # ---------------------------------------------------------------- 图 44–45
 @needs(("radar_output", "kf", "跟踪滤波功能测试"),
+       ("radar_ext", "scene", "目标场景接口测试"),
        title="图 44–45 探测高度时序")
 def _altitude(D, rank, num):
     tid, g = _slot_target(D, rank)
@@ -84,35 +177,59 @@ def _altitude(D, rank, num):
                          f"本批日志只解析到 {len(by_target(D['radar_output']['kf']))} 个目标，"
                          f"没有第 {rank + 1} 个目标")
     t = g["t"].to_numpy(float)
-    _, _, h = _kf_lla(g)
-    h = h / 1e3
+    _, _, hk = _kf_lla(g)
+    hk = hk / 1e3
+    tr = _scene_truth(D, tid)
+    tw = _truth_window(tr, float(t.min()), float(t.max()))
+    ht_kf = _truth_at(tr, "h", t)
     assoc = D["radar_output"]["assoc"]
     a = assoc[assoc["tid"] == tid].sort_values("t") if "tid" in assoc.columns \
         else assoc.iloc[0:0]
-    col = color_map([tid])[tid]
+    ta = a["t"].to_numpy(float)
+    ha = a["h"].to_numpy(float) / 1e3
+    ht_a = _truth_at(tr, "h", ta)
 
     fig, ax = plt.subplots(figsize=(11.4, 5.2))
-    ax.plot(t, h, color=col, lw=1.8,
-            label=f"滤波航迹高度（ECEF→LLA，{len(g)} 点）")
+    if tw is not None:
+        ax.plot(tw["t"], tw["h"], color=C["truth"], lw=3.2, alpha=0.45,
+                solid_capstyle="round", zorder=2,
+                label=f"场景真值（ENU→LLA，{len(tw['t'])} 点）")
+    ax.plot(t, hk, color=C["filter"], lw=1.6, zorder=3,
+            label=f"滤波航迹（ECEF→LLA，{len(g)} 点）")
     if len(a):
-        ax.plot(a["t"].to_numpy(float), a["h"].to_numpy(float) / 1e3, "o", ms=2.8,
-                color=C["meas"], alpha=0.75, mew=0,
-                label=f"关联时刻探测高度（{len(a)} 点）")
+        ax.plot(ta, ha, "o", ms=3.0, mew=0, color=C["meas"], alpha=0.85, zorder=4,
+                label=f"点迹量测（关联 LLA，{len(a)} 点）")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("海拔高度 (km)")
-    ax.set_title("(a) 目标高度–时间", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8.2)
+    ax.set_title("(a) 目标高度–时间（真值 / 量测 / 滤波）", fontsize=10.5)
+    ax.legend(loc="best", fontsize=8.2)
 
-    hi, lo = float(h.max()), float(h.min())
+    vals = [hk]
+    if tw is not None:
+        vals.append(tw["h"])
+    if len(a):
+        vals.append(ha)
+    lo = float(np.nanmin([v.min() for v in vals]))
+    hi = float(np.nanmax([v.max() for v in vals]))
     span = max(hi - lo, 1e-6)
     ax.set_ylim(lo - 0.10 * span, hi + 0.18 * span)
-    _note(ax, f"{target_title(tid)}；时间 {_rng_txt(t, ' s')}\n"
-              f"高度 {_rng_txt(h, ' km')}；首末 {h[0]:.0f} → {h[-1]:.0f} km"
-              f"（{h[-1] - h[0]:+.0f} km）")
+
+    lines = [f"{target_title(tid)}；时间 {_rng_txt(t, ' s')}"]
+    if tw is not None:
+        lines.append(f"真值 {_rng_txt(tw['h'], ' km')}；首末 "
+                     f"{tw['h'][0]:.0f} → {tw['h'][-1]:.0f} km"
+                     f"（{tw['h'][-1] - tw['h'][0]:+.0f} km）")
+    else:
+        lines.append("本批无该目标的场景行，未画真值")
+    if len(a):
+        lines.append(f"量测−真值 {_resid(ha, ht_a)}{_overlap(ha, ht_a)}")
+    lines.append(f"滤波−真值 {_resid(hk, ht_kf)}")
+    _note(ax, "\n".join(lines), xy=(0.03, 0.04), va="bottom")
     style_axes(ax)
     title_block(fig, f"图 {num}  {target_title(tid)} 探测高度时序",
-                f"高度取航迹关联同源的 LLA 高度；本图只画目标 {int(tid)}，"
-                f"{len(g)} 条滤波记录、{len(a)} 条关联记录")
+                f"真值取场景接口的 位置ENU（radar_ext.scene），量测取关联 LLA，"
+                f"滤波取 ECEF 航迹；{len(g)} 条滤波记录、{len(a)} 条量测记录，"
+                f"本图只画目标 {int(tid)}")
     return fig
 
 
@@ -126,6 +243,7 @@ def fig45(D):
 
 # ---------------------------------------------------------------- 图 46–47
 @needs(("radar_ext", "plot", "雷达对外目标信息输出接口测试-点迹量测"),
+       ("radar_ext", "scene", "目标场景接口测试"),
        ("radar_output", "kf", "跟踪滤波功能测试"),
        title="图 46–47 斜距时序")
 def _range(D, rank, num):
@@ -134,38 +252,60 @@ def _range(D, rank, num):
         return empty_fig(f"图 {num}  斜距时序",
                          f"本批日志只解析到 {len(by_target(D['radar_output']['kf']))} 个目标，"
                          f"没有第 {rank + 1} 个目标")
+    t = g["t"].to_numpy(float)
     plot = D["radar_ext"]["plot"]
     p = plot[plot["tid"] == tid].sort_values("t") if "tid" in plot.columns \
         else plot.sort_values("t")
     rng_kf = _kf_range_km(g)
-    col = color_map([tid])[tid]
+    tr = _scene_truth(D, tid)
+    tw = _truth_window(tr, float(t.min()), float(t.max()))
+    rt_kf = _truth_at(tr, "rng", t)
+    tp = p["t"].to_numpy(float)
+    rp = p["rng"].to_numpy(float) / 1e3
+    rt_p = _truth_at(tr, "rng", tp)
 
     fig, ax = plt.subplots(figsize=(11.4, 5.2))
-    ax.plot(g["t"].to_numpy(float), rng_kf, color=C["filter"], lw=1.5, ls="--",
+    if tw is not None:
+        ax.plot(tw["t"], tw["rng"], color=C["truth"], lw=3.2, alpha=0.45,
+                solid_capstyle="round", zorder=2,
+                label=f"场景真值（|位置ENU|，{len(tw['t'])} 点）")
+    ax.plot(t, rng_kf, color=C["filter"], lw=1.5, ls="--", zorder=3,
             label=f"滤波航迹反算斜距（{len(g)} 点）")
     if len(p):
-        ax.plot(p["t"].to_numpy(float), p["rng"].to_numpy(float) / 1e3, "-o",
-                ms=2.6, mew=0, lw=1.4, color=col, alpha=0.9,
-                label=f"雷达量测斜距（{len(p)} 点）")
+        ax.plot(tp, rp, "-o", ms=2.6, mew=0, lw=1.2, color=C["meas"], alpha=0.9,
+                zorder=4, label=f"点迹量测斜距（{len(p)} 点）")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("雷达–目标斜距 (km)")
-    ax.set_title("(a) 斜距–时间", fontsize=10.5)
+    ax.set_title("(a) 斜距–时间（真值 / 量测 / 滤波）", fontsize=10.5)
     ax.legend(loc="upper right", fontsize=8.2)
 
-    vals = p["rng"].to_numpy(float) / 1e3 if len(p) else rng_kf
+    vals = [rng_kf]
+    if tw is not None:
+        vals.append(tw["rng"])
     if len(p):
-        _note(ax, f"{target_title(tid)}；时间 {_rng_txt(p['t'].to_numpy(float), ' s')}\n"
-                  f"量测斜距 {_rng_txt(vals, ' km')}；首末 {vals[0]:.0f} → {vals[-1]:.0f} km"
-                  f"（{vals[-1] - vals[0]:+.0f} km）",
-              xy=(0.03, 0.04), va="bottom")
+        vals.append(rp)
+    lo = float(np.nanmin([v.min() for v in vals]))
+    hi = float(np.nanmax([v.max() for v in vals]))
+    span = max(hi - lo, 1e-6)
+    ax.set_ylim(lo - 0.08 * span, hi + 0.18 * span)
+
+    lines = [f"{target_title(tid)}；时间 {_rng_txt(t, ' s')}"]
+    if len(p):
+        lines.append(f"量测斜距 {_rng_txt(rp, ' km')}；首末 "
+                     f"{rp[0]:.0f} → {rp[-1]:.0f} km（{rp[-1] - rp[0]:+.0f} km）")
     else:
-        _note(ax, f"{target_title(tid)}；本批无点迹记录，仅画滤波反算斜距\n"
-                  f"斜距 {_rng_txt(vals, ' km')}",
-              xy=(0.03, 0.04), va="bottom")
+        lines.append("本批无点迹记录，只有真值与滤波反算斜距")
+    if tw is None:
+        lines.append("本批无该目标的场景行，未画真值")
+    else:
+        if len(p):
+            lines.append(f"量测−真值 {_resid(rp, rt_p)}{_overlap(rp, rt_p)}")
+        lines.append(f"滤波−真值 {_resid(rng_kf, rt_kf)}")
+    _note(ax, "\n".join(lines), xy=(0.03, 0.04), va="bottom")
     style_axes(ax)
     title_block(fig, f"图 {num}  {target_title(tid)} 雷达–目标斜距时序",
-                f"量测斜距取雷达点迹输出（radar_ext.plot），滤波斜距由 ECEF 航迹"
-                f"与站址反算；本图只画目标 {int(tid)}")
+                f"真值取场景 位置ENU 的模，量测取雷达点迹输出（radar_ext.plot），"
+                f"滤波斜距由 ECEF 航迹与站址反算；本图只画目标 {int(tid)}")
     return fig
 
 
@@ -179,6 +319,7 @@ def fig47(D):
 
 # ---------------------------------------------------------------- 图 48–49
 @needs(("radar_output", "kf", "跟踪滤波功能测试"),
+       ("radar_ext", "scene", "目标场景接口测试"),
        title="图 48–49 ECEF 坐标时序")
 def _ecef(D, rank, num):
     tid, g = _slot_target(D, rank)
@@ -187,33 +328,77 @@ def _ecef(D, rank, num):
                          f"本批日志只解析到 {len(by_target(D['radar_output']['kf']))} 个目标，"
                          f"没有第 {rank + 1} 个目标")
     t = g["t"].to_numpy(float)
-    x = g["x"].to_numpy(float) / 1e3
-    y = g["y"].to_numpy(float) / 1e3
-    z = g["z"].to_numpy(float) / 1e3
-    col = color_map([tid])[tid]
+    kf = {"x": g["x"].to_numpy(float) / 1e3, "y": g["y"].to_numpy(float) / 1e3,
+          "z": g["z"].to_numpy(float) / 1e3}
+    tr = _scene_truth(D, tid)
+    tw = _truth_window(tr, float(t.min()), float(t.max()))
+    tt = {k: _truth_at(tr, k, t) for k in "xyz"}
 
-    fig, ax = plt.subplots(figsize=(11.4, 5.2))
-    ax.plot(t, x, color=col, lw=1.6, label=f"x（{_rng_txt(x, ' km')}）")
-    ax.plot(t, y, color=C["meas"], lw=1.6, label=f"y（{_rng_txt(y, ' km')}）")
-    ax.plot(t, z, color=C["filter"], lw=1.6, label=f"z（{_rng_txt(z, ' km')}）")
-    ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("ECEF 坐标 (km)")
-    ax.set_title("(a) ECEF 三分量–时间", fontsize=10.5)
-    ax.legend(loc="center right", fontsize=8.2)
+    ext = D.get("radar_ext") or {}
+    plot = ext.get("plot")
+    p = plot[plot["tid"] == tid].sort_values("t") if plot is not None \
+        and "tid" in plot.columns else plot
+    if p is not None and len(p):
+        tp = p["t"].to_numpy(float)
+        mx, my, mz = _plot_ecef_km(p)
+        meas = {"x": mx, "y": my, "z": mz}
+    else:
+        tp = np.empty(0)
+        meas = {k: np.empty(0) for k in "xyz"}
 
-    # x/y/z 共用同一纵轴，上下各留 8% 余量，避免曲线顶到面板标题、也避免被图例压住。
-    lo = float(np.nanmin([x.min(), y.min(), z.min()]))
-    hi = float(np.nanmax([x.max(), y.max(), z.max()]))
-    span = max(hi - lo, 1.0)
-    ax.set_ylim(lo - 0.08 * span, hi + 0.08 * span)
+    fig, axs = plt.subplots(3, 1, figsize=(11.4, 8.8), sharex=True)
+    for ax, tag, key, name in zip(axs, "abc", "xyz", ("x", "y", "z")):
+        if tw is not None:
+            ax.plot(tw["t"], tw[key], color=C["truth"], lw=3.2, alpha=0.45,
+                    solid_capstyle="round", zorder=2,
+                    label=f"场景真值（{len(tw['t'])} 点）")
+        ax.plot(t, kf[key], color=C["filter"], lw=1.5, zorder=3,
+                label=f"滤波航迹（{len(g)} 点）")
+        if len(tp):
+            ax.plot(tp, meas[key], "o", ms=2.6, mew=0, color=C["meas"], alpha=0.85,
+                    zorder=4, label=f"点迹量测（{len(tp)} 点）")
+        ax.set_ylabel(f"{name} (km)")
+        ax.set_title(f"({tag}) {name} 分量（真值 / 量测 / 滤波）", fontsize=10.5)
 
-    rr = np.hypot(np.hypot(x, y), z)
-    _note(ax, f"{target_title(tid)}；{len(g)} 条滤波记录，时间 {_rng_txt(t, ' s')}\n"
-              f"地心距 |r| {_rng_txt(rr, ' km')}；首末 {rr[0]:.0f} → {rr[-1]:.0f} km")
-    style_axes(ax)
+        vals = [kf[key]]
+        if tw is not None:
+            vals.append(tw[key])
+        if len(tp):
+            vals.append(meas[key])
+        lo = float(np.nanmin([v.min() for v in vals]))
+        hi = float(np.nanmax([v.max() for v in vals]))
+        span = max(hi - lo, 1.0)
+        ax.set_ylim(lo - 0.08 * span, hi + 0.13 * span)
+        style_axes(ax)
+
+    axs[0].legend(loc="best", fontsize=8.2)
+    axs[-1].set_xlabel("仿真时间 (s)")
+
+    rr = np.hypot(np.hypot(kf["x"], kf["y"]), kf["z"])
+    lines = [f"{target_title(tid)}；{len(g)} 条滤波记录，时间 {_rng_txt(t, ' s')}；"
+             f"地心距 |r| {_rng_txt(rr, ' km')}"]
+    if tw is not None:
+        rms = "/".join(f"{float(np.sqrt(np.nanmean((kf[k] - tt[k]) ** 2))):.2f}"
+                       for k in "xyz")
+        lines.append(f"滤波−真值 rms x/y/z {rms} km")
+    else:
+        lines.append("本批无该目标的场景行，未画真值")
+    if len(tp):
+        if tr is not None:
+            mx_ = max(_max_abs(meas[k], _truth_at(tr, k, tp)) for k in "xyz")
+            tag = "，与真值重合" if mx_ <= 0.01 else ""
+            lines.append(f"量测−真值 max|x,y,z| {mx_:.3f} km（{len(tp)} 点{tag}）")
+        else:
+            lines.append(f"量测点 {len(tp)} 个（无真值可比）")
+    else:
+        lines.append("本批无点迹记录，未画量测")
+    # 三块面板都画满数据，注释放图内必然压线，改排成图脚注（tight_layout 上方留白）。
+    fig.text(0.5, 0.004, "；".join(lines), fontsize=8.4, ha="center", va="bottom",
+             color="#3a4550", linespacing=1.5)
     title_block(fig, f"图 {num}  {target_title(tid)} 目标 ECEF 坐标时序",
-                f"坐标取跟踪滤波输出的 ECEF 位置（radar_output.kf）；本图只画目标 "
-                f"{int(tid)}")
+                f"真值取场景 位置ENU 经站心→ECEF，量测由点迹斜距/方位/俯仰反算 ENU 后转 "
+                f"ECEF，滤波取跟踪输出（radar_output.kf）；本图只画目标 {int(tid)}")
+    finish(fig, bottom=0.05)
     return fig
 
 

@@ -215,6 +215,12 @@ const char* CategoryName(int category) {
       return "轰炸机";
     case static_cast<int>(RirRecognitionCategory::kMissile):
       return "导弹";
+    case static_cast<int>(RirRecognitionCategory::kDecoy):
+      return "诱饵";
+    case static_cast<int>(RirRecognitionCategory::kDebris):
+      return "弹片";
+    case static_cast<int>(RirRecognitionCategory::kBooster):
+      return "助推器";
     default:
       return "";
   }

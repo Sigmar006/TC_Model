@@ -101,6 +101,15 @@ session::RirRecognitionCategory CategoryToPublic(const std::string& category_id)
     return session::RirRecognitionCategory::kMissile;
   }
   // "UAV" 不再映射专属大类（2026-08-22 甲方裁定移除无人机识别），落入 kUnknown。
+  if (category_id == "DECOY") {
+    return session::RirRecognitionCategory::kDecoy;
+  }
+  if (category_id == "DEBRIS") {
+    return session::RirRecognitionCategory::kDebris;
+  }
+  if (category_id == "BOOSTER") {
+    return session::RirRecognitionCategory::kBooster;
+  }
   if (category_id == "OTHER") {
     return session::RirRecognitionCategory::kOther;
   }

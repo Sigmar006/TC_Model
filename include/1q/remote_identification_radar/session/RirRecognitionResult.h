@@ -36,7 +36,14 @@ enum class ONEQ_API RirRecognitionCategory : std::uint8_t {
   kUnknown = 3,   /**< 未知。 */
   kFighter = 4,   /**< 战斗机。 */
   kBomber = 5,    /**< 轰炸机。 */
-  kMissile = 6    /**< 导弹。 */
+  kMissile = 6,   /**< 导弹。 */
+  // 中译：**弹道体系穿透辅助目标**（2026-11-07）——识别库已含 DECOY/DEBRIS/BOOSTER 三类模板，
+  //   但公共枚举此前只有七类，导致这三类模板命中后只能落成 kUnknown（现场"全部未知"的根因）。
+  //   追加三个大类（保留既有编号不变），由 CategoryToPublic 从库的 category_id 映射。
+  // 标识：穿透辅助目标大类（2026-11-07）。
+  kDecoy = 7,     /**< 诱饵（再入段假目标）。 */
+  kDebris = 8,    /**< 弹片/碎片。 */
+  kBooster = 9    /**< 剥离的助推火箭。 */
 };
 
 /**

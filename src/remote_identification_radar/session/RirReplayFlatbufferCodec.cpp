@@ -215,7 +215,7 @@ bool DecodeRecognitionResult(const fb::RirRecognitionResultV1* value, RirRecogni
   if (state_raw < static_cast<int>(RirRecognitionState::kDisabled) ||
       state_raw > static_cast<int>(RirRecognitionState::kStale) ||
       category_raw < static_cast<int>(RirRecognitionCategory::kBallistic) ||
-      category_raw > static_cast<int>(RirRecognitionCategory::kMissile)) {
+      category_raw > static_cast<int>(RirRecognitionCategory::kBooster)) {
     return false;
   }
   const int subclass_raw = value->ballistic_subclass();

@@ -1024,7 +1024,20 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   // 2026-09-28 复核中修正：早期实现把比值写反，会出现 SNR 越高、最大距离反而越小。
   // SNR_req 由同一 Marcum Q 检测模型对 Pd=0.90 二分反解，不使用任务粗筛距离充当该值。
   if (input.has_cell && input.range_m > 0.0f) {
-    const double snr_now_db = static_cast<double>(input.cell.processed_single_pulse_sinr_db);
+    // 中译：**第36项按"不含 MTI/MTD 目标响应损失"的口径报**（2026-11-07 甲方要求）——
+    //   本项的语义是"雷达对 1 m² 目标的 90% 探测能力"，属**理想单脉冲能力**口径；
+    //   而 `processed_single_pulse_sinr_db` 已经把 MTI 对目标的响应 H_mti（盲速附近可为负）
+    //   与 MTD 跨 bin 损耗 H_bin 折进去了，会让同一部雷达的能力随目标多普勒忽大忽小
+    //   （现场：MTI −2.826 dB + MTD −0.049 dB，白白吃掉 2.9 dB ≈ 距离 −7%）。
+    //   这里把这两项**加回**（它们恒 ≤0，故为"补偿"），得到不含对消器目标响应的单脉冲 SNR；
+    //   `信噪比=` 仍输出含 MTI/MTD 的实际值，MTI/MTD 的响应/损失照常由第32/34/35项记账。
+    // 标识：第36项不含MTI/MTD目标损失（2026-11-07）。
+    const double mti_mtd_loss_db = static_cast<double>(input.cell.mti_response_db) +
+                                   static_cast<double>(input.cell.mtd_bin_response_db);
+    const double snr_now_db =
+        static_cast<double>(input.cell.processed_single_pulse_sinr_db) - mti_mtd_loss_db;
+    const double snr_now_db_with_processing =
+        static_cast<double>(input.cell.processed_single_pulse_sinr_db);
     double max_range_m = 0.0;
     // 中译：**90% 探测距离按标称 RCS（1 m²）报**（2026-11-04）——判据要的是"标称 RCS 的
     //   90% 探测概率的探测距离"，即本雷达的能力基准；此前用的是**当前目标 RCS**，
@@ -1035,10 +1048,20 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
             static_cast<double>(input.range_m), snr_now_db, static_cast<double>(input.rcs_m2),
             static_cast<double>(kNominalRcsM2), 0.90, input.cfar_pfa,
             static_cast<int>(std::max(1U, pulses)), &max_range_m)) {
+      // 中译：行内标注口径与补偿量——`口径=不含MTI/MTD目标响应损失`（本行），
+      //   并给出补偿前的实际值 `含处理损失=` 供核对（两值同轴、仅差 MTI/MTD 响应）。
+      // 标识：第36项口径标注（2026-11-07）。
+      double max_range_with_processing_m = 0.0;
+      TryComputeDetectionRangeAtPdForRcs(
+          static_cast<double>(input.range_m), snr_now_db_with_processing,
+          static_cast<double>(input.rcs_m2), static_cast<double>(kNominalRcsM2), 0.90,
+          input.cfar_pfa, static_cast<int>(std::max(1U, pulses)), &max_range_with_processing_m);
       Emit(t, cycle, "恒虚警检测功能测试",
            id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
                "m 标称RCS=" + FormatF(kNominalRcsM2, 3) + "m^2 目标RCS=" +
-               FormatF(input.rcs_m2, 3) + "m^2");
+               FormatF(input.rcs_m2, 3) + "m^2 口径=不含MTI/MTD目标响应损失 MTI/MTD补偿=" +
+               FormatF(-mti_mtd_loss_db, 3) + "dB 含处理损失=" +
+               FormatF(max_range_with_processing_m, 1) + "m");
     }
   }
 

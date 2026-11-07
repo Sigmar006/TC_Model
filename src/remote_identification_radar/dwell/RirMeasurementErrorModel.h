@@ -49,7 +49,18 @@ class RirMeasurementErrorModel {
             oneq::common::numerics::DegToRad(effective_beamwidth_deg.az_beamwidth_deg),
             oneq::common::numerics::DegToRad(effective_beamwidth_deg.el_beamwidth_deg));
     RirMeasurementErrorState state;
-    state.range_error_std_m = common_state.range_error_std_m;
+    // 中译：**距离测量随机误差钳位到 1–10 m**（2026-11-07，甲方要求）——原公式
+    //   σ_R = 0.5·δR/√SNR（δR = c/(2B) = 5 m）在高 SNR 时掉到 0.5 m、极低 SNR 时涨到几十米，
+    //   与远程识别雷达的实际工程精度区间（米级、且不会优于米级）不符。
+    //   统一钳到 [1, 10] m：保留随 SNR 变化的趋势，但不超出可实现区间。
+    // 标识：距离精度区间 1–10 m（2026-11-07）。
+    constexpr float kRangeErrorStdMinM = 1.0f;
+    constexpr float kRangeErrorStdMaxM = 10.0f;
+    state.range_error_std_m =
+        common_state.range_error_std_m < kRangeErrorStdMinM
+            ? kRangeErrorStdMinM
+            : (common_state.range_error_std_m > kRangeErrorStdMaxM ? kRangeErrorStdMaxM
+                                                                   : common_state.range_error_std_m);
     state.angle_error_std_rad = common_state.angle_error_std_rad;
     state.range_bias_m = common_state.range_bias_m;
     state.angle_bias_rad = common_state.angle_bias_rad;

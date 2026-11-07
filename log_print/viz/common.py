@@ -278,6 +278,88 @@ def db20(x):
     return out
 
 
+# ---------------------------------------------------------------- 观测窗裁剪
+# 滤波/航迹只画到该实体最后一次观测：观测停止后的外推段不是量测事实，默认不画。
+# 一键开关：plot_all.py --show-extrapolated（或 common.set_clip_to_obs(False)）。
+CLIP_TO_OBS = True
+
+
+def set_clip_to_obs(flag: bool) -> None:
+    """统一开关：False 时保留滤波外推段（--show-extrapolated）。"""
+    global CLIP_TO_OBS
+    CLIP_TO_OBS = bool(flag)
+
+
+def obs_span(t) -> tuple[float, float]:
+    """观测时刻 → (首, 末)；没有有效时刻时返回 (nan, nan)。"""
+    a = np.asarray(t, dtype=float)
+    a = a[np.isfinite(a)]
+    if not a.size:
+        return float("nan"), float("nan")
+    return float(a.min()), float(a.max())
+
+
+def obs_mask(t, lo, hi):
+    """按观测窗返回保留掩码；开关关闭或窗口无效时全保留。"""
+    t = np.asarray(t, dtype=float)
+    if not CLIP_TO_OBS or not (np.isfinite(lo) and np.isfinite(hi)):
+        return np.ones(t.shape, dtype=bool)
+    return (t >= lo) & (t <= hi)
+
+
+def obs_clip(t, lo, hi):
+    """返回 (保留掩码, 被剔除点数)；开关关闭时剔除数为 0。"""
+    m = obs_mask(t, lo, hi)
+    return m, int((~m).sum())
+
+
+def obs_note(n_cut: int, hi: float = float("nan"), head: str = "滤波") -> str:
+    """图内一句裁剪说明；关闭裁剪时明确写出，避免读者误以为没有外推段。"""
+    if not CLIP_TO_OBS:
+        return f"{head}含外推段（观测窗裁剪已关闭）"
+    if n_cut:
+        return f"{head}只画到观测窗末 {hi:.0f} s（剔除外推 {n_cut} 点）"
+    return ""
+
+
+def radar_obs_span(D, tid):
+    """雷达目标观测窗：点迹输出（radar_ext.plot）或关联量测（meas_trk）。"""
+    for mod, tab in (("radar_ext", "plot"), ("radar_int", "meas_trk")):
+        df = (D.get(mod) or {}).get(tab)
+        if df is None or len(df) == 0 or "tid" not in df.columns:
+            continue
+        m = to_num(df["tid"]) == float(tid)
+        if m.any():
+            return obs_span(to_num(df["t"])[m])
+    return float("nan"), float("nan")
+
+
+def ir_obs_span(D, *, tid=None, sat=None):
+    """红外观测窗：ir_ext.ir_obs 中 (卫星, 目标) 的时刻范围。"""
+    df = (D.get("ir_ext") or {}).get("ir_obs")
+    if df is None or len(df) == 0 or "t" not in df.columns:
+        return float("nan"), float("nan")
+    m = np.ones(len(df), dtype=bool)
+    if tid is not None and "tid" in df.columns:
+        m &= to_num(df["tid"]) == float(tid)
+    if sat is not None and "sat" in df.columns:
+        m &= to_num(df["sat"]) == float(sat)
+    return obs_span(to_num(df["t"])[m])
+
+
+def all_obs_span(D):
+    """全批观测并集：给没有实体键的滤波表（sat.ukf）兜底。"""
+    spans = []
+    for mod, tab in (("radar_ext", "plot"), ("ir_ext", "ir_obs")):
+        df = (D.get(mod) or {}).get(tab)
+        if df is not None and len(df) and "t" in df.columns:
+            spans.append(obs_span(to_num(df["t"])))
+    spans = [s for s in spans if np.isfinite(s[0])]
+    if not spans:
+        return float("nan"), float("nan")
+    return min(s[0] for s in spans), max(s[1] for s in spans)
+
+
 # ---------------------------------------------------------------- 缺表降级
 def needs(*specs, title: str = ""):
     """装饰器：本图依赖的日志表缺失时改画一张说明卡，而不是抛 KeyError。

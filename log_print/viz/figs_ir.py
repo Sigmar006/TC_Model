@@ -15,8 +15,9 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from matplotlib.lines import Line2D
 
-from .common import (C, CYCLE, W_IR, by_target, color_map, db10, marker_map,
-                     needs, style_axes, target_title, title_block)
+from .common import (C, CYCLE, W_IR, all_obs_span, by_target, color_map, db10,
+                     ir_obs_span, marker_map, needs, obs_clip, obs_note, style_axes,
+                     target_title, title_block)
 
 
 def _valid_centers(wfov):
@@ -187,6 +188,17 @@ def fig12(D):
        title="图 13 红外跟踪与 NIS")
 def fig13(D):
     tr = D["ir_int"]["ir_trk"].sort_values("t")
+    # 跟踪滤波只画到该目标的末次红外观测；观测停止后的外推段默认不画。
+    kept, n_cut = [], 0
+    for tid, g in by_target(tr):
+        lo, hi = ir_obs_span(D, tid=tid)
+        m, c = obs_clip(g["t"].to_numpy(float), lo, hi)
+        if not m.any():
+            m, c = np.ones(len(g), dtype=bool), 0
+        kept.append(g[m])
+        n_cut += c
+    if kept:
+        tr = pd.concat(kept).sort_values("t")
     groups = by_target(tr)
     gate = 5.991
     gate_db = float(db10(gate))
@@ -195,12 +207,14 @@ def fig13(D):
     nis_db = db10(nis_all)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.2, 8.0))
+    clip_txt = obs_note(n_cut, float(tr["t"].max()), "跟踪记录")
     title_block(fig, "图 13  红外跟踪滤波与 NIS 一致性检验（按目标）",
                 f"跟踪记录 {len(tr)} 条，{len(groups)} 个目标"
                 f"（{'、'.join(target_title(t) for t, _ in groups)}）；"
                 f"NIS 中位 {np.median(nis_all):.2f}（{float(db10(np.median(nis_all))):.2f} dB），"
                 f"χ²(2, 95%) 门限 {gate}（{gate_db:.2f} dB），"
-                f"通过率 {100*passed.mean():.1f}%")
+                f"通过率 {100*passed.mean():.1f}%"
+                + (f"；{clip_txt}" if clip_txt else ""))
 
     ax = axes[0, 0]
     for k, (tid, g) in enumerate(groups):
@@ -492,18 +506,26 @@ def fig14(D):
        title="图 15 卫星导航与落点")
 def fig15(D):
     pe = D["sat"]["pos_err"].sort_values("t")
-    uk = D["sat"]["ukf"].sort_values("t")
+    uk_all = D["sat"]["ukf"].sort_values("t")
+    # ukf 表没有目标键，只能取全批观测时段的并集；超出的外推段默认不画。
+    lo_obs, hi_obs = all_obs_span(D)
+    keep, n_cut = obs_clip(uk_all["t"].to_numpy(float), lo_obs, hi_obs)
+    if not keep.any():
+        keep, n_cut = np.ones(len(uk_all), dtype=bool), 0
+    uk = uk_all[keep]
     imp = D["sat"]["impact"]
     lau = D["sat"]["launch"]
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
     i_lon, i_lat = float(imp["lon"].median()), float(imp["lat"].median())
     l_lon, l_lat = float(lau["lon"].median()), float(lau["lat"].median())
+    clip_txt = obs_note(n_cut, hi_obs, "UKF")
     title_block(fig, "图 15  卫星导航误差、UKF 收敛与落点/发射点估计",
                 f"导航位置误差 0–{pe['err'].max():.2f} m（中位 {pe['err'].median():.2f} m），"
                 f"UKF 协方差迹中位 {float(db10(uk['covtr'].median())):.0f} dB；"
                 f"落点中位 ({i_lon:.1f}°, {i_lat:.1f}°)、"
-                f"发射点中位 ({l_lon:.1f}°, {l_lat:.1f}°)")
+                f"发射点中位 ({l_lon:.1f}°, {l_lat:.1f}°)"
+                + (f"；{clip_txt}" if clip_txt else ""))
 
     ax = axes[0, 0]
     for k, (sat, g) in enumerate(pe.groupby("sat")):

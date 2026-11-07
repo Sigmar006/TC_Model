@@ -10,8 +10,10 @@
 * 图 44–49 每条量都画三份：场景真值（`radar_ext.scene` 的 `位置ENU`，源码注释
   写明为场景真值）、点迹量测（`radar_ext.plot` 的斜距/方位/俯仰，高度用关联行的
   LLA）、滤波航迹（`radar_output.kf` 的 ECEF）。三者按 (仿真时间, 目标ID) 对齐；
-  真值不外推，只截到与滤波同段的时间窗，量测点少于滤波点时按点打标记。
-  本批点迹由场景 ENU 直接换算，量测与真值之差 ≤ 1 m（图上残差由数据现算）。
+  真值不外推，只截到与滤波同段的时间窗；滤波航迹裁到该目标的观测窗（点迹首末
+  时刻），观测停止后的外推段默认不画，`--show-extrapolated` 可关闭裁剪；
+  量测点少于滤波点时按点打标记。本批点迹由场景 ENU 直接换算，量测与真值之差
+  ≤ 1 m（图上残差由数据现算）。
 * “探测高度”取航迹关联/落点预测同源的 LLA 高度（`assoc.h`），并与滤波航迹
   ECEF→LLA 的高度并列，两者同源不同环节，便于核对；“运动特征”里的 `高度`
   是站心 ENU 的 u 分量（= R·sin el），不是海拔高度，不在此图混用。
@@ -29,7 +31,8 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from .common import (C, by_target, color_map, ecef_to_lla, empty_fig, enu_to_ecef,
-                     finish, needs, style_axes, target_title, title_block)
+                     finish, needs, obs_clip, obs_note, radar_obs_span, style_axes,
+                     target_title, title_block)
 
 
 def _rng_txt(v, unit="", nd=0):
@@ -177,8 +180,13 @@ def _altitude(D, rank, num):
                          f"本批日志只解析到 {len(by_target(D['radar_output']['kf']))} 个目标，"
                          f"没有第 {rank + 1} 个目标")
     t = g["t"].to_numpy(float)
-    _, _, hk = _kf_lla(g)
-    hk = hk / 1e3
+    _, _, hk_all = _kf_lla(g)
+    t_lo, t_hi = radar_obs_span(D, tid)
+    keep, n_cut = obs_clip(t, t_lo, t_hi)
+    if not keep.any():
+        keep, n_cut = np.ones(t.shape, dtype=bool), 0
+    t = t[keep]
+    hk = hk_all[keep] / 1e3
     tr = _scene_truth(D, tid)
     tw = _truth_window(tr, float(t.min()), float(t.max()))
     ht_kf = _truth_at(tr, "h", t)
@@ -195,7 +203,7 @@ def _altitude(D, rank, num):
                 solid_capstyle="round", zorder=2,
                 label=f"场景真值（ENU→LLA，{len(tw['t'])} 点）")
     ax.plot(t, hk, color=C["filter"], lw=1.6, zorder=3,
-            label=f"滤波航迹（ECEF→LLA，{len(g)} 点）")
+            label=f"滤波航迹（ECEF→LLA，{len(t)} 点）")
     if len(a):
         ax.plot(ta, ha, "o", ms=3.0, mew=0, color=C["meas"], alpha=0.85, zorder=4,
                 label=f"点迹量测（关联 LLA，{len(a)} 点）")
@@ -224,11 +232,14 @@ def _altitude(D, rank, num):
     if len(a):
         lines.append(f"量测−真值 {_resid(ha, ht_a)}{_overlap(ha, ht_a)}")
     lines.append(f"滤波−真值 {_resid(hk, ht_kf)}")
+    nt = obs_note(n_cut, t_hi, "滤波航迹")
+    if nt:
+        lines.append(nt)
     _note(ax, "\n".join(lines), xy=(0.03, 0.04), va="bottom")
     style_axes(ax)
     title_block(fig, f"图 {num}  {target_title(tid)} 探测高度时序",
                 f"真值取场景接口的 位置ENU（radar_ext.scene），量测取关联 LLA，"
-                f"滤波取 ECEF 航迹；{len(g)} 条滤波记录、{len(a)} 条量测记录，"
+                f"滤波取 ECEF 航迹；{len(t)} 条滤波记录、{len(a)} 条量测记录，"
                 f"本图只画目标 {int(tid)}")
     return fig
 
@@ -256,7 +267,13 @@ def _range(D, rank, num):
     plot = D["radar_ext"]["plot"]
     p = plot[plot["tid"] == tid].sort_values("t") if "tid" in plot.columns \
         else plot.sort_values("t")
-    rng_kf = _kf_range_km(g)
+    rng_all = _kf_range_km(g)
+    t_lo, t_hi = radar_obs_span(D, tid)
+    keep, n_cut = obs_clip(t, t_lo, t_hi)
+    if not keep.any():
+        keep, n_cut = np.ones(t.shape, dtype=bool), 0
+    t = t[keep]
+    rng_kf = rng_all[keep]
     tr = _scene_truth(D, tid)
     tw = _truth_window(tr, float(t.min()), float(t.max()))
     rt_kf = _truth_at(tr, "rng", t)
@@ -270,7 +287,7 @@ def _range(D, rank, num):
                 solid_capstyle="round", zorder=2,
                 label=f"场景真值（|位置ENU|，{len(tw['t'])} 点）")
     ax.plot(t, rng_kf, color=C["filter"], lw=1.5, ls="--", zorder=3,
-            label=f"滤波航迹反算斜距（{len(g)} 点）")
+            label=f"滤波航迹反算斜距（{len(t)} 点）")
     if len(p):
         ax.plot(tp, rp, "-o", ms=2.6, mew=0, lw=1.2, color=C["meas"], alpha=0.9,
                 zorder=4, label=f"点迹量测斜距（{len(p)} 点）")
@@ -301,6 +318,9 @@ def _range(D, rank, num):
         if len(p):
             lines.append(f"量测−真值 {_resid(rp, rt_p)}{_overlap(rp, rt_p)}")
         lines.append(f"滤波−真值 {_resid(rng_kf, rt_kf)}")
+    nt = obs_note(n_cut, t_hi, "滤波航迹")
+    if nt:
+        lines.append(nt)
     _note(ax, "\n".join(lines), xy=(0.03, 0.04), va="bottom")
     style_axes(ax)
     title_block(fig, f"图 {num}  {target_title(tid)} 雷达–目标斜距时序",
@@ -328,8 +348,14 @@ def _ecef(D, rank, num):
                          f"本批日志只解析到 {len(by_target(D['radar_output']['kf']))} 个目标，"
                          f"没有第 {rank + 1} 个目标")
     t = g["t"].to_numpy(float)
-    kf = {"x": g["x"].to_numpy(float) / 1e3, "y": g["y"].to_numpy(float) / 1e3,
-          "z": g["z"].to_numpy(float) / 1e3}
+    kf_all = {"x": g["x"].to_numpy(float) / 1e3, "y": g["y"].to_numpy(float) / 1e3,
+              "z": g["z"].to_numpy(float) / 1e3}
+    t_lo, t_hi = radar_obs_span(D, tid)
+    keep, n_cut = obs_clip(t, t_lo, t_hi)
+    if not keep.any():
+        keep, n_cut = np.ones(t.shape, dtype=bool), 0
+    t = t[keep]
+    kf = {k: v[keep] for k, v in kf_all.items()}
     tr = _scene_truth(D, tid)
     tw = _truth_window(tr, float(t.min()), float(t.max()))
     tt = {k: _truth_at(tr, k, t) for k in "xyz"}
@@ -353,7 +379,7 @@ def _ecef(D, rank, num):
                     solid_capstyle="round", zorder=2,
                     label=f"场景真值（{len(tw['t'])} 点）")
         ax.plot(t, kf[key], color=C["filter"], lw=1.5, zorder=3,
-                label=f"滤波航迹（{len(g)} 点）")
+                label=f"滤波航迹（{len(t)} 点）")
         if len(tp):
             ax.plot(tp, meas[key], "o", ms=2.6, mew=0, color=C["meas"], alpha=0.85,
                     zorder=4, label=f"点迹量测（{len(tp)} 点）")
@@ -375,7 +401,7 @@ def _ecef(D, rank, num):
     axs[-1].set_xlabel("仿真时间 (s)")
 
     rr = np.hypot(np.hypot(kf["x"], kf["y"]), kf["z"])
-    lines = [f"{target_title(tid)}；{len(g)} 条滤波记录，时间 {_rng_txt(t, ' s')}；"
+    lines = [f"{target_title(tid)}；{len(t)} 条滤波记录，时间 {_rng_txt(t, ' s')}；"
              f"地心距 |r| {_rng_txt(rr, ' km')}"]
     if tw is not None:
         rms = "/".join(f"{float(np.sqrt(np.nanmean((kf[k] - tt[k]) ** 2))):.2f}"
@@ -392,6 +418,9 @@ def _ecef(D, rank, num):
             lines.append(f"量测点 {len(tp)} 个（无真值可比）")
     else:
         lines.append("本批无点迹记录，未画量测")
+    nt = obs_note(n_cut, t_hi, "滤波航迹")
+    if nt:
+        lines.append(nt)
     # 三块面板都画满数据，注释放图内必然压线，改排成图脚注（tight_layout 上方留白）。
     fig.text(0.5, 0.004, "；".join(lines), fontsize=8.4, ha="center", va="bottom",
              color="#3a4550", linespacing=1.5)

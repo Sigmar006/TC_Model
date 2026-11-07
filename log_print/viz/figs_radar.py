@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 from .common import (C, CYCLE, align_same_rows, by_target, color_map, db10, db20,
-                     enu_to_lla, marker_map, needs, style_axes, target_title,
-                     title_block)
+                     enu_to_lla, marker_map, needs, obs_clip, obs_note,
+                     radar_obs_span, style_axes, target_title, title_block)
 
 
 # ---------------------------------------------------------------- 公共
@@ -426,9 +426,16 @@ def fig08(D):
         tt = truth["t"].to_numpy(float)
         tr, th = _enu(truth)
         mr, mh = _enu(meas)
+        lo, hi = radar_obs_span(D, tid)
         fits = []
+        n_cut = 0
         for trk in sorted(int(v) for v in to["track"].unique()):
-            g = to[to["track"] == trk].sort_values("t")
+            g_all = to[to["track"] == trk].sort_values("t")
+            keep, cut = obs_clip(g_all["t"].to_numpy(float), lo, hi)
+            if not keep.any():
+                keep, cut = np.ones(len(g_all), dtype=bool), 0
+            n_cut += cut
+            g = g_all[keep]
             tf = g["t"].to_numpy(float)
             fr, fh = _enu(g)
             if len(tt) > 1:
@@ -444,19 +451,22 @@ def fig08(D):
                 dr = np.full(len(tf), np.nan)
             fits.append(dict(track=trk, t=tf, rng=fr, h=fh, v=_speed(g),
                              e3=e3, dr=dr))
+        t_obs = hi if np.isfinite(hi) else (
+            float(meas["t"].max()) if len(meas) else np.nan)
         prepared.append(dict(tid=tid, truth=truth, meas=meas, tt=tt, tr=tr,
-                             th=th, mr=mr, mh=mh, fits=fits,
-                             t_obs=float(meas["t"].max()) if len(meas) else np.nan))
+                             th=th, mr=mr, mh=mh, fits=fits, t_obs=t_obs,
+                             n_cut=n_cut))
 
     n = len(prepared)
     names = "、".join(f"目标 {p['tid']}" for p in prepared)
     fig = plt.figure(figsize=(18.2, 3.35 * n + 1.35))
     gs = fig.add_gridspec(n, 5, width_ratios=[0.07, 1, 1, 1, 1])
-    heads = ["距离–高度剖面", "速度–高度剖面（观测窗内）",
-             "斜距误差（观测窗内）", "三维定位误差（dB，相对 1 m）"]
+    heads = ["距离–高度剖面（观测窗内）", "速度–高度剖面（观测窗内）",
+             "斜距误差（观测窗内）", "三维定位误差（dB，相对 1 m，观测窗内）"]
     title_block(fig, "图 8  雷达多目标航迹：真值 / 量测 / 滤波（按目标分行）",
                 f"{n} 个目标（{names}）；真值 {len(scene)} 点，"
-                f"量测 {len(mt_all)} 点，航迹 {len(to_all)} 条记录；每行只画一个目标")
+                f"量测 {len(mt_all)} 点，航迹 {len(to_all)} 条记录；"
+                f"滤波只画观测窗内的帧，每行只画一个目标")
 
     for i, p in enumerate(prepared):
         # 首列只放行标题，保证"一行=一个目标"在图上直读。
@@ -530,14 +540,18 @@ def fig08(D):
         ax.legend(loc="lower right", fontsize=7.4)
         style_axes(ax)
 
-        # 行内结论：观测窗中位与外推末段，km 与 dB 两种读数都给。
+        # 行内结论：观测窗内中位与窗内末点，km 与 dB 两种读数都给。
         f0 = p["fits"][0] if p["fits"] else None
         if f0 is not None:
             in_win = (f0["t"] >= base) & (f0["t"] <= t_end)
             med = float(np.nanmedian(f0["e3"][in_win])) if in_win.any() else np.nan
             last = float(f0["e3"][-1]) if len(f0["e3"]) else np.nan
-            txt = (f"观测窗中位 {med/1e3:.2f} km（{float(db20(max(med, 1e-3))):.1f} dB）\n"
-                   f"外推末段 {last/1e3:.0f} km（{float(db20(max(last, 1e-3))):.1f} dB）")
+            txt = (f"观测窗 {t_end:.0f} s 内中位 {med/1e3:.2f} km"
+                   f"（{float(db20(max(med, 1e-3))):.1f} dB）\n"
+                   f"窗内末点 {last/1e3:.0f} km（{float(db20(max(last, 1e-3))):.1f} dB）")
+            nt = obs_note(p["n_cut"], t_end, "滤波航迹")
+            if nt:
+                txt += "\n" + nt
             ax.annotate(txt, xy=(0.03, 0.86), xycoords="axes fraction",
                         fontsize=7.6, va="top",
                         bbox=dict(boxstyle="round,pad=0.3", fc="#f7f9fb",

@@ -15,8 +15,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .common import (C, CYCLE, color_map, db10, db20, needs, style_axes,
-                     title_block)
+from .common import (C, CYCLE, all_obs_span, color_map, db10, db20, needs,
+                     obs_clip, obs_note, style_axes, title_block)
 
 
 def _rng_txt(v, unit="", nd=2):
@@ -54,7 +54,13 @@ def _parse3(series):
 @needs(("sat", "ukf", "UKF滤波"),
        title="图 40 UKF 协方差与轨道状态")
 def fig40(D):
-    uk = D["sat"]["ukf"].sort_values("t").reset_index(drop=True)
+    uk_all = D["sat"]["ukf"].sort_values("t")
+    # ukf 表没有目标键，只能取全批观测时段的并集；超出的外推段默认不画。
+    lo_obs, hi_obs = all_obs_span(D)
+    keep, n_cut = obs_clip(uk_all["t"].to_numpy(float), lo_obs, hi_obs)
+    if not keep.any():
+        keep, n_cut = np.ones(len(uk_all), dtype=bool), 0
+    uk = uk_all[keep].reset_index(drop=True)
     lla = _parse3(uk["lla"])
     t = uk["t"].to_numpy(float)
     covtr = uk["covtr"].to_numpy(float)
@@ -67,11 +73,13 @@ def fig40(D):
     lo = ~hi & np.isfinite(h)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
+    clip_txt = obs_note(n_cut, hi_obs, "UKF")
     title_block(fig, "图 40  UKF 协方差迹与轨道高度、星下点",
                 f"UKF 记录 {len(uk)} 条，{uk['t'].nunique()} 个时刻；"
                 f"高轨支 {int(hi.sum())} 条（{_rng_txt(h[hi], ' km', 0)}），"
                 f"低轨支 {int(lo.sum())} 条（{_rng_txt(h[lo], ' km', 0)}）；"
-                f"同一时刻常有两行，表中无目标号")
+                f"同一时刻常有两行，表中无目标号"
+                + (f"；{clip_txt}" if clip_txt else ""))
 
     ax = axes[0, 0]
     ax.plot(t[hi], h[hi], ".", ms=2.8, color=C["pred"], alpha=0.75,

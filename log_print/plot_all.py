@@ -6,8 +6,12 @@ r"""一键绘图入口。
     .\.venv\Scripts\python.exe plot_all.py                 # 生成全部 54 张图
     .\.venv\Scripts\python.exe plot_all.py --only 1,2,3    # 只画指定编号
     .\.venv\Scripts\python.exe plot_all.py --refresh       # 忽略缓存重新解析日志
+    .\.venv\Scripts\python.exe plot_all.py --show-extrapolated  # 保留滤波外推段
     .\.venv\Scripts\python.exe plot_all.py --list          # 列出图目录
     .\.venv\Scripts\python.exe plot_all.py --doctor        # 环境/数据自检
+
+默认把滤波/航迹裁到该实体最后一次观测，观测停止后的外推段不画；
+--show-extrapolated 可一键恢复外推段。
 
 日志目录默认是本文件旁的 log\，可用 --log-dir 或环境变量 LOG_PRINT_LOG_DIR 覆盖；
 输出目录同理（--out-dir / LOG_PRINT_OUT_DIR）。程序内不写死任何绝对路径。
@@ -60,6 +64,7 @@ def doctor() -> int:
     print(f"  日志目录 : {common.LOG_DIR}")
     print(f"  输出目录 : {common.OUT_DIR}")
     print(f"  缓存目录 : {common.CACHE_DIR}")
+    print(f"  观测窗裁剪: {'开（滤波外推段不画）' if common.CLIP_TO_OBS else '关（含外推段）'}")
 
     bad = 0
     try:
@@ -110,6 +115,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="雷达/红外仿真日志一键绘图")
     ap.add_argument("--only", default="", help="只画指定编号，如 1,3,7 或 1-5")
     ap.add_argument("--refresh", action="store_true", help="忽略解析缓存")
+    ap.add_argument("--show-extrapolated", action="store_true",
+                    help="保留观测窗外的滤波外推段（默认不画）")
     ap.add_argument("--dpi", type=int, default=200)
     ap.add_argument("--list", action="store_true", help="仅列出图目录")
     ap.add_argument("--doctor", action="store_true", help="环境与数据自检后退出")
@@ -119,6 +126,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     common.set_paths(log_dir=args.log_dir, out_dir=args.out_dir, cache_dir=args.cache_dir)
+    if args.show_extrapolated:
+        common.set_clip_to_obs(False)
 
     if args.doctor:
         return doctor()
@@ -126,6 +135,9 @@ def main(argv=None) -> int:
     font = common.setup_style()
     if not common.HAS_CJK_FONT:
         print("警告：未找到中文字体，图上的中文会显示为方框；请安装 Microsoft YaHei / SimHei 后重试。")
+    print("观测窗裁剪：" + ("开（滤波只画到末次观测；--show-extrapolated 关闭）"
+                            if common.CLIP_TO_OBS
+                            else "关（滤波外推段照常绘制）"))
 
     rows = registry()
 

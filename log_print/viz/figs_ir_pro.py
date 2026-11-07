@@ -19,8 +19,8 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from scipy.stats import chi2
 
-from .common import (C, color_map, db10, ls_map, marker_map, needs,
-                     style_axes, target_title, title_block)
+from .common import (C, color_map, db10, ir_obs_span, ls_map, marker_map, needs,
+                     obs_clip, obs_note, style_axes, target_title, title_block)
 
 
 def _rng_txt(v, unit="", nd=2):
@@ -43,6 +43,21 @@ def _pairs(df):
     for (s, t), g in df.groupby(["sat", "tid"], sort=True, dropna=True):
         out.append((int(s), int(t), g))
     return out
+
+
+def _clip_obs(D, df):
+    """跟踪表按（卫星，目标）观测窗裁剪；返回 (裁剪后表, 剔除条数)。"""
+    if df is None or len(df) == 0:
+        return df, 0
+    df = df.sort_values("t").reset_index(drop=True)
+    mask = np.ones(len(df), dtype=bool)
+    for s, t, g in _pairs(df):
+        lo, hi = ir_obs_span(D, tid=t, sat=s)
+        m, _ = obs_clip(g["t"].to_numpy(float), lo, hi)
+        # 观测窗内恰好没有跟踪帧时保留整组，避免把该组合从图里整条抹掉。
+        if m.any():
+            mask[g.index.to_numpy()] = m
+    return df[mask], int((~mask).sum())
 
 
 def _legend_sat(ax, sats, scmap, loc="best", ncol=1, fs=7.0, title=None):
@@ -260,6 +275,7 @@ def fig37(D):
        title="图 38 红外跟踪 NIS 一致性")
 def fig38(D):
     trk = D["ir_int"]["ir_trk"].sort_values("t")
+    trk, n_cut = _clip_obs(D, trk)
     pairs = _pairs(trk)
     sats = sorted({s for s, _, _ in pairs})
     tids = sorted({t for _, t, _ in pairs})
@@ -272,11 +288,13 @@ def fig38(D):
     g99 = float(chi2.ppf(0.99, 2))
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
+    clip_txt = obs_note(n_cut, float(trk["t"].max()), "跟踪记录")
     title_block(fig, "图 38  红外跟踪 NIS 与新息一致性（按卫星/目标）",
                 f"跟踪记录 {len(trk)} 条（卫星 {'、'.join(str(s) for s in sats)}；"
                 f"目标 {'、'.join(str(t) for t in tids)}），NIS {_rng_txt(nis, '', 1)}；"
                 f"χ²(2) 95% 门限 {g95:.2f}、99% 门限 {g99:.2f}，"
-                f"超门 {int(over.sum())} 条；颜色＝卫星、标记/线型＝目标")
+                f"超门 {int(over.sum())} 条；颜色＝卫星、标记/线型＝目标"
+                + (f"；{clip_txt}" if clip_txt else ""))
 
     ax = axes[0, 0]
     n_zero = int((~np.isfinite(db10(nis))).sum())
@@ -379,6 +397,7 @@ def fig38(D):
        title="图 39 红外视线角、视场门与候选")
 def fig39(D):
     trk = D["ir_int"]["ir_trk"]
+    trk, n_cut = _clip_obs(D, trk)
     cand = D["ir_int"]["ir_cand"]
     geom = D["ir_int"]["ir_geom"]
 
@@ -394,10 +413,12 @@ def fig39(D):
     csat = cand["sat"].to_numpy(float)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
+    clip_txt = obs_note(n_cut, float(trk["t"].max()), "跟踪记录")
     title_block(fig, "图 39  红外跟踪视线角、视场门与宽场候选（按卫星/目标）",
                 f"跟踪 {len(trk)} 条、候选 {len(cand)} 条；"
                 f"几何门控记录 {len(geom)} 条；卫星 {'、'.join(str(s) for s in sats)}，"
-                f"目标 {'、'.join(str(t) for t in tids)}；颜色＝卫星、标记＝目标")
+                f"目标 {'、'.join(str(t) for t in tids)}；颜色＝卫星、标记＝目标"
+                + (f"；{clip_txt}" if clip_txt else ""))
 
     ax = axes[0, 0]
     for s, t, g in tgrp:

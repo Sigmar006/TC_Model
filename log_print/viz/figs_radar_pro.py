@@ -14,9 +14,10 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from scipy.stats import ncx2
 
-from . import extract
+from . import common, extract
 from .common import (C, CYCLE, align_same_rows, by_target, color_map, db10, db20,
-                     marker_map, needs, style_axes, target_title, title_block)
+                     marker_map, needs, obs_mask, radar_obs_span, style_axes,
+                     target_title, title_block)
 
 C_LIGHT = 299792458.0
 
@@ -843,10 +844,14 @@ def fig32(D):
         if len(truth) < 2:
             continue
         tt = truth["t"].to_numpy(float)
+        lo, hi = radar_obs_span(D, tid)
+        if not (np.isfinite(lo) and np.isfinite(hi)):
+            lo, hi = float(tt.min()), float(tt.max())
         for trk in sorted(int(v) for v in g["track"].unique()):
             full = g[g["track"] == trk].sort_values("t")
             tf_all = full["t"].to_numpy(float)
-            keep = (tf_all >= tt.min()) & (tf_all <= tt.max())
+            keep = ((tf_all >= tt.min()) & (tf_all <= tt.max())
+                    & obs_mask(tf_all, lo, hi))
             n_excl += int((~keep).sum())
             if keep.sum() < 2:
                 continue
@@ -869,10 +874,13 @@ def fig32(D):
     lss = ["--", ":", "-."]
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
+    clip_txt = ("仅统计观测窗内的航迹帧，观测停止后的外推段不画"
+                if common.CLIP_TO_OBS else
+                "观测窗裁剪已关闭，航迹含外推段（仍限真值时段）")
     title_block(fig, "图 32  真值–航迹对比与三维定位误差（按目标）",
                 f"{len(groups)} 个目标（{'、'.join(target_title(t) for t in tid_list)}）、"
-                f"{len(prepared)} 条航迹；仅统计真值时段内的航迹帧，超出段不外推"
-                f"（剔除非共同时段 {n_excl} 帧）；不同目标按颜色区分")
+                f"{len(prepared)} 条航迹；{clip_txt}（剔除 {n_excl} 帧）；"
+                f"不同目标按颜色区分")
 
     ax = axes[0, 0]
     for tid in tid_list:
@@ -914,7 +922,7 @@ def fig32(D):
     ax.axhline(0.0, color=C["neutral"], ls=":", lw=0.9, label="0 dB = 1 m")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("三维定位误差 (dB re 1 m)")
-    ax.set_title("(c) 误差时序（真值时段内）", fontsize=10.5)
+    ax.set_title("(c) 误差时序（观测窗内）", fontsize=10.5)
     ax.annotate(f"零误差 {int(sum((p['e3'] <= 0).sum() for p in prepared))} 帧"
                 "（20·lg 无定义，未画）",
                 xy=(0.03, 0.04), xycoords="axes fraction", fontsize=8.0,

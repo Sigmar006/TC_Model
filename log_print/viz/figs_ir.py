@@ -13,9 +13,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
+from matplotlib.lines import Line2D
 
-from .common import (C, CYCLE, W_IR, by_target, db10, needs, style_axes,
-                     target_title, title_block)
+from .common import (C, CYCLE, W_IR, by_target, color_map, db10, marker_map,
+                     needs, style_axes, target_title, title_block)
 
 
 def _valid_centers(wfov):
@@ -322,92 +323,163 @@ def fig14(D):
     thr = float(rad["thr"].median())
     thr_db = float(db10(thr))
 
-    fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.2))
-    title_block(fig, "图 14  红外辐射检测与链路通过率",
-                f"辐射计算 {len(rad)} 次，SNR {np.nanmin(snr_db):.1f}–{np.nanmax(snr_db):.1f} dB"
-                f"（门限 {thr_db:.1f} dB）；通过视场门控 {int(ok_fov.sum())} 次"
-                f"（{100 * ok_fov.mean():.2f}%）")
+    sats = sorted(int(v) for v in rad["sat"].dropna().unique())
+    tids = sorted(int(v) for v in rad["tid"].dropna().unique())
+    scmap = color_map(sats)
+    tmark = marker_map(tids)
+    satv = rad["sat"].to_numpy(float)
+    tidv = rad["tid"].to_numpy(float)
+
+    def _xleg(ax, handles, loc, title):
+        return ax.legend(handles=handles, loc=loc, fontsize=6.6, title=title,
+                         title_fontsize=7.0, handletextpad=0.3, labelspacing=0.28)
+
+    fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
+    title_block(fig, "图 14  红外辐射检测与链路通过率（颜色＝卫星，标记＝目标）",
+                f"辐射计算 {len(rad)} 次（卫星 {'、'.join(str(s) for s in sats)}；"
+                f"目标 {'、'.join(str(t) for t in tids)}），SNR "
+                f"{np.nanmin(snr_db):.1f}–{np.nanmax(snr_db):.1f} dB（门限 {thr_db:.1f} dB）；"
+                f"通过视场门控 {int(ok_fov.sum())} 次（{100 * ok_fov.mean():.2f}%）")
 
     ax = axes[0, 0]
-    ax.scatter(rng[~ok_fov], snr_db[~ok_fov], s=3, color=C["neutral"], alpha=0.18,
-               linewidths=0, label=f"视场排除（{int((~ok_fov).sum())}）")
-    cx, med, lo, hi = _bin_stat(rng, snr_db, 42)
-    ax.fill_between(cx, lo, hi, color=C["accent1"], alpha=0.18, lw=0,
-                    label="10–90% 分位")
-    ax.plot(cx, med, color="#123f63", lw=1.5, label="分箱中位")
-    ax.scatter(rng[ok_fov], snr_db[ok_fov], s=26, color=C["accent3"], alpha=0.9,
-               edgecolors="white", linewidths=0.4,
-               label=f"视场通过（{int(ok_fov.sum())}）")
+    for s in sats:
+        for t in tids:
+            m = (satv == s) & (tidv == t)
+            if not m.any():
+                continue
+            on = m & ok_fov
+            if on.any():
+                ax.scatter(rng[on], snr_db[on], s=9, marker=tmark[t],
+                           color=scmap[s], alpha=0.32, linewidths=0)
+            off = m & ~ok_fov
+            if off.any():
+                ax.scatter(rng[off], snr_db[off], s=8, marker=tmark[t],
+                           facecolors="none", edgecolors=scmap[s], alpha=0.3,
+                           linewidths=0.4)
     ax.axhline(thr_db, color=C["warn"], ls="--", lw=1.1,
                label=f"SNR 门限 {thr_db:.1f} dB")
     ax.set_xlabel("卫星–目标斜距 ($10^4$ km)")
     ax.set_ylabel("接收信噪比 (dB)")
-    ax.set_title("(a) 信噪比–距离关系", fontsize=10.5)
-    ax.legend(loc="lower left", fontsize=7.8, markerscale=1.6)
+    ax.set_title("(a) 信噪比–距离关系（实心＝通过视场，空心＝排除）", fontsize=10.5)
+    handles = [Line2D([], [], ls="none", marker="o", ms=5, color=scmap[s],
+                      label=f"卫星 {s}") for s in sats]
+    handles += [Line2D([], [], ls="none", marker=tmark[t], ms=5,
+                       color=C["neutral"], label=f"目标 {t}") for t in tids]
+    ax.legend(handles=handles, loc="lower center", ncol=4, fontsize=6.5,
+              handletextpad=0.3, columnspacing=0.9, labelspacing=0.3)
     style_axes(ax)
 
     ax = axes[0, 1]
     stages = ["宽视场几何评估", "视场门控通过", "SNR 门限通过",
               "调度候选", "窄视场观测", "跟踪滤波输出"]
-    vals = [len(geom[geom["stage"].astype(str).eq("WFOV")]), int(ok_fov.sum()),
-            int(rad["snr_res"].astype(str).eq("通过").sum()), len(cand),
-            len(obs), len(trk)]
-    vals_db = db10(np.asarray(vals, dtype=float))
-    colors = ["#9fb3c8", C["accent1"], C["accent4"], C["accent3"],
-              C["accent2"], "#123f63"]
-    y = np.arange(len(stages))[::-1]
-    ax.barh(y, vals_db, color=colors, alpha=0.9, height=0.6)
-    ax.set_yticks(y)
-    ax.set_yticklabels(stages)
-    ax.set_xlabel("记录数 (dB，相对 1 条)")
-    ax.set_title("(b) 红外链路各阶段记录量", fontsize=10.5)
-    for yy, v, d in zip(y, vals, vals_db):
-        ax.text(d + 0.4, yy, f"{v:,}", va="center", fontsize=8.5)
-    ax.set_xlim(0, float(np.nanmax(vals_db)) * 1.18)
-    ax.grid(axis="y", visible=False)
+    wfov_ok = geom["stage"].astype(str).eq("WFOV").to_numpy()
+    snr_ok = rad["snr_res"].astype(str).eq("通过").to_numpy()
+    gsat = geom["sat"].to_numpy(float)
+    csat = cand["sat"].to_numpy(float)
+    osat = obs["sat"].to_numpy(float)
+    ksat = trk["sat"].to_numpy(float)
+    sat_stage = []
+    for s in sats:
+        g = gsat == s
+        r = satv == s
+        sat_stage.append([int((g & wfov_ok).sum()), int((r & ok_fov).sum()),
+                          int((r & snr_ok).sum()), int((csat == s).sum()),
+                          int((osat == s).sum()), int((ksat == s).sum())])
+    n = max(len(sats), 1)
+    bw = 0.8 / n
+    vmax = 1.0
+    for j, s in enumerate(sats):
+        off = (j - (n - 1) / 2.0) * bw
+        v = np.asarray(sat_stage[j], dtype=float)
+        h = db10(v)
+        vmax = max(vmax, float(np.nanmax(h)))
+        ax.bar(np.arange(len(stages)) + off, np.nan_to_num(h, nan=0.0),
+               width=bw * 0.9, color=scmap[s], alpha=0.9, label=f"卫星 {s}")
+        for x, cnt, hv in zip(np.arange(len(stages)) + off, v, h):
+            if cnt > 0 and np.isfinite(hv):
+                ax.text(x, hv + 0.5, f"{int(cnt):,}", ha="center", va="bottom",
+                        fontsize=5.6, rotation=90, color=scmap[s])
+    ax.set_xticks(range(len(stages)))
+    ax.set_xticklabels(stages, fontsize=7.6, rotation=22, ha="right")
+    ax.set_xlabel("处理阶段")
+    ax.set_ylabel("记录数 (dB，相对 1 条)")
+    ax.set_title("(b) 各阶段记录量（按卫星分组）", fontsize=10.5)
+    ax.set_xlim(-0.6, len(stages) - 0.4)
+    ax.set_ylim(0, vmax * 1.35 + 0.5)
+    ax.legend(loc="upper right", fontsize=6.8, ncol=2)
+    ax.grid(axis="x", visible=False)
     style_axes(ax)
 
     ax = axes[1, 0]
-    ax.hist(snr_db, bins=60, color=C["accent1"], alpha=0.8,
-            edgecolor="white", linewidth=0.3)
-    ax.axvline(thr_db, color=C["warn"], ls="--", lw=1.1)
-    ax.set_xlabel("信噪比 (dB)")
-    ax.set_ylabel("样本数")
-    ax.set_title(f"(c) 信噪比分布（{snr.min()/thr:.1f}–{snr.max()/thr:.1f} 倍门限）",
-                 fontsize=10.5)
-    ax.annotate(f"中位 {float(db10(np.median(snr))):.1f} dB，最小 {np.nanmin(snr_db):.1f} dB\n"
-                f"最低 {snr.min()/thr:.1f} 倍门限",
-                xy=(0.04, 0.94), xycoords="axes fraction", fontsize=8.5, va="top",
+    data = [snr_db[(satv == s) & np.isfinite(snr_db)] for s in sats]
+    bp = ax.boxplot(data, positions=np.arange(1, len(sats) + 1), widths=0.55,
+                    showfliers=False, patch_artist=True)
+    for patch, s in zip(bp["boxes"], sats):
+        patch.set_facecolor(scmap[s])
+        patch.set_alpha(0.24)
+        patch.set_edgecolor(scmap[s])
+    for med in bp["medians"]:
+        med.set_color("#1b2733")
+        med.set_linewidth(1.2)
+    for j, s in enumerate(sats):
+        present = [t for t in tids if int(((satv == s) & (tidv == t)).sum()) >= 30]
+        for k, t in enumerate(present):
+            m = (satv == s) & (tidv == t) & np.isfinite(snr_db)
+            off = (k - (len(present) - 1) / 2.0) * 0.13
+            ax.plot([j + 1 + off], [float(np.median(snr_db[m]))], ls="none",
+                    marker=tmark[t], ms=5, color=scmap[s], mec="white", mew=0.5)
+    ax.axhline(thr_db, color=C["warn"], ls="--", lw=1.1)
+    counts = [int((satv == s).sum()) for s in sats]
+    ax.set_xticks(range(1, len(sats) + 1))
+    ax.set_xticklabels([f"卫星 {s}\n({c:,})" for s, c in zip(sats, counts)],
+                       fontsize=7.8)
+    ax.set_ylabel("信噪比 (dB)")
+    ax.set_title(f"(c) 信噪比分布（箱体＝卫星，标记＝目标中位；{snr.min()/thr:.1f}–"
+                 f"{snr.max()/thr:.1f} 倍门限）", fontsize=9.6)
+    ax.annotate(f"全体中位 {float(db10(np.median(snr))):.1f} dB，"
+                f"最小 {np.nanmin(snr_db):.1f} dB",
+                xy=(0.03, 0.95), xycoords="axes fraction", fontsize=8.0, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
+    _xleg(ax, [Line2D([], [], ls="none", marker=tmark[t], ms=5,
+                      color=C["neutral"], label=f"目标 {t}") for t in tids],
+          "lower right", "目标（标记）")
     style_axes(ax)
 
     ax = axes[1, 1]
     prx = rad["p_rx"].to_numpy(float)
     pn_db = db10(prx / np.clip(rad["tau"].to_numpy(float), 1e-3, None))
-    cx, med, lo, hi = _bin_stat(rng, pn_db, 36)
-    ax.fill_between(cx, lo, hi, color=C["accent4"], alpha=0.18, lw=0,
-                    label="10–90% 分位")
-    ax.plot(cx, med, "o-", ms=2.6, lw=1.2, color=C["accent4"], label="分箱中位")
-    # 幂律指数仍按 log–log 拟合求，再换算到 dB 坐标上画直线（−20 dB/十倍程 ↔ R⁻²）。
-    # 只对正距离、有限中位的箱做拟合；样本不足时不出拟合线，避免整张图失败。
-    ok = (cx > 0) & np.isfinite(med)
-    lg = None
-    if ok.sum() >= 2:
+    step = max(len(rad) // 6000, 1)
+    base_idx = np.arange(0, len(rad), step)
+    for s in sats:
+        for t in tids:
+            m = (satv == s) & (tidv == t)
+            if not m.any():
+                continue
+            sub = base_idx[(satv[base_idx] == s) & (tidv[base_idx] == t)]
+            if sub.size:
+                ax.scatter(rng[sub], pn_db[sub], s=7, marker=tmark[t],
+                           color=scmap[s], alpha=0.3, linewidths=0)
+    fits = []
+    for s in sats:
+        m = satv == s
+        cx, med, lo, hi = _bin_stat(rng[m], pn_db[m], 36)
+        ok = (cx > 0) & np.isfinite(med)
+        if ok.sum() < 2:
+            fits.append(f"卫星 {s}：分箱不足")
+            continue
         lg = np.polyfit(np.log10(cx[ok]), med[ok], 1)
         xs = np.linspace(float(cx[ok].min()), float(cx[ok].max()), 80)
-        ax.plot(xs, lg[0] * np.log10(xs) + lg[1], color=C["warn"], lw=1.4,
-                label=f"拟合 {lg[0]:.1f} dB/十倍程")
+        ax.plot(xs, lg[0] * np.log10(xs) + lg[1], color=scmap[s], lw=1.4,
+                label=f"卫星 {s} 拟合 {lg[0]:.1f} dB/十倍程")
+        fits.append(f"卫星 {s}：{lg[0]:.1f} dB/十倍程（{int(m.sum()):,} 条）")
     ax.set_xlabel("斜距 ($10^4$ km)")
     ax.set_ylabel("归一化接收功率 $P_r/\\tau$ (dBW)")
-    ax.set_title("(d) 接收功率随距离衰减", fontsize=10.5)
-    ax.legend(loc="upper left", fontsize=8)
-    if lg is None:
-        fit = "拟合样本不足，未出拟合线"
-    else:
-        fit = f"$P_r/\\tau$ ∝ $R^{{{lg[0]/10.0:.2f}}}$（理论 $R^{{-2}}$）"
-    ax.annotate(f"{fit}\n中位 {float(db10(np.median(prx))):.1f} dBW（原始 $P_r$ 中位）",
-                xy=(0.04, 0.06), xycoords="axes fraction", fontsize=8.3, va="bottom",
+    ax.set_title("(d) 接收功率随距离衰减（按卫星拟合）", fontsize=10.5)
+    ax.annotate("理论 $R^{-2}$ ＝ −20 dB/十倍程\n" + "\n".join(fits),
+                xy=(0.03, 0.97), xycoords="axes fraction", fontsize=6.9, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
+    _xleg(ax, [Line2D([], [], ls="-", lw=1.4, color=scmap[s], label=f"卫星 {s}")
+               for s in sats], "upper right", "卫星（颜色）")
     style_axes(ax)
     return fig
 

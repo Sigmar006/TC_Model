@@ -288,6 +288,7 @@ def needs(*specs, title: str = ""):
     def deco(fn):
         @functools.wraps(fn)
         def wrapper(D, *args, **kwargs):
+            _scan_entity_universe(D)
             for mod, tab, msg in specs:
                 df = (D.get(mod) or {}).get(tab)
                 if df is None or len(df) == 0:
@@ -324,6 +325,121 @@ def target_title(tid, tracks=None) -> str:
         return f"目标 {int(tid)}"
     tr = "、".join(str(int(v)) for v in sorted({int(v) for v in tracks}))
     return f"目标 {int(tid)}（航迹 {tr}）"
+
+
+# ---------------------------------------------------------------- 实体配色
+# 同一目标 / 卫星在多张图里保持同一颜色，跨图对照时不用重新认图例。
+LS_CYCLE = ["-", "--", "-.", ":", (0, (5, 1.4)), (0, (1, 1.1)),
+            (0, (4, 1.2, 1, 1.2)), (0, (6, 1.4, 1, 1.4, 1, 1.4))]
+MARKERS = ["o", "s", "^", "D", "v", "P", "X", "<", ">", "*"]
+# 基本色板只有 10 个；本批实体号 99–109 共 11 个，补 3 个深色备位。
+ENTITY_CYCLE = CYCLE + ["#34495e", "#7f4f24", "#00a6a6"]
+
+_UNIVERSE: list[int] = []
+_UNIVERSE_SCANNED = False
+
+
+def _entity_ids(ids) -> list[int]:
+    """规范化实体号：只保留可转整数的值，去重后升序。"""
+    out: list[int] = []
+    for v in ids:
+        try:
+            iv = int(v)
+        except (TypeError, ValueError):
+            continue
+        if iv not in out:
+            out.append(iv)
+    out.sort()
+    return out
+
+
+def color_map(ids) -> dict[int, str]:
+    """实体号 → 固定颜色（按整批数据的编号次序取色板）。"""
+    ids = _entity_ids(ids)
+    order = _order(ids)
+    return {v: ENTITY_CYCLE[order.index(v) % len(ENTITY_CYCLE)] for v in ids}
+
+
+def ls_map(ids) -> dict[int, object]:
+    """实体号 → 线型（只在本图内区分，按本图编号升序取）。"""
+    return {v: LS_CYCLE[i % len(LS_CYCLE)]
+            for i, v in enumerate(_entity_ids(ids))}
+
+
+def marker_map(ids) -> dict[int, str]:
+    """实体号 → 标记（只在本图内区分，按本图编号升序取）。"""
+    return {v: MARKERS[i % len(MARKERS)]
+            for i, v in enumerate(_entity_ids(ids))}
+
+
+def _scan_entity_universe(D) -> None:
+    """首次出图时扫描整批数据，固定实体号到颜色的次序（只做一次）。"""
+    global _UNIVERSE, _UNIVERSE_SCANNED
+    if _UNIVERSE_SCANNED:
+        return
+    _UNIVERSE_SCANNED = True
+    vals: set[int] = set()
+    try:
+        import pandas as pd
+    except Exception:                                   # noqa: BLE001
+        pd = None
+    for tag, mod in (D or {}).items():
+        if not isinstance(mod, dict):
+            continue
+        # key 只在卫星模块里是目标键；雷达模块的 meas_trk.key 是航迹序号（1–4），
+        # 混进来会把真实实体号的配色整体顶偏。
+        cols_want = ("tid", "sat", "key") if tag == "sat" else ("tid", "sat")
+        for df in mod.values():
+            cols = getattr(df, "columns", None)
+            if cols is None:
+                continue
+            for col in cols_want:
+                if col not in cols:
+                    continue
+                if pd is not None:
+                    v = pd.to_numeric(df[col], errors="coerce").dropna()
+                    vals.update(int(x) for x in v.unique())
+                else:
+                    a = to_num(df[col])
+                    vals.update(int(x) for x in a[np.isfinite(a)])
+    if vals:
+        _UNIVERSE = sorted(vals)
+
+
+def _order(ids) -> list[int]:
+    """实体号在该批数据中的固定次序；未见过的号追加在末尾。"""
+    ids = _entity_ids(ids)
+    if not _UNIVERSE:
+        return ids
+    return list(_UNIVERSE) + [v for v in ids if v not in _UNIVERSE]
+
+
+def align_same_rows(df, ref, cols=("t", "cyc"), carry=("tid", "track")):
+    """把 ref 的实体列按行序搬到 df 上（df 缺目标号时用）。
+
+    仅当两表行数相同、且 cols 指定键列逐行一致时才复制，返回带 carry 列的
+    新表；条件不满足返回 None，调用方应退回整批统计并在图内注明“无目标号”。
+    """
+    if df is None or ref is None or len(df) != len(ref) or len(df) == 0:
+        return None
+    keys = [c for c in cols if c in df.columns and c in ref.columns]
+    if not keys:
+        return None
+    a = df.reset_index(drop=True)
+    b = ref.reset_index(drop=True)
+    for c in keys:
+        x = to_num(a[c])
+        y = to_num(b[c])
+        if not np.array_equal(np.isnan(x), np.isnan(y)):
+            return None
+        m = ~np.isnan(x)
+        if not np.allclose(x[m], y[m], rtol=0.0, atol=1e-9):
+            return None
+    out = df.copy()
+    for c in carry:
+        if c in b.columns:
+            out[c] = b[c].to_numpy()
+    return out
 
 
 # ---------------------------------------------------------------- 坐标换算

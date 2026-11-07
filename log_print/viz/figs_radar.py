@@ -14,8 +14,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-from .common import (C, CYCLE, by_target, db10, db20, enu_to_lla, needs,
-                     style_axes, target_title, title_block)
+from .common import (C, CYCLE, align_same_rows, by_target, color_map, db10, db20,
+                     enu_to_lla, marker_map, needs, style_axes, target_title,
+                     title_block)
 
 
 # ---------------------------------------------------------------- 公共
@@ -70,48 +71,71 @@ def fig04(D):
     plt_ = D["radar_ext"]["plot"].sort_values("t")
     cfar = D["radar_output"]["cfar"].sort_values("t")
     thr = float(det["thr"].median())
-    n_tid = int(det["tid"].nunique()) if "tid" in det.columns else 0
+    dgrp = by_target(det)
+    pgrp = by_target(plt_)
+    cgrp = by_target(cfar)
+    cmap = color_map([t for t, _ in dgrp + pgrp + cgrp])
+    mmap = marker_map(cmap)
 
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
-    title_block(fig, "图 4  检测信噪比、检测概率与门限",
-                f"检测记录 {len(det)} 条（{n_tid} 个目标，"
-                f"{det['t'].min():.0f}–{det['t'].max():.0f} s），"
-                f"点迹量测 {len(plt_)} 条；CFAR 门限 {_range_txt(det['thr'], ' dB')}")
+    title_block(fig, "图 4  检测信噪比、检测概率与门限（按目标）",
+                f"检测记录 {len(det)} 条（{'、'.join(target_title(t) for t, _ in dgrp)}），"
+                f"{det['t'].min():.0f}–{det['t'].max():.0f} s；"
+                f"点迹量测 {len(plt_)} 条；CFAR 门限 {_range_txt(det['thr'], ' dB')}；"
+                f"不同目标的曲线与散点按颜色区分")
 
     ax = axes[0]
-    t = det["t"].to_numpy(float)
-    snr = det["snr_out"].to_numpy(float)
-    ax.plot(t, snr, color=C["accent1"], lw=1.2, label="检测前 SNR")
+    for tid, g in dgrp:
+        t = g["t"].to_numpy(float)
+        snr = g["snr_out"].to_numpy(float)
+        col = cmap[int(tid)] if tid is not None else C["accent1"]
+        if len(g) == 1:
+            ax.plot(t, snr, ls="none", marker="o", ms=6, color=col,
+                    label=f"{target_title(tid)}（{len(g)} 次）")
+        else:
+            ax.plot(t, snr, lw=1.2, color=col,
+                    label=f"{target_title(tid)}（{len(g)} 次）")
+            below = snr < thr
+            ax.fill_between(t, snr, thr, where=below, color=col, alpha=0.16, lw=0)
     ax.axhline(thr, color=C["warn"], ls="--", lw=1.2, label=f"门限 {thr:.2f} dB")
-    below = snr < thr
-    ax.fill_between(t, snr, thr, where=below, color=C["warn"], alpha=0.16,
-                    lw=0, label=f"低于门限 {int(below.sum())} 次")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("SNR (dB)")
     ax.set_title("(a) 单周期检测 SNR 与门限", fontsize=10.5)
-    ax.legend(loc="lower right", fontsize=8)
+    ax.margins(x=0.03)
+    ax.legend(loc="lower right", fontsize=7.8)
     style_axes(ax)
 
     ax = axes[1]
-    x = plt_["snr"].to_numpy(float)
-    y = plt_["pd"].to_numpy(float)
-    sc = ax.scatter(x, y, c=plt_["rng"].to_numpy(float) / 1e3, s=7,
-                    cmap="viridis", alpha=0.65, linewidths=0)
-    cb = fig.colorbar(sc, ax=ax, pad=0.02)
-    cb.set_label("斜距 (km)", fontsize=8)
-    cb.ax.tick_params(labelsize=7)
+    for tid, g in pgrp:
+        col = cmap[int(tid)] if tid is not None else C["accent1"]
+        mk = mmap.get(int(tid), "o") if tid is not None else "o"
+        small = len(g) < 20
+        ax.scatter(g["snr"], g["pd"], s=26 if small else 8, color=col, marker=mk,
+                   alpha=0.9 if small else 0.6, linewidths=0.5 if small else 0,
+                   edgecolors="white" if small else None,
+                   zorder=3 if small else 2,
+                   label=f"{target_title(tid)}（{len(g)} 点）")
     ax.axvline(thr, color=C["warn"], ls="--", lw=1.0)
     ax.text(thr + 0.15, 0.03, "门限", color=C["warn"], fontsize=8, rotation=90,
             va="bottom")
     ax.set_xlabel("SNR (dB)")
     ax.set_ylabel("单次检测概率 $P_d$")
-    ax.set_title("(b) 检测概率随 SNR 分布", fontsize=10.5)
+    ax.set_title("(b) 检测概率随 SNR 分布（颜色＝目标）", fontsize=10.5)
     ax.set_ylim(-0.02, 1.02)
+    ax.legend(loc="lower right", fontsize=7.8)
     style_axes(ax)
 
     ax = axes[2]
-    ax.plot(cfar["t"], cfar["r90"] / 1e3, color=C["accent3"], lw=1.4)
-    ax.fill_between(cfar["t"], cfar["r90"] / 1e3, color=C["accent3"], alpha=0.12)
+    for tid, g in cgrp:
+        col = cmap[int(tid)] if tid is not None else C["accent1"]
+        r90 = g["r90"].to_numpy(float) / 1e3
+        if len(g) > 1:
+            ax.plot(g["t"], r90, color=col, lw=1.4,
+                    label=target_title(tid))
+            ax.fill_between(g["t"], r90, color=col, alpha=0.12)
+        else:
+            ax.plot(g["t"], r90, ls="none", marker="D", ms=5, color=col,
+                    label=f"{target_title(tid)}（{len(g)} 次）")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("$P_d=90\\%$ 作用距离 (km)")
     ax.set_title("(c) CFAR 90% 检测距离", fontsize=10.5)
@@ -121,6 +145,7 @@ def fig04(D):
                 xy=(0.04, 0.88), xycoords="axes fraction", fontsize=8.5,
                 va="top", bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb",
                                     ec="#c8d0d8"))
+    ax.legend(loc="lower right", fontsize=7.8)
     style_axes(ax)
     return fig
 
@@ -215,50 +240,72 @@ def fig06(D):
     jg = D["radar_output"]["jam_gain"].sort_values("t")
 
     p_db = db10(jp["power"].to_numpy(float))
-    js = db10(echo["p_jam"].to_numpy(float) / echo["p_echo"].to_numpy(float))
-    jn = db10(echo["p_jam"].to_numpy(float) / echo["p_noise"].to_numpy(float))
-    js_med, jn_med = float(np.nanmedian(js)), float(np.nanmedian(jn))
+    srcs = sorted(jp["src"].dropna().unique().astype(int).tolist())
+    cmap = color_map(srcs)
+    mmap = marker_map(srcs)
 
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
-    title_block(fig, "图 6  干扰功率与抗干扰抑制",
-                f"干扰源 {jp['src'].nunique()} 部（目标 "
-                f"{sorted(jp['src'].unique().astype(int).tolist())}），"
-                f"接收干扰功率 {np.nanmin(p_db):.1f}–{np.nanmax(p_db):.1f} dBW")
+    title_block(fig, "图 6  干扰功率与抗干扰抑制（按目标）",
+                f"干扰功率 {len(jp)} 条，涉及目标 "
+                f"{'、'.join(f'{v}' for v in srcs)}（每目标一个干扰源，"
+                f"源号与目标号一致）；接收干扰功率 "
+                f"{np.nanmin(p_db):.1f}–{np.nanmax(p_db):.1f} dBW")
 
     ax = axes[0]
-    for k, (src, g) in enumerate(jp.groupby("src")):
-        ax.plot(g["t"], db10(g["power"].to_numpy(float)), lw=0.8, color=CYCLE[k],
-                label=f"干扰源 {int(src)}")
+    for src, g in jp.groupby("src"):
+        lab = f"目标 {int(src)}（干扰源）"
+        y = db10(g["power"].to_numpy(float))
+        if len(g) == 1:
+            ax.plot(g["t"], y, ls="none", marker="o", ms=5, color=cmap[int(src)],
+                    label=f"{lab}，1 条")
+        else:
+            ax.plot(g["t"], y, lw=0.8, color=cmap[int(src)], label=lab)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("接收干扰功率 (dBW)")
-    ax.set_title("(a) 各干扰源接收功率", fontsize=10.5)
+    ax.set_title("(a) 各目标干扰源接收功率", fontsize=10.5)
     ax.legend(loc="lower right", fontsize=8)
     style_axes(ax)
 
     ax = axes[1]
-    ax.plot(echo["t"], js, lw=1.1, color=C["warn"], label="J/S")
-    ax.plot(echo["t"], jn, lw=1.1, color=C["accent4"], label="J/N")
+    notes = []
+    for tid, g in by_target(echo):
+        col = cmap.get(int(tid), C["accent1"]) if tid is not None else C["accent1"]
+        js = db10(g["p_jam"].to_numpy(float) / g["p_echo"].to_numpy(float))
+        jn = db10(g["p_jam"].to_numpy(float) / g["p_noise"].to_numpy(float))
+        if len(g) == 1:
+            ax.plot(g["t"], js, ls="none", marker="o", ms=5, color=col,
+                    label=target_title(tid))
+            ax.plot(g["t"], jn, ls="none", marker="o", ms=5, color=col,
+                    mfc="none")
+        else:
+            ax.plot(g["t"], js, lw=1.1, color=col, label=target_title(tid))
+            ax.plot(g["t"], jn, lw=1.0, color=col, ls="--")
+        notes.append(f"{target_title(tid)}：J/S 中位 {np.nanmedian(js):.1f} dB、"
+                     f"J/N 中位 {np.nanmedian(jn):.1f} dB")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("功率比 (dB)")
-    ax.set_title("(b) 干信比与干噪比", fontsize=10.5)
-    ax.annotate(f"J/S 中位 {js_med:.1f} dB（{10 ** (js_med / 10):.2f} 倍）\n"
-                f"J/N 中位 {jn_med:.1f} dB（{10 ** (jn_med / 10):.2f} 倍）",
-                xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.3, va="bottom",
+    ax.set_title("(b) 干信比（实线）与干噪比（虚线）", fontsize=10.5)
+    ax.annotate("\n".join(notes), xy=(0.03, 0.06), xycoords="axes fraction",
+                fontsize=8.0, va="bottom",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     ax.legend(loc="center right", fontsize=8)
     style_axes(ax)
 
     ax = axes[2]
+    for tid, g in by_target(jg):
+        col = cmap.get(int(tid), C["accent3"]) if tid is not None else C["accent3"]
+        mk = mmap.get(int(tid), "o") if tid is not None else "o"
+        ax.scatter(db10(g["p_mti"].to_numpy(float)), g["suppr"].to_numpy(float),
+                   s=11, color=col, marker=mk, alpha=0.6, linewidths=0,
+                   label=f"{target_title(tid)}（{len(g)} 点）")
     suppr = jg["suppr"].to_numpy(float)
-    ax.scatter(db10(jg["p_mti"].to_numpy(float)), suppr, s=9, color=C["accent3"],
-               alpha=0.55, linewidths=0)
     ax.axhline(np.median(suppr), color=C["warn"], ls="--", lw=1.0,
-               label=f"中位 {np.median(suppr):.1f} dB")
+               label=f"全体中位 {np.median(suppr):.1f} dB")
     ax.set_xlabel("MTI 后残余干扰功率 (dBW)")
     ax.set_ylabel("干扰抑制比 (dB)")
     ax.set_ylim(float(np.nanmin(suppr)) - 1.0, float(np.nanmax(suppr)) + 2.2)
-    ax.set_title("(c) MTI 干扰抑制效果", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8)
+    ax.set_title("(c) MTI 干扰抑制效果（颜色＝目标）", fontsize=10.5)
+    ax.legend(loc="upper right", fontsize=7.6)
     style_axes(ax)
     return fig
 
@@ -269,18 +316,22 @@ def fig06(D):
 def fig07(D):
     ji = D["radar_ext"]["jam_in"].sort_values("t")
     fig = plt.figure(figsize=(13.2, 7.4))
-    title_block(fig, "图 7  干扰源参数与空间几何",
+    srcs = sorted(int(v) for v in ji["src"].dropna().unique())
+    scmap = color_map(srcs)
+    title_block(fig, "图 7  干扰源参数与空间几何（按干扰源 / 目标）",
                 f"带限噪声压制干扰，中心频率 {ji['fc'].median()/1e9:.2f} GHz，"
-                f"带宽 {ji['bw'].median()/1e6:.0f} MHz，发射功率 {ji['ptx'].median():.1f} dBW")
+                f"带宽 {ji['bw'].median()/1e6:.0f} MHz，发射功率 {ji['ptx'].median():.1f} dBW；"
+                f"干扰源 {'、'.join(str(s) for s in srcs)}（编号与目标号一致）")
 
     gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0])
     ax = fig.add_subplot(gs[0, :2])
-    for k, (src, g) in enumerate(ji.groupby("src")):
+    for src, g in ji.groupby("src"):
         e = g["p0"].to_numpy(float)
         n = g["p1"].to_numpy(float)
         u = g["p2"].to_numpy(float)
         r = np.sqrt(e * e + n * n + u * u) / 1e3
-        ax.plot(g["t"], r, lw=1.3, color=CYCLE[k], label=f"干扰源 {int(src)}")
+        ax.plot(g["t"], r, lw=1.3, color=scmap[int(src)],
+                label=f"目标 {int(src)}（干扰源）")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("干扰机–雷达斜距 (km)")
     ax.set_title("(a) 干扰机接近过程", fontsize=10.5)
@@ -288,13 +339,13 @@ def fig07(D):
     style_axes(ax)
 
     ax = fig.add_subplot(gs[0, 2])
-    for k, (src, g) in enumerate(ji.groupby("src")):
+    for src, g in ji.groupby("src"):
         e = g["p0"].to_numpy(float) / 1e3
         n = g["p1"].to_numpy(float) / 1e3
-        ax.plot(e, n, lw=1.1, color=CYCLE[k], label=f"{int(src)}")
-        ax.plot(e[0], n[0], "o", ms=4, color=CYCLE[k])
+        ax.plot(e, n, lw=1.1, color=scmap[int(src)], label=f"目标 {int(src)}")
+        ax.plot(e[0], n[0], "o", ms=4, color=scmap[int(src)])
         ax.annotate("起点", (e[0], n[0]), textcoords="offset points",
-                    xytext=(4, 4), fontsize=7.5, color=CYCLE[k])
+                    xytext=(4, 4), fontsize=7.5, color=scmap[int(src)])
     ax.plot(0, 0, marker="^", ms=8, color=C["warn"], ls="none", label="雷达")
     ax.set_xlabel("东向 (km)")
     ax.set_ylabel("北向 (km)")
@@ -308,13 +359,13 @@ def fig07(D):
     t_on = g0["t0"].agg(["min", "max"])
     for k, (src, row) in enumerate(t_on.iterrows()):
         ax.add_patch(Rectangle((row["min"], k - 0.28), row["max"] - row["min"],
-                               0.56, color=CYCLE[k], alpha=0.75))
-        ax.text(row["min"] + 40, k, f"{int(src)} 号干扰机", va="center",
+                               0.56, color=scmap[int(src)], alpha=0.75))
+        ax.text(row["min"] + 40, k, f"目标 {int(src)}", va="center",
                 fontsize=8.5, color="white")
     ax.set_yticks(range(len(t_on)))
     ax.set_yticklabels([f"{int(s)}" for s in t_on.index])
     ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("干扰源编号")
+    ax.set_ylabel("目标 / 干扰源编号")
     ax.set_title("(c) 干扰开机时段", fontsize=10.5)
     ax.set_ylim(-0.6, len(t_on) - 0.4)
     ax.set_xlim(float(t_on["min"].min()) - 60,
@@ -323,9 +374,9 @@ def fig07(D):
 
     ax = fig.add_subplot(gs[1, 1])
     jp = D["radar_output"]["jam_power"]
-    for k, (src, g) in enumerate(jp.groupby("src")):
-        ax.plot(g["t"], db10(g["pden"].to_numpy(float)), lw=1.0, color=CYCLE[k],
-                label=f"{int(src)}")
+    for src, g in jp.groupby("src"):
+        ax.plot(g["t"], db10(g["pden"].to_numpy(float)), lw=1.0,
+                color=scmap[int(src)], label=f"目标 {int(src)}")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("功率谱密度 (dBW/Hz)")
     ax.set_title("(d) 到达功率谱密度", fontsize=10.5)
@@ -498,23 +549,32 @@ def fig08(D):
 @needs(("radar_output", "meas", "对目标的角度和距离进行测量功能测试"),
        title="图 9 量测误差时序")
 def fig09(D):
-    m = D["radar_output"]["meas"].sort_values("t")
+    m = D["radar_output"]["meas"].sort_values("t", kind="stable")
+    kf = (D.get("radar_output") or {}).get("kf")
+    aligned = align_same_rows(m, kf) if kf is not None else None
+    if aligned is not None:
+        m = aligned
+        src_note = "量测表无目标号，已按 kf 表同序（(t, cyc) 逐行一致）恢复"
+    else:
+        src_note = "量测表无目标号且无法与 kf 同序对齐，按整批统计（不拆分目标）"
     groups = by_target(m)
+    cmap = color_map([t for t, _ in groups])
 
     fig, axes = plt.subplots(1, 3, figsize=(15.4, 4.9))
     title_block(fig, "图 9  量测误差时序特性（按目标）",
                 f"量测 {len(m)} 点，{len(groups)} 个目标"
-                f"（{'、'.join(target_title(t) for t, _ in groups)}）；"
-                f"逐目标统计，不同目标的误差不合并")
+                f"（{'、'.join(target_title(t) for t, _ in groups)}）；{src_note}；"
+                f"不同目标的误差不合并")
 
     ax = axes[0]
     note = []
-    for k, (tid, g) in enumerate(groups):
+    for tid, g in groups:
+        col = cmap.get(int(tid), C["accent1"]) if tid is not None else C["accent1"]
         t = g["t"].to_numpy(float)
         dr = g["dr"].to_numpy(float) / 1e3
-        ax.plot(t, dr, lw=0.5, color=CYCLE[k], alpha=0.55, label=target_title(tid))
+        ax.plot(t, dr, lw=0.5, color=col, alpha=0.55, label=target_title(tid))
         ax.plot(t, g["dr"].abs().rolling(45, min_periods=5).max() / 1e3, lw=1.4,
-                color=CYCLE[k])
+                color=col)
         note.append(f"{target_title(tid)}：中位 {np.nanmedian(np.abs(dr)):.2f} km、"
                     f"峰值 {np.nanmax(np.abs(dr)):.2f} km")
     ax.set_xlabel("仿真时间 (s)")
@@ -527,10 +587,11 @@ def fig09(D):
     style_axes(ax)
 
     ax = axes[1]
-    for k, (tid, g) in enumerate(groups):
-        ax.plot(g["t"], g["daz"], lw=0.6, color=CYCLE[k], alpha=0.85,
+    for tid, g in groups:
+        col = cmap.get(int(tid), C["accent1"]) if tid is not None else C["accent1"]
+        ax.plot(g["t"], g["daz"], lw=0.6, color=col, alpha=0.85,
                 label=f"{target_title(tid)} 方位")
-        ax.plot(g["t"], g["del"], lw=0.6, color=CYCLE[k], alpha=0.55, ls="--",
+        ax.plot(g["t"], g["del"], lw=0.6, color=col, alpha=0.55, ls="--",
                 label=f"{target_title(tid)} 俯仰")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("角度误差 (°)")
@@ -539,9 +600,10 @@ def fig09(D):
     style_axes(ax)
 
     ax = axes[2]
-    for k, (tid, g) in enumerate(groups):
+    for tid, g in groups:
+        col = cmap.get(int(tid), C["accent1"]) if tid is not None else C["accent1"]
         ax.scatter(g["rng"].to_numpy(float) / 1e3, g["dr"].to_numpy(float) / 1e3,
-                   s=5, color=CYCLE[k], alpha=0.55, linewidths=0,
+                   s=5, color=col, alpha=0.55, linewidths=0,
                    label=target_title(tid))
     ax.set_xlabel("斜距 (km)")
     ax.set_ylabel("斜距误差 (km)")
@@ -715,58 +777,76 @@ def fig16(D):
     gn = D["radar_output"]["gain"].sort_values("t")
     det = D["radar_int"]["det"].sort_values("t")
 
-    pc = float(np.median(gn["pc"]))
-    mti = float(np.median(gn["mti"]))
-    mtd = float(np.median(gn["mtd"]))
-
     fig = plt.figure(figsize=(14.6, 7.4))
-    title_block(fig, "图 16  雷达处理链功率账本",
-                f"脉压增益 {_range_txt(gn['pc'], ' dB')}；MTI 增益 {mti:.1f} dB"
-                f"（{gn['mti'].min():.0f}…{gn['mti'].max():.0f}）；MTD 增益 {mtd:.1f} dB；"
-                f"输入回波 {np.median(echo['p_echo']):.2e} W → 输出 "
+    title_block(fig, "图 16  雷达处理链功率账本（按目标）",
+                f"处理链增益按目标分别统计（{'、'.join(target_title(t) for t, _ in by_target(gn))}）；"
+                f"脉压增益 {_range_txt(gn['pc'], ' dB')}，MTI {_range_txt(gn['mti'], ' dB')}，"
+                f"MTD {_range_txt(gn['mtd'], ' dB')}；输入回波 "
+                f"{np.median(echo['p_echo']):.2e} W → 输出 "
                 f"{np.median(gn['p_after']):.2e} W，SNR 中位 {det['snr_out'].median():.1f} dB")
 
     ax = fig.add_subplot(1, 2, 1)
     labels = ["脉压", "MTI", "MTD"]
-    gains = [pc, mti, mtd]
-    base = 0.0
-    for i, (lab, g) in enumerate(zip(labels, gains)):
-        bottom = min(base, base + g)
-        ax.bar(i, abs(g), bottom=bottom, width=0.55,
-               color=[C["accent1"], C["accent3"], C["accent2"]][i], alpha=0.9)
-        ax.text(i, max(base, base + g) + 1.2, f"{g:+.1f} dB", ha="center",
-                fontsize=9.5, fontweight="bold")
-        if i < len(gains) - 1:
-            ax.plot([i + 0.28, i + 1 - 0.28], [base + g, base + g], ls="--",
-                    lw=0.9, color=C["neutral"])
-        base += g
-    ax.bar(len(labels), base, width=0.55, color="#5b6773", alpha=0.9)
-    ax.text(len(labels), base + 1.2, f"累计 {base:+.1f} dB", ha="center",
-            fontsize=9.5, fontweight="bold")
+    gmap = {tid: [float(np.median(g["pc"])), float(np.median(g["mti"])),
+                  float(np.median(g["mtd"]))]
+            for tid, g in by_target(gn)}
+    cmap = color_map(gmap)
+    n = max(len(gmap), 1)
+    w = 0.68 / n
+    for j, (tid, gv) in enumerate(gmap.items()):
+        off = (j - (n - 1) / 2.0) * w
+        col = cmap[int(tid)]
+        base = 0.0
+        for i, g in enumerate(gv):
+            bottom = min(base, base + g)
+            ax.bar(i + off, abs(g), bottom=bottom, width=w * 0.9,
+                   color=col, alpha=0.9,
+                   label=target_title(tid) if i == 0 else None)
+            ax.text(i + off, max(base, base + g) + 1.2, f"{g:+.1f}", ha="center",
+                    fontsize=8.2, color=col, fontweight="bold")
+            if i < len(gv) - 1:
+                ax.plot([i + off + 0.28 * w, i + 1 + off - 0.28 * w],
+                        [base + g, base + g], ls="--", lw=0.8, color=C["neutral"])
+            base += g
+        ax.bar(len(labels) + off, base, width=w * 0.9, color=col, alpha=0.9)
+        ax.text(len(labels) + off, base + 1.2, f"{base:+.1f}", ha="center",
+                fontsize=8.2, color=col, fontweight="bold")
+    allv = [sum(gv) for gv in gmap.values()] + [v for gv in gmap.values() for v in gv]
     ax.axhline(0, color="#4a4f55", lw=0.9)
     ax.set_xticks(range(len(labels) + 1))
     ax.set_xticklabels(labels + ["链路总增益"])
     ax.set_ylabel("增益 (dB)")
-    ax.set_title("(a) 处理链增益瀑布", fontsize=10.5)
-    ax.set_ylim(min(0, base) - 4, base + 8)
+    ax.set_title("(a) 处理链增益瀑布（颜色＝目标）", fontsize=10.5)
+    ax.set_ylim(min(0.0, min(allv)) - 4, max(allv) + 10)
+    ax.legend(loc="upper left", fontsize=8)
     style_axes(ax)
 
     ax = fig.add_subplot(1, 2, 2)
-    mg = echo[["cyc", "p_jam", "p_echo", "p_noise"]].merge(
-        det[["cyc", "snr_out"]], on="cyc", how="inner")
-    js = db10(mg["p_jam"].to_numpy(float) / mg["p_echo"].to_numpy(float))
-    ax.scatter(js, mg["snr_out"], s=11, color=C["accent4"], alpha=0.65,
-               linewidths=0)
+    mg = echo[["cyc", "tid", "p_jam", "p_echo", "p_noise"]].merge(
+        det[["cyc", "tid", "snr_out"]], on=["cyc", "tid"], how="inner")
+    notes = []
+    for tid, g in by_target(mg):
+        col = cmap.get(int(tid), C["accent4"]) if tid is not None else C["accent4"]
+        js = db10(g["p_jam"].to_numpy(float) / g["p_echo"].to_numpy(float))
+        y = g["snr_out"].to_numpy(float)
+        ax.scatter(js, y, s=11, color=col, alpha=0.65, linewidths=0,
+                   label=f"{target_title(tid)}（{len(g)} 个周期）")
+        ok = np.isfinite(js) & np.isfinite(y)
+        if ok.sum() > 2 and np.ptp(js[ok]) > 0 and np.ptp(y[ok]) > 0:
+            rho = float(np.corrcoef(js[ok], y[ok])[0, 1])
+            notes.append(f"{target_title(tid)}：J/S 中位 {np.nanmedian(js):.0f} dB，"
+                         f"r = {rho:.2f}")
+        else:
+            notes.append(f"{target_title(tid)}：J/S 中位 {np.nanmedian(js):.0f} dB，"
+                         f"n={len(g)}，不计算相关")
     ax.set_xlabel("干信比 J/S (dB)")
     ax.set_ylabel("检测 SNR (dB)")
     ax.set_title("(b) 输出 SNR 随干信比的变化", fontsize=10.5)
-    ok = np.isfinite(js)
-    rho = float(np.corrcoef(js[ok], mg["snr_out"].to_numpy(float)[ok])[0, 1])
-    ax.annotate(f"Pearson r = {rho:.3f}，{len(mg)} 个处理周期\n"
-                f"J/S 中位 {np.nanmedian(js):.0f} dB",
-                xy=(0.04, 0.09), xycoords="axes fraction", fontsize=8.5,
+    ax.annotate("\n".join(notes) + f"\n按 (cyc, tid) 配对 {len(mg)} 个处理周期",
+                xy=(0.04, 0.09), xycoords="axes fraction", fontsize=8.2,
                 va="bottom", bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb",
                                        ec="#c8d0d8"))
+    ax.legend(loc="upper right", fontsize=7.8)
     style_axes(ax)
     return fig
 

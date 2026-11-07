@@ -15,7 +15,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .common import C, CYCLE, db10, db20, needs, style_axes, title_block
+from .common import (C, CYCLE, color_map, db10, db20, needs, style_axes,
+                     title_block)
 
 
 def _rng_txt(v, unit="", nd=2):
@@ -160,19 +161,21 @@ def fig41(D):
     vel_db = db20(vel_sig)
     t = m["t"].to_numpy(float)
     keys = sorted(int(v) for v in m["key"].dropna().unique())
+    kcmap = color_map(keys)
     srcs = m["srcs"].astype(str)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
-    title_block(fig, "图 41  融合状态位置/速度 σ 与信息源构成",
-                f"融合记录 {len(m)} 条，{len(keys)} 个目标键；"
+    title_block(fig, "图 41  融合状态位置/速度 σ 与信息源构成（按目标键）",
+                f"融合记录 {len(m)} 条，{len(keys)} 个目标键"
+                f"（{'、'.join(str(k) for k in keys)}）；"
                 f"位置 σ {_rng_txt(pos_sig, ' m', 1)}，"
-                f"速度 σ {_rng_txt(vel_sig, ' m/s', 1)}")
+                f"速度 σ {_rng_txt(vel_sig, ' m/s', 1)}；颜色按目标键区分")
 
     ax = axes[0, 0]
-    for k, key in enumerate(keys):
+    for key in keys:
         s = m["key"].to_numpy(float) == key
         ax.plot(t[s], pos_db[s], ".", ms=2.0,
-                color=CYCLE[k % len(CYCLE)], alpha=0.45,
+                color=kcmap[key], alpha=0.45,
                 label=f"目标键 {key}")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("位置 σ (dB re 1 m)")
@@ -189,10 +192,10 @@ def fig41(D):
     style_axes(ax)
 
     ax = axes[0, 1]
-    for k, key in enumerate(keys):
+    for key in keys:
         s = m["key"].to_numpy(float) == key
         ax.plot(t[s], vel_db[s], ".", ms=2.0,
-                color=CYCLE[k % len(CYCLE)], alpha=0.45,
+                color=kcmap[key], alpha=0.45,
                 label=f"目标键 {key}")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("速度 σ (dB re 1 m/s)")
@@ -214,7 +217,7 @@ def fig41(D):
         s_all = m["key"].to_numpy(float) == key
         cnt = [int((s_all & (srcs == u).to_numpy()).sum()) for u in uniq]
         ax.bar(x + (k - 0.5) * w, cnt, width=w,
-               color=CYCLE[k % len(CYCLE)], alpha=0.85, label=f"目标键 {key}")
+               color=kcmap[key], alpha=0.85, label=f"目标键 {key}")
     ax.set_xticks(x)
     ax.set_xticklabels(uniq, fontsize=8, rotation=12)
     ax.set_ylabel("融合记录数")
@@ -230,9 +233,9 @@ def fig41(D):
     style_axes(ax)
 
     ax = axes[1, 1]
-    for k, key in enumerate(keys):
+    for key in keys:
         s = m["key"].to_numpy(float) == key
-        _cdf(ax, pos_db[s], f"目标键 {key}", CYCLE[k % len(CYCLE)])
+        _cdf(ax, pos_db[s], f"目标键 {key}", kcmap[key])
     ax.axvline(60.0, color=C["neutral"], ls=":", lw=0.9,
                label="1 km = 60 dB")
     ax.set_xlabel("位置 σ (dB re 1 m)")
@@ -254,40 +257,55 @@ def fig41(D):
        title="图 42 宽场覆盖与重访")
 def fig42(D):
     wf = D["sat"]["wfov"].sort_values("t")
-    ok = wf["center"].astype(str).str.contains(",", regex=False)
-    c = wf[ok]
-    lat = c["center"].str.split(",").str[0].astype(float).to_numpy()
-    lon = c["center"].str.split(",").str[1].astype(float).to_numpy()
-    ct = c["t"].to_numpy(float)
-    cell_lat = np.round(lat).astype(int)
-    cell_lon = np.round(lon).astype(int)
+    ok_all = wf["center"].astype(str).str.contains(",", regex=False)
+    sats = sorted(int(v) for v in wf["sat"].dropna().unique())
+    scmap = color_map(sats)
 
-    cells, inv, counts = np.unique(
-        np.column_stack([cell_lat, cell_lon]), axis=0,
-        return_inverse=True, return_counts=True)
-    gaps = []
-    order = np.argsort(inv, kind="stable")
-    inv_s = inv[order]
-    t_s = ct[order]
-    for cid in range(len(cells)):
-        tt = np.unique(t_s[inv_s == cid])
-        if tt.size > 1:
-            gaps.extend(np.diff(tt).tolist())
-    gaps = np.asarray(gaps, dtype=float)
+    # 每颗卫星自己有 1° 网格：单元计数与重访间隔都按卫星分别统计，
+    # 不把五颗星的覆盖次数加在同一格上（那样会虚增单格覆盖数）。
+    stats = {}
+    for s in sats:
+        g = wf[wf["sat"].to_numpy(float) == s]
+        ok = g["center"].astype(str).str.contains(",", regex=False)
+        c = g[ok]
+        lat = c["center"].str.split(",").str[0].astype(float).to_numpy()
+        lon = c["center"].str.split(",").str[1].astype(float).to_numpy()
+        ct = c["t"].to_numpy(float)
+        cells, inv, counts = np.unique(
+            np.column_stack([np.round(lat).astype(int),
+                             np.round(lon).astype(int)]), axis=0,
+            return_inverse=True, return_counts=True)
+        gaps = []
+        order = np.argsort(inv, kind="stable")
+        inv_s, t_s = inv[order], ct[order]
+        for cid in range(len(cells)):
+            tt = np.unique(t_s[inv_s == cid])
+            if tt.size > 1:
+                gaps.extend(np.diff(tt).tolist())
+        stats[s] = dict(lat=lat, lon=lon, cells=cells, counts=counts,
+                        gaps=np.asarray(gaps, dtype=float),
+                        n=int(ok.sum()), tot=len(g))
+
+    gaps_all = np.concatenate([stats[s]["gaps"] for s in sats]) \
+        if any(stats[s]["gaps"].size for s in sats) else np.asarray([])
+    lat_all = np.concatenate([stats[s]["lat"] for s in sats])
+    n_cells = sum(len(stats[s]["cells"]) for s in sats)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
-    title_block(fig, "图 42  宽场覆盖单元与重访间隔",
-                f"扫描记录 {len(wf)} 条，有效中心 {len(c)} 条"
-                f"（{len(c)/max(len(wf), 1)*100:.1f}%）；"
-                f"1° 网格单元 {len(cells)} 个，重访样本 {len(gaps)} 个")
+    title_block(fig, "图 42  宽场覆盖单元与重访间隔（按卫星）",
+                f"扫描记录 {len(wf)} 条，有效中心 {int(ok_all.sum())} 条"
+                f"（{ok_all.mean()*100:.1f}%）；"
+                f"1° 网格单元合计 {n_cells} 个，重访样本 {len(gaps_all)} 个；"
+                f"颜色＝卫星")
 
     ax = axes[0, 0]
-    sc = ax.scatter(cells[:, 1], cells[:, 0], c=counts, s=9 + 2.0 * counts,
-                    cmap="viridis", alpha=0.85, linewidths=0.3,
-                    edgecolors="white")
-    cb = fig.colorbar(sc, ax=ax, pad=0.02)
-    cb.set_label("单元覆盖记录数", fontsize=8)
-    cb.ax.tick_params(labelsize=7)
+    for s in sats:
+        st = stats[s]
+        if not len(st["cells"]):
+            continue
+        ax.scatter(st["cells"][:, 1], st["cells"][:, 0],
+                   s=8 + 2.0 * st["counts"], color=scmap[s], alpha=0.55,
+                   linewidths=0, label=f"卫星 {s}（{len(st['cells'])} 单元）")
     ax.set_xlim(-180, 180)
     ax.set_ylim(-90, 90)
     ax.set_xticks(np.arange(-180, 181, 60))
@@ -295,68 +313,73 @@ def fig42(D):
     ax.grid(True, color=C["grid"], lw=0.6, alpha=0.7)
     ax.set_xlabel("经度 (°)")
     ax.set_ylabel("纬度 (°)")
-    ax.set_title("(a) 覆盖单元分布（离线，无底图）", fontsize=10.5)
-    ax.annotate(f"纬度 {_rng_txt(lat, '°', 1)}\n经度覆盖全圈（±180° 回绕）",
+    ax.set_title("(a) 覆盖单元分布（颜色＝卫星，点大小∝单元覆盖数）", fontsize=9.6)
+    ax.annotate(f"纬度 {_rng_txt(lat_all, '°', 1)}\n经度覆盖全圈（±180° 回绕）",
                 xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.0,
                 va="bottom", bbox=dict(boxstyle="round,pad=0.35",
                                        fc="#f7f9fb", ec="#c8d0d8"))
+    ax.legend(loc="upper right", fontsize=6.8)
     style_axes(ax, minor=False)
 
     ax = axes[0, 1]
-    sats = sorted(wf["sat"].dropna().unique())
-    hit = [int((ok & (wf["sat"] == s)).sum()) for s in sats]
-    miss = [int((~ok & (wf["sat"] == s)).sum()) for s in sats]
+    hit = [stats[s]["n"] for s in sats]
+    miss = [stats[s]["tot"] - stats[s]["n"] for s in sats]
     x = np.arange(len(sats))
-    ax.bar(x, miss, width=0.6, color=C["neutral"], alpha=0.55, label="中心无效")
-    ax.bar(x, hit, width=0.6, bottom=miss, color=C["accent3"], alpha=0.9,
-           label="有效中心")
+    ax.bar(x, miss, width=0.6, color=C["neutral"], alpha=0.45, label="中心无效")
+    for xi, s in zip(x, sats):
+        ax.bar(xi, stats[s]["n"], width=0.6, bottom=stats[s]["tot"] - stats[s]["n"],
+               color=scmap[s], alpha=0.9, label=f"卫星 {s} 有效")
     ax.set_xticks(x)
-    ax.set_xticklabels([f"卫星 {int(s)}" for s in sats], fontsize=8)
+    ax.set_xticklabels([f"卫星 {s}" for s in sats], fontsize=8)
     ax.set_ylabel("扫描记录数")
     ax.set_ylim(0, max(np.add(hit, miss)) * 1.38)
     ax.set_title("(b) 有效中心占比", fontsize=10.5)
-    for xi, h_, m_ in zip(x, hit, miss):
+    for xi, s, h_, m_ in zip(x, sats, hit, miss):
         ax.annotate(f"{h_/(h_+m_)*100:.1f}%", xy=(xi, h_ + m_),
                     xytext=(0, 3), textcoords="offset points",
-                    ha="center", fontsize=7.2, color=C["accent3"])
-    ax.legend(loc="upper left", fontsize=8)
+                    ha="center", fontsize=7.2, color=scmap[s])
+    ax.legend(loc="upper left", fontsize=6.6, ncol=2)
     style_axes(ax)
 
     ax = axes[1, 0]
-    ax.hist(counts, bins=np.arange(0.5, counts.max() + 1.5, 1.0),
-            color=C["accent1"], alpha=0.82, edgecolor="white", linewidth=0.3)
+    allc = np.concatenate([stats[s]["counts"] for s in sats])
+    edges = np.arange(0.5, float(np.max(allc)) + 1.5, 1.0)
+    for s in sats:
+        ax.hist(stats[s]["counts"], bins=edges, histtype="step", lw=1.3,
+                color=scmap[s], label=f"卫星 {s}（中位 {float(np.median(stats[s]['counts'])):.0f} 次）")
     ax.set_xlabel("单个 1° 单元的覆盖记录数")
     ax.set_ylabel("单元数")
-    ax.set_title("(c) 单元覆盖次数分布", fontsize=10.5)
-    ax.annotate(f"单元 {len(cells)} 个，单格中位 {float(np.median(counts)):.0f} 次\n"
-                f"最高 {int(counts.max())} 次",
-                xy=(0.55, 0.94), xycoords="axes fraction", fontsize=8.2,
+    ax.set_title("(c) 单元覆盖次数分布（按卫星叠加）", fontsize=10.5)
+    ax.annotate(f"五颗星单元合计 {n_cells} 个，单格最高 {int(np.max(allc))} 次",
+                xy=(0.40, 0.58), xycoords="axes fraction", fontsize=8.0,
                 va="top", bbox=dict(boxstyle="round,pad=0.35",
                                     fc="#f7f9fb", ec="#c8d0d8"))
+    ax.legend(loc="upper right", fontsize=6.6)
     style_axes(ax)
 
     ax = axes[1, 1]
-    if gaps.size:
-        gaps_db = db10(gaps)
-        _cdf(ax, gaps_db, "重访间隔", C["accent2"])
+    for s in sats:
+        g = stats[s]["gaps"]
+        if g.size >= 3:
+            _cdf(ax, db10(g), f"卫星 {s}（{len(g)} 个）", scmap[s])
+    if gaps_all.size:
         # 本批重访间隔高度量化，50% 与 90% 分位常常同为 40 s，重复画线会叠字。
         qs = {}
         for q in (50, 90, 99):
-            qs.setdefault(float(np.percentile(gaps, q)), []).append(q)
+            qs.setdefault(float(np.percentile(gaps_all, q)), []).append(q)
         for v, ql in sorted(qs.items()):
             ax.axvline(float(db10(v)), color=C["neutral"], ls="-.", lw=0.9,
                        alpha=0.8)
             txt = "/".join(f"{q}%" for q in ql)
-            ax.annotate(f"{txt} {v:.0f} s", xy=(float(db10(v)), 0.30),
-                        xytext=(3, 0), textcoords="offset points",
-                        fontsize=7.4, color=C["neutral"], rotation=90,
+            ax.annotate(f"{txt} {v:.0f} s", xy=(float(db10(v)), 0.45),
+                        xytext=(4, 0), textcoords="offset points",
+                        fontsize=7.4, color=C["neutral"], ha="left",
                         va="center")
-    ax.set_xlabel("同一单元相邻访问间隔 (dB re 1 s)")
     ax.set_xlabel("同一单元相邻访问间隔 (dB re 1 s)")
     ax.set_ylabel("累积概率")
     ax.set_ylim(0, 1.02)
-    ax.set_title(f"(d) 重访间隔累积分布（{len(gaps)} 个样本）", fontsize=10.5)
-    ax.legend(loc="lower right", fontsize=8)
+    ax.set_title(f"(d) 重访间隔累积分布（全体 {len(gaps_all)} 个样本）", fontsize=10.5)
+    ax.legend(loc="lower right", fontsize=6.8)
     style_axes(ax)
     return fig
 
@@ -371,23 +394,31 @@ def fig43(D):
     la = D["sat"]["launch"].sort_values("t")
     pe = D["sat"]["pos_err"]
 
+    # impact / launch 只有 key（99、109），没有卫星号；pos_err 有 sat（103–107）。
+    # 目标键与卫星分别由 color_map 统一配色，跨图同名实体同色。
+    keys = sorted({int(v) for v in im["key"].dropna().unique()}
+                  | {int(v) for v in la["key"].dropna().unique()})
+    kcmap = color_map(keys)
+    sats = sorted(int(v) for v in pe["sat"].dropna().unique())
+    scmap = color_map(sats)
+
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.4))
-    title_block(fig, "图 43  落点/发射点预报误差与卫星定轨误差",
+    title_block(fig, "图 43  落点/发射点预报误差与卫星定轨误差（按目标键/卫星）",
                 f"落点 {len(im)} 条、发射点 {len(la)} 条、定轨 {len(pe)} 条；"
                 f"落点 1σ {_rng_txt(im['r1'], ' m', 0)}，"
                 f"定轨误差 {_rng_txt(pe['err'], ' m', 2)}；"
-                f"本批无窄视场/角误差表")
+                f"落点/发射点按目标键 {'、'.join(str(k) for k in keys)} 分色，"
+                f"定轨按卫星 {'、'.join(str(s) for s in sats)} 分色")
 
     ax = axes[0, 0]
-    keys = sorted(int(v) for v in im["key"].dropna().unique())
-    for k, key in enumerate(keys):
+    for key in keys:
         s = im["key"].to_numpy(float) == key
         ax.plot(im["t"].to_numpy(float)[s], db20(im["r1"].to_numpy(float)[s]),
-                ".", ms=2.2, color=CYCLE[k % len(CYCLE)], alpha=0.4,
-                label=f"目标键 {key}")
+                ".", ms=2.2, color=kcmap[key], alpha=0.4,
+                label=f"目标键 {key}（{int(s.sum())} 条）")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("落点误差范围 1σ (dB re 1 m)")
-    ax.set_title("(a) 落点 1σ 误差时序", fontsize=10.5)
+    ax.set_title("(a) 落点 1σ 误差时序（颜色＝目标键）", fontsize=10.5)
     q50, q95 = np.percentile(im["r1"].to_numpy(float), [50, 95])
     ax.annotate(f"置信度 {im['conf'].iloc[0]:.2f}\n"
                 f"中位 {q50:.0f} m，95% {q95:.0f} m",
@@ -402,57 +433,66 @@ def fig43(D):
     eb = la["eb"].to_numpy(float)
     ea_db, eb_db = db20(ea), db20(eb)
     bad = ea > 1e6
-    ax.plot(eb_db[~bad], ea_db[~bad], ".", ms=3.2, color=C["accent1"],
-            alpha=0.35, label=f"正常 {int((~bad).sum())} 条")
-    if bad.any():
-        ax.plot(eb_db[bad], ea_db[bad], "x", ms=5, color=C["warn"], alpha=0.8,
-                label=f"半长轴 {int(bad.sum())} 条异常大")
+    for key in keys:
+        s = la["key"].to_numpy(float) == key
+        ax.plot(eb_db[s & ~bad], ea_db[s & ~bad], ".", ms=3.2, color=kcmap[key],
+                alpha=0.35, label=f"目标键 {key}（{int((s & ~bad).sum())} 条）")
+        if (s & bad).any():
+            ax.plot(eb_db[s & bad], ea_db[s & bad], "x", ms=5, color=kcmap[key],
+                    alpha=0.85, label=f"目标键 {key} 半长轴异常 {int((s & bad).sum())} 条")
     lo = float(np.nanmin(np.concatenate([ea_db, eb_db]))) - 3.0
     hi = float(np.nanmax(np.concatenate([ea_db, eb_db]))) + 3.0
     ax.plot([lo, hi], [lo, hi], color=C["neutral"], ls="--", lw=0.9, label="1:1")
     ax.set_xlabel("误差椭圆半短轴 $e_b$ (dB re 1 m)")
     ax.set_ylabel("误差椭圆半长轴 $e_a$ (dB re 1 m)")
-    ax.set_title("(b) 发射点误差椭圆长短轴", fontsize=10.5)
+    ax.set_title("(b) 发射点误差椭圆长短轴（颜色＝目标键）", fontsize=10.5)
     ax.annotate(f"$e_a$ 中位 {float(np.median(ea)):.0f} m\n"
-                f"$e_a$ 最大 {float(np.max(ea)):.2e} m",
+                f"$e_a$ 最大 {float(np.max(ea)):.2e} m\n"
+                f"异常大 {int(bad.sum())} 条（× 标记）",
                 xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.0,
                 va="top", bbox=dict(boxstyle="round,pad=0.35",
                                     fc="#f7f9fb", ec="#c8d0d8"))
-    ax.legend(loc="lower right", fontsize=7.8)
+    ax.legend(loc="lower right", fontsize=6.8)
     style_axes(ax)
 
     ax = axes[1, 0]
     eaz = la["eaz"].to_numpy(float)
-    ax.hist(eaz, bins=40, color=C["accent4"], alpha=0.82,
-            edgecolor="white", linewidth=0.3)
+    edges = np.histogram_bin_edges(eaz, bins=40)
+    for key in keys:
+        s = la["key"].to_numpy(float) == key
+        v = eaz[s]
+        ax.hist(v, bins=edges, histtype="step", lw=1.4, color=kcmap[key],
+                label=f"目标键 {key}（{len(v)} 条，中位 {float(np.median(v)):+.1f}°）")
+        ax.axvline(float(np.median(v)), color=kcmap[key], ls="--", lw=0.9)
     ax.axvline(0.0, color=C["neutral"], ls=":", lw=0.9)
     ax.set_xlabel("椭圆方位角 (°)")
     ax.set_ylabel("发射点记录数")
-    ax.set_title("(c) 误差椭圆方位角分布", fontsize=10.5)
+    ax.set_title("(c) 误差椭圆方位角分布（按目标键叠加）", fontsize=10.5)
     ax.annotate(f"{_rng_txt(eaz, '°', 1)}\n"
-                f"中位 {float(np.median(eaz)):+.1f}°",
+                f"全体中位 {float(np.median(eaz)):+.1f}°",
                 xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.2,
                 va="top", bbox=dict(boxstyle="round,pad=0.35",
                                     fc="#f7f9fb", ec="#c8d0d8"))
+    ax.legend(loc="upper right", fontsize=6.8)
     style_axes(ax)
 
     ax = axes[1, 1]
-    sats = sorted(pe["sat"].dropna().unique())
-    for k, s_ in enumerate(sats):
+    for s_ in sats:
         sub = pe[pe["sat"] == s_]["err"].to_numpy(float)
-        _cdf(ax, db20(np.clip(sub, 1e-3, None)), f"卫星 {int(s_)}",
-             CYCLE[k % len(CYCLE)])
+        _cdf(ax, db20(np.clip(sub, 1e-3, None)),
+             f"卫星 {s_}（{len(sub)} 条，中位 {float(np.median(sub)):.2f} m）",
+             scmap[s_])
     ax.set_xlabel("卫星自身定位误差 (dB re 1 m)")
     ax.set_ylabel("累积概率")
     ax.set_ylim(0, 1.02)
-    ax.set_title("(d) 定轨误差累积分布（5 颗卫星）", fontsize=10.5)
+    ax.set_title(f"(d) 定轨误差累积分布（{len(sats)} 颗卫星）", fontsize=10.5)
     ax.annotate(f"零误差 {int((pe['err'] <= 0).sum())} 条（置 $10^{{-3}}$ m = −60 dB）\n"
                 f"中位 {float(np.median(pe['err'])):.2f} m，"
                 f"99% {float(np.percentile(pe['err'], 99)):.2f} m",
                 xy=(0.03, 0.06), xycoords="axes fraction", fontsize=8.0,
                 va="bottom", bbox=dict(boxstyle="round,pad=0.35",
                                        fc="#f7f9fb", ec="#c8d0d8"))
-    ax.legend(loc="lower right", fontsize=8)
+    ax.legend(loc="lower right", fontsize=6.8)
     style_axes(ax)
     return fig
 

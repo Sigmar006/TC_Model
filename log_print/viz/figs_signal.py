@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
 
-from .common import (C, CYCLE, W_RADAR, by_target, db10, empty_fig, needs,
-                     style_axes, target_title, title_block)
+from .common import (C, CYCLE, W_RADAR, by_target, color_map, db10, empty_fig,
+                     marker_map, needs, style_axes, target_title, title_block)
 
 COLS = ["RCS", "极化", "HRRP", "运动"]
 
@@ -71,84 +71,124 @@ def _tier_txt(g):
 def fig17(D):
     jg = D["radar_output"]["jam_gain"].sort_values("t")
     nz = D["radar_output"]["noise"]
-    J = _ch(jg)
+    groups = by_target(jg)
+    ids = [t for t, _ in groups]
+    cmap = color_map(ids)
+    mmap = marker_map(ids)
     noise0 = float(np.median(_ch(nz)))
-    t = jg["t"].to_numpy(float)
-    db = 10.0 * np.log10(J)
-    suppr = jg["suppr"].to_numpy(float)
-    p_mti = jg["p_mti"].to_numpy(float)
+    noise_db = 10 * np.log10(noise0)
+    suppr_all = jg["suppr"].to_numpy(float)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.2))
-    title_block(fig, "图 17  MTD 八通道自适应处理",
-                f"{len(jg)} 个处理周期，各通道热噪声恒为 {noise0:.3e} W"
-                f"（{10*np.log10(noise0):.1f} dBW）；"
-                f"干扰通道功率 {J.min():.2e}–{J.max():.2e} W，"
-                f"自适应抑制比 {suppr.min():.2f}–{suppr.max():.2f} dB（中位 {np.median(suppr):.2f} dB）")
+    title_block(fig, "图 17  MTD 八通道自适应处理（按目标）",
+                f"{len(jg)} 个处理周期（{'、'.join(f'{target_title(t)} {len(g)} 个' for t, g in groups)}），"
+                f"各通道热噪声恒为 {noise0:.3e} W（{noise_db:.1f} dBW）；"
+                f"自适应抑制比 {suppr_all.min():.2f}–{suppr_all.max():.2f} dB"
+                f"（中位 {np.median(suppr_all):.2f} dB）；颜色按目标区分")
 
     ax = axes[0, 0]
-    im = ax.imshow(db.T, aspect="auto", origin="lower", cmap="magma",
-                   extent=[t.min(), t.max(), 0.5, 8.5], interpolation="nearest")
-    ax.set_yticks(range(1, 9))
+    # 周期数足够的目标各占一个 8 行区块；只有个别周期的目标不铺热图（整行几乎全空），
+    # 在注释里点名，柱状、直方与散点仍按目标画出。
+    blocks = [(t, g) for t, g in groups if len(g) >= 5]
+    if not blocks:
+        blocks = groups
+    arrs = [db10(_ch(g)) for _, g in blocks]
+    vmin = float(min(np.nanmin(a) for a in arrs))
+    vmax = float(max(np.nanmax(a) for a in arrs))
+    im = None
+    yt, yl = [], []
+    for k, (tid, g) in enumerate(blocks):
+        im = ax.imshow(arrs[k].T, aspect="auto", origin="lower", cmap="magma",
+                       vmin=vmin, vmax=vmax, interpolation="nearest",
+                       extent=[g["t"].min(), g["t"].max(),
+                               k * 8 + 0.5, k * 8 + 8.5])
+        yt += [k * 8 + i for i in range(1, 9)]
+        yl += ([f"目标 {int(tid)}·{i}" for i in range(1, 9)]
+               if len(blocks) > 1 else [str(i) for i in range(1, 9)])
+        if k:
+            ax.axhline(k * 8 + 0.5, color="white", lw=1.4)
+    ax.set_yticks(yt)
+    ax.set_yticklabels(yl, fontsize=7.2 if len(blocks) > 1 else 9)
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("MTD 通道")
-    ax.set_title("(a) 干扰通道功率–时间热图", fontsize=10.5)
+    shown_lab = "、".join(f"目标 {int(t)}" for t, _ in blocks)
+    ax.set_title(f"(a) 干扰通道功率–时间热图（{shown_lab}）", fontsize=10.5)
     _cbar(fig, im, ax, "通道功率 (dBW)")
     ax.grid(False)
     style_axes(ax, minor=False)
 
     ax = axes[0, 1]
-    med = np.median(db, axis=0)
-    rel = med - 10 * np.log10(noise0)
-    bars = ax.bar(np.arange(1, 9), rel, width=0.62,
-                  color=[CYCLE[k] for k in range(8)], alpha=0.9)
-    for b, m in zip(bars, rel):
-        ax.text(b.get_x() + b.get_width() / 2, m + 0.45,
-                f"{10**(m/10):.1f}×", ha="center", fontsize=7.6,
-                fontweight="bold")
+    n = max(len(groups), 1)
+    bw = 0.8 / n
+    rel_all = []
+    for j, (tid, g) in enumerate(groups):
+        rel = db10(np.median(_ch(g), axis=0)) - noise_db
+        rel_all.append(rel)
+        off = (j - (n - 1) / 2.0) * bw
+        bars = ax.bar(np.arange(1, 9) + off, rel, width=bw * 0.9,
+                      color=cmap.get(int(tid), CYCLE[j]) if tid is not None else CYCLE[j],
+                      alpha=0.9,
+                      label=f"{target_title(tid)}（{len(g)} 周期）")
+        if n == 1:
+            for b, m in zip(bars, rel):
+                ax.text(b.get_x() + b.get_width() / 2, m + 0.45,
+                        f"{10 ** (m / 10):.1f}×", ha="center", fontsize=7.6,
+                        fontweight="bold")
     ax.set_xticks(range(1, 9))
     ax.set_xlabel("MTD 通道")
     ax.set_ylabel("相对热噪声 (dB)")
     ax.set_title("(b) 通道残余干扰与噪声比", fontsize=10.5)
     ax.axhline(0, color=C["warn"], ls="--", lw=1.1, label="热噪声基线")
-    ax.set_ylim(-3, max(rel) * 1.35 + 1.0)
-    ax.legend(loc="lower right", fontsize=8.5)
+    ax.set_ylim(-3, max(max(r) for r in rel_all) * 1.35 + 1.0)
+    ax.legend(loc="lower right", fontsize=7.8)
     ax.grid(axis="x", visible=False)
     style_axes(ax)
 
     ax = axes[1, 0]
-    ax.hist(suppr, bins=32, color=C["accent1"], alpha=0.82, edgecolor="white",
-            linewidth=0.4)
-    ax.axvline(np.median(suppr), color=C["warn"], ls="--", lw=1.2,
-               label=f"中位 {np.median(suppr):.2f} dB")
+    edges = np.histogram_bin_edges(suppr_all, bins=32)
+    for j, (tid, g) in enumerate(groups):
+        col = cmap.get(int(tid), CYCLE[j]) if tid is not None else CYCLE[j]
+        s = g["suppr"].to_numpy(float)
+        if len(s) >= 3:
+            ax.hist(s, bins=edges, histtype="step", lw=1.5, color=col,
+                    label=f"{target_title(tid)}（{len(s)} 周期）")
+            ax.axvline(np.median(s), color=col, ls="--", lw=0.9)
+        else:
+            ax.axvline(float(s[0]), color=col, ls=":", lw=1.4,
+                       label=f"{target_title(tid)}（{len(s)} 周期，单点）")
     ax.axvline(0, color=C["neutral"], lw=1.0)
     ax.set_xlabel("自适应抑制比 (dB)")
     ax.set_ylabel("处理周期数")
-    ax.set_title("(c) 抑制比分布", fontsize=10.5)
-    ax.legend(loc="upper right", fontsize=8.5)
-    ax.annotate(f"最小 {suppr.min():.2f} dB（{int((suppr < 3).sum())} 个周期 < 3 dB）\n"
-                f"90% 分位 {np.percentile(suppr, 90):.1f} dB",
-                xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.3, va="top",
+    ax.set_title("(c) 抑制比分布（按目标叠加）", fontsize=10.5)
+    ax.legend(loc="upper right", fontsize=7.8)
+    ax.annotate(f"全体：最小 {suppr_all.min():.2f} dB"
+                f"（{int((suppr_all < 3).sum())} 个周期 < 3 dB）、"
+                f"90% 分位 {np.percentile(suppr_all, 90):.1f} dB",
+                xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.0, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
 
     ax = axes[1, 1]
-    x = db10(p_mti)
-    sc = ax.scatter(x, suppr, c=t, s=16, cmap="viridis", alpha=0.85,
-                    linewidths=0)
-    ok = np.isfinite(x)
-    rho = float(np.corrcoef(x[ok], suppr[ok])[0, 1]) if ok.sum() > 2 else np.nan
+    notes = []
+    for j, (tid, g) in enumerate(groups):
+        col = cmap.get(int(tid), CYCLE[j]) if tid is not None else CYCLE[j]
+        mk = mmap.get(int(tid), "o") if tid is not None else "o"
+        x = db10(g["p_mti"].to_numpy(float))
+        y = g["suppr"].to_numpy(float)
+        ax.scatter(x, y, s=16, color=col, marker=mk, alpha=0.8, linewidths=0,
+                   label=target_title(tid))
+        ok = np.isfinite(x) & np.isfinite(y)
+        if ok.sum() > 2 and np.ptp(x[ok]) > 0 and np.ptp(y[ok]) > 0:
+            rho = float(np.corrcoef(x[ok], y[ok])[0, 1])
+            notes.append(f"{target_title(tid)}：r = {rho:.2f}（{len(g)} 周期）")
+        else:
+            notes.append(f"{target_title(tid)}：n={len(g)}，不计算相关")
     ax.set_xlabel("MTI 后残余干扰功率 (dBW)")
     ax.set_ylabel("自适应抑制比 (dB)")
-    ax.set_title("(d) 抑制能力随干扰强度变化", fontsize=10.5)
-    _cbar(fig, sc, ax, "仿真时间 (s)")
-    if rho > 0.15:
-        trend = "抑制比随干扰功率上升"
-    elif rho < -0.15:
-        trend = "抑制比随干扰功率下降"
-    else:
-        trend = "与干扰功率无显著线性关系"
-    ax.annotate(f"Pearson r = {rho:.2f}；{len(jg)} 个周期\n{trend}",
-                xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.3, va="top",
+    ax.set_title("(d) 抑制能力随干扰强度变化（颜色＝目标）", fontsize=10.5)
+    ax.legend(loc="upper right", fontsize=7.8, markerscale=1.5)
+    ax.annotate("\n".join(notes), xy=(0.03, 0.94), xycoords="axes fraction",
+                fontsize=8.0, va="top",
                 bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
     style_axes(ax)
     return fig

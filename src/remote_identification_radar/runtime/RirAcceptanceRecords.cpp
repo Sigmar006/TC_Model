@@ -1748,7 +1748,12 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
   //       特征掩码不再写；航迹与目标 ID 保留，否则该结果无法归因到目标。
   // 标识：47A 输出精简（2026-10-20）。
   if (result != nullptr) {
-    std::string comprehensive = track_target_id + " 目标类别=" + category_text;
+    // 中译：**综合识别输出"联合置信度"**（2026-11-07 甲方要求）——它是本次识别的**总分数**，
+    //   即第一候选的加权总分 `best_score`（四个特征维度的「置信度」之和），值域 [0,1]；
+    //   与四个特征行里的"置信度"（各维度分项）构成"分项 → 总分"的对照关系。
+    // 标识：第47A项联合置信度（2026-11-07）。
+    std::string comprehensive = track_target_id + " 目标类别=" + category_text +
+                                " 联合置信度=" + FormatF(result->best_score, 6);
     Emit(sim_time_sec, cycle, "综合特征识别功能测试", comprehensive);
   }
 
@@ -1885,16 +1890,16 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                      oneq::common::acceptance::FilterStageText(motion_feature.speed_from_fit);
       motion_text += std::string(" 加速度来源=") +
                      oneq::common::acceptance::FilterStageText(motion_feature.acceleration_from_fit);
-      // 中译：**运动维度的综合识别加权贡献**（2026-11-06 甲方要求）——与 RCS/极化/一维像
+      // 中译：**运动维度的置信度**（2026-11-06 甲方要求）——与 RCS/极化/一维像
       //   各行同口径：取最佳候选的综合得分里"运动"这一维（基权重 × 本维质量 × 归一化系数）
       //   所占的数值，外部据此核对"运动这一维到底给判型贡献了多少"。无最佳候选（未识别）
       //   时整字段省略（§0 规则 3：无有效值不写 0.000 占位）。
-      // 标识：运动特征加权贡献字段（2026-11-06）。
+      // 标识：运动特征置信度字段（2026-11-07 由「综合识别加权贡献」改名）。
       double motion_contribution = 0.0;
       if (TryRecognitionContribution(result, feature_weights,
                                      session::RirRecognitionFeatureDimension::kMotion,
                                      &motion_contribution)) {
-        motion_text += " 综合识别加权贡献=" + FormatF(motion_contribution, 6);
+        motion_text += " 置信度=" + FormatF(motion_contribution, 6);
       }
       motion_text += " 识别类别=" + category_text;
       Emit(sim_time_sec, cycle, "运动特征处理功能测试", motion_text);
@@ -1912,7 +1917,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       if (TryRecognitionContribution(result, feature_weights,
                                      session::RirRecognitionFeatureDimension::kRcs,
                                      &contribution)) {
-        rcs_text += " 综合识别加权贡献=" + FormatF(contribution, 6);
+        rcs_text += " 置信度=" + FormatF(contribution, 6);
       }
       rcs_text += " 识别类别=" + category_text;
       Emit(sim_time_sec, cycle, "RCS统计特征处理功能测试", rcs_text);
@@ -1961,13 +1966,13 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                                    session::RirRecognitionFeatureDimension::kPolarization,
                                    &polarization_contribution)) {
       polarization_result +=
-          " 综合识别加权贡献=" + FormatF(polarization_contribution, 6);
+          " 置信度=" + FormatF(polarization_contribution, 6);
     }
     Emit(sim_time_sec, cycle, "极化特征解算功能测试", polarization_result);
 
     // 第47项 宽带一维像特征解算：散射中心（场景距离像真值输入——库内特征提取只
     // 出长度/峰数等统计量，无逐中心量测输出）+ 轮廓（长度/峰数）+ 识别类别 +
-    // 综合识别加权贡献；能量集中/分辨率/置信度不写。距离像维度无效时省略（§0 规则3）。
+    // 置信度；能量集中/分辨率不写。距离像维度无效时省略（§0 规则3）。
     const auto& rp = features->features.range_profile;
     if (rp.valid) {
       std::string rp_text = track_target_id;
@@ -1989,7 +1994,7 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
       if (TryRecognitionContribution(result, feature_weights,
                                      session::RirRecognitionFeatureDimension::kRangeProfile,
                                      &contribution)) {
-        rp_text += " 综合识别加权贡献=" + FormatF(contribution, 6);
+        rp_text += " 置信度=" + FormatF(contribution, 6);
       }
       rp_text += " 识别类型=" + category_text;
       Emit(sim_time_sec, cycle, "宽带一维像特征解算功能测试", rp_text);

@@ -11,7 +11,7 @@
  *   俯仰起伏；量测不确定度 σ_obs = 3 dB/√SNR_lin；质量 = 0.5·clamp(SNR/30 dB) +
  *   0.5·clamp(覆盖/60°)；SNR < 6 dB 或视角覆盖不足则维度不可用。
  * - 下游：`RirObservationBuilder` → `RirMatcher` 的 RCS 维打分；验收第 45 项（RCS 均值/
- *   标准差、归一化值、波动系数、综合识别加权贡献）。
+ *   标准差、归一化值、波动系数、RCS 置信度）。
  * - 关键参数：`minimum_aspect_coverage_deg`（库 profile 传入）、SNR 门限 6 dB（效能级）、
  *   质量归一化 30 dB / 60°。
  * - 对应验收项：第 45 项 RCS 统计特征处理功能测试。

@@ -5,7 +5,7 @@
 --------
 * 功率、功率谱与计数一律换算成 dB 后线性绘制（10·lg），时间间隔同样取 dB(s)；
 * 特征类图（19–24）一律按目标分开：一行 / 一组曲线只属于一个目标，
-  标题与注释直接写出目标号，不再把多目标的特征、置信度、加权概率混在一起平均。
+  标题与注释直接写出目标号，不再把多目标的特征、识别结论、特征置信度混在一起平均。
 """
 from __future__ import annotations
 
@@ -597,7 +597,7 @@ def fig21(D):
 @needs(("radar_output", "rcs_feat", "RCS统计特征处理功能测试"),
        ("radar_output", "pol_feat", "极化特征解算功能测试"),
        ("radar_output", "hrrp", "宽带一维像特征解算功能测试"),
-       title="图 22 识别特征加权概率")
+       title="图 22 识别特征置信度")
 def fig22(D):
     ro = D["radar_output"]
     r = ro["rcs_feat"][["tid", "track", "t", "contrib"]].rename(columns={"contrib": "RCS"})
@@ -605,7 +605,8 @@ def fig22(D):
     h = ro["hrrp"][["tid", "track", "t", "contrib"]].rename(columns={"contrib": "HRRP"})
     j = (r.merge(p, on=["tid", "track", "t"]).merge(h, on=["tid", "track", "t"])
          .dropna(subset=["tid", "track"]))
-    # 运动维 2026-11-06 起单独输出“综合识别加权贡献”，与 RCS/极化/一维像同口径并入。
+    # 运动维 2026-11-06 起单独输出“综合识别加权贡献”（2026-11-08 起改名“置信度”），
+    # 与 RCS/极化/一维像同口径并入。
     # 老日志没有该字段：左连接后整列为空，自动退回三维，不影响出图。
     mo = ro.get("motion")
     if mo is not None and len(mo) and "contrib" in mo.columns:
@@ -616,7 +617,7 @@ def fig22(D):
     groups = by_target(j)
     colors = [C["accent1"], C["accent2"], C["accent3"], C["accent4"]][:len(cols)]
 
-    # 主目标＝同时刻特征最多的目标；堆叠图只画它，避免把不同目标的加权概率平均。
+    # 主目标＝同时刻特征最多的目标；堆叠图只画它，避免把不同目标的置信度平均。
     p_tid, pj = groups[0]
     g = pj.groupby("t")[cols].mean().sort_index()
     tot = j[cols].sum(axis=1).to_numpy(float)
@@ -624,12 +625,12 @@ def fig22(D):
     gpad = 0.02 * max(gt1 - gt0, 1.0)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.4, 8.0))
-    title_block(fig, "图 22  识别特征加权概率构成（按目标）",
+    title_block(fig, "图 22  识别特征置信度构成（按目标）",
                 f"{len(j)} 组同时刻特征，{len(groups)} 个目标"
                 f"（{'、'.join(target_title(t, gg['track']) for t, gg in groups)}）；"
                 f"特征维度 {'、'.join(cols)}；"
                 f"(a)(c)(d) 画主目标 {p_tid}（{len(pj)} 组）；"
-                f"{len(cols)} 项加权概率之和 {tot.min():.2f}–{tot.max():.2f}（≤1）")
+                f"{len(cols)} 项置信度之和（联合置信度）{tot.min():.2f}–{tot.max():.2f}（≤1）")
 
     ax = axes[0, 0]
     ax.stackplot(g.index, [g[c] for c in cols], labels=cols, colors=colors,
@@ -637,8 +638,8 @@ def fig22(D):
     ax.set_xlim(gt0 - gpad, gt1 + gpad)
     ax.set_ylim(0, max(0.1, float(g[cols].sum(axis=1).max()) * 1.32))
     ax.set_xlabel("仿真时间 (s)")
-    ax.set_ylabel("加权概率")
-    ax.set_title(f"(a) 目标 {p_tid} 的加权概率堆叠", fontsize=10.5)
+    ax.set_ylabel("置信度")
+    ax.set_title(f"(a) 目标 {p_tid} 的特征置信度堆叠", fontsize=10.5)
     ax.legend(loc="upper right", fontsize=8.2, ncol=len(cols))
     style_axes(ax)
 
@@ -656,8 +657,8 @@ def fig22(D):
     ax.set_xticks(x)
     ax.set_xticklabels([target_title(t, gg["track"]) for t, gg in groups], fontsize=8)
     ax.set_ylim(0, max(0.05, float(bottom.max()) * 1.30))
-    ax.set_ylabel("平均加权概率")
-    ax.set_title(f"(b) 各目标平均加权概率（柱顶为 {len(cols)} 项之和）",
+    ax.set_ylabel("平均置信度")
+    ax.set_title(f"(b) 各目标平均置信度（柱顶为 {len(cols)} 项之和）",
                  fontsize=10.5)
     ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.98), fontsize=8.2,
               ncol=len(cols))
@@ -672,9 +673,9 @@ def fig22(D):
     lo, hi = float(tot.min()), float(tot.max())
     t_pad = 0.05 * max(hi - lo, 0.05)
     ax.set_xlim(lo - t_pad, hi + t_pad)
-    ax.set_xlabel(f"{len(cols)} 项加权概率之和")
+    ax.set_xlabel(f"{len(cols)} 项置信度之和（联合置信度）")
     ax.set_ylabel("样本数")
-    ax.set_title(f"(c) 目标 {p_tid} 的加权概率之和分布（未归一）", fontsize=10.5)
+    ax.set_title(f"(c) 目标 {p_tid} 的联合置信度分布（未归一）", fontsize=10.5)
     ax.legend(loc="center left", fontsize=8.2)
     ax.annotate(f"取值 {lo:.2f}–{hi:.2f}（归一化参考 1.0）",
                 xy=(0.03, 0.94), xycoords="axes fraction", fontsize=8.3,
@@ -692,8 +693,8 @@ def fig22(D):
         patch.set_edgecolor("#4a4f55")
     ax.set_xticks(range(1, len(cols) + 1))
     ax.set_xticklabels(cols)
-    ax.set_ylabel("加权概率")
-    ax.set_title(f"(d) 目标 {p_tid} 各特征加权概率分布", fontsize=10.5)
+    ax.set_ylabel("置信度")
+    ax.set_title(f"(d) 目标 {p_tid} 各特征置信度分布", fontsize=10.5)
     # 中位数标在箱体上方（上须之外），避免压在箱线或离群点上。
     tops = [float(np.max(bp["whiskers"][2 * k + 1].get_ydata()))
             for k in range(len(cols))]
@@ -819,7 +820,7 @@ def fig23(D):
        title="图 24 极化不变量")
 def fig24(D):
     pol = D["radar_output"]["pol_feat"].sort_values("t")
-    # 有的目标只输出“目标类型/加权概率”一行，极化统计量整组缺失（窗口无效时
+    # 有的目标只输出“目标类别/置信度”一行，极化统计量整组缺失（窗口无效时
     # C++ 侧整行省略）；这类空组必须剔除，否则 dB、箱线图与图例都会拿到全 NaN。
     stats = [c for c in ("det_m", "span_m", "depol_m", "ori_m", "ell_m")
              if c in pol.columns]
@@ -1034,7 +1035,7 @@ FIGURES = [
     ("19", "fig19_feature_freshness", "图 19 特征新鲜度", fig19),
     ("20", "fig20_rcs_control", "图 20 RCS 特征", fig20),
     ("21", "fig21_class_confidence", "图 21 识别置信度", fig21),
-    ("22", "fig22_feature_contrib", "图 22 识别特征加权概率", fig22),
+    ("22", "fig22_feature_contrib", "图 22 识别特征置信度", fig22),
     ("23", "fig23_hrrp_waterfall", "图 23 HRRP 瀑布", fig23),
     ("24", "fig24_pol_invariants", "图 24 极化不变量", fig24),
     ("25", "fig25_event_timeline", "图 25 事件时间轴", fig25),

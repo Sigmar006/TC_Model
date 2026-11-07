@@ -114,6 +114,11 @@ def lst(label: str, name: str) -> str:
     return rf"{re.escape(label)}=\[(?P<{name}>[^\]]*)\]"
 
 
+def fc(name: str) -> str:
+    """特征置信度字段（2026-11-08 由“综合识别加权贡献”改名，老日志仍要认）。"""
+    return rf"(?:综合识别加权贡献|置信度)=(?P<{name}>{_N})"
+
+
 def J(*parts: str) -> re.Pattern:
     return re.compile(" ".join(parts))
 
@@ -258,8 +263,8 @@ P_MOTION = re.compile(
     rf"高度=(?P<alt>{_N})m 加速度=(?P<acc>{_N})m/s\^2 "
     rf"近似直线=(?P<straight>\S+) 速度来源=(?P<v_src>\S+) "
     rf"加速度来源=(?P<a_src>\S+)"
-    # 2026-11-06 起该行中间多了“综合识别加权贡献”，老日志没有，两者都要认。
-    rf"(?: 综合识别加权贡献=(?P<contrib>{_N}))? "
+    # 2026-11-06 起该行中间多了特征置信度字段（原“综合识别加权贡献”），老日志没有，两者都要认。
+    rf"(?: {fc('contrib')})? "
     rf"识别类别=(?P<cls>\S+)")
 P_RCSF = J(
     rf"航迹=(?P<track>\d+)",
@@ -267,7 +272,7 @@ P_RCSF = J(
     rf"RCS均值/标准差=(?P<mean>{_N})/(?P<std>{_N})dBsm",
     f("平均RCS归一化值", "norm"),
     f("RCS波动系数", "fluct"),
-    f("综合识别加权贡献", "contrib"),
+    fc("contrib"),
     s("识别类别", "cls"),
 )
 P_POL = {
@@ -283,14 +288,14 @@ P_POL = {
                rf"本征极化椭圆率均值/标准差=(?P<m>{_N})°?/(?P<s>{_N})°?"),
 }
 P_POLHEAD = J(rf"航迹=(?P<track>\d+)", rf"目标ID=(?P<tid>\d+)")
-P_POLX = J(f("综合识别加权贡献", "contrib"))
+P_POLX = J(fc("contrib"))
 P_HRRP = J(
     rf"航迹=(?P<track>\d+)",
     rf"目标ID=(?P<tid>\d+)",
     lst("散射中心", "centers"),
     f("长度", "length") + "m",
     rf"峰数=(?P<npeaks>\d+)",
-    f("综合识别加权贡献", "contrib"),
+    fc("contrib"),
     s("识别类型", "cls"),
 )
 P_CLS = J(rf"航迹=(?P<track>\d+)", rf"目标ID=(?P<tid>\d+)", s("目标类别", "cls"))

@@ -92,7 +92,7 @@ RE_CLASS = rx(r"目标类别=(\S+)")
 RE_COUNT = rx(r"目标数量=(\d+)")
 RE_OBS_COUNT = rx(r"观测数量=(\d+)")
 RE_RADIANCE = rx(r"红外辐射强度=" + RE_FLOAT)
-RE_POL_WEIGHT = rx(r"综合识别加权贡献=" + RE_FLOAT)
+RE_POL_WEIGHT = rx(r"(?:综合识别加权贡献|置信度)=" + RE_FLOAT)
 RE_TRANSMITTANCE = rx(r"大气透过率=" + RE_FLOAT)
 RE_PHOTON = rx(r"光子噪声=" + RE_FLOAT)
 RE_THERMAL = rx(r"热噪声=" + RE_FLOAT)
@@ -430,7 +430,8 @@ def scan_radar_output(path, it):
         ("本征极化方向角", "本征极化方向角均值/标准差="),
         ("本征极化椭圆率", "本征极化椭圆率均值/标准差="),
         ("目标类型", "目标类型="),
-        ("综合识别加权贡献", "综合识别加权贡献="),
+        # 2026-11-08 改名：同一字段写作 `置信度=`，旧日志仍为 `综合识别加权贡献=`。
+        ("特征置信度", ("置信度=", "综合识别加权贡献=")),
     )
     for line in iter_lines(path):
         if "极化特征解算功能测试" not in line:
@@ -438,11 +439,14 @@ def scan_radar_output(path, it):
         note_cycle(it, line)
         d46["rows"] += 1
         for name, marker in sub_items:
-            if marker in line:
-                stats = d46["sub"].setdefault(name, Stats())
-                value = num(rx(re.escape(marker) + RE_FLOAT), line)
-                if value is not None:
-                    stats.add(value)
+            markers = marker if isinstance(marker, tuple) else (marker,)
+            hit = next((mk for mk in markers if mk in line), None)
+            if hit is None:
+                continue
+            stats = d46["sub"].setdefault(name, Stats())
+            value = num(rx(re.escape(hit) + RE_FLOAT), line)
+            if value is not None:
+                stats.add(value)
         cls = num(rx(r"目标类型=(\S+)"), line, str)
         if cls:
             d46["class_counts"][cls] = d46["class_counts"].get(cls, 0) + 1
@@ -483,7 +487,7 @@ def build_rows(it):
              "%d 行；类别分布 %s" % (d["rows"],
                                  json.dumps(d["class_counts"], ensure_ascii=False)),
              "通过" if d["class_counts"] else "不通过", ""))
-        add(("46", "综合识别加权贡献", "形成候选匹配后记录，且数值有限并位于 [0,1]",
+        add(("46", "特征置信度（原综合识别加权贡献）", "形成候选匹配后记录，且数值有限并位于 [0,1]",
              "%d 行，越界 %d 行" % (d["weight_rows"], d["weight_bad"]),
              "通过" if d["weight_rows"] and d["weight_bad"] == 0 else
              ("不通过" if d["weight_rows"] else "无样本"), ""))

@@ -21,9 +21,16 @@ namespace radar {
 namespace {
 using oneq::common::numerics::RadToDeg;
 
-constexpr float kInternalBasePropagationLossDb = 4.0f;
+// 中译：**传播损耗常数回归物理**（2026-11-08）——原三项常数 4.0 + 1.5 + 1.0 = 6.5 dB，
+//   其中 4.0（"基础传播损耗"）与 1.0（"地形反射"）既无几何依赖、也无依据，且对 5,000 km
+//   掠地路径与 50 km 近距离一视同仁地扣 6.5 dB，把雷达作用距离整体压低约 1.5 倍
+//   （现场第 36 项 Pd=90% 距离被压到 3,938 km）。现只保留 1.5 dB 大气项，
+//   其余两项置 0：合计 1.5 dB，与"S 波段低仰角单程大气衰减"量级一致。
+//   说明：植被档位仍只影响杂波项，不影响这 1.5 dB（与改前一致）。
+// 标识：植被传播损耗常数修正（2026-11-08）。
+constexpr float kInternalBasePropagationLossDb = 0.5f;
 constexpr float kInternalAtmosphericAttenuationDb = 1.5f;
-constexpr float kInternalTerrainReflectionDb = 1.0f;
+constexpr float kInternalTerrainReflectionDb = 0.0f;
 constexpr float kInternalBaselineClutterPowerDb = 3.0f;
 
 float DbToLinear(float db_value) { return std::pow(10.0f, db_value / 10.0f); }

@@ -25,7 +25,7 @@ VegetationScatterPhysicsConfig MakeConfig(VegetationCoverProfile profile,
 TEST(CommonVegetationClutterModelTest, DisabledVegetationUsesBaselines) {
   const auto result = EvaluatePropagationClutter(
       MakeConfig(VegetationCoverProfile::kDisabled, false));
-  EXPECT_NEAR(result.propagation_loss_db, 6.5f, 1.0e-4f);
+  EXPECT_NEAR(result.propagation_loss_db, 2.0f, 1.0e-4f);
   EXPECT_NEAR(result.clutter_power_db, 3.0f, 1.0e-4f);
 }
 
@@ -37,7 +37,7 @@ TEST(CommonVegetationClutterModelTest, EnabledVegetationRaisesClutterAboveBaseli
   for (const auto profile : profiles) {
     const auto result = EvaluatePropagationClutter(MakeConfig(profile, true));
     EXPECT_GE(result.clutter_power_db, 3.0f) << "profile=" << static_cast<int>(profile);
-    EXPECT_NEAR(result.propagation_loss_db, 6.5f, 1.0e-4f);
+    EXPECT_NEAR(result.propagation_loss_db, 2.0f, 1.0e-4f);
   }
 }
 

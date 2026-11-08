@@ -1041,10 +1041,24 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     // 标识：第36项不含MTI/MTD目标损失（2026-11-07）。
     const double mti_mtd_loss_db = static_cast<double>(input.cell.mti_response_db) +
                                    static_cast<double>(input.cell.mtd_bin_response_db);
+    // 中译：**干扰也按能力口径剔除**（2026-11-08 甲方要求"所有损耗都不计入"）——
+    //   本项语义是"雷达对 1 m² 目标的 90% 探测能力"，属单机能力；而 cell 的单脉冲 SINR
+    //   里含场景干扰（现场干扰功率中位 3.04e-12 W，是热噪声 1.80e-13 W 的 16.9 倍，
+    //   等于白扣 12.5 dB、距离被压低 2.2 倍）。干扰另有第 30 项（干扰功率）与第 35 项
+    //   （干扰抑制增益）单独记账，这里按 SINR_纯噪声 = SINR·N/(N+J) 折算回去；
+    //   无干扰时折算量为 0 dB，行为与旧口径逐位一致。
+    // 标识：第36项剔除干扰（2026-11-08）。
+    double interference_penalty_db = 0.0;
+    if (input.has_cell && std::isfinite(thermal) && thermal > 0.0 &&
+        std::isfinite(input.cell.interference_power_w) && input.cell.interference_power_w > 0.0) {
+      interference_penalty_db = 10.0 * std::log10(
+          1.0 + static_cast<double>(input.cell.interference_power_w) / thermal);
+    }
     const double snr_now_db =
-        static_cast<double>(input.cell.processed_single_pulse_sinr_db) - mti_mtd_loss_db;
+        static_cast<double>(input.cell.processed_single_pulse_sinr_db) - mti_mtd_loss_db -
+        interference_penalty_db;
     const double snr_now_db_with_processing =
-        static_cast<double>(input.cell.processed_single_pulse_sinr_db);
+        static_cast<double>(input.cell.processed_single_pulse_sinr_db) - interference_penalty_db;
     double max_range_m = 0.0;
     // 中译：**90% 探测距离按标称 RCS（1 m²）报**（2026-11-04）——判据要的是"标称 RCS 的
     //   90% 探测概率的探测距离"，即本雷达的能力基准；此前用的是**当前目标 RCS**，
@@ -1066,7 +1080,7 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
       Emit(t, cycle, "恒虚警检测功能测试",
            id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
                "m 标称RCS=" + FormatF(kNominalRcsM2, 3) + "m^2 目标RCS=" +
-               FormatF(input.rcs_m2, 3) + "m^2 口径=不含MTI/MTD目标响应损失 MTI/MTD补偿=" +
+               FormatF(input.rcs_m2, 3) + "m^2 口径=不含MTI/MTD目标响应损失、不含干扰 MTI/MTD补偿=" +
                FormatF(-mti_mtd_loss_db, 3) + "dB 含处理损失=" +
                FormatF(max_range_with_processing_m, 1) + "m");
     }

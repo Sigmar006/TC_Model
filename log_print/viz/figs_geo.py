@@ -12,8 +12,8 @@
   LLA）、滤波航迹（`radar_output.kf` 的 ECEF）。三者按 (仿真时间, 目标ID) 对齐；
   真值不外推，只截到与滤波同段的时间窗；滤波航迹裁到该目标的观测窗（点迹首末
   时刻），观测停止后的外推段默认不画，`--show-extrapolated` 可关闭裁剪；
-  量测点少于滤波点时按点打标记。本批点迹由场景 ENU 直接换算，量测与真值之差
-  ≤ 1 m（图上残差由数据现算）。
+  量测点少于滤波点时按点打标记。本批点迹由场景 ENU 直接换算，量测与真值基本重合；
+  残差不再在图内另起注释块，裁剪说明并入副标题，免得压住曲线。
 * “探测高度”取航迹关联/落点预测同源的 LLA 高度（`assoc.h`），并与滤波航迹
   ECEF→LLA 的高度并列，两者同源不同环节，便于核对；“运动特征”里的 `高度`
   是站心 ENU 的 u 分量（= R·sin el），不是海拔高度，不在此图混用。
@@ -23,6 +23,8 @@
   `wfov.quad` 是“视场矩形 ∩ 地球视盘”的经纬度包络框（源码
   `SbirsPipeline.cpp` ComputeGroundCoverageEnvelope），四角顺序为西北/东北/
   东南/西南，故按经纬度矩形连线；t=1 的轨道初值帧（300 km）与稳态不连续，剔除。
+  该星实际观测到的目标（`ir_ext.ir_obs`，退回 `ir_int.ir_trk`）按目标画出地面
+  轨迹，位置取场景真值；扫描单元中心只是波位、不等于目标位置，不再单独画。
 """
 from __future__ import annotations
 
@@ -45,12 +47,6 @@ def _rng_txt(v, unit="", nd=0):
     # 负值区间用 “~” 分隔，避免 “-4862–-3440” 这类读不出边界的写法。
     sep = " ~ " if float(v.min()) < 0 else "–"
     return f"{v.min():.{nd}f}{sep}{v.max():.{nd}f}{unit}"
-
-
-def _note(ax, text, xy=(0.03, 0.96), va="top", ha="left", size=8.2):
-    ax.annotate(text, xy=xy, xycoords="axes fraction", fontsize=size,
-                va=va, ha=ha,
-                bbox=dict(boxstyle="round,pad=0.35", fc="#f7f9fb", ec="#c8d0d8"))
 
 
 def _slot_target(D, rank):
@@ -105,14 +101,16 @@ def _scene_truth(D, tid):
             "rng": np.hypot(np.hypot(e0, e1), e2) / 1e3}
 
 
-def _truth_at(tr, key, tq):
-    """真值按时间线性插值到查询时刻；超出真值时段置 NaN，不外推。"""
-    tq = np.asarray(tq, dtype=float)
+def _scene_lla(D, tid, t0, t1):
+    """场景真值的地面位置：ENU→ECEF→LLA，只取观测时段 [t0, t1]。"""
+    tr = _scene_truth(D, tid)
     if tr is None:
-        return np.full(tq.shape, np.nan)
-    v = np.interp(tq, tr["t"], tr[key])
-    v[(tq < tr["t"][0]) | (tq > tr["t"][-1])] = np.nan
-    return v
+        return None
+    m = (tr["t"] >= t0) & (tr["t"] <= t1)
+    if not np.any(m):
+        return None
+    lat, lon, h = ecef_to_lla(tr["x"][m] * 1e3, tr["y"][m] * 1e3, tr["z"][m] * 1e3)
+    return {"t": tr["t"][m], "lat": lat, "lon": lon, "h": h}
 
 
 def _truth_window(tr, lo, hi):
@@ -123,35 +121,6 @@ def _truth_window(tr, lo, hi):
     if not np.any(m):
         return None
     return {k: v[m] for k, v in tr.items()}
-
-
-def _resid(a, b, nd=3):
-    """a−b 的极值与 rms；只统计两侧都有效的点，小于 1 km 时改用 m（免得写成 -0.000）。"""
-    a = np.asarray(a, dtype=float)
-    b = np.asarray(b, dtype=float)
-    m = np.isfinite(a) & np.isfinite(b)
-    if not np.any(m):
-        return "无重合点"
-    d = a[m] - b[m]
-    unit, scale = " km", 1.0
-    if float(np.abs(d).max()) < 1.0:
-        unit, scale, nd = " m", 1e3, 1
-    d = d * scale
-    return f"{_rng_txt(d, unit, nd)}，rms {float(np.sqrt((d ** 2).mean())):.{nd}f}{unit}"
-
-
-def _max_abs(a, b):
-    """a−b 的最大绝对值（无重合点返回 nan）。"""
-    a = np.asarray(a, dtype=float)
-    b = np.asarray(b, dtype=float)
-    m = np.isfinite(a) & np.isfinite(b)
-    return float(np.abs(a[m] - b[m]).max()) if np.any(m) else float("nan")
-
-
-def _overlap(a, b, tol=0.01):
-    """量测与真值是否重合到绘图精度（km）；重合时在注释里点明，免得被当成漏画。"""
-    mx = _max_abs(a, b)
-    return "（与真值重合）" if np.isfinite(mx) and mx <= tol else ""
 
 
 def _plot_ecef_km(p):
@@ -189,24 +158,20 @@ def _altitude(D, rank, num):
     hk = hk_all[keep] / 1e3
     tr = _scene_truth(D, tid)
     tw = _truth_window(tr, float(t.min()), float(t.max()))
-    ht_kf = _truth_at(tr, "h", t)
     assoc = D["radar_output"]["assoc"]
     a = assoc[assoc["tid"] == tid].sort_values("t") if "tid" in assoc.columns \
         else assoc.iloc[0:0]
     ta = a["t"].to_numpy(float)
     ha = a["h"].to_numpy(float) / 1e3
-    ht_a = _truth_at(tr, "h", ta)
 
     fig, ax = plt.subplots(figsize=(11.4, 5.2))
     if tw is not None:
         ax.plot(tw["t"], tw["h"], color=C["truth"], lw=3.2, alpha=0.45,
-                solid_capstyle="round", zorder=2,
-                label=f"场景真值（ENU→LLA，{len(tw['t'])} 点）")
-    ax.plot(t, hk, color=C["filter"], lw=1.6, zorder=3,
-            label=f"滤波航迹（ECEF→LLA，{len(t)} 点）")
+                solid_capstyle="round", zorder=2, label="场景真值")
+    ax.plot(t, hk, color=C["filter"], lw=1.6, zorder=3, label="滤波航迹")
     if len(a):
         ax.plot(ta, ha, "o", ms=3.0, mew=0, color=C["meas"], alpha=0.85, zorder=4,
-                label=f"点迹量测（关联 LLA，{len(a)} 点）")
+                label="点迹量测")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("海拔高度 (km)")
     ax.set_title("(a) 目标高度–时间（真值 / 量测 / 滤波）", fontsize=10.5)
@@ -222,25 +187,13 @@ def _altitude(D, rank, num):
     span = max(hi - lo, 1e-6)
     ax.set_ylim(lo - 0.10 * span, hi + 0.18 * span)
 
-    lines = [f"{target_title(tid)}；时间 {_rng_txt(t, ' s')}"]
-    if tw is not None:
-        lines.append(f"真值 {_rng_txt(tw['h'], ' km')}；首末 "
-                     f"{tw['h'][0]:.0f} → {tw['h'][-1]:.0f} km"
-                     f"（{tw['h'][-1] - tw['h'][0]:+.0f} km）")
-    else:
-        lines.append("本批无该目标的场景行，未画真值")
-    if len(a):
-        lines.append(f"量测−真值 {_resid(ha, ht_a)}{_overlap(ha, ht_a)}")
-    lines.append(f"滤波−真值 {_resid(hk, ht_kf)}")
-    nt = obs_note(n_cut, t_hi, "滤波航迹")
-    if nt:
-        lines.append(nt)
-    _note(ax, "\n".join(lines), xy=(0.03, 0.04), va="bottom")
     style_axes(ax)
+    clip_txt = obs_note(n_cut, t_hi, "滤波航迹")
     title_block(fig, f"图 {num}  {target_title(tid)} 探测高度时序",
                 f"真值取场景接口的 位置ENU（radar_ext.scene），量测取关联 LLA，"
                 f"滤波取 ECEF 航迹；{len(t)} 条滤波记录、{len(a)} 条量测记录，"
-                f"本图只画目标 {int(tid)}")
+                f"本图只画目标 {int(tid)}"
+                + (f"；{clip_txt}" if clip_txt else ""))
     return fig
 
 
@@ -276,21 +229,18 @@ def _range(D, rank, num):
     rng_kf = rng_all[keep]
     tr = _scene_truth(D, tid)
     tw = _truth_window(tr, float(t.min()), float(t.max()))
-    rt_kf = _truth_at(tr, "rng", t)
     tp = p["t"].to_numpy(float)
     rp = p["rng"].to_numpy(float) / 1e3
-    rt_p = _truth_at(tr, "rng", tp)
 
     fig, ax = plt.subplots(figsize=(11.4, 5.2))
     if tw is not None:
         ax.plot(tw["t"], tw["rng"], color=C["truth"], lw=3.2, alpha=0.45,
-                solid_capstyle="round", zorder=2,
-                label=f"场景真值（|位置ENU|，{len(tw['t'])} 点）")
+                solid_capstyle="round", zorder=2, label="场景真值")
     ax.plot(t, rng_kf, color=C["filter"], lw=1.5, ls="--", zorder=3,
-            label=f"滤波航迹反算斜距（{len(t)} 点）")
+            label="滤波航迹反算斜距")
     if len(p):
         ax.plot(tp, rp, "-o", ms=2.6, mew=0, lw=1.2, color=C["meas"], alpha=0.9,
-                zorder=4, label=f"点迹量测斜距（{len(p)} 点）")
+                zorder=4, label="点迹量测斜距")
     ax.set_xlabel("仿真时间 (s)")
     ax.set_ylabel("雷达–目标斜距 (km)")
     ax.set_title("(a) 斜距–时间（真值 / 量测 / 滤波）", fontsize=10.5)
@@ -306,26 +256,12 @@ def _range(D, rank, num):
     span = max(hi - lo, 1e-6)
     ax.set_ylim(lo - 0.08 * span, hi + 0.18 * span)
 
-    lines = [f"{target_title(tid)}；时间 {_rng_txt(t, ' s')}"]
-    if len(p):
-        lines.append(f"量测斜距 {_rng_txt(rp, ' km')}；首末 "
-                     f"{rp[0]:.0f} → {rp[-1]:.0f} km（{rp[-1] - rp[0]:+.0f} km）")
-    else:
-        lines.append("本批无点迹记录，只有真值与滤波反算斜距")
-    if tw is None:
-        lines.append("本批无该目标的场景行，未画真值")
-    else:
-        if len(p):
-            lines.append(f"量测−真值 {_resid(rp, rt_p)}{_overlap(rp, rt_p)}")
-        lines.append(f"滤波−真值 {_resid(rng_kf, rt_kf)}")
-    nt = obs_note(n_cut, t_hi, "滤波航迹")
-    if nt:
-        lines.append(nt)
-    _note(ax, "\n".join(lines), xy=(0.03, 0.04), va="bottom")
     style_axes(ax)
+    clip_txt = obs_note(n_cut, t_hi, "滤波航迹")
     title_block(fig, f"图 {num}  {target_title(tid)} 雷达–目标斜距时序",
                 f"真值取场景 位置ENU 的模，量测取雷达点迹输出（radar_ext.plot），"
-                f"滤波斜距由 ECEF 航迹与站址反算；本图只画目标 {int(tid)}")
+                f"滤波斜距由 ECEF 航迹与站址反算；本图只画目标 {int(tid)}"
+                + (f"；{clip_txt}" if clip_txt else ""))
     return fig
 
 
@@ -358,7 +294,6 @@ def _ecef(D, rank, num):
     kf = {k: v[keep] for k, v in kf_all.items()}
     tr = _scene_truth(D, tid)
     tw = _truth_window(tr, float(t.min()), float(t.max()))
-    tt = {k: _truth_at(tr, k, t) for k in "xyz"}
 
     ext = D.get("radar_ext") or {}
     plot = ext.get("plot")
@@ -376,13 +311,11 @@ def _ecef(D, rank, num):
     for ax, tag, key, name in zip(axs, "abc", "xyz", ("x", "y", "z")):
         if tw is not None:
             ax.plot(tw["t"], tw[key], color=C["truth"], lw=3.2, alpha=0.45,
-                    solid_capstyle="round", zorder=2,
-                    label=f"场景真值（{len(tw['t'])} 点）")
-        ax.plot(t, kf[key], color=C["filter"], lw=1.5, zorder=3,
-                label=f"滤波航迹（{len(t)} 点）")
+                    solid_capstyle="round", zorder=2, label="场景真值")
+        ax.plot(t, kf[key], color=C["filter"], lw=1.5, zorder=3, label="滤波航迹")
         if len(tp):
             ax.plot(tp, meas[key], "o", ms=2.6, mew=0, color=C["meas"], alpha=0.85,
-                    zorder=4, label=f"点迹量测（{len(tp)} 点）")
+                    zorder=4, label="点迹量测")
         ax.set_ylabel(f"{name} (km)")
         ax.set_title(f"({tag}) {name} 分量（真值 / 量测 / 滤波）", fontsize=10.5)
 
@@ -400,34 +333,12 @@ def _ecef(D, rank, num):
     axs[0].legend(loc="best", fontsize=8.2)
     axs[-1].set_xlabel("仿真时间 (s)")
 
-    rr = np.hypot(np.hypot(kf["x"], kf["y"]), kf["z"])
-    lines = [f"{target_title(tid)}；{len(t)} 条滤波记录，时间 {_rng_txt(t, ' s')}；"
-             f"地心距 |r| {_rng_txt(rr, ' km')}"]
-    if tw is not None:
-        rms = "/".join(f"{float(np.sqrt(np.nanmean((kf[k] - tt[k]) ** 2))):.2f}"
-                       for k in "xyz")
-        lines.append(f"滤波−真值 rms x/y/z {rms} km")
-    else:
-        lines.append("本批无该目标的场景行，未画真值")
-    if len(tp):
-        if tr is not None:
-            mx_ = max(_max_abs(meas[k], _truth_at(tr, k, tp)) for k in "xyz")
-            tag = "，与真值重合" if mx_ <= 0.01 else ""
-            lines.append(f"量测−真值 max|x,y,z| {mx_:.3f} km（{len(tp)} 点{tag}）")
-        else:
-            lines.append(f"量测点 {len(tp)} 个（无真值可比）")
-    else:
-        lines.append("本批无点迹记录，未画量测")
-    nt = obs_note(n_cut, t_hi, "滤波航迹")
-    if nt:
-        lines.append(nt)
-    # 三块面板都画满数据，注释放图内必然压线，改排成图脚注（tight_layout 上方留白）。
-    fig.text(0.5, 0.004, "；".join(lines), fontsize=8.4, ha="center", va="bottom",
-             color="#3a4550", linespacing=1.5)
+    clip_txt = obs_note(n_cut, t_hi, "滤波航迹")
     title_block(fig, f"图 {num}  {target_title(tid)} 目标 ECEF 坐标时序",
                 f"真值取场景 位置ENU 经站心→ECEF，量测由点迹斜距/方位/俯仰反算 ENU 后转 "
-                f"ECEF，滤波取跟踪输出（radar_output.kf）；本图只画目标 {int(tid)}")
-    finish(fig, bottom=0.05)
+                f"ECEF，滤波取跟踪输出（radar_output.kf）；本图只画目标 {int(tid)}"
+                + (f"；{clip_txt}" if clip_txt else ""))
+    finish(fig)
     return fig
 
 
@@ -443,6 +354,17 @@ def fig49(D):
 def _wrap180(d):
     """把角度差折算到 [-180, 180)，用于“相对星下点经度”。"""
     return (np.asarray(d, dtype=float) + 180.0) % 360.0 - 180.0
+
+
+def _segments(x, y, jump=90.0):
+    """按经度环绕处断线：相邻点 Δx 超过 jump 就是跨了 ±180°，拆段后分别画，
+    免得轨迹被连成一条横贯全图的长线。"""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if len(x) < 2:
+        return [(x, y)]
+    cut = np.flatnonzero(np.abs(np.diff(x)) > jump) + 1
+    return list(zip(np.split(x, cut), np.split(y, cut)))
 
 
 def _parse_quad(text):
@@ -492,11 +414,20 @@ def _sat_track(D, rank, num):
     # 经度取“相对星下点”，GEO 全盘覆盖跨 ±180° 时轨迹才不会断成两段。
     dlon_s = _wrap180(lon_s - lon_ref)
 
-    ok = w["center"].astype(str).str.contains(",", regex=False)
-    c = w[ok]
-    clat = c["center"].str.split(",").str[0].astype(float).to_numpy()
-    dlon_c = _wrap180(c["center"].str.split(",").str[1].astype(float).to_numpy() - lon_ref)
-    ct = c["t"].to_numpy(float)
+    # 该星实际观测到的目标：`ir_obs`（退回 `ir_trk`）给出（卫星, 目标）的观测时段，
+    # 目标地面位置取场景真值（radar_ext.scene → LLA）。扫描单元中心只是波位，
+    # 与目标真实位置不是一回事，不再单独画。
+    tgt = []
+    obs = (D.get("ir_ext") or {}).get("ir_obs")
+    if obs is None or len(obs) == 0:
+        obs = (D.get("ir_int") or {}).get("ir_trk")
+    if obs is not None and len(obs) and {"sat", "tid"} <= set(obs.columns):
+        o = obs[obs["sat"].to_numpy(float) == sat]
+        for tid, og in o.groupby("tid"):
+            t_o = og["t"].to_numpy(float)
+            lo_t, hi_t = float(np.nanmin(t_o)), float(np.nanmax(t_o))
+            tgt.append(dict(tid=int(tid), t0=lo_t, t1=hi_t, n=len(og),
+                            trk=_scene_lla(D, int(tid), lo_t, hi_t)))
 
     quads = []
     for row in w.itertuples():
@@ -507,14 +438,11 @@ def _sat_track(D, rank, num):
 
     col = color_map(sats)[sat]
     cmap = plt.get_cmap("viridis")
-    norm = plt.Normalize(float(np.nanmin(ct)), float(np.nanmax(ct))) if len(ct) \
+    qt = np.asarray([tq for tq, _ in quads], dtype=float)
+    norm = plt.Normalize(float(qt.min()), float(qt.max())) if len(qt) \
         else plt.Normalize(0.0, 1.0)
 
     fig, ax = plt.subplots(figsize=(11.8, 6.2))
-    if len(c):
-        ax.scatter(dlon_c, clat, c=ct, s=6, cmap=cmap, norm=norm, alpha=0.70,
-                   linewidths=0, label=f"扫描单元中心（{len(c)} 个）", zorder=2)
-
     # 宽视场四角是整幅覆盖范围（GEO 下几乎覆盖整个可见半球），只画轮廓并按时间
     # 着色；不再填充，否则十个面叠在一起糊成一片。
     pick = []
@@ -527,23 +455,41 @@ def _sat_track(D, rank, num):
                     color=cmap(norm(tq)), lw=1.0, alpha=0.85, zorder=1)
 
     ax.plot(dlon_s, lat_s, "-o", ms=2.2, mew=0, lw=1.2, color=col, zorder=4,
-            label=f"星下点（{int(steady.sum())} 拍，GEO 近似静止）")
+            label="星下点")
+
+    # 目标地面轨迹按目标配色（与其它图同号同色），首点用空心圈标出首次观测位置。
+    tcol = color_map(list(sats) + [o["tid"] for o in tgt])
+    for o in tgt:
+        trk = o["trk"]
+        if trk is None:
+            continue
+        dl = _wrap180(trk["lon"] - lon_ref)
+        for i, (sx, sy) in enumerate(_segments(dl, trk["lat"])):
+            ax.plot(sx, sy, "-", lw=1.8, color=tcol[o["tid"]], zorder=5,
+                    label=f"目标 {o['tid']} 地面轨迹" if i == 0 else None)
+        ax.plot(dl[:1], trk["lat"][:1], "o", ms=5.5, mfc="none", mew=1.3,
+                color=tcol[o["tid"]], zorder=6)
 
     handles, labels = ax.get_legend_handles_labels()
     if quads:
         handles.append(Line2D([], [], color="#55595e", lw=1.1))
-        labels.append(f"宽场覆盖轮廓（有效 {len(quads)} 个，抽 {len(pick)} 个）")
+        labels.append("宽场覆盖轮廓")
     ax.legend(handles, labels, loc="best", fontsize=7.6, markerscale=1.8)
 
     ax.set_xlabel("相对星下点经度 Δλ (°)")
     ax.set_ylabel("纬度 (°)")
     ax.set_title("(a) 星下点与宽场瞬时覆盖（颜色＝时间）", fontsize=10.5)
 
-    xs = list(dlon_s) + list(dlon_c)
-    ys = list(lat_s) + list(clat)
+    xs = list(dlon_s)
+    ys = list(lat_s)
     for _, q in quads:
         xs.extend(p[0] for p in q)
         ys.extend(p[1] for p in q)
+    for o in tgt:
+        if o["trk"] is None:
+            continue
+        xs.extend(_wrap180(o["trk"]["lon"] - lon_ref).tolist())
+        ys.extend(np.asarray(o["trk"]["lat"], dtype=float).tolist())
     x0, x1 = float(np.nanmin(xs)), float(np.nanmax(xs))
     y0, y1 = float(np.nanmin(ys)), float(np.nanmax(ys))
     pad_x = max(0.05 * (x1 - x0), 1.0)
@@ -551,27 +497,41 @@ def _sat_track(D, rank, num):
     ax.set_xlim(x0 - pad_x, x1 + pad_x)
     ax.set_ylim(y0 - pad_y, y1 + pad_y)
 
-    cb = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, pad=0.015)
-    cb.set_label("仿真时间 (s)", fontsize=8.5)
-    cb.ax.tick_params(labelsize=7.5)
+    if quads:
+        cb = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax,
+                          pad=0.015)
+        cb.set_label("仿真时间 (s)", fontsize=8.5)
+        cb.ax.tick_params(labelsize=7.5)
 
     ns = "N" if lat_ref >= 0 else "S"
     ew = "E" if lon_ref >= 0 else "W"
-    _note(ax, f"卫星 {sat}；共 {len(g)} 拍（稳态 {int(steady.sum())} 拍），"
-              f"{_rng_txt(t_all, ' s')}\n"
-              f"星下点 {abs(lat_ref):.2f}°{ns}、{abs(lon_ref):.2f}°{ew}；"
-              f"纬度漂移 {_rng_txt(lat_s, '°', 2)}\n"
-              f"高度中位 {np.nanmedian(h[steady])/1e3:.0f} km（GEO 稳态），"
-              f"星下点经度漂移 {_rng_txt(dlon_s, '°', 3)}")
+    note = [f"卫星 {sat}；共 {len(g)} 拍（稳态 {int(steady.sum())} 拍），"
+            f"{_rng_txt(t_all, ' s')}",
+            f"星下点 {abs(lat_ref):.2f}°{ns}、{abs(lon_ref):.2f}°{ew}；"
+            f"纬度漂移 {_rng_txt(lat_s, '°', 2)}",
+            f"高度中位 {np.nanmedian(h[steady])/1e3:.0f} km（GEO 稳态），"
+            f"星下点经度漂移 {_rng_txt(dlon_s, '°', 3)}"]
+    if tgt:
+        note.append("观测目标 " + "、".join(
+            f"{o['tid']}（{o['t0']:.0f}–{o['t1']:.0f} s）" for o in tgt))
+    # 卫星注释放到图脚：星下点与目标轨迹常压在上半区，放图内会盖住曲线。
+    fig.text(0.012, 0.008, "\n".join(note), fontsize=8.0, ha="left", va="bottom",
+             color="#3a4550", linespacing=1.45)
 
+    if tgt:
+        tgt_txt = (f"；观测目标 {'、'.join(str(o['tid']) for o in tgt)}，"
+                   f"地面位置取场景真值（radar_ext.scene）")
+    else:
+        tgt_txt = "；本批该星未观测到目标"
     init_note = ""
     if np.any(init):
         init_note = (f"t={t_all[init].min():.0f} s 的轨道初值帧（高度 "
                      f"{h[init].min()/1e3:.0f} km）与 GEO 稳态不连续，未画入；")
     title_block(fig, f"图 {num}  卫星 {sat} 星下点轨迹与宽场扫描范围",
-                f"扫描单元 {len(w)} 条记录（有效中心 {len(c)} 条、有效四角 {len(quads)} 条）；"
-                f"横轴为相对星下点经度；{init_note}本图只画卫星 {sat}")
+                f"宽场覆盖 {len(w)} 帧（有效四角 {len(quads)} 帧）；"
+                f"横轴为相对星下点经度{tgt_txt}；{init_note}本图只画卫星 {sat}")
     style_axes(ax)
+    finish(fig, bottom=0.105)
     return fig
 
 

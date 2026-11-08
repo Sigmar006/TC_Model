@@ -20,6 +20,7 @@
  * - 对应验收项：第 47A 项 综合特征识别功能测试（正确率 >60%）。
  */
 
+#include <cstring>
 #include "remote_identification_radar/recognition/RecognitionTracker.h"
 
 #include <algorithm>
@@ -420,6 +421,19 @@ void RirTracker::UpdateCycle(
       judgement.best_score = match.best_score;
       judgement.runner_up_score = match.runner_up_score;
       judgement.confidence = match.confidence;
+      // 过程：前 3 候选落盘（诊断用）——型号/大类截断拷贝，得分原样。
+      // 标识：识别前三候选（2026-11-08）。
+      const std::size_t top_total =
+          match.candidates.size() < 3U ? match.candidates.size() : 3U;
+      judgement.top_candidate_count = static_cast<std::uint8_t>(top_total);
+      for (std::size_t c = 0U; c < top_total; ++c) {
+        const RirCandidate& candidate = match.candidates[c];
+        std::strncpy(judgement.top_candidates[c].model_id, candidate.model_id.c_str(),
+                     sizeof(judgement.top_candidates[c].model_id) - 1U);
+        std::strncpy(judgement.top_candidates[c].category_id, candidate.category_id.c_str(),
+                     sizeof(judgement.top_candidates[c].category_id) - 1U);
+        judgement.top_candidates[c].score = candidate.score;
+      }
       // 过程：判决三态——得分低于 acceptance_score 判未知；裕度 ≥ minimum_margin 且维度
       //       达标判型号确认；否则退一级，只判大类确认。
       const float margin = judgement.best_score - judgement.runner_up_score;

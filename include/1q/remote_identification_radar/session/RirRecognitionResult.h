@@ -85,6 +85,17 @@ struct ONEQ_API RirRecognitionFeatureScores {
 };
 
 /**
+ * @brief RirRecognitionCandidate 单个识别候选（型号 + 大类 + 得分）。
+ * @note 仅用于诊断（"为什么判成这一类"需要看到前几名与各自得分）；
+ *       固定长度字符数组，避免在公共结构里引入动态分配。
+ */
+struct ONEQ_API RirRecognitionCandidate {
+  char model_id[32]{};   /**< 型号 ID（超长截断，NUL 结尾）。 */
+  char category_id[20]{};/**< 大类 ID（库内字符串，超长截断）。 */
+  float score{0.0f};     /**< 先验加权得分（未归一化）。 */
+};
+
+/**
  * @brief RirRecognitionResult 单条航迹的识别结论。
  */
 struct ONEQ_API RirRecognitionResult {
@@ -102,6 +113,12 @@ struct ONEQ_API RirRecognitionResult {
   std::string database_version{};       /**< 输出所使用的特征库版本。 */
   std::uint32_t source_cycle_index{0U}; /**< 产生此结论的 cycle_index。 */
   std::uint64_t source_batch_id{0U};    /**< 产生此结论的 batch_id。 */
+  // 中译：**前三候选透出**（2026-11-08）——此前只有 best_model/runner_up_score，
+  //   看不出"第二名是谁、差多少"，现场"装了诱饵特征却判成弹道/未知"无从定位。
+  //   现在把前 3 名的（型号、大类、得分）一并带出，宿主诊断行可直接打印。
+  // 标识：识别前三候选透出（2026-11-08）。
+  RirRecognitionCandidate top_candidates[3]{}; /**< 前 3 个候选（降序，空位其余字段为 0）。 */
+  std::uint8_t top_candidate_count{0U};        /**< 有效候选数，<= 3。 */
 };
 
 /**

@@ -28,8 +28,14 @@ using oneq::common::numerics::RadToDeg;
 //   其余两项置 0：合计 1.5 dB，与"S 波段低仰角单程大气衰减"量级一致。
 //   说明：植被档位仍只影响杂波项，不影响这 1.5 dB（与改前一致）。
 // 标识：植被传播损耗常数修正（2026-11-08）。
-constexpr float kInternalBasePropagationLossDb = 0.5f;
-constexpr float kInternalAtmosphericAttenuationDb = 1.5f;
+// 中译：**传播损耗全部归零**（2026-11-08 甲方要求：本轮只验证雷达方程的"理想能力"，
+//   一切附加损耗都不计入）——植被模型的传播项 0.5 + 1.5 + 0.0 = 2.0 dB 也置 0。
+//   影响：雷达方程只剩几何扩散与接收机噪声（NF 见配置），第 36 项回到"纯雷达方程"量级。
+//   警告：0 dB 传播损耗对真实链路不成立，仅用于能力对照；恢复时把下面三项分别设回
+//   0.5 / 1.5 / 0.0（方案 A 口径）。
+// 标识：传播损耗归零（2026-11-08）。
+constexpr float kInternalBasePropagationLossDb = 0.0f;
+constexpr float kInternalAtmosphericAttenuationDb = 0.0f;
 constexpr float kInternalTerrainReflectionDb = 0.0f;
 constexpr float kInternalBaselineClutterPowerDb = 3.0f;
 

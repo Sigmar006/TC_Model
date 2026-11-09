@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "1q/api.hpp"
+#include "1q/remote_identification_radar/session/RirRecognitionResult.h"
 
 namespace remote_identification_radar {
 namespace session {
@@ -86,6 +87,16 @@ struct ONEQ_API RirSceneTarget {
   std::vector<RirAspectRcsSample> aspect_rcs_samples{};
   std::vector<RirPolSMatrixSample> polarization_samples{};
   std::vector<RirRangeRcsScatterer> range_rcs_scatterers{};
+
+  /**
+   * @brief 真值大类（**仅用于准确率统计，绝不参与识别**，2026-11-10）。
+   *
+   * @details 由集成方按场景设计填写（本场景按所选特征集的大类给出：诱饵/弹片/助推器/弹道）。
+   *   缺省 `kUnknown` 表示"该目标没有真值"，其航迹**不计入**准确率分母——不伪造真值
+   *   也不把无真值当成判错。旧的"目标名等于库 model_id"口径保留为兜底（见
+   *   `RecognitionTracker::BuildSummary`）。
+   */
+  RirRecognitionCategory truth_category{RirRecognitionCategory::kUnknown};
 };
 
 /** @brief RirSceneTargetList 表示识别雷达场景目标输入列表。 */

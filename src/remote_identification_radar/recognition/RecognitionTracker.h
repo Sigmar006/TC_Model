@@ -41,6 +41,8 @@ struct RirTrackState {
 
   /** 结论 */
   session::RirRecognitionResult result{};
+  /** 该航迹的**真值大类**（来自场景目标，kUnknown = 无真值；仅统计用，不参与识别）。 */
+  session::RirRecognitionCategory truth_category{session::RirRecognitionCategory::kUnknown};
   float conclusion_time_sec{-1.0f};       /**< 最近一次结论时刻；-1 表示尚无结论。 */
   float first_conclusion_time_sec{-1.0f}; /**< 首次确认（大类/型号）时刻；-1 表示尚未确认。 */
   bool has_conclusion{false};
@@ -147,7 +149,11 @@ class RirTracker {
 
   Options options_{};
   std::string active_database_version_{};
-  /** @brief model_id → category_id（DB 加载时捕获，供真值准确率统计）。 */
+  /** @brief 综合识别准确率累计（跑全程，跨周期）：样本数与判对数。 */
+  mutable std::uint64_t accuracy_samples_{0U};
+  mutable std::uint64_t accuracy_correct_{0U};
+
+  /** @brief model_id → category_id（DB 加载时捕获，供真值准确率统计兜底口径）。 */
   std::unordered_map<std::string, std::string> model_categories_{};
   std::unordered_map<std::uint64_t, RirTrackState> tracks_{};
 };

@@ -1587,6 +1587,11 @@ void RirController::RunCycle(const session::RirCycleInput& input,
                        latest_summary_.dwell_budget.dwell_consumed_sec, planned_search,
                        planned_designate, planned_external_track, planned_internal_track,
                        confirmed, horizon_search_cycle, search_sector, scan_center_deg.az_deg);
+      // 中译：**综合识别准确率汇总行**（2026-11-10）——第 47A 项判据要求"识别正确率 >60%"，
+      //   此前没有任何一行给出这个数；此处每周期调用，写出函数内部按 100 周期节流、
+      //   无真值样本时自行跳过。
+      // 标识：第47A项综合识别准确率（2026-11-10）。
+      WriteRirRecognitionAccuracy(input.sim_time_sec, input.input_cycle_index, latest_summary_);
     }
   } else {
     track_snapshots = lifecycle_->BuildTrackSnapshots();

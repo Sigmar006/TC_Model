@@ -149,8 +149,15 @@ struct ONEQ_API RirRecognitionCycleSummary {
   float mean_confidence{0.0f};                 /**< 已确认型号的平均置信度，[0, 1]。 */
   float mean_first_confirmation_sec{0.0f};     /**< 平均首次确认时间（s）。 */
   bool has_ground_truth{false};                /**< 本周期是否有真值可用于正确率统计。 */
-  float category_accuracy{0.0f};               /**< 大类正确率，仅 has_ground_truth 时有效。 */
-  float model_accuracy{0.0f};                  /**< 型号正确率，仅 has_ground_truth 时有效。 */
+  float category_accuracy{0.0f};               /**< 本周期大类正确率，仅 has_ground_truth 时有效。 */
+  float model_accuracy{0.0f};                  /**< 本周期型号正确率，仅 has_ground_truth 时有效。 */
+  // 中译：**综合识别准确率（跑全程累计口径）**（2026-11-10）——本周期值会被单拍噪声
+  //   放大，判据要的是整轮统计，故另给累计样本数与判对数，比率由二者相除得到。
+  //   样本 = 参与识别 ∧ 有真值 ∧ 已出结论（大类或型号确认）的"航迹·周期"。
+  // 标识：综合识别准确率累计（2026-11-10）。
+  std::uint32_t accuracy_sample_count{0U};  /**< 累计样本数（有真值且已出结论）。 */
+  std::uint32_t accuracy_correct_count{0U}; /**< 累计判对数（判决大类 == 真值大类）。 */
+  float accuracy_rate{0.0f};                /**< 累计综合识别准确率 = 判对/样本；样本 0 时为 0。 */
 
   RirDwellBudgetSummary dwell_budget{}; /**< 本周期驻留预算摘要（自持链路）。 */
 };

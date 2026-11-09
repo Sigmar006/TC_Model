@@ -364,6 +364,20 @@ bool TryLookPolarFromEnuM(float east_m, float north_m, float up_m, float* range_
  *            ECEF/LLA 换算用——评审 2026-08-26 条17：ENU 字段替换为 ECEF/LLA）。
  * @param[in] truth 对应场景真值上下文（可空指针 = 无真值，误差统计行省略）。
  */
+/**
+ * @brief 第 47A 项「综合识别准确率」汇总行（2026-11-10）。
+ *
+ * @details 判据原文要求"识别正确率 >60%"，但此前日志只有类别/置信度，没有正确率可判。
+ *   本行按**跑全程累计**给出样本数/判对数/准确率与达标判定，每 kAccuracySummaryCycles
+ *   周期一条；样本为 0（无真值或无结论）时不出行，不写 0 假值。
+ *
+ * @param[in] sim_time_sec 仿真时刻（s）。
+ * @param[in] cycle        周期号。
+ * @param[in] summary      周期识别汇总（取 accuracy_* 三个累计字段）。
+ */
+void WriteRirRecognitionAccuracy(float sim_time_sec, std::uint32_t cycle,
+                                 const session::RirRecognitionCycleSummary& summary);
+
 void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const tracking::RirTrackState& track,
                         const session::RirRecognitionResult* result,

@@ -1653,6 +1653,32 @@ void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
   Emit(sim_time_sec, cycle, "规模目标识别功能测试", content);
 }
 
+void WriteRirRecognitionAccuracy(float sim_time_sec, std::uint32_t cycle,
+                                 const session::RirRecognitionCycleSummary& summary) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  // 中译：**综合识别准确率**（2026-11-10）——判据"识别正确率 >60%"此前无输出：
+  //   准确率虽已算在汇总里，但写出函数把 has_truth/category_accuracy 直接丢弃。
+  //   这里按跑全程累计口径输出样本/判对/准确率与达标判定；样本为 0 时不出行（不写假值）。
+  // 标识：第47A项综合识别准确率（2026-11-10）。
+  constexpr std::uint32_t kAccuracySummaryCycles = 100U;
+  if (summary.accuracy_sample_count == 0U) {
+    return;
+  }
+  if (cycle % kAccuracySummaryCycles != 0U) {
+    return;
+  }
+  constexpr float kAccuracyRequirement = 0.60f;
+  const float rate = summary.accuracy_rate;
+  Emit(sim_time_sec, cycle, "综合特征识别功能测试",
+       "统计口径=综合识别准确率 累计样本数=" + std::to_string(summary.accuracy_sample_count) +
+           " 累计判对数=" + std::to_string(summary.accuracy_correct_count) +
+           " 综合识别准确率=" + FormatF(rate, 4) + " 判据门限=" +
+           FormatF(kAccuracyRequirement, 2) + " 判定=" +
+           std::string(rate >= kAccuracyRequirement ? "达标" : "未达标"));
+}
+
 void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const tracking::RirTrackState& track,
                         const session::RirRecognitionResult* result,

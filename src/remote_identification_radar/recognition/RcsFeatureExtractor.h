@@ -34,7 +34,8 @@ class RirRcsFeatureExtractor {
    */
   static RirRcsObservation Extract(const std::vector<session::RirAspectRcsSample>& samples,
                                 float look_az_deg, float look_el_deg, float snr_db,
-                                float minimum_aspect_coverage_deg);
+                                float minimum_aspect_coverage_deg,
+                                float minimum_observation_snr_db);
 };
 
 }  // namespace recognition

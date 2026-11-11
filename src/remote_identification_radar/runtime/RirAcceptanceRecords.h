@@ -137,6 +137,8 @@ struct RirDetectionAcceptInput {
   double prf_hz{0.0};
   double center_frequency_hz{0.0};
   double cfar_pfa{1.0e-6};
+  double mti_noise_factor{2.0};
+  double clutter_sigma_velocity_mps{0.25};
   std::vector<oneq::electromagnetics::RfIncidentLinkResult> incident_links{};
 };
 
@@ -398,7 +400,8 @@ void WriteRirExternalResourceStatus(
     std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
     config::RirWorkMode work_mode, const std::vector<RirDwellPlan>& dwell_plan,
     const std::vector<tracking::RirTrackState>& tracks, std::size_t track_pool_capacity,
-    std::size_t track_pool_free_count, const session::RirIssueList& issues);
+    std::size_t track_pool_free_count, const session::RirIssueList& issues,
+    unsigned int heartbeat_cycles);
 
 /**
  * @brief 验收判定标准 第37项·其二：扫描调度信息行（搜索/指定/驻留分项计数 +

@@ -96,7 +96,7 @@ bool TryResolveMtiMtdAcceptanceBank(const MtiMtdAcceptanceInput& input,
     const double bin = DftBinPower(fd_hz, k, input.prf_hz);
     candidate.target_w[k] = input.echo_power_w * mti_target * bin;
     candidate.noise_w[k] =
-        input.thermal_noise_power_w * kMtiNoiseFactor / static_cast<double>(kMtiMtdChannelCount);
+        input.thermal_noise_power_w * input.noise_factor / static_cast<double>(kMtiMtdChannelCount);
     if (candidate.target_w[k] > best_target) {
       best_target = candidate.target_w[k];
       candidate.selected_channel = k;
@@ -116,7 +116,7 @@ bool TryResolveMtiMtdAcceptanceBank(const MtiMtdAcceptanceInput& input,
   candidate.mtd_equivalent_noise_w = candidate.noise_w[candidate.selected_channel];
 
   const double wavelength_m = kLightSpeed / input.center_frequency_hz;
-  const double sigma_hz = 2.0 * kMtiMtdClutterSigmaVelocityMps / wavelength_m;
+  const double sigma_hz = 2.0 * input.clutter_sigma_velocity_mps / wavelength_m;
   const double df = input.prf_hz / static_cast<double>(kClutterGridCount);
   const double grid_start = -0.5 * input.prf_hz;
   double spectrum_mass = 0.0;

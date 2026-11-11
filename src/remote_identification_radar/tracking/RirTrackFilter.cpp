@@ -28,7 +28,7 @@ namespace tracking {
 namespace {
 
 /** @brief 过程噪声差异系数下限（与 AR SignalComponentFactory 工厂钳制同口径）。 */
-constexpr float kMinimumNoiseDiffCoeff = 0.001f;
+// 合并版第 8 条：下限改为配置项 RirTrackFilterConfig::min_noise_diff_coeff（原硬编码 0.001）。
 /** @brief 量测噪声标准差下限（与 AR SignalComponentFactory 工厂钳制同口径）。 */
 constexpr float kMinimumMeasurementNoiseStd = 0.001f;
 
@@ -37,7 +37,7 @@ constexpr float kMinimumMeasurementNoiseStd = 0.001f;
     const RirTrackFilterConfig& config) {
   ::oneq::common::estimation::KalmanPredictorConfig common_config;
   // 越界配置以非法 q 运行会污染协方差传播：与 AR 同口径下限钳制。
-  common_config.noise_diff_coeff = std::max(config.process_noise_diff_coeff, kMinimumNoiseDiffCoeff);
+  common_config.noise_diff_coeff = std::max(config.process_noise_diff_coeff, config.min_noise_diff_coeff);
   return common_config;
 }
 

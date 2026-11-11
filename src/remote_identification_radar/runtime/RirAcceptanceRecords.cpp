@@ -433,6 +433,8 @@ bool TryBuildAcceptanceBank(const RirDetectionAcceptInput& input,
   bank_input.two_way_doppler_shift_hz = input.cell.two_way_doppler_shift_hz;
   bank_input.prf_hz = input.prf_hz;
   bank_input.center_frequency_hz = input.center_frequency_hz;
+  bank_input.noise_factor = input.mti_noise_factor;
+  bank_input.clutter_sigma_velocity_mps = input.clutter_sigma_velocity_mps;
   // 中译：把本拍检测单元的相干积累脉冲数传给旁路，使 `MTD增益` 输出**真实相干增益**
   //   （10log10(N) + 跨 bin 损耗），而不是仅归一化 bin 响应（恒 ≤0）。
   // 标识：MTD 真实增益（2026-10-22）。
@@ -766,6 +768,17 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
              " 配置=" + FormatF(conf_backlobe_db, 3) +
              " 误差=" + FormatF(err_backlobe * 100.0, 2) + "%" + "] 后瓣电平校验=" + std::string(verdict_backlobe);
   content += " 外部配置一致性=" + std::string(all_within ? "通过" : "不通过");
+  // 合并版第 6 条：方向图剖面（离轴 0/0.5/1/2/5 倍波束宽度处的增益），复用行内 evaluate_gain()
+  {
+    const double bw_az_deg = static_cast<double>(antenna.nominal_az_beamwidth_deg);
+    content += " 方向图剖面(离轴deg:dBi)=[0:" + FormatF(evaluate_gain(0.0, 0.0), 2);
+    const double scales[4] = {0.5, 1.0, 2.0, 5.0};
+    for (int si = 0; si < 4; ++si) {
+      content += "," + FormatF(scales[si], 1) + ":" +
+                 FormatF(evaluate_gain(scales[si] * bw_az_deg, 0.0), 2);
+    }
+    content += "]";
+  }
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
 }
 
@@ -919,7 +932,11 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   {
     const double applied_noise_db =
         input.has_cell ? input.cell.noise_total_gain_db : noise_db;
-    std::string row = id_sp + "噪声总增益=" + FormatF(applied_noise_db, 3) + "dB";
+    // 合并版第 11 条：总增益拆分为"配置的噪声处理增益 + 对消器项（正常 3.010 dB）"。
+    const double canceller_db = applied_noise_db - static_cast<double>(noise_db);
+    std::string row = id_sp + "噪声总增益=" + FormatF(applied_noise_db, 3) + "dB" +
+                      " = 噪声处理增益(配置)" + FormatF(noise_db, 3) + "dB + MTI对消器" +
+                      FormatF(canceller_db, 3) + "dB";
     Emit(t, cycle, "噪声增益功能测试", row);
   }
 
@@ -930,6 +947,18 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     Emit(t, cycle, "杂波信号处理增益功能测试",
          id_sp + "MTI处理后杂波剩余功率=" +
              FormatSci(has_bank ? bank.mti_residual_clutter_w : mti_residual) + "W");
+    // 合并版第 12 条：补杂波谱宽（σv 及对应多普勒 σf）与输入杂波功率。
+    {
+      const double sigma_v_mps = input.clutter_sigma_velocity_mps;
+      const double lambda_m =
+          input.center_frequency_hz > 0.0f
+              ? oneq::common::numerics::kLightSpeed / input.center_frequency_hz
+              : 0.0;
+      const double sigma_hz = lambda_m > 0.0 ? 2.0 * sigma_v_mps / lambda_m : 0.0;
+      Emit(t, cycle, "杂波信号处理增益功能测试",
+           id_sp + "杂波谱宽=" + FormatF(sigma_v_mps, 3) + "m/s 对应多普勒σf=" +
+               FormatF(sigma_hz, 3) + "Hz 输入杂波功率=" + FormatSci(clutter) + "W");
+    }
     EmitOrNone(t, cycle, "杂波信号处理增益功能测试", id_sp + "MTD各多普勒通道杂波剩余功率分布=",
                has_bank, has_bank ? FormatChannelWatts(bank.clutter_w) + "W" : std::string());
   }
@@ -1013,6 +1042,14 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   }
   EmitOrNone(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测门限=", has_threshold,
              has_threshold ? (FormatF(threshold_snr_db, 3) + "dB") : std::string());
+  // 合并版第 7 条：判决余量 = 信噪比 − 门限（同轴 dB），并写出虚警概率与积累脉冲数。
+  if (has_threshold && std::isfinite(input.snr_db)) {
+    Emit(t, cycle, "恒虚警检测功能测试",
+         id_sp + "判决余量=" +
+             FormatF(static_cast<double>(input.snr_db) - threshold_snr_db, 3) + "dB" +
+             " 虚警概率=" + FormatSci(static_cast<double>(input.cfar_pfa)) +
+             " 积累脉冲数=" + std::to_string(pulses));
+  }
   // 中译：补"实际计算得出的信噪比"——门限与结果之间的判决依据此前缺失，读日志只能看到
   //       "门限 13.8 / 结果 否"，无法判断差多少。该 SNR 就是 CFAR **实际消费**的那个值：
   //       cell 路径为处理后单脉冲 SINR，回退路径为雷达方程算出的 SNR。
@@ -1528,6 +1565,18 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
     RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle,
                                 "雷达检测量测与航迹处理交互接口测试", interface_track);
   }
+  // 合并版第 8 条：补"航迹侧"——本周期未配到量测的航迹键。
+  if (!association.missed_track_keys.empty()) {
+    std::string missed = "未配到量测的航迹=[";
+    for (std::size_t i = 0U; i < association.missed_track_keys.size(); ++i) {
+      if (i != 0U) {
+        missed += ",";
+      }
+      missed += std::to_string(association.missed_track_keys[i]);
+    }
+    missed += "] 数量=" + std::to_string(association.missed_track_keys.size());
+    Emit(sim_time_sec, cycle, "航迹关联功能测试", missed);
+  }
 }
 
 void WriteRirExternalMeasurements(float sim_time_sec, std::uint32_t cycle,
@@ -1801,6 +1850,13 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
     // 标识：第47A项联合置信度（2026-11-07）。
     std::string comprehensive = track_target_id + " 目标类别=" + category_text +
                                 " 联合置信度=" + FormatF(result->best_score, 6);
+    // 合并版第 9 条：补识别判据诊断（与第 73 项接口行同源）。
+    comprehensive += " 综合分=" + FormatF(result->best_score, 4);
+    comprehensive += " 次优分=" + FormatF(result->runner_up_score, 4);
+    comprehensive += " 边际=" + FormatF(result->best_score - result->runner_up_score, 4);
+    comprehensive += " 有效维度数=" + std::to_string(CountBits(result->valid_feature_mask));
+    comprehensive += " 积累观测数=" + std::to_string(result->observation_count);
+    comprehensive += " 积累时长=" + FormatF(result->accumulation_sec, 1) + "s";
     Emit(sim_time_sec, cycle, "综合特征识别功能测试", comprehensive);
   }
 
@@ -2174,7 +2230,8 @@ void WriteRirExternalResourceStatus(
     std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
     config::RirWorkMode work_mode, const std::vector<RirDwellPlan>& dwell_plan,
     const std::vector<tracking::RirTrackState>& tracks, std::size_t track_pool_capacity,
-    std::size_t track_pool_free_count, const session::RirIssueList& issues) {
+    std::size_t track_pool_free_count, const session::RirIssueList& issues,
+    unsigned int heartbeat_cycles) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -2252,9 +2309,9 @@ void WriteRirExternalResourceStatus(
   // 中译：告警**沿触发**——同一告警（码 + 内容）在状态未变化时不再每周期重复输出。
   //   实测地球遮挡告警每周期刷 4,000+ 行完全相同的文本（共 1.8 万行），既淹没其他
   //   证据，也让日志体积翻倍。规则：首次出现必输出、内容变化必输出、消失时输出一条
-  //   "恢复"；此外每 kIssueHeartbeatCycles 周期补一条心跳，保留"持续存在"的证据。
+  //   "恢复"；此外每 heartbeat_cycles 周期补一条心跳，保留"持续存在"的证据。
   // 标识：告警沿触发（2026-10-21）。
-  constexpr std::uint32_t kIssueHeartbeatCycles = 100U;
+  // 合并版第 10 条：心跳周期改为策略配置项 RirPolicyConfig::heartbeat_cycles（原硬编码 100）。
   // 中译：**告警沿触发表加锁**（2026-11-08）——两张表是进程级静态容器，多个雷达实例
   //   （或宿主同进程多会话）并发写会破坏哈希桶并写坏堆：2026-11-06 那次
   //   `0xC0000374` 正是落在这条路径之后的字符串构造处。锁覆盖查表、去重与恢复行输出。
@@ -2268,7 +2325,7 @@ void WriteRirExternalResourceStatus(
   const std::uint32_t last_cycle = last_issue_cycle[radar_id];
   const bool heartbeat_due =
       (last_cycle == 0U) || (cycle < last_cycle) ||
-      (cycle - last_cycle >= kIssueHeartbeatCycles);
+      (cycle - last_cycle >= heartbeat_cycles);
   for (const session::RirIssue& issue : issues) {
     std::string content = "雷达ID=" + std::to_string(radar_id);
     content += " 告警码=" + issue.code;

@@ -36,6 +36,8 @@ struct RirAssociationConfig {
   float gate_threshold{9.0f};
   /** @brief 门控先验预测的过程噪声扩散系数 q（m/s²）。 */
   float kalman_noise_diff_coeff{1.0f};
+  /** @brief 过程噪声扩散系数下限（原硬编码 0.001）；合并版第 8 条配置化。 */
+  float min_noise_diff_coeff{0.001f};
   /** @brief 缺省量测噪声标准差（m），仅在量测 R 不可用时构造对角 R。 */
   float default_measurement_noise_std{10.0f};
   /** @brief 关联键起始值；0 为保留值。 */

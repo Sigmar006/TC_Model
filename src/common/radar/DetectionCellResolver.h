@@ -45,6 +45,8 @@ struct DetectionCellConfig {
   bool enable_mti_mtd_effects{false};
   /** @brief MTD 多普勒通道数（DFT 点数），缺省 8。 */
   std::uint32_t mtd_channel_count{8U};
+  /** @brief MTI 对白噪声的功率增益；缺省 2.0 保持历史行为。 */
+  double mti_noise_factor{2.0};
 };
 
 /** @brief 一个目标在本周期 detection cell 中的物理事实。 */

@@ -63,7 +63,7 @@ namespace runtime {
 
 namespace {
 
-constexpr float kSnrFallbackGateDb = 6.0f;
+// 合并版第 7 条：回退门改为配置项 RirDetectionPolicyConfig::snr_fallback_gate_db（原硬编码 6.0）。
 constexpr float kCovarianceFloorM2 = 1.0e-6f;
 /** @brief 两点起批速度差分的最小有效时间间隔（s）；间隔不大于此值不做差分。 */
 constexpr float kMinimumTwoPointIntervalSec = 1.0e-3f;
@@ -74,7 +74,7 @@ constexpr float kTwoPointVelocityMarginMps = 300.0f;
 constexpr std::uint32_t kDefaultSensorEntityId = 5U;
 // 主瓣覆盖门系数：门限=有效波束宽度（半功率宽）×该系数。恒为 1.0 且不设配置项
 // （2026-08-29 还债原则：方向图/覆盖门语义唯一，不再新增同类开关）。
-constexpr float kMainLobeGateBeamwidthScale = 1.0f;
+// 合并版第 6 条：主瓣门系数改为配置项 RirDetectionPolicyConfig::main_lobe_gate_scale（原硬编码 1.0）。
 
 // 多驻留发射记录的 emission_id 唯一化（核查 9.2）：RfSceneFrame 契约要求帧内
 // identity 唯一（TryValidateRfSceneFrame 拒绝重复），编排层把本帧汇入全球 RF
@@ -326,12 +326,14 @@ void RirController::UpdateRuntime(const config::RirMissionConfig& mission,
   lifecycle_config.model_count_hint = policy_.lifecycle.model_count_hint;
   tracking::RirTrackFilterConfig filter_config;
   filter_config.process_noise_diff_coeff = policy_.tracking.kalman_noise_diff_coeff;
+  filter_config.min_noise_diff_coeff = policy_.tracking.min_noise_diff_coeff;
   lifecycle_->UpdateConfig(lifecycle_config, filter_config);
 
   tracking::RirAssociationConfig association_config;
   const float sigma = std::max(0.0f, policy_.association.distance_gate_sigma);
   association_config.gate_threshold = sigma * sigma;
   association_config.kalman_noise_diff_coeff = policy_.tracking.kalman_noise_diff_coeff;
+  association_config.min_noise_diff_coeff = policy_.tracking.min_noise_diff_coeff;
   associator_.UpdateConfig(association_config);
 
   if (detector_ == nullptr) {
@@ -785,6 +787,7 @@ bool RirController::TryBuildMeasurement(
     // 标识：MTI/MTD 联算启用判据（2026-10-22）。
     cell_config.enable_mti_mtd_effects =
         hardware_.signal_processing.enable_mti_mtd_effects && policy_.detection.pulse_count >= 2;
+    cell_config.mti_noise_factor = policy_.detection.mti_noise_factor;
 
     // 过程：⑥ 检测单元目标量——斜距/接近速度（取 −v_r）/RCS（第 4 步视角混合值）/双程附加损耗/积累脉冲数 N。
     dwell::RirDetectionCellTarget cell_target;
@@ -833,10 +836,10 @@ bool RirController::TryBuildMeasurement(
     integration_pulse_count = static_cast<std::uint32_t>(fallback_pulse_count);
   }
 
-  // 过程：⑦ 准入门——kDetectorGate 用 CFAR 判决结果，kSnrFallback 用 SNR ≥ 6 dB（kSnrFallbackGateDb）真值口径。
+  // 过程：⑦ 准入门——kDetectorGate 用 CFAR 判决结果，kSnrFallback 用 SNR ≥ 6 dB（policy_.detection.snr_fallback_gate_db）真值口径。
   *snr_db = detection.snr_db;
   const bool admitted = policy_.detection.gate_mode == config::RirDetectionGateMode::kSnrFallback
-                            ? detection.snr_db >= kSnrFallbackGateDb
+                            ? detection.snr_db >= policy_.detection.snr_fallback_gate_db
                             : detection.detected;
   // 验收事件 detection_cell（3.2.2.1.1.x/3.2.2.1.2）：逐目标检测链物理量——方向图
   // 离轴增益/有效波束宽度/离轴角、回波/热噪/干扰/杂波功率、脉压增益、SINR/SNR、
@@ -870,6 +873,9 @@ bool RirController::TryBuildMeasurement(
     snap.cell = cell;
     snap.gains = hardware_.signal_processing;
     snap.cfar_pfa = static_cast<double>(policy_.detection.cfar_pfa);
+    snap.mti_noise_factor = static_cast<double>(policy_.detection.mti_noise_factor);
+    snap.clutter_sigma_velocity_mps =
+        static_cast<double>(policy_.detection.clutter_sigma_velocity_mps);
     snap.prf_hz = static_cast<double>(hardware_.transmitter.prf_hz);
     snap.center_frequency_hz =
         rf_cycle.own_transmit_waveform.center_frequency_hz > 0.0
@@ -1042,6 +1048,8 @@ recognition::RirObservationContext RirController::MakeObservationContext(
   context.look_el_deg = look_el_deg;
   context.platform_altitude_m = platform_altitude_m;
   context.minimum_aspect_coverage_deg = 0.0f;
+  // 合并版第 9 条：观测 SNR 门由策略下发（原硬编码 6.0 dB）。
+  context.minimum_observation_snr_db = policy_.recognition.min_feature_observation_snr_db;
   return context;
 }
 
@@ -1186,9 +1194,9 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     const dwell::RirEffectiveBeamwidthDeg gate_beamwidth =
         dwell::RirResolveEffectiveBeamwidth(hardware_.antenna, gate_wavelength_m);
     const float main_lobe_half_az_deg =
-        0.5f * kMainLobeGateBeamwidthScale * gate_beamwidth.az_beamwidth_deg;
+        0.5f * policy_.detection.main_lobe_gate_scale * gate_beamwidth.az_beamwidth_deg;
     const float main_lobe_half_el_deg =
-        0.5f * kMainLobeGateBeamwidthScale * gate_beamwidth.el_beamwidth_deg;
+        0.5f * policy_.detection.main_lobe_gate_scale * gate_beamwidth.el_beamwidth_deg;
     // 中译：**候选裁剪与波位表同源**（2026-11-06）——同一 `ResolveSearchSector` 决定
     //   仰角口径（地平线模式用窄带），确保"波位在哪儿扫"与"候选在哪儿收"不分叉。
     //   声明放在波束宽解析之后：地平线自适应带要用 θ_el。
@@ -1737,7 +1745,7 @@ void RirController::RunCycle(const session::RirCycleInput& input,
     WriteRirExternalResourceStatus(
         EffectiveSensorEntityId(), input.sim_time_sec, input.input_cycle_index, work_mode_, plan,
         track_snapshots, lifecycle_->TrackPoolCapacity(), lifecycle_->TrackPoolFreeCount(),
-        last_execution_issues_);
+        last_execution_issues_, policy_.heartbeat_cycles);
     if (!track_snapshots.empty()) {
     // 验收判定标准 第40项：本周期航迹数汇总行（逐航迹定位/运动行在
     // WriteRirTrackAndId 内按项名写出）。

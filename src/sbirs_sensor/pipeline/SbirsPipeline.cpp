@@ -300,7 +300,7 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
     const session::SbirsVector3M& satellite_position_eci_m,
     const SbirsBoresightChain& boresight_chain, float actual_scan_azimuth_sensor_deg,
     float actual_scan_elevation_sensor_deg, float fov_az_deg, float fov_el_deg,
-    double earth_radius_m, double gmst_rad) {
+    double earth_radius_m, double gmst_rad, int edge_steps, int limb_steps) {
   GroundCoverageEnvelope envelope;
   std::vector<std::pair<double, double>> intersection_points;
 
@@ -330,15 +330,14 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
   // 2. 采样视场矩形 4 边缘
   const float half_az = 0.5f * fov_az_deg;
   const float half_el = 0.5f * fov_el_deg;
-  constexpr int kEdgeSteps = 16;
-  for (int i = 0; i <= kEdgeSteps; ++i) {
-    const float frac = static_cast<float>(i) / static_cast<float>(kEdgeSteps);
+  for (int i = 0; i <= edge_steps; ++i) {
+    const float frac = static_cast<float>(i) / static_cast<float>(edge_steps);
     const float az = (actual_scan_azimuth_sensor_deg - half_az) + frac * (2.0f * half_az);
     try_add_sensor_ray(az, actual_scan_elevation_sensor_deg - half_el);
     try_add_sensor_ray(az, actual_scan_elevation_sensor_deg + half_el);
   }
-  for (int i = 0; i <= kEdgeSteps; ++i) {
-    const float frac = static_cast<float>(i) / static_cast<float>(kEdgeSteps);
+  for (int i = 0; i <= edge_steps; ++i) {
+    const float frac = static_cast<float>(i) / static_cast<float>(edge_steps);
     const float el = (actual_scan_elevation_sensor_deg - half_el) + frac * (2.0f * half_el);
     try_add_sensor_ray(actual_scan_azimuth_sensor_deg - half_az, el);
     try_add_sensor_ray(actual_scan_azimuth_sensor_deg + half_az, el);
@@ -392,9 +391,8 @@ GroundCoverageEnvelope ComputeGroundCoverageEnvelope(
         const double cos_rho = std::cos(sample_rho_rad);
         const double sin_sample_rho = std::sin(sample_rho_rad);
 
-        constexpr int kLimbSteps = 72;
-        for (int i = 0; i < kLimbSteps; ++i) {
-          const double theta = (2.0 * oneq::common::numerics::kPi * i) / kLimbSteps;
+        for (int i = 0; i < limb_steps; ++i) {
+          const double theta = (2.0 * oneq::common::numerics::kPi * i) / limb_steps;
           const double cos_th = std::cos(theta);
           const double sin_th = std::sin(theta);
           const session::SbirsVector3M limb_ray{
@@ -915,15 +913,15 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                                                  -satellite_position_eci_m.z};
     scan_azimuth_base_deg = foundation::ComputeAzimuthDeg(nadir_direction);
     // 跨度收敛（2026-08-31，修订 1——按"配置扇区 ∩ 地球可见窗"裁剪）：地球盘角半径
-    // ρ=asin(R/|r|)（kEarthRadiusM 与遮挡判定同口径），可见窗 = 星下点方位 ±(ρ +
+    // ρ=asin(R/|r|)（EarthRadiusM() 与遮挡判定同口径），可见窗 = 星下点方位 ±(ρ +
     // wfov_az/2)（扇区边缘视场外缘仍压着地球盘）。相位原点恒为配置起点（扇区与可见窗
     // 必含起点才可裁剪），只裁远端：扫描超窗部分对空天扫，无探测意义。绝对模式无锚，
     // 不收敛。扇区整段在窗外 = 指向性错配，属登记的俯仰/告警开放问题，不在此收敛。
     const double satellite_radius_m = foundation::Norm(satellite_position_eci_m);
     const double earth_disk_half_angle_deg =
-        satellite_radius_m > kEarthRadiusM
+        satellite_radius_m > EarthRadiusM()
             ? oneq::common::numerics::RadToDeg(
-                  std::asin(std::min(1.0, kEarthRadiusM / satellite_radius_m)))
+                  std::asin(std::min(1.0, EarthRadiusM() / satellite_radius_m)))
             : 90.0;
     const float useful_half_deg = static_cast<float>(
         earth_disk_half_angle_deg + 0.5 * scan_mission.wide_field_fov_az_deg);
@@ -1235,7 +1233,8 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     const GroundCoverageEnvelope envelope = ComputeGroundCoverageEnvelope(
         satellite_position_eci_m, boresight_chain, actual_scan_azimuth_sensor_deg,
         actual_scan_elevation_sensor_deg, scan_mission.wide_field_fov_az_deg,
-        scan_mission.wide_field_fov_el_deg, kEarthRadiusM, gmst_rad);
+        scan_mission.wide_field_fov_el_deg, EarthRadiusM(), gmst_rad,
+        scan_mission.coverage_edge_steps, scan_mission.coverage_limb_steps);
 
     std::string corners_csv;
     if (envelope.has_intersection) {
@@ -1260,7 +1259,7 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
         satellite_position_eci_m,
         boresight_chain.EciLosOfSensorPointing(actual_scan_azimuth_sensor_deg,
                                                actual_scan_elevation_sensor_deg),
-        kEarthRadiusM, gmst_rad, &center_lat_deg, &center_lon_deg);
+        EarthRadiusM(), gmst_rad, &center_lat_deg, &center_lon_deg);
     if (!center_valid && envelope.has_intersection) {
       center_lat_deg = envelope.center_lat_deg;
       center_lon_deg = envelope.center_lon_deg;
@@ -1272,6 +1271,24 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
 
     std::string footprint = "覆盖四角经纬=[" + corners_csv + "] 中心=(" + center_text +
                             ") 驻留时间=" + oneq::logging::FormatF(dwell_s, 3) + "s";
+    // 合并版第 4 条：补覆盖跨度与扫描参数；经度跨度按 0-360 环绕，跨 ±180° 时取补角。
+    if (envelope.has_intersection) {
+      double lon_span_deg = envelope.max_lon_deg - envelope.min_lon_deg;
+      if (lon_span_deg < 0.0) {
+        lon_span_deg += 360.0;
+      }
+      if (lon_span_deg > 180.0) {
+        lon_span_deg = 360.0 - lon_span_deg;
+      }
+      const double lat_span_deg = envelope.max_lat_deg - envelope.min_lat_deg;
+      footprint += " 经度跨度=" + oneq::logging::FormatF(lon_span_deg, 3) + "°";
+      footprint += " 纬度跨度=" + oneq::logging::FormatF(lat_span_deg, 3) + "°";
+    }
+    footprint += " 视场=" + oneq::logging::FormatF(scan_mission.wide_field_fov_az_deg, 3) + "×" +
+                 oneq::logging::FormatF(scan_mission.wide_field_fov_el_deg, 3) + "°";
+    footprint += " 扫描速率=" + oneq::logging::FormatF(scan_mission.scan_rate_deg_per_sec, 3) + "°/s";
+    footprint += " 扫描指向=(" + oneq::logging::FormatF(actual_scan_azimuth_sensor_deg, 3) + "," +
+                 oneq::logging::FormatF(actual_scan_elevation_sensor_deg, 3) + ")°";
     // 规范口径（验收判定标准 第12项）：地面覆盖区域坐标与驻留时间 + 卫星ID。
     // 中译：**字段名改为 `驻留时间=`**（2026-11-02）——判据正文与外部验证程序只认
     //   `驻留时间=`（且要判 0.5 s<驻留时间<1 s），原字段 `驻留=` 名字对不上，外部会判
@@ -1324,7 +1341,9 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                           policy.error_model.orbit_sigma_deg, sat_range,
                           policy.error_model.nav_position_sigma_m,
                           input.satellite_position_ecef_m,
-                          input.satellite_velocity_ecef_m_per_s);
+                          input.satellite_velocity_ecef_m_per_s,
+                          policy.error_model.velocity_error_ratio,
+                          input.satellite_attitude_eci_body_deg);
   }
 
   // 门内归因目标无关量（仅依赖硬件/门限配置，循环外计算一次）：有效噪声与达标所需签名 =
@@ -1500,11 +1519,11 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     }
 
     if (foundation::IsEarthOcculted(satellite_position_eci_m, target.position_eci_m,
-                                    kEarthRadiusM)) {
+                                    EarthRadiusM())) {
       // 规则 13b：遮挡排除 → kInfo 诊断（不属于三写，仅承载排查信息）。
       // 具体门（遮挡判定本身可定位）：cause 保持 kNone，遮挡余量（负值 = 深度）进 message。
       const double occultation_margin_m = foundation::ComputeEarthOccultationMarginM(
-          satellite_position_eci_m, target.position_eci_m, kEarthRadiusM);
+          satellite_position_eci_m, target.position_eci_m, EarthRadiusM());
       result.issues.push_back(MakeExclusionIssue(
           session::codes::kTargetOcculted,
           "target_id=" + std::to_string(target.target_id) +
@@ -1517,7 +1536,10 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
             "卫星ID=" + std::to_string(satellite_entity_id_) + " 目标ID=" +
             std::to_string(target.target_id) + " 门控阶段=地球遮挡 门控结果=排除 排除码=" +
             session::codes::kTargetOcculted + " 遮挡余量=" +
-            oneq::logging::FormatF(occultation_margin_m, 3) + "m";
+            oneq::logging::FormatF(occultation_margin_m, 3) + "m" +
+            // 合并版第 2 条：补判定基准与最近点地心距，使遮挡判定可由单行复算。
+            " 地球半径基准=" + oneq::logging::FormatF(EarthRadiusM(), 3) + "m 视线最近点地心距=" +
+            oneq::logging::FormatF(occultation_margin_m + EarthRadiusM(), 3) + "m";
         // 第 74 项交换数据要求对**所有**几何记录给出两端状态；排除记录同样需要，
         // 否则无法复核"为什么被排除"（2026-10-18 回归发现 55.7% 的几何行缺状态块）。
         append_geometry_state(target, &occulted_interface);
@@ -1608,9 +1630,9 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
     const double target_radius_m = foundation::Norm(target.position_eci_m);
     const double satellite_radius_m = foundation::Norm(satellite_position_eci_m);
     const double sat_horizon_m = std::sqrt(std::max(
-        0.0, satellite_radius_m * satellite_radius_m - kEarthRadiusM * kEarthRadiusM));
+        0.0, satellite_radius_m * satellite_radius_m - EarthRadiusM() * EarthRadiusM()));
     const double target_horizon_m =
-        std::sqrt(std::max(0.0, target_radius_m * target_radius_m - kEarthRadiusM * kEarthRadiusM));
+        std::sqrt(std::max(0.0, target_radius_m * target_radius_m - EarthRadiusM() * EarthRadiusM()));
     const double geometric_limit_m = sat_horizon_m + target_horizon_m;
     const double mission_limit_m = static_cast<double>(mission.max_range_m);
     double max_detection_range_m = std::min(radiometric_max_detection_range_m, geometric_limit_m);
@@ -1625,6 +1647,22 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
       std::string dmax = "相对卫星ID=" + std::to_string(satellite_entity_id_);
       dmax += " 目标ID=" + std::to_string(target.target_id);
       dmax += " 相对卫星最大探测距离=" + oneq::logging::FormatF(max_detection_range_m, 1) + "m";
+      // 合并版第 3 条：补三分量与生效项（d_max = min(辐射受限, 几何受限, 任务上限)）。
+      const double radiometric_geometric_min_m =
+          std::min(radiometric_max_detection_range_m, geometric_limit_m);
+      const char* dmax_source = "辐射";
+      if (mission_limit_m > 0.0 && mission_limit_m < radiometric_geometric_min_m) {
+        dmax_source = "任务上限";
+      } else if (geometric_limit_m < radiometric_max_detection_range_m) {
+        dmax_source = "几何";
+      }
+      dmax += " 辐射受限=" + oneq::logging::FormatF(radiometric_max_detection_range_m, 1) + "m";
+      dmax += " 几何受限=" + oneq::logging::FormatF(geometric_limit_m, 1) + "m";
+      dmax += " 任务上限=" + (mission_limit_m > 0.0
+                                  ? oneq::logging::FormatF(mission_limit_m, 1) + "m"
+                                  : std::string("无"));
+      dmax += " 生效项=";
+      dmax += dmax_source;
       SBIRS_ACCEPTANCE_ITEM(sim_time_sec, input.cycle_index, "最大探测距离计算功能测试", dmax);
     }
 
@@ -2794,6 +2832,9 @@ SbirsPipelineResult SbirsPipeline::RunCycle(const session::SbirsCycleInput& inpu
                                    ? "超门(量测已丢弃)"
                                    : "通过");
       }
+      tracking_interface += " NIS门限=" +
+                            oneq::logging::FormatF(
+                                static_cast<double>(config_.session.policy.tracking.nis_gate_threshold), 3);
       tracking_interface += std::string(" 跟踪状态=") +
                             (detection.attribution.nfov_tracking_coasting ? "滑行" : "跟踪");
       SBIRS_INTERNAL_INTERFACE_ITEM(sim_time_sec, input.cycle_index,

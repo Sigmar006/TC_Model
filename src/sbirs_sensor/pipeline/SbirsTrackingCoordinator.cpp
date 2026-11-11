@@ -37,7 +37,7 @@ namespace pipeline {
 namespace {
 
 // 过程：2 自由度（方位+俯仰）卡方分布的 95% 分位 = 5.99，用作 NIS 的统计一致性门限。
-constexpr float kSbirsNisChiSquare2Dof95 = 5.99f;
+// 合并版第 5 条：NIS 统计门改为配置项 SbirsTrackingConfig::nis_gate_threshold（原硬编码 5.99）。
 /**
  * @brief 离群量测门限（2 维 NIS，≈31σ）：超过即丢弃量测，后验保持预测。
  * @note 与统计门（95%，5.99）分开：95% 门按定义就有 5% 的正常量测越界，只能用于计数/丢锁
@@ -294,7 +294,7 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     result.innovation_covariance_singular = !std::isfinite(result.estimation_nis);
     result.estimation_nis_gate_exceeded =
         result.innovation_covariance_singular ||
-        result.estimation_nis > kSbirsNisChiSquare2Dof95;
+        result.estimation_nis > policy.tracking.nis_gate_threshold;
     // 离群量测不得进入状态（2026-10-21）：此前"先更新、后计数"，超门的量测照样改写后验，
     // 把 ±2.5° 的离群角写进状态并逐拍放大（现场第 9 项残差超 ±360″ 的行有 95% 落在
     // NIS=inf 的同期）。这里按离群门（≠ 统计门，见 kSbirsNisOutlierChiSquare）丢弃量测。
@@ -356,7 +356,7 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     for (std::size_t index = 0U; index < imm_results.size(); ++index) {
       const float model_nis = ComputeNormalizedInnovationSquared(imm_results[index]);
       if (model_nis > result.estimation_nis) result.estimation_nis = model_nis;
-      if (model_nis > kSbirsNisChiSquare2Dof95) result.estimation_nis_gate_exceeded = true;
+      if (model_nis > policy.tracking.nis_gate_threshold) result.estimation_nis_gate_exceeded = true;
     }
     result.innovation_covariance_singular = !std::isfinite(result.estimation_nis);
     result.estimation_nis_gate_exceeded =
@@ -387,7 +387,7 @@ SbirsTrackingUpdateResult SbirsTrackingCoordinator::CorrectTarget(
     result.innovation_covariance_singular = !std::isfinite(result.estimation_nis);
     result.estimation_nis_gate_exceeded =
         result.innovation_covariance_singular ||
-        result.estimation_nis > kSbirsNisChiSquare2Dof95;
+        result.estimation_nis > policy.tracking.nis_gate_threshold;
     const bool outlier = result.innovation_covariance_singular ||
                          result.estimation_nis > kSbirsNisOutlierChiSquare;
     if (outlier) {

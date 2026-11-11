@@ -43,6 +43,8 @@ table SbirsMissionConfig {
   // 偏移）。追加在表尾（review 修订）：中段插字段会使旧缓冲 vtable 槽位整体错位。
   scan_azimuth_reference: int32 = 0;
   initial_scan_phase_deg: float = 0.0;
+  coverage_edge_steps: int32 = 16;
+  coverage_limb_steps: int32 = 72;
 }
 
 table SbirsDetectionPolicyConfig {
@@ -57,6 +59,7 @@ table SbirsErrorModelConfig {
   attitude_sigma_deg: float;
   fov_sigma_deg: float;
   detector_bandwidth_hz: float;
+  velocity_error_ratio: float = 0.01;
 }
 
 table SbirsPointingDisturbanceConfig {
@@ -84,6 +87,7 @@ table SbirsTrackingConfig {
   nis_gate_loss_cycles: uint32;
   nfov_tracking_gate_loss_cycles: uint32;
   imm_model_noise_diff_coeffs: [float];
+  nis_gate_threshold: float = 5.99;
 }
 
 table SbirsOrientationConfig {
@@ -119,6 +123,9 @@ table SbirsEnvironmentConfig {
   base_atmospheric_transmittance: float;
   humidity_visibility_interaction_weight: float;
   rain_humidity_interaction_weight: float;
+  earth_radius_m: double = 6371000.0;
+  max_airmass_factor: double = 10.0;
+  heartbeat_cycles: uint32 = 100;
 }
 
 table SbirsSessionConfig {

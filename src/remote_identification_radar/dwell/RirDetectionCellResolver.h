@@ -38,6 +38,7 @@ struct RirDetectionCellConfig {
    * @details 由控制器显式开启；关闭时行为与改动前逐位一致。
    */
   bool enable_mti_mtd_effects{false};
+  double mti_noise_factor{2.0}; /**< 两脉冲 MTI 白噪声功率增益。 */
 };
 
 /** @brief 一个目标在本周期 detection cell 中的物理事实。 */

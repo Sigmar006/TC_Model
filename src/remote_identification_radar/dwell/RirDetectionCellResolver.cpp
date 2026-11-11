@@ -55,6 +55,7 @@ oneq::common::radar::DetectionCellConfig ToCommon(const RirDetectionCellConfig& 
       static_cast<double>(config.signal_processing.jamming_suppression_gain_db);
   out.enable_mti_mtd_effects =
       config.enable_mti_mtd_effects && config.signal_processing.enable_mti_mtd_effects;
+  out.mti_noise_factor = config.mti_noise_factor;
   return out;
 }
 

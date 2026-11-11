@@ -238,7 +238,9 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
                            float orbit_sigma_deg, double reference_range_m,
                            float nav_position_sigma_m,
                            const session::SbirsVector3M& satellite_ecef,
-                           const session::SbirsVector3M& satellite_velocity_ecef) {
+                           const session::SbirsVector3M& satellite_velocity_ecef,
+                           float velocity_error_ratio,
+                           const session::SbirsEulerAnglesDeg& satellite_attitude_eci_body_deg) {
   if (!SBIRS_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -280,7 +282,8 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
   // 真值/实际速度ECEF 与速度误差ECEF + 卫星ID；不输出东/北/天统计、会话 n、均值/RMS、
   // 分量 σ 与口径说明。
   // 速度误差：与位置误差同源抽样（同一 σ 口径），仅作模型动态参数输出，不参与位置阈值判定。
-  const double vel_sigma = nav_sigma * 0.01;  // 速度误差量级：导航 σ 的 1%（m/s）
+  const double vel_sigma =
+      nav_sigma * static_cast<double>(velocity_error_ratio);  // 第 1 条：比例改为配置项  // 速度误差量级：导航 σ 的 1%（m/s）
   const double dvx = vel_sigma * SampleNormal(cycle, 67U + sat_salt);
   const double dvy = vel_sigma * SampleNormal(cycle, 71U + sat_salt);
   const double dvz = vel_sigma * SampleNormal(cycle, 73U + sat_salt);
@@ -334,6 +337,10 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
            FormatF(dvz, 3) + ")m/s";
   }
   nav += " |定位误差|=" + FormatF(err_norm, 3) + "m";
+  // 合并版第 1 条：补卫星姿态（Z-Y-X，Body->ECI，deg，6 位），只追加在行尾。
+  nav += " 卫星姿态=(" + FormatF(satellite_attitude_eci_body_deg.yaw_deg, 6) + "," +
+         FormatF(satellite_attitude_eci_body_deg.pitch_deg, 6) + "," +
+         FormatF(satellite_attitude_eci_body_deg.roll_deg, 6) + ")deg";
   SBIRS_ACCEPTANCE_ITEM(sim_time_sec, cycle, "卫星自身定位误差功能测试", nav);
 }
 
@@ -616,10 +623,10 @@ void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environm
     row += " 红外辐射强度=" + FormatF(target.radiant_intensity_w_per_sr, 6) + "W/sr";
     // 中译：目标行**变化沿 + 心跳**——静止目标（阵地/指挥所）的位置与强度整轮不变，但此前
     //   每卫星每周期都重写一行，实测单目标重复 4,673 次、本文件因此多出十几万行完全相同
-    //   的文本。规则：首次必输出、内容变化必输出、未变化时每 kSceneHeartbeatCycles 周期
+    //   的文本。规则：首次必输出、内容变化必输出、未变化时每 environment.heartbeat_cycles 周期
     //   补一条心跳，保留"该目标仍在场景中"的周期性证据。
     // 标识：第 58 项目标行变化沿（2026-10-21）。
-    constexpr std::uint32_t kSceneHeartbeatCycles = 100U;
+    // 合并版第 10 条：心跳周期改为环境配置项 SbirsEnvironmentConfig::heartbeat_cycles（原硬编码 100）。
     // 中译：**去重表加锁**（2026-11-08）——三颗卫星各自在自己的线程里跑 RunCycle，
     //   而这张 `last_scene_rows` 是进程级静态 map：并发 find/insert 会破坏红黑树
     //   并把堆写坏（现场 0xC0000005/0xC0000374 就落在随后的字符串构造处）。
@@ -635,7 +642,7 @@ void WriteSbirsExternalSceneInput(const config::SbirsEnvironmentConfig& environm
     const bool changed = cached == last_scene_rows.end() || cached->second.first != row;
     const bool heartbeat_due =
         cached == last_scene_rows.end() || cycle < cached->second.second ||
-        (cycle - cached->second.second >= kSceneHeartbeatCycles);
+        (cycle - cached->second.second >= environment.heartbeat_cycles);
     if (changed || heartbeat_due) {
       SBIRS_IR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, "目标与红外环境场景输入接口测试",
                                        row);

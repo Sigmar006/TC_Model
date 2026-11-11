@@ -27,11 +27,15 @@ enum class ONEQ_API RirDetectionGateMode {
  */
 struct ONEQ_API RirDetectionPolicyConfig {
   float cfar_pfa{1e-6f};                /**< 统计级 CFAR 虚警概率。 */
+  float main_lobe_gate_scale{1.0f};     /**< 主瓣覆盖门半宽 = 有效波束宽度 × 该系数，原硬编码 1.0。 */
   float min_snr_db{-10.0f};             /**< SNR 硬截断下限。 */
   float min_detection_margin_db{-2.0f}; /**< 绝对 SNR 第二道下限（dB）：蒙特卡洛判决通过后仍低于该值判不检测；非相对 min_snr_db 的余量。 */
   int pulse_count{10};                  /**< 默认检测积累脉冲数。 */
   std::uint32_t random_seed{42U};       /**< 检测/量测误差随机种子（replay 状态）。 */
   RirDetectionGateMode gate_mode{RirDetectionGateMode::kDetectorGate}; /**< 目标进入门控模式。 */
+  float snr_fallback_gate_db{6.0f};     /**< SNR 回退门（dB），原硬编码 6.0；合并版第 7 条配置化。 */
+  float mti_noise_factor{2.0f};          /**< 两脉冲 MTI 白噪声功率增益，原硬编码 2.0。 */
+  float clutter_sigma_velocity_mps{0.25f}; /**< 验收 MTI/MTD 杂波速度谱宽 σv，原硬编码 0.25 m/s。 */
 };
 
 }  // namespace detection
@@ -51,6 +55,8 @@ namespace tracking {
 /** @brief 单目标 KF 跟踪策略（阶段 2-S S2）。 */
 struct ONEQ_API RirTrackingPolicyConfig {
   float kalman_noise_diff_coeff{1.0f};       /**< 连续白噪声加速度扩散系数 q（m/s²）。 */
+  /** @brief 关联/滤波最小过程噪声扩散系数下限（原硬编码 0.001）；合并版第 8 条配置化。 */
+  float min_noise_diff_coeff{0.001f};
 };
 
 }  // namespace tracking
@@ -95,6 +101,7 @@ struct ONEQ_API RirRecognitionPolicy {
   std::uint32_t min_confirmed_hits{5U};    /**< 允许正式识别所需最小确认命中数（≥1）。 */
   float accumulation_window_sec{10.0f};    /**< 单航迹特征滑动积累窗口（s），必须 ≥ dt_sec。 */
   std::uint32_t min_observation_count{3U}; /**< 允许输出型号所需最小有效观测数（≥1）。 */
+  float min_feature_observation_snr_db{6.0f}; /**< 特征提取最低观测 SNR 门（dB），原硬编码 6.0。 */
   float acceptance_score{0.70f}; /**< 型号确认的最低综合得分，[0, 1]。 */
   float minimum_margin{0.10f};   /**< 第一、第二候选的最低得分差，[0, 1]。 */
   float result_hold_sec{30.0f}; /**< 退出模式或短时特征缺失后的结论保持时间（s），≥0。 */
@@ -106,6 +113,8 @@ struct ONEQ_API RirRecognitionPolicy {
  * @brief RirPolicyConfig 远程识别雷达策略域配置。
  */
 struct ONEQ_API RirPolicyConfig {
+  /** @brief 场景/告警心跳周期（周期数，原硬编码 100）；合并版第 10 条配置化。 */
+  unsigned int heartbeat_cycles{100U};
   RirDetectionPolicyConfig detection{};
   RirAssociationPolicyConfig association{};
   RirTrackingPolicyConfig tracking{};

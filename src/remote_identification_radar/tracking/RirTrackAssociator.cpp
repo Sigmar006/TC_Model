@@ -42,7 +42,7 @@ namespace {
 constexpr std::uint64_t kUnassociatedKey = 0U;
 
 /** @brief 过程噪声差异系数下限（与 AR SignalComponentFactory 工厂钳制同口径）。 */
-constexpr float kMinimumNoiseDiffCoeff = 0.001f;
+// 合并版第 8 条：下限改为配置项 RirAssociationConfig::min_noise_diff_coeff（原硬编码 0.001）。
 
 /** @brief 位置量测矩阵 H（状态序 [x, vx, y, vy, z, vz]）。 */
 RirMeasurementMatrix BuildPositionMeasurementMatrix() {
@@ -83,7 +83,7 @@ RirTrackAssociator::RirTrackAssociator(RirAssociationConfig config) : config_(co
   ::oneq::common::estimation::KalmanPredictorConfig predictor_config;
   // 越界 q 钳制口径同 RirTrackFilter/AR 工厂：非法 q 会污染关联门限协方差传播。
   predictor_config.noise_diff_coeff =
-      std::max(config.kalman_noise_diff_coeff, kMinimumNoiseDiffCoeff);
+      std::max(config.kalman_noise_diff_coeff, config.min_noise_diff_coeff);
   predictor_.UpdateConfig(predictor_config);
   next_key_ = config.initial_next_key == kUnassociatedKey ? 1U : config.initial_next_key;
 }
@@ -254,7 +254,7 @@ void RirTrackAssociator::UpdateConfig(RirAssociationConfig config) {
   config_ = config;
   ::oneq::common::estimation::KalmanPredictorConfig predictor_config;
   predictor_config.noise_diff_coeff =
-      std::max(config.kalman_noise_diff_coeff, kMinimumNoiseDiffCoeff);
+      std::max(config.kalman_noise_diff_coeff, config.min_noise_diff_coeff);
   predictor_.UpdateConfig(predictor_config);
 }
 

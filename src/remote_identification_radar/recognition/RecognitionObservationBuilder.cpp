@@ -75,7 +75,8 @@ RirFeatureSet RirObservationBuilder::Build(const session::RirSceneTarget& target
   RirFeatureSet set;
   set.rcs = RirRcsFeatureExtractor::Extract(target.aspect_rcs_samples, context.look_az_deg,
                                             context.look_el_deg, context.snr_db,
-                                            context.minimum_aspect_coverage_deg);
+                                            context.minimum_aspect_coverage_deg,
+                                            context.minimum_observation_snr_db);
   // 中译：把"量测位置多点拟合速度"透传给运动特征提取器（B3，2026-10-21）——拟合不可用时
   //       该标记为 false，提取器自动回退到滤波后验速度，行为与改动前一致。
   // 标识：B3 运动特征速度来源。
@@ -90,7 +91,7 @@ RirFeatureSet RirObservationBuilder::Build(const session::RirSceneTarget& target
                                                   context.has_acceleration_lsq, acceleration_lsq);
   set.polarization = RirPolarizationFeatureExtractor::Extract(
       target.polarization_samples, context.look_az_deg, context.look_el_deg, context.snr_db,
-      context.range_m);
+      context.range_m, context.minimum_observation_snr_db);
   set.polarization_stats = RirPolarizationStatsExtractor::Extract(target.polarization_samples);
   set.range_profile =
       RirRangeProfileFeatureExtractor::Extract(target.range_rcs_scatterers, context.bandwidth_hz,

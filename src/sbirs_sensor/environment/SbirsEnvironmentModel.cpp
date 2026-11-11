@@ -66,7 +66,8 @@ float SeaAttenuation(config::SbirsSeaState sea_state) {
 // 过程：求视线段在地球大气壳内的穿壳弦长（m），除以壳厚 100 km 折算成等效垂直大气质量 X，
 //       并钳到 [0, 10]：纯空间视线 X=0，掠射穿壳视线的 X 可达数倍。
 double ComputeShellAirmassFactor(const session::SbirsVector3M& satellite_position_eci_m,
-                                 const session::SbirsVector3M& target_position_eci_m) {
+                                 const session::SbirsVector3M& target_position_eci_m,
+                                 double max_airmass_factor) {
   // 段参数化 p(s) = target + s·d（s∈[0,1]），解 |p(s)| = 壳顶半径得穿壳区间。
   const double dx = satellite_position_eci_m.x - target_position_eci_m.x;
   const double dy = satellite_position_eci_m.y - target_position_eci_m.y;
@@ -99,7 +100,7 @@ double ComputeShellAirmassFactor(const session::SbirsVector3M& satellite_positio
   // 过程：弦长 = 壳内段长比例 × 段总长；X = 弦长/壳厚，上限钳制防掠射视线把透过率压到 0。
   const double chord_m = in_shell_fraction * segment_length;
   const double factor = chord_m / kAtmosphereShellThicknessM;
-  return std::max(0.0, std::min(kMaxShellAirmassFactor, factor));
+  return std::max(0.0, std::min(max_airmass_factor, factor));  // 第 3 条：上限改为配置项
 }
 
 // 过程：τ_geo = τ_eff^X —— 比尔-朗伯定律在多段均匀介质上串联的指数形式；
@@ -108,7 +109,8 @@ float ResolveGeometricTransmittance(const config::SbirsEnvironmentConfig& enviro
                                     const session::SbirsVector3M& satellite_position_eci_m,
                                     const session::SbirsVector3M& target_position_eci_m) {
   const float base = ResolveEffectiveTransmittance(environment);
-  const double airmass = ComputeShellAirmassFactor(satellite_position_eci_m, target_position_eci_m);
+  const double airmass = ComputeShellAirmassFactor(satellite_position_eci_m, target_position_eci_m,
+                                                   environment.max_airmass_factor);
   return static_cast<float>(std::pow(static_cast<double>(base), airmass));
 }
 

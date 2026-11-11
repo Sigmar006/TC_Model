@@ -27,7 +27,8 @@ constexpr double kMaxShellAirmassFactor = 10.0;
  *       穿地路径由上游遮挡门先行排除，本函数不重复判遮挡。
  */
 double ComputeShellAirmassFactor(const session::SbirsVector3M& satellite_position_eci_m,
-                                 const session::SbirsVector3M& target_position_eci_m);
+                                 const session::SbirsVector3M& target_position_eci_m,
+                                 double max_airmass_factor);
 /**
  * @brief 计算几何修正后的路径透过率 τ_geo = τ_eff^X（X 为壳段气团因子）。
  * @param[in] environment 环境与气象配置（决定 τ_eff）

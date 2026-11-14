@@ -215,7 +215,7 @@ bool DecodeRecognitionResult(const fb::RirRecognitionResultV1* value, RirRecogni
   if (state_raw < static_cast<int>(RirRecognitionState::kDisabled) ||
       state_raw > static_cast<int>(RirRecognitionState::kStale) ||
       category_raw < static_cast<int>(RirRecognitionCategory::kBallistic) ||
-      category_raw > static_cast<int>(RirRecognitionCategory::kMissile)) {
+      category_raw > static_cast<int>(RirRecognitionCategory::kBooster)) {
     return false;
   }
   const int subclass_raw = value->ballistic_subclass();
@@ -733,11 +733,14 @@ flatbuffers::Offset<cfb::RirPolicyConfig> EncodePolicyConfig(
       cfb::CreateRirDetectionPolicyConfig(
           *builder, value.detection.cfar_pfa, value.detection.min_snr_db,
           value.detection.min_detection_margin_db, value.detection.pulse_count,
-          value.detection.random_seed, static_cast<int>(value.detection.gate_mode));
+          value.detection.random_seed, static_cast<int>(value.detection.gate_mode),
+          value.detection.main_lobe_gate_scale, value.detection.snr_fallback_gate_db,
+          value.detection.mti_noise_factor, value.detection.clutter_sigma_velocity_mps);
   const flatbuffers::Offset<cfb::RirAssociationPolicyConfig> association =
       cfb::CreateRirAssociationPolicyConfig(*builder, value.association.distance_gate_sigma);
   const flatbuffers::Offset<cfb::RirTrackingPolicyConfig> tracking =
-      cfb::CreateRirTrackingPolicyConfig(*builder, value.tracking.kalman_noise_diff_coeff);
+      cfb::CreateRirTrackingPolicyConfig(*builder, value.tracking.kalman_noise_diff_coeff,
+                                         value.tracking.min_noise_diff_coeff);
   const flatbuffers::Offset<cfb::RirLifecyclePolicyConfig> lifecycle =
       cfb::CreateRirLifecyclePolicyConfig(
           *builder, value.lifecycle.confirm_hits, value.lifecycle.max_miss_before_lost,
@@ -755,9 +758,10 @@ flatbuffers::Offset<cfb::RirPolicyConfig> EncodePolicyConfig(
           value.recognition.accumulation_window_sec, value.recognition.min_observation_count,
           value.recognition.acceptance_score, value.recognition.minimum_margin,
           value.recognition.result_hold_sec, feature_weights,
-          builder->CreateString(value.recognition.database_path));
+          builder->CreateString(value.recognition.database_path),
+          value.recognition.min_feature_observation_snr_db);
   return cfb::CreateRirPolicyConfig(*builder, detection, association, tracking, lifecycle,
-                                    recognition);
+                                    recognition, value.heartbeat_cycles);
 }
 
 void DecodePolicyConfig(const cfb::RirPolicyConfig* value, config::RirPolicyConfig* out) {
@@ -773,12 +777,17 @@ void DecodePolicyConfig(const cfb::RirPolicyConfig* value, config::RirPolicyConf
     out->detection.random_seed = detection->random_seed();
     out->detection.gate_mode =
         static_cast<config::detection::RirDetectionGateMode>(detection->gate_mode());
+    out->detection.main_lobe_gate_scale = detection->main_lobe_gate_scale();
+    out->detection.snr_fallback_gate_db = detection->snr_fallback_gate_db();
+    out->detection.mti_noise_factor = detection->mti_noise_factor();
+    out->detection.clutter_sigma_velocity_mps = detection->clutter_sigma_velocity_mps();
   }
   if (value->association() != nullptr) {
     out->association.distance_gate_sigma = value->association()->distance_gate_sigma();
   }
   if (value->tracking() != nullptr) {
     out->tracking.kalman_noise_diff_coeff = value->tracking()->kalman_noise_diff_coeff();
+    out->tracking.min_noise_diff_coeff = value->tracking()->min_noise_diff_coeff();
   }
   if (value->lifecycle() != nullptr) {
     const cfb::RirLifecyclePolicyConfig* lifecycle = value->lifecycle();
@@ -794,6 +803,8 @@ void DecodePolicyConfig(const cfb::RirPolicyConfig* value, config::RirPolicyConf
     out->recognition.min_confirmed_hits = recognition->min_confirmed_hits();
     out->recognition.accumulation_window_sec = recognition->accumulation_window_sec();
     out->recognition.min_observation_count = recognition->min_observation_count();
+    out->recognition.min_feature_observation_snr_db =
+        recognition->min_feature_observation_snr_db();
     out->recognition.acceptance_score = recognition->acceptance_score();
     out->recognition.minimum_margin = recognition->minimum_margin();
     out->recognition.result_hold_sec = recognition->result_hold_sec();
@@ -810,6 +821,7 @@ void DecodePolicyConfig(const cfb::RirPolicyConfig* value, config::RirPolicyConf
     out->recognition.database_path =
         recognition->database_path() != nullptr ? recognition->database_path()->str() : "";
   }
+  out->heartbeat_cycles = value->heartbeat_cycles();
 }
 
 flatbuffers::Offset<cfb::RirEnvironmentConfig> EncodeEnvironmentConfig(

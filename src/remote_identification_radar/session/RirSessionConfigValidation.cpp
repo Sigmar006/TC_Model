@@ -364,6 +364,11 @@ session::RirIssueList ValidateRirSessionConfig(const RirSessionConfig& config) {
     const RirDetectionPolicyConfig& detection = config.policy.detection;
     if (!IsFinite(detection.cfar_pfa) || detection.cfar_pfa <= 0.0f || detection.cfar_pfa > 1.0f ||
         !IsFinite(detection.min_snr_db) || !IsFinite(detection.min_detection_margin_db) ||
+        !IsFinite(detection.main_lobe_gate_scale) || detection.main_lobe_gate_scale <= 0.0f ||
+        !IsFinite(detection.snr_fallback_gate_db) ||
+        !IsFinite(detection.mti_noise_factor) || detection.mti_noise_factor <= 0.0f ||
+        !IsFinite(detection.clutter_sigma_velocity_mps) ||
+        detection.clutter_sigma_velocity_mps <= 0.0f ||
         detection.pulse_count <= 0 || detection.random_seed == 0U) {
       PushIssue(&issues, session::codes::kDetectionPolicyInvalid, "policy.detection",
                 "Detection policy Pfa/SNR gates must be finite, pulse count and seed positive.");
@@ -382,10 +387,17 @@ session::RirIssueList ValidateRirSessionConfig(const RirSessionConfig& config) {
   // 跟踪策略：KF 过程噪声参数有限且 > 0。
   {
     const RirTrackingPolicyConfig& tracking = config.policy.tracking;
-    if (!IsFinite(tracking.kalman_noise_diff_coeff) || tracking.kalman_noise_diff_coeff <= 0.0f) {
+    if (!IsFinite(tracking.kalman_noise_diff_coeff) || tracking.kalman_noise_diff_coeff <= 0.0f ||
+        !IsFinite(tracking.min_noise_diff_coeff) || tracking.min_noise_diff_coeff <= 0.0f) {
       PushIssue(&issues, session::codes::kTrackingPolicyInvalid, "policy.tracking",
                 "Kalman process noise parameter must be finite and positive.");
     }
+  }
+
+  if (config.policy.heartbeat_cycles == 0U ||
+      !IsFinite(config.policy.recognition.min_feature_observation_snr_db)) {
+    PushIssue(&issues, session::codes::kDetectionPolicyInvalid, "policy",
+              "Heartbeat period must be positive and recognition SNR gate finite.");
   }
 
   // 生命周期策略：confirm_hits/max_lost_cycles 至少为 1。

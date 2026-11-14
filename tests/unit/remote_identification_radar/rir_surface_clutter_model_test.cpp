@@ -224,8 +224,6 @@ TEST(RirSurfaceClutterModelTest, DeterministicAcrossCalls) {
   EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(input), model.EvaluateClutterNoiseW(input));
 }
 
-}  // namespace
-}  // namespace tests
 /// @brief 副瓣杂波几何输入：平台 300 m（无线电地平线约 71.4 km）、4° 波束。
 /// @note  既有用例不填 platform_altitude_m，主瓣项走 h=0 退化分支；副瓣项必须显式给高度，
 ///        否则地平线退化成约 4 km，测试几何不成立。
@@ -243,8 +241,9 @@ TEST(RirSurfaceClutterModelTest, SidelobeClutterExistsWhenMainlobeIsOffGround) {
   const RirSurfaceClutterModel model;
   const float clutter_w = model.EvaluateClutterNoiseW(MakeSidelobeInput(50000.0f, 5.0f, -20.0f));
   EXPECT_GT(clutter_w, 0.0f) << "主瓣离地后副瓣照地仍应产生杂波";
-  // 主瓣项为 0 的佐证：把副瓣压到 -300 dB（等效关闭）后杂波归零。
-  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(50000.0f, 5.0f, -300.0f)), 0.0f);
+  // 主瓣项为 0 的佐证：把副瓣压到 -300 dB（等效关闭）后杂波降到可忽略——
+  // 注意写出通道有 CNR 下限钳位（-120 dB），故不是精确 0，而是热噪声的 1e-12 量级。
+  EXPECT_LT(model.EvaluateClutterNoiseW(MakeSidelobeInput(50000.0f, 5.0f, -300.0f)), 1.0e-20f);
 }
 
 /// @brief 超出无线电地平线（约 71.4 km）后副瓣项归零：地面被地球遮挡。
@@ -265,18 +264,100 @@ TEST(RirSurfaceClutterModelTest, SidelobeClutterScalesWithTwoWaySidelobeLevel) {
   EXPECT_NEAR(at_minus_30 / at_minus_40, 100.0f, 1.0f);
 }
 
-/// @brief 主瓣项的距离一致性：地面回波只落在主瓣落地足迹的距离单元里。
-///        目标与足迹相差几公里以上时，它所在单元没有地面，主瓣项必须为 0。
-TEST(RirSurfaceClutterModelTest, MainlobeClutterNeedsTargetInBeamFootprint) {
+/// @brief 主瓣判据（严格几何）：只有波束下沿压到"目标距离处地面点"以下才算主瓣杂波。
+///        平台 300 m、0.8° 波束（半宽 0.4°）：
+///        φ = −1.0° 时下沿 −1.4°，20~71 km 处地面俯角 0.5°~0.9° 都在其内 ⇒ 有杂波；
+///        φ = +0.3° 时下沿 −0.1°，地平线方向都在 −0.48° ⇒ 一片地面也照不到 ⇒ 0。
+TEST(RirSurfaceClutterModelTest, MainlobeClutterRequiresBeamEdgeBelowGroundPoint) {
   const RirSurfaceClutterModel model;
-  // 低仰角 0.2°：主瓣下沿在约 47.6 km 处落地。
-  const float at_footprint = model.EvaluateClutterNoiseW(MakeSidelobeInput(47600.0f, 0.2f, -300.0f));
-  EXPECT_GT(at_footprint, 0.0f) << "目标与主瓣地面足迹同单元时应算到主瓣杂波";
-
-  // 同样的低仰角、但目标在足迹之外（100/200/500 km）：该单元没有地面 ⇒ 0。
-  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(100000.0f, 0.2f, -300.0f)), 0.0f);
-  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(200000.0f, 0.2f, -300.0f)), 0.0f);
-  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(500000.0f, 0.15f, -300.0f)), 0.0f);
+  // 波束压到地平线以下：主瓣照地（副瓣关掉以隔离主瓣项）。
+  EXPECT_GT(model.EvaluateClutterNoiseW(MakeSidelobeInput(40000.0f, -1.0f, -300.0f)), 0.0f);
+  EXPECT_GT(model.EvaluateClutterNoiseW(MakeSidelobeInput(71000.0f, -1.0f, -300.0f)), 0.0f);
+  // 波束下沿仍在地平线之上（夹具为 4° 波束 ⇒ 半宽 2°，φ=2.0 时下沿恰在水平线）：
+  // 主瓣一片地面也照不到。
+  EXPECT_LT(model.EvaluateClutterNoiseW(MakeSidelobeInput(40000.0f, 2.0f, -300.0f)), 1.0e-20f);
+  EXPECT_LT(model.EvaluateClutterNoiseW(MakeSidelobeInput(71000.0f, 2.0f, -300.0f)), 1.0e-20f);
+  // 超出无线电地平线：该距离处没有地面，主瓣项恒 0（哪怕波束压得很低）。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(MakeSidelobeInput(100000.0f, -1.0f, -300.0f)), 0.0f);
 }
 
+/// @brief 副瓣杂波几何输入：平台 300 m（无线电地平线约 71.4 km）、4° 波束。
+/// @note  既有用例不填 platform_altitude_m，主瓣项走 h=0 退化分支；副瓣项必须显式给高度，
+///        否则地平线退化成约 4 km，测试几何不成立。
+/// @brief 再散射项（A：雷达→目标→地面→雷达）：只有近距低空目标才有，且正比于目标 RCS。
+/// @note  远程弹道目标的地面投影在 3,868 km（远超 71.4 km 地平线）⇒ 该项为 0，
+///        因为那条回波路径被地球挡住——这正是"远距目标没有这项杂波"的物理原因。
+TEST(RirSurfaceClutterModelTest, TargetGroundRescatterNeedsNearLowTarget) {
+  const RirSurfaceClutterModel model;
+
+  // φ=2.0°：4° 波束的下沿恰在水平线 ⇒ 主瓣离地，杂波只剩再散射项（便于隔离）。
+  RirSurfaceClutterInput near_low = MakeSidelobeInput(20000.0f, 2.0f, -300.0f);
+  near_low.target_rcs_m2 = 0.1f;
+  near_low.target_height_m = 400.0f;        // 平台 300 m + 目标相对高度 100 m
+  near_low.target_ground_range_m = 20000.0f;
+  const float rescatter_only = model.EvaluateClutterNoiseW(near_low);
+  EXPECT_GT(rescatter_only, 0.0f) << "近距低空目标应有三阶再散射项";
+
+  // RCS 翻 10 倍 ⇒ 该项功率随之 ×10。
+  RirSurfaceClutterInput stronger = near_low;
+  stronger.target_rcs_m2 = 1.0f;
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(stronger) / rescatter_only, 10.0f, 1.0f);
+
+  // 远程弹道目标：投影 3,868 km 远超地平线 ⇒ 再散射为 0。
+  RirSurfaceClutterInput far_high = MakeSidelobeInput(4324000.0f, 26.6f, -300.0f);
+  far_high.target_rcs_m2 = 0.1f;
+  far_high.target_height_m = 2237900.0f;
+  far_high.target_ground_range_m = 3868000.0f;
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_high), 0.0f);
+
+  // 目标高度低于 30 m 门槛（几乎贴地，三次散射退化为二阶）⇒ 不计（只剩 CNR 下限钳位量级）。
+  RirSurfaceClutterInput too_low = near_low;
+  too_low.target_height_m = 20.0f;
+  EXPECT_LT(model.EvaluateClutterNoiseW(too_low), 1.0e-20f);
+}
+
+/// @brief 多重散射 + 起伏：均值由几何定（一次散射 × σ₀/4π），逐周期在 dB 域浮动 ±3 dB。
+/// @note  起伏落在**整个杂波项**上（甲方口径：给一个能到达雷达的数值 + 随机范围）；
+///        没有地面回波的单元（远距目标）起伏后仍为 0，不会被抬成底噪。
+TEST(RirSurfaceClutterModelTest, ClutterFluctuationScalesWholeTerm) {
+  const RirSurfaceClutterModel model;
+  RirSurfaceClutterInput base = MakeSidelobeInput(20000.0f, 0.3f, -20.0f);
+  base.clutter_fluctuation_db = 0.0f;
+  const float nominal = model.EvaluateClutterNoiseW(base);
+  ASSERT_GT(nominal, 0.0f);
+
+  RirSurfaceClutterInput up = base;
+  up.clutter_fluctuation_db = 3.0f;
+  RirSurfaceClutterInput down = base;
+  down.clutter_fluctuation_db = -3.0f;
+  // ±3 dB ⇒ 功率 ×1.995 / ×0.501（只测起伏增益，多重散射的 −39 dB 结构项可忽略）。
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(up) / nominal, 1.9953f, 0.01f);
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(down) / nominal, 0.5012f, 0.01f);
+
+  // 远距弹道目标（该单元无地面）：起伏后仍为 0。
+  RirSurfaceClutterInput far_target = MakeSidelobeInput(4324000.0f, 26.6f, -20.0f);
+  far_target.clutter_fluctuation_db = 3.0f;
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_target), 0.0f);
+}
+
+/// @brief 弥散散射底（工程兜底）：开启后任何单元都有非零杂波，且同样带 ±3 dB 起伏。
+/// @note  关掉（`diffuse_floor_w = 0`）即回到"纯物理：无地面即 0"。
+TEST(RirSurfaceClutterModelTest, DiffuseFloorGivesEveryCellAClutterValue) {
+  const RirSurfaceClutterModel model;
+  RirSurfaceClutterInput far_target = MakeSidelobeInput(4324000.0f, 26.6f, -20.0f);
+
+  // 关：无地面 ⇒ 0。
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_target), 0.0f);
+
+  // 开：恒等于底值（起伏 0 dB）。
+  far_target.diffuse_floor_w = 1.0e-15f;
+  EXPECT_FLOAT_EQ(model.EvaluateClutterNoiseW(far_target), 1.0e-15f);
+
+  // 起伏 +3 dB ⇒ 底值 ×1.995。
+  far_target.clutter_fluctuation_db = 3.0f;
+  EXPECT_NEAR(model.EvaluateClutterNoiseW(far_target) / 1.0e-15f, 1.9953f, 0.01f);
+}
+
+}  // namespace
+}  // namespace tests
 }  // namespace remote_identification_radar

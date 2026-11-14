@@ -3,7 +3,11 @@
  * @brief RIR 验收行与天线三维增益 CSV。
  */
 
+#include <mutex>
 #include "remote_identification_radar/runtime/RirAcceptanceRecords.h"
+
+// 方位归一化助手（`NormalizeAzimuthDeg`）：扫描范围写绝对方位时把 [0,360) 折回。
+#include "common/radar/ScanScheduleRuntime.h"
 
 #include <algorithm>
 #include <array>
@@ -52,6 +56,24 @@ using oneq::logging::FormatPairDeg;
 using oneq::logging::FormatSci;
 using oneq::logging::FormatVec3;
 using oneq::logging::YesNo;
+
+/**
+ * @brief 有效搜索扇区的可读文本（`az[min,max]el[min,max]°`，**均为绝对角**）。
+ * @param[in] sector 本周期有效搜索扇区，az 已折算成**绝对方位**（阵面朝向 + 相对边界，
+ *            折到 [0,360)），el 本来就是绝对仰角；由 `RirController` 在调用前完成折算。
+ * @note 第 37/37A 项与调度行共用同一口径，避免三处各写一种范围。
+ * @note 2026-11-07 甲方口径：写"当前实际的扫描范围"，不要相对阵面朝向的相对角。
+ */
+std::string FormatScanSectorDeg(const config::RirAzimuthElevationLimitsDeg& sector,
+                                float scan_center_az_deg) {
+  // 过程：az 相对 → **绝对**（阵面朝向 + 相对边界，折到 [0,360)）；el 本来就是绝对仰角。
+  const float az_min =
+      oneq::common::radar::NormalizeAzimuthDeg(scan_center_az_deg + sector.az_min_deg);
+  const float az_max =
+      oneq::common::radar::NormalizeAzimuthDeg(scan_center_az_deg + sector.az_max_deg);
+  return "az[" + FormatF(az_min, 3) + "," + FormatF(az_max, 3) + "]el[" +
+         FormatF(sector.el_min_deg, 3) + "," + FormatF(sector.el_max_deg, 3) + "]°";
+}
 
 /**
  * @brief 天线有效口径面积（m²）：`Ae = G·λ²/(4π)`。
@@ -194,6 +216,12 @@ const char* CategoryName(int category) {
       return "轰炸机";
     case static_cast<int>(RirRecognitionCategory::kMissile):
       return "导弹";
+    case static_cast<int>(RirRecognitionCategory::kDecoy):
+      return "诱饵";
+    case static_cast<int>(RirRecognitionCategory::kDebris):
+      return "弹片";
+    case static_cast<int>(RirRecognitionCategory::kBooster):
+      return "助推器";
     default:
       return "";
   }
@@ -216,7 +244,7 @@ double RcsFluctuationCoefficient(double std_db) {
   return std::sqrt(std::expm1(log_std * log_std));
 }
 
-/** @brief 最佳候选综合得分中单个特征维度的归一化加权贡献（对外称"XX 置信度"）。 */
+/** @brief 最佳候选综合得分中单个特征维度的归一化加权贡献。 */
 bool TryRecognitionContribution(
     const session::RirRecognitionResult* result,
     const config::RirRecognitionFeatureWeights& weights,
@@ -256,40 +284,6 @@ bool TryRecognitionContribution(
   *contribution = base_weights[requested_index] * qualities[requested_index] *
                   similarities[requested_index] / denominator;
   return std::isfinite(*contribution);
-}
-
-/** @brief 最佳候选四项特征置信度之和，即联合置信度。
- *
- *  分母同为 Σ(w_j·q_j)（仅统计有效维），故四项之和等于该候选的加权平均相似度
- *  （RecognitionMatcher 的 profile_score 同口径）；综合分 = profile_score × 型号先验，
- *  故先验为 1 时两者数值相等。它不是 best_score/total_score 的得分份额。
- *  没有任何有效维时返回 false（不写 0 占位）。
- */
-bool TryRecognitionJointConfidence(
-    const session::RirRecognitionResult* result,
-    const config::RirRecognitionFeatureWeights& weights, double* joint_confidence) {
-  if (result == nullptr || joint_confidence == nullptr) {
-    return false;
-  }
-  const session::RirRecognitionFeatureDimension dimensions[] = {
-      session::RirRecognitionFeatureDimension::kRcs,
-      session::RirRecognitionFeatureDimension::kMotion,
-      session::RirRecognitionFeatureDimension::kPolarization,
-      session::RirRecognitionFeatureDimension::kRangeProfile};
-  double sum = 0.0;
-  bool has_any = false;
-  for (const auto dimension : dimensions) {
-    double contribution = 0.0;
-    if (TryRecognitionContribution(result, weights, dimension, &contribution)) {
-      sum += contribution;
-      has_any = true;
-    }
-  }
-  if (!has_any || !std::isfinite(sum)) {
-    return false;
-  }
-  *joint_confidence = sum;
-  return true;
 }
 
 /** @brief 统计特征有效位图里置位的维度数（识别判据诊断用）。 */
@@ -439,6 +433,8 @@ bool TryBuildAcceptanceBank(const RirDetectionAcceptInput& input,
   bank_input.two_way_doppler_shift_hz = input.cell.two_way_doppler_shift_hz;
   bank_input.prf_hz = input.prf_hz;
   bank_input.center_frequency_hz = input.center_frequency_hz;
+  bank_input.noise_factor = input.mti_noise_factor;
+  bank_input.clutter_sigma_velocity_mps = input.clutter_sigma_velocity_mps;
   // 中译：把本拍检测单元的相干积累脉冲数传给旁路，使 `MTD增益` 输出**真实相干增益**
   //   （10log10(N) + 跨 bin 损耗），而不是仅归一化 bin 响应（恒 ≤0）。
   // 标识：MTD 真实增益（2026-10-22）。
@@ -772,6 +768,17 @@ void WriteRirAntennaPatternDerived(std::uint64_t radar_id, float sim_time_sec,
              " 配置=" + FormatF(conf_backlobe_db, 3) +
              " 误差=" + FormatF(err_backlobe * 100.0, 2) + "%" + "] 后瓣电平校验=" + std::string(verdict_backlobe);
   content += " 外部配置一致性=" + std::string(all_within ? "通过" : "不通过");
+  // 合并版第 6 条：方向图剖面（离轴 0/0.5/1/2/5 倍波束宽度处的增益），复用行内 evaluate_gain()
+  {
+    const double bw_az_deg = static_cast<double>(antenna.nominal_az_beamwidth_deg);
+    content += " 方向图剖面(离轴deg:dBi)=[0:" + FormatF(evaluate_gain(0.0, 0.0), 2);
+    const double scales[4] = {0.5, 1.0, 2.0, 5.0};
+    for (int si = 0; si < 4; ++si) {
+      content += "," + FormatF(scales[si], 1) + ":" +
+                 FormatF(evaluate_gain(scales[si] * bw_az_deg, 0.0), 2);
+    }
+    content += "]";
+  }
   RIR_ACCEPTANCE_ITEM(sim_time_sec, cycle, "天线方向图仿真功能测试", content);
 }
 
@@ -822,6 +829,13 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     echo += " 噪声功率=" + FormatSci(thermal) + "W";
     echo += " 干扰功率=" +
             FormatSci(input.has_cell ? input.cell.interference_power_w : 0.0) + "W";
+    // 中译：**回波功率行补「杂波功率」**（2026-11-07 甲方要求）——第 29 项此前只列
+    //   回波/噪声/干扰三项，杂波只在第 34 项出现；同一检测单元的四个功率分项应在一行
+    //   内可直接对照（SINR 分母就是这三项相加）。口径与噪声/干扰一致：单元内等效
+    //   噪声功率（W，含 MTI 前的原始杂波，未计处理增益）。
+    // 标识：第29项杂波功率（2026-11-07）。
+    echo += " 杂波功率=" +
+            FormatSci(input.has_cell ? input.cell.clutter_power_w : 0.0) + "W";
     // 中译：**口面功率密度**（2026-11-02 甲方要求补 W/m²，保留原 W 不动）——
     //   S = P / Ae，Ae = G·λ²/(4π)：回波走主瓣 ⇒ 用主瓣增益；干扰多自旁瓣进入 ⇒
     //   逐链路用各链路自己的接收增益求密度再按功率等比缩放（不能一律用主瓣口径，
@@ -918,7 +932,11 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   {
     const double applied_noise_db =
         input.has_cell ? input.cell.noise_total_gain_db : noise_db;
-    std::string row = id_sp + "噪声总增益=" + FormatF(applied_noise_db, 3) + "dB";
+    // 合并版第 11 条：总增益拆分为"配置的噪声处理增益 + 对消器项（正常 3.010 dB）"。
+    const double canceller_db = applied_noise_db - static_cast<double>(noise_db);
+    std::string row = id_sp + "噪声总增益=" + FormatF(applied_noise_db, 3) + "dB" +
+                      " = 噪声处理增益(配置)" + FormatF(noise_db, 3) + "dB + MTI对消器" +
+                      FormatF(canceller_db, 3) + "dB";
     Emit(t, cycle, "噪声增益功能测试", row);
   }
 
@@ -929,6 +947,18 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
     Emit(t, cycle, "杂波信号处理增益功能测试",
          id_sp + "MTI处理后杂波剩余功率=" +
              FormatSci(has_bank ? bank.mti_residual_clutter_w : mti_residual) + "W");
+    // 合并版第 12 条：补杂波谱宽（σv 及对应多普勒 σf）与输入杂波功率。
+    {
+      const double sigma_v_mps = input.clutter_sigma_velocity_mps;
+      const double lambda_m =
+          input.center_frequency_hz > 0.0f
+              ? oneq::common::numerics::kLightSpeed / input.center_frequency_hz
+              : 0.0;
+      const double sigma_hz = lambda_m > 0.0 ? 2.0 * sigma_v_mps / lambda_m : 0.0;
+      Emit(t, cycle, "杂波信号处理增益功能测试",
+           id_sp + "杂波谱宽=" + FormatF(sigma_v_mps, 3) + "m/s 对应多普勒σf=" +
+               FormatF(sigma_hz, 3) + "Hz 输入杂波功率=" + FormatSci(clutter) + "W");
+    }
     EmitOrNone(t, cycle, "杂波信号处理增益功能测试", id_sp + "MTD各多普勒通道杂波剩余功率分布=",
                has_bank, has_bank ? FormatChannelWatts(bank.clutter_w) + "W" : std::string());
   }
@@ -938,13 +968,18 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   // 「总杂波抑制增益」，由本条已落盘的原始/剩余功率直接求比值（10log10 输入/剩余）。
   // 抑制比取目标所在多普勒通道，总增益取全通道合计，两者均为功率比，不引入新观测量。
   if (has_clutter && has_bank) {
+    // 中译：**抑制比取 MTD 的输入/输出**（2026-11-07 修口径）——MTD 的输入是 MTI 剩余杂波，
+    //   输出是目标所在多普勒通道的剩余。此前拿"输入/通道数"当基准，选中通道恰好高于均值时
+    //   就会算出负 dB（现场 0.905/−2.563 dB 混出现象），读起来像"抑制为负"。
+    // 标识：第34项抑制比口径（2026-11-07）。
     const double channel_count = static_cast<double>(oneq::common::radar::kMtiMtdChannelCount);
-    const double original_channel_clutter =
-        clutter_db <= 0.0 ? clutter / channel_count : clutter / FromDb(clutter_db);
+    (void)channel_count;
+    const double mtd_input_clutter =
+        has_bank ? bank.mti_residual_clutter_w : (clutter_db <= 0.0 ? clutter : clutter / FromDb(clutter_db));
     const double residual_total = std::accumulate(bank.clutter_w.begin(), bank.clutter_w.end(), 0.0);
     double ratio_db = 0.0;
     if (oneq::common::radar::TryAcceptancePowerRatioDb(
-            original_channel_clutter, bank.clutter_w[bank.selected_channel], &ratio_db)) {
+            mtd_input_clutter, bank.clutter_w[bank.selected_channel], &ratio_db)) {
       Emit(t, cycle, "杂波信号处理增益功能测试",
            id_sp + "MTD处理后的杂波抑制比=" + FormatF(ratio_db, 3) + "dB");
     }
@@ -1007,6 +1042,14 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   }
   EmitOrNone(t, cycle, "恒虚警检测功能测试", id_sp + "统计检测门限=", has_threshold,
              has_threshold ? (FormatF(threshold_snr_db, 3) + "dB") : std::string());
+  // 合并版第 7 条：判决余量 = 信噪比 − 门限（同轴 dB），并写出虚警概率与积累脉冲数。
+  if (has_threshold && std::isfinite(input.snr_db)) {
+    Emit(t, cycle, "恒虚警检测功能测试",
+         id_sp + "判决余量=" +
+             FormatF(static_cast<double>(input.snr_db) - threshold_snr_db, 3) + "dB" +
+             " 虚警概率=" + FormatSci(static_cast<double>(input.cfar_pfa)) +
+             " 积累脉冲数=" + std::to_string(pulses));
+  }
   // 中译：补"实际计算得出的信噪比"——门限与结果之间的判决依据此前缺失，读日志只能看到
   //       "门限 13.8 / 结果 否"，无法判断差多少。该 SNR 就是 CFAR **实际消费**的那个值：
   //       cell 路径为处理后单脉冲 SINR，回退路径为雷达方程算出的 SNR。
@@ -1025,7 +1068,34 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
   // 2026-09-28 复核中修正：早期实现把比值写反，会出现 SNR 越高、最大距离反而越小。
   // SNR_req 由同一 Marcum Q 检测模型对 Pd=0.90 二分反解，不使用任务粗筛距离充当该值。
   if (input.has_cell && input.range_m > 0.0f) {
-    const double snr_now_db = static_cast<double>(input.cell.processed_single_pulse_sinr_db);
+    // 中译：**第36项按"不含 MTI/MTD 目标响应损失"的口径报**（2026-11-07 甲方要求）——
+    //   本项的语义是"雷达对 1 m² 目标的 90% 探测能力"，属**理想单脉冲能力**口径；
+    //   而 `processed_single_pulse_sinr_db` 已经把 MTI 对目标的响应 H_mti（盲速附近可为负）
+    //   与 MTD 跨 bin 损耗 H_bin 折进去了，会让同一部雷达的能力随目标多普勒忽大忽小
+    //   （现场：MTI −2.826 dB + MTD −0.049 dB，白白吃掉 2.9 dB ≈ 距离 −7%）。
+    //   这里把这两项**加回**（它们恒 ≤0，故为"补偿"），得到不含对消器目标响应的单脉冲 SNR；
+    //   `信噪比=` 仍输出含 MTI/MTD 的实际值，MTI/MTD 的响应/损失照常由第32/34/35项记账。
+    // 标识：第36项不含MTI/MTD目标损失（2026-11-07）。
+    const double mti_mtd_loss_db = static_cast<double>(input.cell.mti_response_db) +
+                                   static_cast<double>(input.cell.mtd_bin_response_db);
+    // 中译：**干扰也按能力口径剔除**（2026-11-08 甲方要求"所有损耗都不计入"）——
+    //   本项语义是"雷达对 1 m² 目标的 90% 探测能力"，属单机能力；而 cell 的单脉冲 SINR
+    //   里含场景干扰（现场干扰功率中位 3.04e-12 W，是热噪声 1.80e-13 W 的 16.9 倍，
+    //   等于白扣 12.5 dB、距离被压低 2.2 倍）。干扰另有第 30 项（干扰功率）与第 35 项
+    //   （干扰抑制增益）单独记账，这里按 SINR_纯噪声 = SINR·N/(N+J) 折算回去；
+    //   无干扰时折算量为 0 dB，行为与旧口径逐位一致。
+    // 标识：第36项剔除干扰（2026-11-08）。
+    double interference_penalty_db = 0.0;
+    if (input.has_cell && std::isfinite(thermal) && thermal > 0.0 &&
+        std::isfinite(input.cell.interference_power_w) && input.cell.interference_power_w > 0.0) {
+      interference_penalty_db = 10.0 * std::log10(
+          1.0 + static_cast<double>(input.cell.interference_power_w) / thermal);
+    }
+    const double snr_now_db =
+        static_cast<double>(input.cell.processed_single_pulse_sinr_db) - mti_mtd_loss_db -
+        interference_penalty_db;
+    const double snr_now_db_with_processing =
+        static_cast<double>(input.cell.processed_single_pulse_sinr_db) - interference_penalty_db;
     double max_range_m = 0.0;
     // 中译：**90% 探测距离按标称 RCS（1 m²）报**（2026-11-04）——判据要的是"标称 RCS 的
     //   90% 探测概率的探测距离"，即本雷达的能力基准；此前用的是**当前目标 RCS**，
@@ -1036,10 +1106,20 @@ void WriteRirDetectionChain(const RirDetectionAcceptInput& input) {
             static_cast<double>(input.range_m), snr_now_db, static_cast<double>(input.rcs_m2),
             static_cast<double>(kNominalRcsM2), 0.90, input.cfar_pfa,
             static_cast<int>(std::max(1U, pulses)), &max_range_m)) {
+      // 中译：行内标注口径与补偿量——`口径=不含MTI/MTD目标响应损失`（本行），
+      //   并给出补偿前的实际值 `含处理损失=` 供核对（两值同轴、仅差 MTI/MTD 响应）。
+      // 标识：第36项口径标注（2026-11-07）。
+      double max_range_with_processing_m = 0.0;
+      TryComputeDetectionRangeAtPdForRcs(
+          static_cast<double>(input.range_m), snr_now_db_with_processing,
+          static_cast<double>(input.rcs_m2), static_cast<double>(kNominalRcsM2), 0.90,
+          input.cfar_pfa, static_cast<int>(std::max(1U, pulses)), &max_range_with_processing_m);
       Emit(t, cycle, "恒虚警检测功能测试",
            id_sp + "检测概率=90%的最大探测距离=" + FormatF(max_range_m, 1) +
                "m 标称RCS=" + FormatF(kNominalRcsM2, 3) + "m^2 目标RCS=" +
-               FormatF(input.rcs_m2, 3) + "m^2");
+               FormatF(input.rcs_m2, 3) + "m^2 口径=不含MTI/MTD目标响应损失、不含干扰 MTI/MTD补偿=" +
+               FormatF(-mti_mtd_loss_db, 3) + "dB 含处理损失=" +
+               FormatF(max_range_with_processing_m, 1) + "m");
     }
   }
 
@@ -1239,6 +1319,20 @@ void WriteRirExternalSceneTargets(float sim_time_sec, std::uint32_t cycle,
     //   继续传播（问题定位后再撤掉上限）。
     // 标识：场景接口表规模防护（2026-11-06）。
     static const std::size_t kMaxSceneSamples = 4096U;
+    // 中译：**表规模异常就先写摘要并跳过整表**（2026-11-07）——现场在 44/45 拍崩于本函数
+    //   拼接字符串（0xC0000374 堆破坏），说明这两张表在装配阶段可能已被写坏。坏表再逐元素
+    //   格式化成几十万字符，只会把错误放大且掩盖首因；此处先落"规模异常"证据，再继续下一目标。
+    // 标识：场景接口坏表防护（2026-11-07）。
+    const std::size_t aspect_raw = target.aspect_rcs_samples.size();
+    const std::size_t pol_raw = target.polarization_samples.size();
+    if (aspect_raw > kMaxSceneSamples || pol_raw > kMaxSceneSamples) {
+      std::string summary = "目标序号=" + std::to_string(target_index);
+      summary += " 目标ID=" + std::to_string(target.external_target_id);
+      summary += " 表规模异常=视角RCS:" + std::to_string(aspect_raw) + " 极化:" +
+                 std::to_string(pol_raw) + " 已跳过整表输出";
+      RIR_EXTERNAL_INTERFACE_ITEM(sim_time_sec, cycle, item, summary);
+      continue;
+    }
     content += " 视角RCS=[";
     const std::size_t aspect_count =
         std::min(target.aspect_rcs_samples.size(), kMaxSceneSamples);
@@ -1335,7 +1429,8 @@ void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uin
 }
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                              float beam_az_deg, float beam_el_deg,
+                              const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                              float scan_center_az_deg, float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED() || detections.empty()) {
     return;
@@ -1344,9 +1439,14 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
   // 行随 WriteRirSchedule 写出——调度统计在该调用点）。项名固定为
   // [空域自主搜索功能测试]，不与 37A 互相替代。检测量测只写目标ID/斜距/量测方位俯仰
   //（Pd 归第36项，不写）。
+  // 中译：**指向行补"扫描范围"**（2026-11-07 甲方要求）——此前第37项只写当前波位指向，
+  //   看不出本周期搜索扇区的边界；补有效搜索扇区（az 相对阵面、el 绝对，已与可扫描体积
+  //   求交），外部可直接核对"雷达在多大范围内搜"。
+  // 标识：第37项扫描范围（2026-11-07）。
   Emit(sim_time_sec, cycle, "空域自主搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
-           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
+           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "° 扫描范围=" +
+           FormatScanSectorDeg(scan_sector_deg, scan_center_az_deg));
   std::string found;
   for (std::size_t i = 0U; i < detections.size(); ++i) {
     if (i != 0U) {
@@ -1361,7 +1461,10 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
 }
 
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
-                                     std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
+                                     std::uint32_t cycle,
+                                     const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                                     float scan_center_az_deg, float beam_az_deg,
+                                     float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections) {
   // 中译：**地平线搜索按“驻留事实”记账**（2026-10-26）——此前 `detections.empty()` 直接
   //   return，只有“地平线波位恰好检到目标”才留下日志，搜索窗抬高后整项几乎不可见。
@@ -1372,9 +1475,12 @@ void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
   }
   // 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名，按 §0.9
   // 条目独立判定，不得互相替代。指向角取该波位实际指向（地平线波位 el≈0）。
+  // 中译：同第 37 项——地平线搜索也写有效扫描范围（地平线模式下 el 是地平线窄带）。
+  // 标识：第37A项扫描范围（2026-11-07）。
   Emit(sim_time_sec, cycle, "地平线搜索功能测试",
        "雷达ID=" + std::to_string(radar_id) + " 方位/俯仰指向信息=" +
-           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "°");
+           FormatPairDeg(beam_az_deg, beam_el_deg, 3) + "° 扫描范围=" +
+           FormatScanSectorDeg(scan_sector_deg, scan_center_az_deg));
   if (detections.empty()) {
     // 中译：**未检出也写"检测与量测信息"行（空列表）**（2026-11-02）——判据第37A项要求
     //   "记录检测与量测信息"，若该行只在检出时出现，本场景（目标都在高空、地平线波位
@@ -1458,6 +1564,18 @@ void WriteRirAssociation(float sim_time_sec, std::uint32_t cycle,
                                                           : " 消费结果=新建航迹";
     RIR_INTERNAL_INTERFACE_ITEM(sim_time_sec, cycle,
                                 "雷达检测量测与航迹处理交互接口测试", interface_track);
+  }
+  // 合并版第 8 条：补"航迹侧"——本周期未配到量测的航迹键。
+  if (!association.missed_track_keys.empty()) {
+    std::string missed = "未配到量测的航迹=[";
+    for (std::size_t i = 0U; i < association.missed_track_keys.size(); ++i) {
+      if (i != 0U) {
+        missed += ",";
+      }
+      missed += std::to_string(association.missed_track_keys[i]);
+    }
+    missed += "] 数量=" + std::to_string(association.missed_track_keys.size());
+    Emit(sim_time_sec, cycle, "航迹关联功能测试", missed);
   }
 }
 
@@ -1584,6 +1702,32 @@ void WriteRirClusterCount(float sim_time_sec, std::uint32_t cycle,
   Emit(sim_time_sec, cycle, "规模目标识别功能测试", content);
 }
 
+void WriteRirRecognitionAccuracy(float sim_time_sec, std::uint32_t cycle,
+                                 const session::RirRecognitionCycleSummary& summary) {
+  if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
+    return;
+  }
+  // 中译：**综合识别准确率**（2026-11-10）——判据"识别正确率 >60%"此前无输出：
+  //   准确率虽已算在汇总里，但写出函数把 has_truth/category_accuracy 直接丢弃。
+  //   这里按跑全程累计口径输出样本/判对/准确率与达标判定；样本为 0 时不出行（不写假值）。
+  // 标识：第47A项综合识别准确率（2026-11-10）。
+  constexpr std::uint32_t kAccuracySummaryCycles = 100U;
+  if (summary.accuracy_sample_count == 0U) {
+    return;
+  }
+  if (cycle % kAccuracySummaryCycles != 0U) {
+    return;
+  }
+  constexpr float kAccuracyRequirement = 0.60f;
+  const float rate = summary.accuracy_rate;
+  Emit(sim_time_sec, cycle, "综合特征识别功能测试",
+       "统计口径=综合识别准确率 累计样本数=" + std::to_string(summary.accuracy_sample_count) +
+           " 累计判对数=" + std::to_string(summary.accuracy_correct_count) +
+           " 综合识别准确率=" + FormatF(rate, 4) + " 判据门限=" +
+           FormatF(kAccuracyRequirement, 2) + " 判定=" +
+           std::string(rate >= kAccuracyRequirement ? "达标" : "未达标"));
+}
+
 void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const tracking::RirTrackState& track,
                         const session::RirRecognitionResult* result,
@@ -1696,20 +1840,23 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                               "雷达航迹与特征识别交互接口测试", interface_recognition);
 
   // 外部导入项：综合特征识别是独立验收用例，与第47项宽带一维像分别记录。
-  // 中译：本项只输出**识别目标类别结果**（用户 2026-10-20 要求）——型号/得分份额
-  //       形式的置信度/特征掩码不再写；航迹与目标 ID 保留，否则该结果无法归因到目标。
+  // 中译：本项只输出**识别目标类别结果**（用户 2026-10-20 要求）——型号/置信度/
+  //       特征掩码不再写；航迹与目标 ID 保留，否则该结果无法归因到目标。
   // 标识：47A 输出精简（2026-10-20）。
-  // 中译：**联合置信度**（2026-11-08 改名）——四项特征置信度之和，即最佳候选与模板
-  //       的加权平均相似度；它和 2026-10-21 删掉的"得分份额"（best_score/total_score，
-  //       ≈1/模型数）不是同一个量，故在此重新给出。无有效特征维时整字段省略
-  //       （§0 规则 3：无有效值不写 0.000 占位）。
-  // 标识：47A 联合置信度字段（2026-11-08）。
   if (result != nullptr) {
-    std::string comprehensive = track_target_id + " 目标类别=" + category_text;
-    double joint_confidence = 0.0;
-    if (TryRecognitionJointConfidence(result, feature_weights, &joint_confidence)) {
-      comprehensive += " 联合置信度=" + FormatF(joint_confidence, 6);
-    }
+    // 中译：**综合识别输出"联合置信度"**（2026-11-07 甲方要求）——它是本次识别的**总分数**，
+    //   即第一候选的加权总分 `best_score`（四个特征维度的「置信度」之和），值域 [0,1]；
+    //   与四个特征行里的"置信度"（各维度分项）构成"分项 → 总分"的对照关系。
+    // 标识：第47A项联合置信度（2026-11-07）。
+    std::string comprehensive = track_target_id + " 目标类别=" + category_text +
+                                " 联合置信度=" + FormatF(result->best_score, 6);
+    // 合并版第 9 条：补识别判据诊断（与第 73 项接口行同源）。
+    comprehensive += " 综合分=" + FormatF(result->best_score, 4);
+    comprehensive += " 次优分=" + FormatF(result->runner_up_score, 4);
+    comprehensive += " 边际=" + FormatF(result->best_score - result->runner_up_score, 4);
+    comprehensive += " 有效维度数=" + std::to_string(CountBits(result->valid_feature_mask));
+    comprehensive += " 积累观测数=" + std::to_string(result->observation_count);
+    comprehensive += " 积累时长=" + FormatF(result->accumulation_sec, 1) + "s";
     Emit(sim_time_sec, cycle, "综合特征识别功能测试", comprehensive);
   }
 
@@ -1846,11 +1993,11 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                      oneq::common::acceptance::FilterStageText(motion_feature.speed_from_fit);
       motion_text += std::string(" 加速度来源=") +
                      oneq::common::acceptance::FilterStageText(motion_feature.acceleration_from_fit);
-      // 中译：**运动维度的置信度**（2026-11-08 改名，原字段名"综合识别加权贡献"）——与
-      //   RCS/极化/一维像各行同口径：取最佳候选的综合得分里"运动"这一维（基权重 × 本维
-      //   质量 × 归一化系数）所占的数值。无最佳候选（未识别）时整字段省略
-      //   （§0 规则 3：无有效值不写 0.000 占位）。
-      // 标识：运动特征置信度字段（2026-11-08 改名，原 2026-11-06 加权贡献字段）。
+      // 中译：**运动维度的置信度**（2026-11-06 甲方要求）——与 RCS/极化/一维像
+      //   各行同口径：取最佳候选的综合得分里"运动"这一维（基权重 × 本维质量 × 归一化系数）
+      //   所占的数值，外部据此核对"运动这一维到底给判型贡献了多少"。无最佳候选（未识别）
+      //   时整字段省略（§0 规则 3：无有效值不写 0.000 占位）。
+      // 标识：运动特征置信度字段（2026-11-07 由「综合识别加权贡献」改名）。
       double motion_contribution = 0.0;
       if (TryRecognitionContribution(result, feature_weights,
                                      session::RirRecognitionFeatureDimension::kMotion,
@@ -1869,9 +2016,6 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                   "dBsm";
       rcs_text += " 平均RCS归一化值=" + FormatF(FromDb(rcs.mean_dbsm), 6);
       rcs_text += " RCS波动系数=" + FormatF(RcsFluctuationCoefficient(rcs.std_db), 6);
-      // 中译：**RCS 维度的置信度**（2026-11-08 改名，原字段名"综合识别加权贡献"）——
-      //   最佳候选综合得分里 RCS 这一维所占的数值。无最佳候选时整字段省略（§0 规则 3）。
-      // 标识：RCS 特征置信度字段（2026-11-08 改名）。
       double contribution = 0.0;
       if (TryRecognitionContribution(result, feature_weights,
                                      session::RirRecognitionFeatureDimension::kRcs,
@@ -1920,21 +2064,18 @@ void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
     }
     std::string polarization_result =
         track_target_id + " 目标类型=" + category_text + subclass_text;
-    // 中译：**极化维度的置信度**（2026-11-08 改名，原字段名"综合识别加权贡献"）——
-    //   最佳候选综合得分里极化这一维所占的数值。无最佳候选时整字段省略（§0 规则 3）。
-    // 标识：极化特征置信度字段（2026-11-08 改名）。
     double polarization_contribution = 0.0;
     if (TryRecognitionContribution(result, feature_weights,
                                    session::RirRecognitionFeatureDimension::kPolarization,
                                    &polarization_contribution)) {
-      polarization_result += " 置信度=" + FormatF(polarization_contribution, 6);
+      polarization_result +=
+          " 置信度=" + FormatF(polarization_contribution, 6);
     }
     Emit(sim_time_sec, cycle, "极化特征解算功能测试", polarization_result);
 
     // 第47项 宽带一维像特征解算：散射中心（场景距离像真值输入——库内特征提取只
     // 出长度/峰数等统计量，无逐中心量测输出）+ 轮廓（长度/峰数）+ 识别类别 +
-    // 置信度（原"综合识别加权贡献"，2026-11-08 改名）；能量集中/分辨率不写。
-    // 距离像维度无效时省略（§0 规则3）。
+    // 置信度；能量集中/分辨率不写。距离像维度无效时省略（§0 规则3）。
     const auto& rp = features->features.range_profile;
     if (rp.valid) {
       std::string rp_text = track_target_id;
@@ -2089,7 +2230,8 @@ void WriteRirExternalResourceStatus(
     std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
     config::RirWorkMode work_mode, const std::vector<RirDwellPlan>& dwell_plan,
     const std::vector<tracking::RirTrackState>& tracks, std::size_t track_pool_capacity,
-    std::size_t track_pool_free_count, const session::RirIssueList& issues) {
+    std::size_t track_pool_free_count, const session::RirIssueList& issues,
+    unsigned int heartbeat_cycles) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -2167,17 +2309,23 @@ void WriteRirExternalResourceStatus(
   // 中译：告警**沿触发**——同一告警（码 + 内容）在状态未变化时不再每周期重复输出。
   //   实测地球遮挡告警每周期刷 4,000+ 行完全相同的文本（共 1.8 万行），既淹没其他
   //   证据，也让日志体积翻倍。规则：首次出现必输出、内容变化必输出、消失时输出一条
-  //   "恢复"；此外每 kIssueHeartbeatCycles 周期补一条心跳，保留"持续存在"的证据。
+  //   "恢复"；此外每 heartbeat_cycles 周期补一条心跳，保留"持续存在"的证据。
   // 标识：告警沿触发（2026-10-21）。
-  constexpr std::uint32_t kIssueHeartbeatCycles = 100U;
+  // 合并版第 10 条：心跳周期改为策略配置项 RirPolicyConfig::heartbeat_cycles（原硬编码 100）。
+  // 中译：**告警沿触发表加锁**（2026-11-08）——两张表是进程级静态容器，多个雷达实例
+  //   （或宿主同进程多会话）并发写会破坏哈希桶并写坏堆：2026-11-06 那次
+  //   `0xC0000374` 正是落在这条路径之后的字符串构造处。锁覆盖查表、去重与恢复行输出。
+  // 标识：告警沿触发表并发保护（2026-11-08）。
+  static std::mutex last_issue_mutex;
   static std::unordered_map<std::uint64_t, std::set<std::string>> last_issue_keys;
   static std::unordered_map<std::uint64_t, std::uint32_t> last_issue_cycle;
+  std::lock_guard<std::mutex> issue_lock(last_issue_mutex);
   std::set<std::string>& previous_keys = last_issue_keys[radar_id];
   std::set<std::string> current_keys;
   const std::uint32_t last_cycle = last_issue_cycle[radar_id];
   const bool heartbeat_due =
       (last_cycle == 0U) || (cycle < last_cycle) ||
-      (cycle - last_cycle >= kIssueHeartbeatCycles);
+      (cycle - last_cycle >= heartbeat_cycles);
   for (const session::RirIssue& issue : issues) {
     std::string content = "雷达ID=" + std::to_string(radar_id);
     content += " 告警码=" + issue.code;
@@ -2207,7 +2355,9 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
                       std::uint32_t designate_count, std::uint32_t external_track_count,
                       std::uint32_t internal_track_count, std::uint32_t confirmed_tracks,
-                      bool horizon_search_cycle) {
+                      bool horizon_search_cycle,
+                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                      float scan_center_az_deg) {
   if (!RIR_ACCEPTANCE_LOG_ENABLED()) {
     return;
   }
@@ -2225,7 +2375,8 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
   // 标识：调度行扫描模式（2026-11-06）。
   Emit(sim_time_sec, cycle, schedule_item,
        "雷达ID=" + std::to_string(radar_id) + " 扫描模式=" +
-           (horizon_search_cycle ? "地平线扫描" : "指定空域搜索") + " 扫描调度信息=搜索=" +
+           (horizon_search_cycle ? "地平线扫描" : "指定空域搜索") + " 扫描范围=" +
+           FormatScanSectorDeg(scan_sector_deg, scan_center_az_deg) + " 扫描调度信息=搜索=" +
            std::to_string(search_count) + " 指定=" + std::to_string(designate_count) +
            " 驻留=" + std::to_string(external_track_count + internal_track_count) +
            " 预算/已耗时=" + FormatF(budget_sec, 3) + "/" + FormatF(consumed_sec, 3) + "s");
@@ -2414,16 +2565,15 @@ void WriteRirScanRangeSummary(std::uint64_t radar_id, float sim_time_sec, std::u
   content += " 方位扫描范围=" + FormatF(az_continuous_min_deg, 3) + "/" +
              FormatF(az_continuous_max_deg, 3) + "°";
   content += " 俯仰扫描范围=" + FormatF(el_min, 3) + "/" + FormatF(el_max, 3) + "°";
-  // 中译：追加扫描配置回显（用户 2026-10-20 要求）——阵面朝向、可扫描体积、任务子窗、
-  //       起始象限、推进顺序、波位步长系数。静态配置只在此行回显一次，不逐驻留重复；
+  // 中译：追加扫描配置回显（用户 2026-10-20 要求）——阵面朝向、任务子窗、起始象限、
+  //       推进顺序、波位步长系数。静态配置只在此行回显一次，不逐驻留重复；
   //       波位总数/间距/单帧时间可由 Rir_scan_pattern.csv 反算，故不落日志。
-  // 标识：第 48 项配置回显。
+  // 2026-11-07 甲方要求：**删掉「可扫描方位/俯仰范围」两项回显**——它们是硬件体积的
+  //   复写，与判据无关，且配置漂移时容易与判据示例对不上。`orientation` 形参保留
+  //   （同族回显后续可能再加，且调用点已按名传参）。
+  // 标识：第 48 项配置回显（去掉可扫描体积，2026-11-07）。
   content += " 阵面方位朝向=" + FormatF(mission.scan_center_deg.az_deg, 3) + "°";
   content += " 阵面俯仰朝向=" + FormatF(mission.scan_center_deg.el_deg, 3) + "°";
-  content += " 可扫描方位范围=" + FormatF(orientation.az_min_deg, 3) + "/" +
-             FormatF(orientation.az_max_deg, 3) + "°(相对朝向)";
-  content += " 可扫描俯仰范围=" + FormatF(orientation.el_min_deg, 3) + "/" +
-             FormatF(orientation.el_max_deg, 3) + "°(绝对)";
   content += " 任务扫描子窗=az[" + FormatF(mission.scan_window_deg.az_min_deg, 3) + "," +
              FormatF(mission.scan_window_deg.az_max_deg, 3) + "]el[" +
              FormatF(mission.scan_window_deg.el_min_deg, 3) + "," +

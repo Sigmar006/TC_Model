@@ -74,6 +74,10 @@ struct ONEQ_API SbirsMissionConfig {
   SbirsWorkMode work_mode{SbirsWorkMode::kSearchAndStare}; /**< 传感器工作模式 */
   float wide_field_fov_az_deg{20.0f};                      /**< WFOV 方位视场（FOV），单位 deg */
   float wide_field_fov_el_deg{20.0f};                      /**< WFOV 俯仰视场（FOV），单位 deg */
+  /** @brief 地面覆盖包络：视场矩形每条边的分段数（总点数 = 该值+1），原硬编码 16。 */
+  int coverage_edge_steps{16};
+  /** @brief 地面覆盖包络：地平圈等角采样点数，原硬编码 72。 */
+  int coverage_limb_steps{72};
   float narrow_field_fov_az_deg{2.0f};                     /**< NFOV 方位视场（IFOV），单位 deg */
   float narrow_field_fov_el_deg{2.0f};                     /**< NFOV 俯仰视场（IFOV），单位 deg */
   // ECI 方位约定（2026-08 正式变更）：合法域 [0, 360)；-60° 等价折入 300°。

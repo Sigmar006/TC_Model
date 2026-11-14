@@ -30,6 +30,7 @@ struct RirObservationContext {
   float look_el_deg{0.0f};            /**< 视线俯仰角（目标参考系，deg）。 */
   float platform_altitude_m{0.0f};    /**< 平台绝对高度（m）；用于运动高度换算。 */
   float minimum_aspect_coverage_deg{15.0f}; /**< 视角覆盖下限（deg），低于则 RCS 维度无效。 */
+  float minimum_observation_snr_db{6.0f}; /**< 特征提取最低观测 SNR 门（dB），由策略下发。 */
   float max_range_resolution_m{0.0f}; /**< 距离像允许的最大距离分辨率（m）；0 表示不限。 */
   /**
    * @brief 由**量测位置**多点最小二乘拟合出的速度（m/s），供运动特征使用（B3，2026-10-21）。

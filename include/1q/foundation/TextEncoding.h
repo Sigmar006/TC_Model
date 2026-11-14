@@ -49,6 +49,20 @@ ONEQ_API bool IsValidUtf8(const std::string& text);
 ONEQ_API std::string NormalizeExternalText(const std::string& text);
 
 /**
+ * @brief UTF-8 → 系统 ANSI 代码页（Windows 中文系统即 GBK）；失败时原样返回。
+ *
+ * @details 用途：**验收日志行在 VS2013（v120）工具链下是 GBK 字面量**，写出通道按
+ *   "整行 GBK → UTF-8" 转一次。外部名字（`NormalizeExternalText` 归一后是 UTF-8）
+ *   若直接拼进 GBK 行，会被整行转码当成 GBK 再转一次，出现 `鍗+PUA+槦` 这类乱码
+ *   （`卫星-1-1` 的实测形态）。因此在**拼进验收行之前**把它转回系统 ANSI，
+ *   与行内其它 GBK 字面量同编码，再由写出通道统一转 UTF-8。
+ *
+ * @note 只用于验收行拼接，不要用于对外数据（对外一律 UTF-8）。
+ * @note 2026-11-07 场次字段乱码修复。
+ */
+std::string ToSystemAnsiText(const std::string& text);
+
+/**
  * @brief 按 UTF-8 字符边界把字符串截断到不超过 max_bytes 字节。
  *
  * 用于写入定长字段（例如固定长度的 char 数组）：截断点若落在多字节字符中间，会回退到

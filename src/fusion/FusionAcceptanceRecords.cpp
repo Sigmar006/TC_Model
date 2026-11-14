@@ -7,6 +7,9 @@
 
 #include "common/logging/AcceptanceFileLog.h"
 
+// 外部名称转回系统 ANSI（验收行在 VS2013 下是 GBK 字面量，见 SourceLabel 注释）。
+#include "1q/foundation/TextEncoding.h"
+
 #include <cstdlib>
 
 #include <algorithm>
@@ -93,7 +96,12 @@ std::string SourceLabel(std::uint32_t source_id, const std::string& source_name)
     //   数据（通常 GBK），直接拼进 UTF-8 行会让这一段中文变成乱码（甲方实测"只有
     //   `红外地面融合站` 那几个字乱"）。已是 UTF-8 的原样返回。
     // 标识：来源名称 UTF-8 归一（2026-11-06）。
-    return oneq::logging::EnsureUtf8(source_name);
+    // 中译：**归一到 UTF-8 后再转回系统 ANSI**（2026-11-07 修乱码）——v120(VS2013) 下
+    //   验收行字面量是 GBK，写出通道整行按 GBK→UTF-8 转一次；名字若保持 UTF-8 会被
+    //   当成 GBK 再转一次，`卫星-1-1` 就变成 `鍗+PUA+槦-1-1`。这里转回 ANSI 与行内
+    //   其它字段同编码，交给写出通道统一转码。
+    // 标识：验收行外部名称编码（2026-11-07）。
+    return oneq::foundation::ToSystemAnsiText(oneq::logging::EnsureUtf8(source_name));
   }
   return "实体" + std::to_string(source_id);
 }

@@ -137,6 +137,8 @@ struct RirDetectionAcceptInput {
   double prf_hz{0.0};
   double center_frequency_hz{0.0};
   double cfar_pfa{1.0e-6};
+  double mti_noise_factor{2.0};
+  double clutter_sigma_velocity_mps{0.25};
   std::vector<oneq::electromagnetics::RfIncidentLinkResult> incident_links{};
 };
 
@@ -254,10 +256,16 @@ void WriteRirImpactGuidance(std::uint64_t radar_id, float sim_time_sec, std::uin
                             double az_deg, double el_deg, double altitude_m);
 
 void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
-                              float beam_az_deg, float beam_el_deg,
+                              const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                              float scan_center_az_deg, float beam_az_deg, float beam_el_deg,
                               const std::vector<RirSearchDetectionLite>& detections);
 
 /**
+ * @param[in] scan_sector_deg 本周期**有效搜索扇区**（`ResolveSearchSector` 的结果：
+ *            az 相对阵面朝向、el 绝对，已与可扫描体积求交）。
+ * @param[in] scan_center_az_deg 阵面当前朝向方位（deg）——写入时把扇区 az 折成**绝对方位**。
+ * @note 行内 `扫描范围=` 一律写绝对角（甲方口径：要"当前实际扫哪儿"，不要相对角）。
+ *
  * @brief 验收判定标准 第37A项「地平线搜索功能测试」：与第37项同批字段、独立项名。
  * @note **与第37项互斥且由模式唯一决定**（2026-11-06 甲方口径）：`search_mode ==
  *       kHorizonScan` 时整周期只写 37A（指向/调度/检测三类行），不写任何 37 行；
@@ -265,7 +273,10 @@ void WriteRirSearchDetections(std::uint64_t radar_id, float sim_time_sec, std::u
  *       判定函数见 `IsHorizonSearchCycle`。
  */
 void WriteRirHorizonSearchDetections(std::uint64_t radar_id, float sim_time_sec,
-                                     std::uint32_t cycle, float beam_az_deg, float beam_el_deg,
+                                     std::uint32_t cycle,
+                                     const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                                     float scan_center_az_deg, float beam_az_deg,
+                                     float beam_el_deg,
                                      const std::vector<RirSearchDetectionLite>& detections);
 
 /**
@@ -355,6 +366,20 @@ bool TryLookPolarFromEnuM(float east_m, float north_m, float up_m, float* range_
  *            ECEF/LLA 换算用——评审 2026-08-26 条17：ENU 字段替换为 ECEF/LLA）。
  * @param[in] truth 对应场景真值上下文（可空指针 = 无真值，误差统计行省略）。
  */
+/**
+ * @brief 第 47A 项「综合识别准确率」汇总行（2026-11-10）。
+ *
+ * @details 判据原文要求"识别正确率 >60%"，但此前日志只有类别/置信度，没有正确率可判。
+ *   本行按**跑全程累计**给出样本数/判对数/准确率与达标判定，每 kAccuracySummaryCycles
+ *   周期一条；样本为 0（无真值或无结论）时不出行，不写 0 假值。
+ *
+ * @param[in] sim_time_sec 仿真时刻（s）。
+ * @param[in] cycle        周期号。
+ * @param[in] summary      周期识别汇总（取 accuracy_* 三个累计字段）。
+ */
+void WriteRirRecognitionAccuracy(float sim_time_sec, std::uint32_t cycle,
+                                 const session::RirRecognitionCycleSummary& summary);
+
 void WriteRirTrackAndId(float sim_time_sec, std::uint32_t cycle,
                         const tracking::RirTrackState& track,
                         const session::RirRecognitionResult* result,
@@ -375,7 +400,8 @@ void WriteRirExternalResourceStatus(
     std::uint64_t radar_id, float sim_time_sec, std::uint32_t cycle,
     config::RirWorkMode work_mode, const std::vector<RirDwellPlan>& dwell_plan,
     const std::vector<tracking::RirTrackState>& tracks, std::size_t track_pool_capacity,
-    std::size_t track_pool_free_count, const session::RirIssueList& issues);
+    std::size_t track_pool_free_count, const session::RirIssueList& issues,
+    unsigned int heartbeat_cycles);
 
 /**
  * @brief 验收判定标准 第37项·其二：扫描调度信息行（搜索/指定/驻留分项计数 +
@@ -387,7 +413,9 @@ void WriteRirSchedule(std::uint64_t radar_id, float sim_time_sec, std::uint32_t 
                       float budget_sec, float consumed_sec, std::uint32_t search_count,
                       std::uint32_t designate_count, std::uint32_t external_track_count,
                       std::uint32_t internal_track_count,
-                      std::uint32_t confirmed_tracks, bool horizon_search_cycle);
+                      std::uint32_t confirmed_tracks, bool horizon_search_cycle,
+                      const config::RirAzimuthElevationLimitsDeg& scan_sector_deg,
+                      float scan_center_az_deg);
 
 /**
  * @brief 验收判定标准 第48项：逐驻留波束指向行（2026-08-29 TAS：一周期多驻留）。

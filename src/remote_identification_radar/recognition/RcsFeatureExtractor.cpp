@@ -31,7 +31,7 @@ namespace {
 float Clamp01(float value) { return std::max(0.0f, std::min(1.0f, value)); }
 
 /** @brief RCS 观测最低 SNR 门限（dB）：低于则维度不可用（效能级）。 */
-constexpr float kMinimumObservationSnrDb = 6.0f;
+// 合并版第 9 条：观测 SNR 门改为配置项 RirRecognitionPolicy::min_feature_observation_snr_db（原硬编码 6.0）。
 
 /**
  * @brief 在视角离散网格上插值 RCS。
@@ -79,9 +79,10 @@ bool InterpolateAt(const std::vector<session::RirAspectRcsSample>& samples, floa
 // 过程：输入门——无样本、SNR 非有限或低于 6 dB 时 RCS 维直接判不可用（效能级门控）。
 RirRcsObservation RirRcsFeatureExtractor::Extract(const std::vector<session::RirAspectRcsSample>& samples,
                                             float look_az_deg, float look_el_deg, float snr_db,
-                                            float minimum_aspect_coverage_deg) {
+                                            float minimum_aspect_coverage_deg,
+                                            float minimum_observation_snr_db) {
   RirRcsObservation observation;
-  if (samples.empty() || !std::isfinite(snr_db) || snr_db < kMinimumObservationSnrDb) {
+  if (samples.empty() || !std::isfinite(snr_db) || snr_db < minimum_observation_snr_db) {
     return observation;  // 低 SNR：RCS 维度不可用（效能级门控）
   }
 

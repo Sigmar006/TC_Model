@@ -119,6 +119,10 @@ table RirDetectionPolicyConfig {
   pulse_count:int;
   random_seed:uint;
   gate_mode:int;  // RirDetectionGateMode
+  main_lobe_gate_scale:float = 1.0;
+  snr_fallback_gate_db:float = 6.0;
+  mti_noise_factor:float = 2.0;
+  clutter_sigma_velocity_mps:float = 0.25;
 }
 
 table RirAssociationPolicyConfig {
@@ -127,6 +131,7 @@ table RirAssociationPolicyConfig {
 
 table RirTrackingPolicyConfig {
   kalman_noise_diff_coeff:float;
+  min_noise_diff_coeff:float = 0.001;
 }
 
 table RirLifecyclePolicyConfig {
@@ -154,6 +159,7 @@ table RirRecognitionPolicy {
   result_hold_sec:float;
   feature_weights:RirRecognitionFeatureWeights;
   database_path:string;
+  min_feature_observation_snr_db:float = 6.0;
 }
 
 table RirPolicyConfig {
@@ -162,6 +168,7 @@ table RirPolicyConfig {
   tracking:RirTrackingPolicyConfig;
   lifecycle:RirLifecyclePolicyConfig;
   recognition:RirRecognitionPolicy;
+  heartbeat_cycles:uint = 100;
 }
 
 // ---- environment 域 ----

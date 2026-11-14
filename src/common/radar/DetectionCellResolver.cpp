@@ -325,7 +325,7 @@ bool TryResolveDetectionCell(
     //   （+3.01 dB），必须与对目标的响应 H_mti 配对进入分母；此前只在验收旁路里算了 2，
     //   SINR 通道漏掉，导致信噪比高估约 3 dB。
     // 标识：对消器噪声增益（2026-10-23）。
-    mti_noise_linear = kMtiNoiseFactor;
+    mti_noise_linear = config.mti_noise_factor;
   }
   const double denominator = std::max(
       candidate.thermal_noise_power_w * noise_gain_linear * mti_noise_linear +

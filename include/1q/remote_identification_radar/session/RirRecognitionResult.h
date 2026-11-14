@@ -36,7 +36,14 @@ enum class ONEQ_API RirRecognitionCategory : std::uint8_t {
   kUnknown = 3,   /**< 未知。 */
   kFighter = 4,   /**< 战斗机。 */
   kBomber = 5,    /**< 轰炸机。 */
-  kMissile = 6    /**< 导弹。 */
+  kMissile = 6,   /**< 导弹。 */
+  // 中译：**弹道体系穿透辅助目标**（2026-11-07）——识别库已含 DECOY/DEBRIS/BOOSTER 三类模板，
+  //   但公共枚举此前只有七类，导致这三类模板命中后只能落成 kUnknown（现场"全部未知"的根因）。
+  //   追加三个大类（保留既有编号不变），由 CategoryToPublic 从库的 category_id 映射。
+  // 标识：穿透辅助目标大类（2026-11-07）。
+  kDecoy = 7,     /**< 诱饵（再入段假目标）。 */
+  kDebris = 8,    /**< 弹片/碎片。 */
+  kBooster = 9    /**< 剥离的助推火箭。 */
 };
 
 /**
@@ -78,6 +85,17 @@ struct ONEQ_API RirRecognitionFeatureScores {
 };
 
 /**
+ * @brief RirRecognitionCandidate 单个识别候选（型号 + 大类 + 得分）。
+ * @note 仅用于诊断（"为什么判成这一类"需要看到前几名与各自得分）；
+ *       固定长度字符数组，避免在公共结构里引入动态分配。
+ */
+struct ONEQ_API RirRecognitionCandidate {
+  char model_id[32]{};   /**< 型号 ID（超长截断，NUL 结尾）。 */
+  char category_id[20]{};/**< 大类 ID（库内字符串，超长截断）。 */
+  float score{0.0f};     /**< 先验加权得分（未归一化）。 */
+};
+
+/**
  * @brief RirRecognitionResult 单条航迹的识别结论。
  */
 struct ONEQ_API RirRecognitionResult {
@@ -95,6 +113,12 @@ struct ONEQ_API RirRecognitionResult {
   std::string database_version{};       /**< 输出所使用的特征库版本。 */
   std::uint32_t source_cycle_index{0U}; /**< 产生此结论的 cycle_index。 */
   std::uint64_t source_batch_id{0U};    /**< 产生此结论的 batch_id。 */
+  // 中译：**前三候选透出**（2026-11-08）——此前只有 best_model/runner_up_score，
+  //   看不出"第二名是谁、差多少"，现场"装了诱饵特征却判成弹道/未知"无从定位。
+  //   现在把前 3 名的（型号、大类、得分）一并带出，宿主诊断行可直接打印。
+  // 标识：识别前三候选透出（2026-11-08）。
+  RirRecognitionCandidate top_candidates[3]{}; /**< 前 3 个候选（降序，空位其余字段为 0）。 */
+  std::uint8_t top_candidate_count{0U};        /**< 有效候选数，<= 3。 */
 };
 
 /**
@@ -125,8 +149,15 @@ struct ONEQ_API RirRecognitionCycleSummary {
   float mean_confidence{0.0f};                 /**< 已确认型号的平均置信度，[0, 1]。 */
   float mean_first_confirmation_sec{0.0f};     /**< 平均首次确认时间（s）。 */
   bool has_ground_truth{false};                /**< 本周期是否有真值可用于正确率统计。 */
-  float category_accuracy{0.0f};               /**< 大类正确率，仅 has_ground_truth 时有效。 */
-  float model_accuracy{0.0f};                  /**< 型号正确率，仅 has_ground_truth 时有效。 */
+  float category_accuracy{0.0f};               /**< 本周期大类正确率，仅 has_ground_truth 时有效。 */
+  float model_accuracy{0.0f};                  /**< 本周期型号正确率，仅 has_ground_truth 时有效。 */
+  // 中译：**综合识别准确率（跑全程累计口径）**（2026-11-10）——本周期值会被单拍噪声
+  //   放大，判据要的是整轮统计，故另给累计样本数与判对数，比率由二者相除得到。
+  //   样本 = 参与识别 ∧ 有真值 ∧ 已出结论（大类或型号确认）的"航迹·周期"。
+  // 标识：综合识别准确率累计（2026-11-10）。
+  std::uint32_t accuracy_sample_count{0U};  /**< 累计样本数（有真值且已出结论）。 */
+  std::uint32_t accuracy_correct_count{0U}; /**< 累计判对数（判决大类 == 真值大类）。 */
+  float accuracy_rate{0.0f};                /**< 累计综合识别准确率 = 判对/样本；样本 0 时为 0。 */
 
   RirDwellBudgetSummary dwell_budget{}; /**< 本周期驻留预算摘要（自持链路）。 */
 };

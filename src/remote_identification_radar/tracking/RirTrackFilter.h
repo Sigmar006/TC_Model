@@ -28,6 +28,8 @@ using RirKalmanUpdateResult = ::oneq::common::estimation::KalmanUpdateResult<6, 
 struct RirTrackFilterConfig {
   /** @brief 连续白噪声加速度扩散系数 q（m/s²）。 */
   float process_noise_diff_coeff{1.0f};
+  /** @brief 过程噪声扩散系数下限（原硬编码 0.001）；合并版第 8 条配置化。 */
+  float min_noise_diff_coeff{0.001f};
   /** @brief 缺省位置量测噪声标准差（m），仅构造缺省 R 时使用。 */
   float default_measurement_noise_std{10.0f};
   /** @brief 新航迹初始位置协方差对角线（m²）。 */

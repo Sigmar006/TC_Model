@@ -350,8 +350,6 @@ TEST(RirExternalTrackTest, DegradedCueStillTakesAllSlots) {
             10U);
 }
 
-}  // namespace
-}  // namespace tests
 /// @brief **负向验证 A：引导能转向，但目标仍受"搜索空域门"约束**（2026-11-04）。
 ///        阵面朝正西（`scan_center.az=180°`）、任务子窗只覆盖西侧 ±3°，目标与引导都在
 ///        正东（az≈0，恰是背对方向）。期望：引导**照常把全部波位打到目标方向**
@@ -442,8 +440,6 @@ TEST(RirExternalTrackTest, CueDetectsTargetWhenSearchWindowCoversIt) {
   EXPECT_GT(attributions, 0U) << "引导到位且子窗覆盖时，应形成航迹归属（= 真的探测到）";
 }
 
-}  // namespace
-}  // namespace tests
 /// @brief **负向验证：扫描中心背对目标**（2026-11-04）——把阵面朝到正西
 ///        （`scan_center.az=180°`）、任务子窗只有西侧 ±3°，而目标与引导都在正东
 ///        （az≈0，恰是背对方向）。期望：
@@ -503,4 +499,6 @@ TEST(RirExternalTrackTest, CueOverridesScanCenterPointedAway) {
       << "引导到位后东侧目标应被点亮";
 }
 
+}  // namespace
+}  // namespace tests
 }  // namespace remote_identification_radar

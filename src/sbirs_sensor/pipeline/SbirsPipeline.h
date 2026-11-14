@@ -141,6 +141,8 @@ class SbirsPipeline {
 
  private:
   config::SbirsInternalExecutionConfig config_{};
+  /** @brief 本会话地球半径（m）：遮挡判定/覆盖/几何受限同源，保证同周期同口径。 */
+  double EarthRadiusM() const { return config_.session.environment.earth_radius_m; }
   float scan_phase_deg_{0.0f};
   // 扫描方位基准（2026-08-31）：kEciAbsolute 恒 0；kNadirRelative 为最近一次执行
   // 周期算出的星下点 ECI 方位（deg），ApplyConfig 相位重锚与 Execute 指向共用。

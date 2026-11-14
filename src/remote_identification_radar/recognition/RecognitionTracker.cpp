@@ -20,6 +20,7 @@
  * - 对应验收项：第 47A 项 综合特征识别功能测试（正确率 >60%）。
  */
 
+#include <cstring>
 #include "remote_identification_radar/recognition/RecognitionTracker.h"
 
 #include <algorithm>
@@ -101,6 +102,15 @@ session::RirRecognitionCategory CategoryToPublic(const std::string& category_id)
     return session::RirRecognitionCategory::kMissile;
   }
   // "UAV" 不再映射专属大类（2026-08-22 甲方裁定移除无人机识别），落入 kUnknown。
+  if (category_id == "DECOY") {
+    return session::RirRecognitionCategory::kDecoy;
+  }
+  if (category_id == "DEBRIS") {
+    return session::RirRecognitionCategory::kDebris;
+  }
+  if (category_id == "BOOSTER") {
+    return session::RirRecognitionCategory::kBooster;
+  }
   if (category_id == "OTHER") {
     return session::RirRecognitionCategory::kOther;
   }
@@ -287,6 +297,11 @@ void RirTracker::UpdateCycle(
       continue;  // 无场景目标特征输入 → 本周期无观测
     }
     const TrackObservationInput& input = found->second;
+    // 过程：登记该航迹的真值大类（场景目标带下来的设计真值，仅统计用）。
+    // 标识：真值大类登记（2026-11-10）。
+    if (input.target != nullptr) {
+      state.truth_category = input.target->truth_category;
+    }
     if (input.context.range_m > options_.max_range_m) {
       ExpireIfHeld(&state, sim_time_sec);
       continue;  // 超出最大识别距离
@@ -411,6 +426,19 @@ void RirTracker::UpdateCycle(
       judgement.best_score = match.best_score;
       judgement.runner_up_score = match.runner_up_score;
       judgement.confidence = match.confidence;
+      // 过程：前 3 候选落盘（诊断用）——型号/大类截断拷贝，得分原样。
+      // 标识：识别前三候选（2026-11-08）。
+      const std::size_t top_total =
+          match.candidates.size() < 3U ? match.candidates.size() : 3U;
+      judgement.top_candidate_count = static_cast<std::uint8_t>(top_total);
+      for (std::size_t c = 0U; c < top_total; ++c) {
+        const RirCandidate& candidate = match.candidates[c];
+        std::strncpy(judgement.top_candidates[c].model_id, candidate.model_id.c_str(),
+                     sizeof(judgement.top_candidates[c].model_id) - 1U);
+        std::strncpy(judgement.top_candidates[c].category_id, candidate.category_id.c_str(),
+                     sizeof(judgement.top_candidates[c].category_id) - 1U);
+        judgement.top_candidates[c].score = candidate.score;
+      }
       // 过程：判决三态——得分低于 acceptance_score 判未知；裕度 ≥ minimum_margin 且维度
       //       达标判型号确认；否则退一级，只判大类确认。
       const float margin = judgement.best_score - judgement.runner_up_score;
@@ -536,15 +564,35 @@ session::RirRecognitionCycleSummary RirTracker::BuildSummary(
         first_confirmation_sum +=
             found->second.first_conclusion_time_sec - found->second.first_observation_sec;
       }
-      // 真值准确率：target_name 命中数据库 model_id 时视为有真值（仅统计，不参与识别）。
-      const std::unordered_map<std::string, std::string>::const_iterator truth =
-          model_categories_.find(snapshot.target_name);
-      if (truth != model_categories_.end()) {
-        ++truth_count;
-        if (result->target_category == CategoryToPublic(truth->second)) {
-          ++category_correct;
+      // 中译：**真值来源改为"场景目标显式真值"优先**（2026-11-10）——旧口径要求目标名
+      //   恰好等于数据库 model_id（现场目标名是"弹道-朝鲜""卫星-1-4"，永不命中，样本恒 0、
+      //   准确率恒 0）。现在取航迹状态里登记的 `truth_category`（宿主按场景设计填入），
+      //   仍保留"目标名 == 库 model_id"作为兜底，两种来源都没有则不计数（不伪造真值）。
+      // 标识：真值来源显式化（2026-11-10）。
+      session::RirRecognitionCategory truth_category = session::RirRecognitionCategory::kUnknown;
+      std::string truth_model;
+      const std::unordered_map<std::uint64_t, RirTrackState>::const_iterator state_found =
+          tracks_.find(snapshot.association_key);
+      if (state_found != tracks_.end() &&
+          state_found->second.truth_category != session::RirRecognitionCategory::kUnknown) {
+        truth_category = state_found->second.truth_category;
+      } else {
+        const std::unordered_map<std::string, std::string>::const_iterator truth =
+            model_categories_.find(snapshot.target_name);
+        if (truth != model_categories_.end()) {
+          truth_category = CategoryToPublic(truth->second);
+          truth_model = snapshot.target_name;
         }
-        if (result->target_model == snapshot.target_name) {
+      }
+      if (truth_category != session::RirRecognitionCategory::kUnknown) {
+        ++truth_count;
+        // 累计口径：样本 = 有真值且已出结论的"航迹·周期"。
+        ++accuracy_samples_;
+        if (result->target_category == truth_category) {
+          ++category_correct;
+          ++accuracy_correct_;
+        }
+        if (!truth_model.empty() && result->target_model == truth_model) {
           ++model_correct;
         }
       }
@@ -581,6 +629,14 @@ session::RirRecognitionCycleSummary RirTracker::BuildSummary(
     summary.category_accuracy =
         static_cast<float>(category_correct) / static_cast<float>(truth_count);
     summary.model_accuracy = static_cast<float>(model_correct) / static_cast<float>(truth_count);
+  }
+  // 中译：累计口径（跑全程）——判据要的是整轮准确率，单周期值受单拍噪声影响太大。
+  // 标识：综合识别准确率累计（2026-11-10）。
+  if (accuracy_samples_ > 0U) {
+    summary.accuracy_sample_count = static_cast<std::uint32_t>(accuracy_samples_);
+    summary.accuracy_correct_count = static_cast<std::uint32_t>(accuracy_correct_);
+    summary.accuracy_rate =
+        static_cast<float>(accuracy_correct_) / static_cast<float>(accuracy_samples_);
   }
   return summary;
 }

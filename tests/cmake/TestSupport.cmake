@@ -18,6 +18,18 @@ if(PACKAGE_MANAGER STREQUAL "conan")
     find_package(flatbuffers CONFIG REQUIRED)
     find_package(ZLIB QUIET)
 endif()
+if(NOT PACKAGE_MANAGER STREQUAL "conan")
+    # 中译：**离线/国产化路径用系统 GTest**（2026-11-07）——conan 分支把 GTest 当包导入；
+    #   `PACKAGE_MANAGER=none`（内网/信创环境）没有这一步，而各测试分区会链接
+    #   `GTest::gtest_main`，于是 `-DENABLE_TESTING=ON` 在配置阶段就报
+    #   "target was not found"（WSL2 + Ubuntu 24.04 实测）。这里按系统包探测：
+    #   Ubuntu/Debian 装 `libgtest-dev libgmock-dev` 即可；未装时保持原行为，不阻断库构建。
+    # 标识：离线路径系统 GTest（2026-11-07）。
+    find_package(GTest CONFIG QUIET)
+    if(TARGET GTest::gtest)
+        message(STATUS "1q tests: system GTest found (GTest_DIR=${GTest_DIR})")
+    endif()
+endif()
 if(NOT DEFINED flatbuffers_INCLUDE_DIRS_RELEASE)
     file(GLOB _oneq_flatbuffers_data_candidates
         "${CMAKE_BINARY_DIR}/build/generators/flatbuffers-*-data.cmake")

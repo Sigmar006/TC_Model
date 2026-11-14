@@ -56,7 +56,9 @@ void WriteSbirsOrbitSample(std::uint32_t satellite_id, float sim_time_sec, std::
                            float orbit_sigma_deg, double reference_range_m,
                            float nav_position_sigma_m,
                            const session::SbirsVector3M& satellite_ecef,
-                           const session::SbirsVector3M& satellite_velocity_ecef);
+                           const session::SbirsVector3M& satellite_velocity_ecef,
+                           float velocity_error_ratio,
+                           const session::SbirsEulerAnglesDeg& satellite_attitude_eci_body_deg);
 
 void WriteSbirsAngleError(std::uint32_t satellite_id, float sim_time_sec, std::uint32_t cycle,
                           std::uint64_t target_id, double az_error_deg, double el_error_deg);

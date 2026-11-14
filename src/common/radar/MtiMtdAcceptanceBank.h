@@ -34,6 +34,10 @@ struct MtiMtdAcceptanceInput {
   double two_way_doppler_shift_hz{0.0};
   double prf_hz{0.0};
   double center_frequency_hz{0.0};
+  /** @brief 2 脉冲对消器对白噪声的功率增益（原硬编码 2.0）；合并版第 11 条配置化。 */
+  double noise_factor{2.0};
+  /** @brief 杂波速度谱宽 σv（m/s，原硬编码 0.25）；合并版第 12 条配置化。 */
+  double clutter_sigma_velocity_mps{0.25};
   const MtiMtdInterferenceTone* tones{nullptr};
   std::size_t tone_count{0U};
   /**

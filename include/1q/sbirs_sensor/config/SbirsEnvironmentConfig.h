@@ -29,6 +29,12 @@ struct ONEQ_API SbirsEnvironmentConfig {
   float relative_humidity_percent{50.0f};                  /**< 相对湿度（%） */
   float visibility_km{20.0f};                              /**< 能见度，单位 km */
   float base_atmospheric_transmittance{0.8f};              /**< 基础大气透过率 τ(λ,d)，无量纲 */
+  /** @brief 地球半径（球模型），单位 m；缺省 = 历史常量 6371000。 */
+  double earth_radius_m{6371000.0};
+  /** @brief 大气壳层气团因子 X 的上限（近地平掠射防发散），原硬编码 10.0。 */
+  double max_airmass_factor{10.0};
+  /** @brief 场景目标行心跳周期（周期数，原硬编码 100）；合并版第 10 条配置化。 */
+  unsigned int heartbeat_cycles{100U};
   // 2.9 气象交互项权重：A_total 加权叠加中的交互项系数 k_j（默认 0 = 无交互项，
   // 保持向后兼容）。单位：无量纲。当前仅 humidity×visibility 与 rain×humidity 两项。
   float humidity_visibility_interaction_weight{0.0f}; /**< 湿度×能见度交互项系数 k_j（默认 0 关闭） */

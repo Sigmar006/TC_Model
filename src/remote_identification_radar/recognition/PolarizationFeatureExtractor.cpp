@@ -33,7 +33,7 @@ constexpr float kReferenceRangeM = 100000.0f;
 /** @brief 相对差对数奇异下限（线性）。 */
 constexpr float kMinimumRelativeDifferenceFloor = 1.0e-6f;
 /** @brief 极化观测最低 SNR 门限（dB）：低于则维度不可用（效能级）。 */
-constexpr float kMinimumObservationSnrDb = 6.0f;
+// 合并版第 9 条：观测 SNR 门改为配置项 RirRecognitionPolicy::min_feature_observation_snr_db（原硬编码 6.0）。
 
 float Clamp01(float value) { return std::max(0.0f, std::min(1.0f, value)); }
 
@@ -64,9 +64,9 @@ bool InterpolateChannels(const std::vector<session::RirPolSMatrixSample>& sample
 // 过程：输入门——无样本、SNR<6 dB 或距离非法时极化维判不可用。
 RirPolarizationObservation RirPolarizationFeatureExtractor::Extract(
     const std::vector<session::RirPolSMatrixSample>& samples, float look_az_deg,
-    float look_el_deg, float snr_db, float range_m) {
+    float look_el_deg, float snr_db, float range_m, float minimum_observation_snr_db) {
   RirPolarizationObservation observation;
-  if (samples.empty() || !std::isfinite(snr_db) || snr_db < kMinimumObservationSnrDb ||
+  if (samples.empty() || !std::isfinite(snr_db) || snr_db < minimum_observation_snr_db ||
       !std::isfinite(range_m) || range_m <= 0.0f) {
     return observation;  // 低 SNR 或无效距离：极化维度不可用
   }

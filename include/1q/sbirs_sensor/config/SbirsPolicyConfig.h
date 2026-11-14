@@ -36,6 +36,7 @@ struct ONEQ_API SbirsErrorModelConfig {
   float fov_sigma_deg{0.00005f};         /**< 探测器视场（像元/畸变）误差 1-σ，单位 deg */
   float detector_bandwidth_hz{100.0f};   /**< 探测器带宽，用于动态滞后误差，单位 Hz */
   float nav_position_sigma_m{2.0f};      /**< 卫星导航定位径向误差 1-σ（2026-11-05 甲方：误差模 ≤10 m，取 2 m≈4.5σ 覆盖 6 万样本），仅验收旁路 ECEF 误差行使用 */
+  float velocity_error_ratio{0.01f};    /**< 速度误差量级占导航 σ 的比例（原硬编码 0.01），无量纲。 */
   /** @note 甲方 2026-08-27 指标：红外系统测角误差 ≤3 μrad（≈0.000172°）。三项
    *        σ 默认 RSS ≈ 1.95 μrad（3×10⁻⁵°/10⁻⁴°/5×10⁻⁵° 组合），注入即在指标
    *        内且留 35% 余量；经 NFOV 滤波后验收行（红外系统测角误差 RMSE）更低。
@@ -101,6 +102,7 @@ struct ONEQ_API SbirsTrackingConfig {
   float initial_position_std_m{1000.0f};       /**< 初始位置 1-σ（米），构造 P0 位置对角元 */
   float initial_velocity_std_m_per_s{100.0f};  /**< 初始速度 1-σ（m/s），构造 P0 速度对角元 */
   unsigned int nis_gate_loss_cycles{0U}; /**< 连续 NIS 超过 2 维 95% 门限后丢锁的周期数；0 表示禁用 */
+  float nis_gate_threshold{5.99f};      /**< NIS 统计门（2 维 95%），原硬编码 5.99；合并版第 5 条配置化。 */
   unsigned int nfov_tracking_gate_loss_cycles{2U}; /**< NFOV 几何/SNR 门连续失败后丢锁周期数（>=1） */
   std::vector<float> imm_model_noise_diff_coeffs{}; /**< IMM 各模型的过程噪声扩散系数；空向量表示使用默认 [1.0, 100.0] */
 };

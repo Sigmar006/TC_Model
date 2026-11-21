@@ -1,0 +1,172 @@
+<mxfile host="app.diagrams.net" modified="2026-11-01T00:00:00.000Z" agent="draw.io" version="24.0.0">
+  <diagram name="全链路架构" id="arch">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="探测系统全链路架构" style="text;html=1;fontSize=18;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="450" y="10" width="400" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="note" value="&lt;b&gt;注意&lt;/b&gt;：OPIR 和 RIR 可以&lt;b&gt;独立运行&lt;/b&gt;。融合引擎接受任意数量的检测源（1路或多路），推演/评估同理。虚线表示可选依赖。" style="text;html=1;fontSize=11;fillColor=#fff2cc;strokeColor=#d6b656;align=center;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="840" y="10" width="360" height="30" as="geometry"/>
+        </mxCell>
+
+        <!-- Inputs -->
+        <mxCell id="input-cfg" value="&lt;b&gt;配置文件&lt;/b&gt;&lt;br&gt;sbirs.json / rir.json" style="shape=document;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="120" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="input-truth" value="&lt;b&gt;地面真值&lt;/b&gt;&lt;br&gt;位置+速度" style="shape=document;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666;" vertex="1" parent="1">
+          <mxGeometry x="220" y="60" width="120" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="input-ephem" value="&lt;b&gt;卫星轨道&lt;/b&gt;&lt;br&gt;ECEF位置" style="shape=document;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666;" vertex="1" parent="1">
+          <mxGeometry x="400" y="60" width="120" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- OPIR Container -->
+        <mxCell id="opir-box" value="🔭 OPIR 天基红外（可独立运行）" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="560" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-scan" value="扫描推进&lt;br&gt;相位+腿+行" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="opir-box">
+          <mxGeometry x="15" y="45" width="100" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-bore" value="视轴合成&lt;br&gt;姿态∘安装∘扫描" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="opir-box">
+          <mxGeometry x="135" y="45" width="120" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-radio" value="辐射+噪声&lt;br&gt;SNR计算" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="opir-box">
+          <mxGeometry x="275" y="45" width="100" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-gate" value="宽视场&lt;br&gt;四道门限" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="opir-box">
+          <mxGeometry x="395" y="45" width="100" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-track" value="窄视场跟踪&lt;br&gt;EKF/IMM/CV" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="opir-box">
+          <mxGeometry x="135" y="115" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-out" value="📤 SbirsDetectionRecord&lt;br&gt;角度+SNR+协方差" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="opir-box">
+          <mxGeometry x="350" y="115" width="170" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- OPIR internal edges -->
+        <mxCell id="opir-e1" edge="1" parent="opir-box" source="opir-scan" target="opir-bore" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-e2" edge="1" parent="opir-box" source="opir-bore" target="opir-radio" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-e3" edge="1" parent="opir-box" source="opir-radio" target="opir-gate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-e4" edge="1" parent="opir-box" source="opir-gate" target="opir-track" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="opir-e5" edge="1" parent="opir-box" source="opir-track" target="opir-out" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- RIR Container -->
+        <mxCell id="rir-box" value="📡 RIR 远程识别雷达（可独立运行，引导可选）" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;html=1;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="640" y="180" width="560" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-rf" value="RF解析&lt;br&gt;载频+脉冲" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="rir-box">
+          <mxGeometry x="15" y="45" width="90" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-sinr" value="SINR+CFAR&lt;br&gt;检测判决" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="rir-box">
+          <mxGeometry x="125" y="45" width="100" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-assoc" value="关联+滤波&lt;br&gt;马氏距离+LAPJV" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="rir-box">
+          <mxGeometry x="245" y="45" width="110" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-recog" value="识别&lt;br&gt;运动/RCS/距离像/极化" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="rir-box">
+          <mxGeometry x="375" y="45" width="110" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-out" value="📤 DetectionRecord&lt;br&gt;位置+速度+RCS+识别" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="rir-box">
+          <mxGeometry x="155" y="115" width="200" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- RIR internal edges -->
+        <mxCell id="rir-e1" edge="1" parent="rir-box" source="rir-rf" target="rir-sinr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-e2" edge="1" parent="rir-box" source="rir-sinr" target="rir-assoc" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-e3" edge="1" parent="rir-box" source="rir-assoc" target="rir-recog" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="rir-e4" edge="1" parent="rir-box" source="rir-recog" target="rir-out" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Downstream -->
+        <mxCell id="fusion" value="&lt;b&gt;FusionEngine&lt;/b&gt;&lt;br&gt;三级关联 · UKF滤波&lt;br&gt;单源或多源均可" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="220" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="infer" value="&lt;b&gt;TargetInferenceEngine&lt;/b&gt;&lt;br&gt;RK4推演 · 落点/发射点&lt;br&gt;敏度误差 · 类型融合" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="340" y="420" width="240" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="eval-box" value="&lt;b&gt;PrecisionEvaluation&lt;/b&gt;&lt;br&gt;双星交会 · 五分项指标&lt;br&gt;AHP求权 · 综合评分" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="660" y="420" width="240" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="report" value="&lt;b&gt;📋 评估报告&lt;/b&gt;&lt;br&gt;分数+精度+接力计划" style="shape=document;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="960" y="427" width="150" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- Data-flow arrows (cross-container, parent=1) -->
+        <mxCell id="e-opir-fusion" edge="1" parent="1" source="opir-out" target="fusion" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#6c8ebf;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="l1" value="角度+SNR&#xa;(至少1路)" style="edgeLabel;html=1;align=center;" vertex="1" connectable="0" parent="e-opir-fusion">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-rir-fusion" edge="1" parent="1" source="rir-out" target="fusion" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#82b366;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="l2" value="位置+速度+RCS+识别&#xa;(至少1路)" style="edgeLabel;html=1;align=center;" vertex="1" connectable="0" parent="e-rir-fusion">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-fus-inf" edge="1" parent="1" source="fusion" target="infer" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#b85450;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="l3" value="FusedTarget&#xa;(位置+速度+协方差)" style="edgeLabel;html=1;align=center;" vertex="1" connectable="0" parent="e-fus-inf">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-inf-eval" edge="1" parent="1" source="infer" target="eval-box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#b85450;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="l4" value="TrajectoryPrediction&#xa;(落点+发射点+类型)" style="edgeLabel;html=1;align=center;" vertex="1" connectable="0" parent="e-inf-eval">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-truth-eval" edge="1" parent="1" source="input-truth" target="eval-box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;dashed=1;strokeColor=#666;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="l5" value="对比真值" style="edgeLabel;html=1;align=center;" vertex="1" connectable="0" parent="e-truth-eval">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-eval-report" edge="1" parent="1" source="eval-box" target="report" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;strokeColor=#d79b00;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-cue" edge="1" parent="1" source="opir-track" target="rir-box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;dashed=1;strokeColor=#6c8ebf;strokeWidth=1.5;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="l6" value="可选引导 (cue)&lt;br&gt;提高扫描效率" style="edgeLabel;html=1;align=center;" vertex="1" connectable="0" parent="e-cue">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Input arrows -->
+        <mxCell id="e-cfg-opir" edge="1" parent="1" source="input-cfg" target="opir-box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;dashed=1;strokeColor=#999;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-cfg-rir" edge="1" parent="1" source="input-cfg" target="rir-box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;dashed=1;strokeColor=#999;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-truth-opir" edge="1" parent="1" source="input-truth" target="opir-box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;dashed=1;strokeColor=#999;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-ephem" edge="1" parent="1" source="input-ephem" target="opir-box" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=classic;dashed=1;strokeColor=#999;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

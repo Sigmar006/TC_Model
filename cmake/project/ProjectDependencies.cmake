@@ -17,10 +17,21 @@ function(oneq_find_project_dependencies)
     # JSBSim 解析与 provider 无关（自有三条策略，含 conan 包/源码/预编译）。
     include("${ONEQ_PROJECT_DEPENDENCIES_DIR}/dependencies/JsbsimProvider.cmake")
 
+    # 线程库：库内 std::mutex 共 37 处（common/logging/*、airborne_radar/SynchronizedTrackPool、
+    # sbirs_sensor/SbirsAcceptanceRecords 等），但全树此前没有任何 find_package(Threads)。
+    # glibc 2.34 起 pthread_* 才并入 libc；银河麒麟 V10（glibc 2.28）与统信 UOS 上做静态链接
+    # 或 -static-libstdc++ 时会出现 `undefined reference to 'pthread_mutex_lock'`。
+    # 这里显式解析并纳入 ONEQ_LINK_DEPENDENCIES（公共库以 PRIVATE 方式消费，导出为
+    # $<LINK_ONLY:Threads::Threads>，ProjectInstall.cmake 里配套 find_dependency(Threads)）。
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
+    find_package(Threads REQUIRED)
+    list(APPEND ONEQ_LINK_DEPENDENCIES Threads::Threads)
+
     # 将 provider 解析出的结果变量提升到调用方作用域，供 ProjectTargets / 业务模块使用。
     foreach(_oneq_dependency_var IN ITEMS
             ONEQ_HAVE_ZLIB
             ONEQ_ENABLE_HDF5_OUTPUT
+            ONEQ_HIGHFIVE_TARGET
             ONEQ_LINK_DEPENDENCIES
             ONEQ_JSBSIM_BINARY_SOURCE
             ONEQ_JSBSIM_DATA_ROOT_DIR

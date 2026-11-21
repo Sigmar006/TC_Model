@@ -12,15 +12,27 @@ set(ONEQ_FLATBUFFERS_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated" CACHE INTERNA
     "FlatBuffers 生成头根目录（构建期由 flatc 产生，不进 git）")
 
 # 发现并校验 flatc 编译器，结果写入 ONEQ_FLATC_EXECUTABLE；必须在 find_package(flatbuffers) 之后调用。
-# 优先级：1) conan 暴露的 flatbuffers::flatc imported target；
+# 优先级：0) 用户显式 -DONEQ_FLATC_EXECUTABLE=/path/to/flatc（交叉编译时指向**宿主** flatc）；
+#         1) conan 暴露的 flatbuffers::flatc imported target；
 #         2) FLATBUFFERS_FLATC_EXECUTABLE 变量（同来源另一形态）；
 #         3) find_program(flatc) fallback（仅用于脱离 conan 的本地诊断）。
 # flatc 未找到时触发 FATAL_ERROR。
 macro(setup_flatc)
+    # 允许外部通过 -DONEQ_FLATC_EXECUTABLE 显式指定：交叉编译（如 x86 主机构建
+    # aarch64 目标）时目标平台的 flatc 无法在主机执行，必须用宿主 flatc 生成代码。
+    if(DEFINED ONEQ_FLATC_EXECUTABLE AND NOT ONEQ_FLATC_EXECUTABLE STREQUAL ""
+       AND EXISTS "${ONEQ_FLATC_EXECUTABLE}")
+        set(_oneq_flatc_user "${ONEQ_FLATC_EXECUTABLE}")
+    else()
+        set(_oneq_flatc_user "")
+    endif()
     set(ONEQ_FLATC_EXECUTABLE "")
+    if(_oneq_flatc_user)
+        set(ONEQ_FLATC_EXECUTABLE "${_oneq_flatc_user}")
+    endif()
     if(TARGET flatbuffers::flatc)
         get_target_property(_oneq_flatc_loc flatbuffers::flatc IMPORTED_LOCATION)
-        if(_oneq_flatc_loc)
+        if(_oneq_flatc_loc AND NOT ONEQ_FLATC_EXECUTABLE)
             set(ONEQ_FLATC_EXECUTABLE "${_oneq_flatc_loc}")
         endif()
     endif()
@@ -30,11 +42,15 @@ macro(setup_flatc)
     if(NOT ONEQ_FLATC_EXECUTABLE)
         find_program(ONEQ_FLATC_EXECUTABLE NAMES flatc)
     endif()
+    unset(_oneq_flatc_user)
+    unset(_oneq_flatc_loc)
 
     if(NOT ONEQ_FLATC_EXECUTABLE)
         message(FATAL_ERROR
             "FlatBuffers: flatc 未找到。conan flatbuffers 包应通过 FlatcTargets.cmake "
-            "暴露 flatbuffers::flatc；若缺失请检查 conan install 是否成功。")
+            "暴露 flatbuffers::flatc；若缺失请检查 conan install 是否成功。"
+            "另可用 -DONEQ_FLATC_EXECUTABLE=<宿主 flatc> 显式指定（交叉编译场景必需）。"
+            "注意 conanfile.py 必须保持 flatbuffers/*:header_only=False，否则包内无 flatc。")
     endif()
 
     # 解析结果持久化到 CACHE：flatbuffers_generate() 有独立作用域，需保证拿到一致的工具路径。

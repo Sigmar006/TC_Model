@@ -18,6 +18,13 @@ function(oneq_configure_package_dependencies out_var)
                 "find_dependency(spdlog REQUIRED CONFIG)\n")
         endif()
         string(APPEND config_find_dependencies "find_dependency(ZLIB REQUIRED CONFIG)\n")
+        # SQLite3 虽是 PRIVATE 链接，但静态库的 PRIVATE 依赖会以
+        # `$<LINK_ONLY:SQLite::SQLite3>` 的形式进入导出 target 的链接接口；
+        # 下游 find_package(1q) 时若未在此处 find_dependency，会直接报
+        # `The link interface of target "1q::core" contains: SQLite::SQLite3
+        #  but the target was not found`。
+        string(APPEND config_find_dependencies
+            "find_dependency(SQLite3 REQUIRED CONFIG)\n")
         # jsbsim 仅在启用 flight_dynamic 时纳入，默认关闭时不依赖。
         if(ONEQ_ENABLE_FLIGHT_DYNAMIC)
             string(APPEND config_find_dependencies
@@ -29,6 +36,12 @@ function(oneq_configure_package_dependencies out_var)
                 "find_dependency(HighFive REQUIRED CONFIG)\n")
         endif()
     endif()
+    # Threads::Threads 由 oneq_find_project_dependencies() 无条件加入链接闭包，与
+    # provider 无关（CMake 内置 FindThreads 模块），因此放在 conan 分支之外。
+    # 缺这一句时下游 find_package(1q) 会报
+    # `The link interface of target "1q::core" contains: Threads::Threads but the
+    #  target was not found`。
+    string(APPEND config_find_dependencies "find_dependency(Threads REQUIRED)\n")
     set("${out_var}" "${config_find_dependencies}" PARENT_SCOPE)
 endfunction()
 

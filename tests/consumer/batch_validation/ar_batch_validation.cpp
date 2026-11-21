@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file ar_batch_validation.cpp
  * @brief 机载雷达（AR）批量场景验证。
  *
@@ -23,7 +23,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
+#include <oneq/FsCompat.h>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -691,7 +691,7 @@ int main(int argc, char** argv) {
 
   // 2. 准备输出目录 + CSV writer。
   std::error_code ec;
-  std::filesystem::create_directories(output_dir, ec);
+  oneq_fs::create_directories(output_dir, ec);
   if (ec) {
     std::fprintf(stderr, "FATAL: 无法创建输出目录 %s: %s\n", output_dir.c_str(),
                  ec.message().c_str());

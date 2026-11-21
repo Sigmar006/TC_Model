@@ -51,8 +51,25 @@ elseif(ONEQ_JSBSIM_FROM_SOURCE)
 # 策略三（默认）：由 conan 提供 jsbsim 预编译包。
 else()
     set(ONEQ_JSBSIM_BINARY_SOURCE "conan:jsbsim/1.3.1")
-    find_package(jsbsim CONFIG REQUIRED)
-    add_library(JSBSim::JSBSim ALIAS jsbsim::jsbsim)
+    # Conan 包要求一条：与 conanfile.py 的 enable_flight_dynamic 选项保持一致。
+    # 打开 ONEQ_ENABLE_FLIGHT_DYNAMIC 却没装包时，直接给出可执行的修复命令，
+    # 而不是留给 find_package 抛晦涩的 package not found。
+    find_package(jsbsim CONFIG QUIET)
+    if(NOT (TARGET jsbsim::jsbsim OR TARGET JSBSim OR TARGET JSBSim::JSBSim))
+        message(FATAL_ERROR
+            "ONEQ_ENABLE_FLIGHT_DYNAMIC=ON 但未找到 JSBSim 包。\n"
+            "请先用同一开关重跑依赖安装：\n"
+            "  scripts/bootstrap_conan.sh <preset>   # 或\n"
+            "  conan install . -o \"&:enable_flight_dynamic=True\" --build=missing\n"
+            "或改用 -DONEQ_JSBSIM_PREBUILT_ROOT_DIR=<预编译树> / -DONEQ_JSBSIM_FROM_SOURCE=ON。")
+    endif()
+    # ConanCenter 的 jsbsim 配方导出名随版本变化（jsbsim::jsbsim / JSBSim::JSBSim / 裸 JSBSim），
+    # 逐个探测后再统一到 JSBSim::JSBSim，避免 "target jsbsim::jsbsim not found"。
+    if(TARGET jsbsim::jsbsim)
+        add_library(JSBSim::JSBSim ALIAS jsbsim::jsbsim)
+    elseif(TARGET JSBSim)
+        add_library(JSBSim::JSBSim ALIAS JSBSim)
+    endif()
 endif()
 
 # 解析结果写回 CACHE INTERNAL，供 ProjectDependencies 提升到调用方作用域。

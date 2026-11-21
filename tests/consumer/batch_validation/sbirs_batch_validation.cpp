@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file sbirs_batch_validation.cpp
  * @brief SBIRS 距离与辐射强度的批量物理场景验证。
  */
@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
+#include <oneq/FsCompat.h>
 #include <set>
 #include <string>
 #include <system_error>
@@ -448,7 +448,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::error_code ec;
-  std::filesystem::create_directories(output_dir, ec);
+  oneq_fs::create_directories(output_dir, ec);
   if (ec) {
     std::fprintf(stderr, "FATAL: cannot create %s: %s\n", output_dir.c_str(), ec.message().c_str());
     return 1;

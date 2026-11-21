@@ -35,10 +35,18 @@ class OneQConan(ConanFile):
 
     options = {
         "enable_testing": [True, False],
+        # flight_dynamic（JSBSim）与 SAR HDF5（HighFive→HDF5）在国产化平台（麒麟 aarch64）
+        # 上是最大的构建成本与失败面：ConanCenter 无 armv8 预编译包，两者都要源码构建
+        # （HDF5 还需 libaec/szip）。默认关闭，按需 -o "&:enable_flight_dynamic=True" 打开；
+        # 与 CMake 的 ONEQ_ENABLE_FLIGHT_DYNAMIC / ONEQ_ENABLE_HDF5 一一对应。
+        "enable_flight_dynamic": [True, False],
+        "enable_hdf5": [True, False],
     }
 
     default_options = {
         "enable_testing": False,
+        "enable_flight_dynamic": False,
+        "enable_hdf5": True,
         # 显式固定第三方链接形态，避免依赖 recipe 默认值导致构建行为漂移。
         "spdlog/*:shared": False,
         "fmt/*:shared": False,
@@ -46,11 +54,17 @@ class OneQConan(ConanFile):
         "zlib/*:shared": False,
         "sqlite3/*:shared": False,
         "boost/*:header_only": True,
-        "flatbuffers/*:header_only": True,
+        # flatbuffers 不能用 header_only：该模式下包内不含可执行的 flatc，而本工程有 7 个
+        # 模块通过 oneq_add_flatbuffers_schemas 在构建期生成 *_generated.h（仓库内不存
+        # 生成物），找不到 flatc 会在配置期 FATAL。此处保持完整包以自带 flatc。
+        "flatbuffers/*:header_only": False,
     }
 
     def _is_windows(self):
         return str(self.settings.os) == "Windows"
+
+    def _is_linux(self):
+        return str(self.settings.os) == "Linux"
 
     def requirements(self):
         self.requires(_BASE_DEPS["eigen"])
@@ -65,12 +79,19 @@ class OneQConan(ConanFile):
         if not self._is_windows():
             self.requires(_LOG_DEPS_NON_WINDOWS["spdlog"])
             self.requires(_LOG_DEPS_NON_WINDOWS["fmt"], override=True)
-            # macOS 开发使用 conan 预编译的 JSBSim（Windows/VS2015 从 third_party 源码构建）
-            self.requires(_JSBSIM_DEPS_NON_WINDOWS["jsbsim"])
 
-            # SAR HDF5 输出（始终开启；仅 C++17+ 构建实际启用，见 ConanPackages.cmake）。
-            # Windows C++11/14 构建（v141 老工具集）不安装：HighFive/HDF5 要求 C++17。
-            self.requires("highfive/2.10.0")
+            # JSBSim 只被 flight_dynamic 模块使用，且该模块默认不参与构建
+            # （ONEQ_ENABLE_FLIGHT_DYNAMIC=OFF）。按选项门控，避免在不做飞行动力学的
+            # 构建里白装一个需要源码编译的 C++ 大包（aarch64 无预编译包）。
+            if self.options.enable_flight_dynamic:
+                self.requires(_JSBSIM_DEPS_NON_WINDOWS["jsbsim"])
+
+            # SAR HDF5 输出（HighFive→HDF5）。仅在 C++17+ 构建实际启用（见
+            # ConanPackages.cmake）。Windows C++11/14 构建（v141 老工具集）不安装：
+            # HighFive/HDF5 要求 C++17。HDF5 在 aarch64 上同样没有预编译包，
+            # 国产化离线构建建议 -o "&:enable_hdf5=False" 直接关掉。
+            if self.options.enable_hdf5:
+                self.requires("highfive/2.10.0")
 
     def build_requirements(self):
         if self.options.enable_testing:

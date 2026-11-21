@@ -35,9 +35,21 @@ _oneq_prepend_path_if_dir() {
   esac
 }
 
+# 平台判定：Windows(Git Bash/MSYS) 才需要探测盘符候选路径与 scripts/win/bin；
+# 在银河麒麟/UOS 上把 /d/environment/CMake/bin 之类塞进 PATH 只会污染环境。
+_oneq_is_windows=0
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*) _oneq_is_windows=1 ;;
+esac
+
 _oneq_cmake_candidates() {
   local root="${ONEQ_ROOT}"
   local drive=""
+  if [[ "${_oneq_is_windows}" != "1" ]]; then
+    # 非 Windows：只用显式覆盖或系统默认位置，不做盘符猜测。
+    printf '%s\n' "${ONEQ_CMAKE_ROOT:+$ONEQ_CMAKE_ROOT/bin}" "/usr/local/bin" "/usr/bin"
+    return 0
+  fi
   if [[ "${root}" == /mnt/?/* ]]; then
     drive="/mnt/${root:5:1}"
   elif [[ "${root}" == /?/* ]]; then
@@ -91,6 +103,8 @@ if [[ -n "${ONEQ_REAL_CMAKE:-}" ]]; then
   _oneq_prepend_path_if_dir "$(dirname "${ONEQ_REAL_CMAKE}")"
 fi
 
-_oneq_prepend_path_if_dir "${ONEQ_ROOT}/scripts/win/bin"
+if [[ "${_oneq_is_windows}" == "1" ]]; then
+  _oneq_prepend_path_if_dir "${ONEQ_ROOT}/scripts/win/bin"
+fi
 
-unset _existing_cmake _resolved _oneq_prepend_path_if_dir _oneq_resolve_cmake_executable _oneq_cmake_candidates
+unset _existing_cmake _resolved _oneq_prepend_path_if_dir _oneq_resolve_cmake_executable _oneq_cmake_candidates _oneq_is_windows

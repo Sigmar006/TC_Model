@@ -3,7 +3,16 @@
 # cmake/project 的唯一选项边界，业务模块不重复定义缓存变量
 
 # 共享库 / 测试 / 示例 / 安装四个顶层开关。
-option(BUILD_SHARED_LIBS "Build shared libraries instead of static" ON)
+# BUILD_SHARED_LIBS 默认静态：公共头里 ONEQ_EXPORT 只覆盖极少符号，且非 Windows 平台对
+# 全部 target 设了 -fvisibility=hidden / CXX_VISIBILITY_PRESET hidden，默认产出 .so 会让
+# 下游几乎全部符号不可见（表现为大面积 undefined reference，极易误判为"库没编出来"）。
+# 交付形态固定为静态库；确需 .so 时显式 -DBUILD_SHARED_LIBS=ON 并承担导出审计。
+option(BUILD_SHARED_LIBS "Build shared libraries instead of static" OFF)
+if(BUILD_SHARED_LIBS)
+    message(WARNING
+        "BUILD_SHARED_LIBS=ON：当前公共头仅 api.hpp 标注 ONEQ_EXPORT，而目标启用 hidden 可见性；"
+        "产出的 .so 会隐藏绝大多数 C++ 符号，下游链接将失败。交付请保持静态库（默认 OFF）。")
+endif()
 option(ENABLE_TESTING "Enable testing support" OFF)
 option(ENABLE_EXAMPLES "Build example programs" OFF)
 option(ENABLE_INSTALL "Enable installation rules" OFF)
@@ -77,6 +86,36 @@ if(ONEQ_ENABLE_FLIGHT_DYNAMIC)
 else()
     message(STATUS "flight_dynamic module: disabled (set -DONEQ_ENABLE_FLIGHT_DYNAMIC=ON to enable)")
 endif()
+
+# HDF5 输出能力（SAR 图像落盘）：需要 C++17 + HighFive。默认开启以保持既有 macOS 行为，
+# 但国产化平台（麒麟 aarch64）上 ConanCenter 无 highfive/hdf5 预编译包，源码构建 HDF5
+# 代价高且常因缺少 libaec/szip 失败，现场可用 -DONEQ_ENABLE_HDF5=OFF 关闭。
+option(ONEQ_ENABLE_HDF5 "Enable HDF5 output via HighFive (requires C++17, non-Windows)" ON)
+if(NOT ONEQ_ENABLE_HDF5)
+    message(STATUS "SAR HDF5 output: disabled by ONEQ_ENABLE_HDF5=OFF")
+endif()
+
+# LTO 开关：Release/MinSizeRel 默认启用。国产化交付的静态库若要交给第三方工具链消费，
+# 建议关闭（-DONEQ_ENABLE_LTO=OFF）：纯 GIMPLE IR 的 .a 需要同版本 GCC + LTO 插件才能链接，
+# 现场缺插件时报 "plugin needed to handle lto object"。
+option(ONEQ_ENABLE_LTO "Enable link-time optimization for Release/MinSizeRel" ON)
+if(NOT ONEQ_ENABLE_LTO)
+    message(STATUS "LTO: disabled by ONEQ_ENABLE_LTO=OFF")
+endif()
+
+# 严格浮点语义：禁用 FMA 收缩（-ffp-contract=off）。aarch64 基线恒有 FMA 指令、x86-64 的
+# SSE2 基线没有，GCC 默认 -ffp-contract=fast 会把 a*b+c 收缩为单条 FMA，使同一份点积在
+# 两种 ISA 上相差 1 ULP，进而可能翻转 "snr >= 阈值" 这类整数判据。
+# 默认关闭（不改变既有平台的数值结果）；国产化替换时打开（kylin-aarch64-* preset 已置 ON），
+# 使飞腾/鲲鹏上的结果与 x86-64 基线一致。
+option(ONEQ_STRICT_FP "Disable FP contraction (-ffp-contract=off) for cross-ISA determinism" OFF)
+
+# 链接期主线程栈大小选项：仅对支持 `-z stack-size=` 的 GNU 风格链接器有意义，
+# 且 Linux 主线程栈实际由 RLIMIT_STACK(ulimit -s) 决定，PT_GNU_STACK.p_memsz 不生效。
+# 因此默认关闭，避免在不支持该关键字的 ld（如麒麟自带 binutils）上直接链接失败；
+# 深栈需求请用 ulimit -s 或 pthread_attr_setstacksize 在运行期设置。
+option(ONEQ_LINKER_STACK_OPTION
+    "Emit -Wl,-z,stack-size=<STACK_SIZE_OPTION> (non-Linux GNU-ld targets only)" OFF)
 
 # 库内部调试日志总闸（PROJECT_LOG_* → 1q_library.log）。默认关闭。
 # Windows 保持关闭；macOS 排库算法时才 -DONEQ_ENABLE_FILE_LOG=ON（接 spdlog）。

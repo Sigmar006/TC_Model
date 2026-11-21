@@ -67,7 +67,9 @@ endif()
 # 与 ZLIB 模式一致。两 provider（conan/vendored）均产出 SQLite::SQLite3）。
 target_link_libraries(${PROJECT_CORE_TARGET} PRIVATE SQLite::SQLite3)
 if(ONEQ_ENABLE_HDF5_OUTPUT)
-    target_link_libraries(${PROJECT_CORE_TARGET} PRIVATE HighFive)
+    # 必须用 imported target 名（HighFive::HighFive）。裸名 HighFive 会被链接器当成库名
+    # 解析为 -lHighFive，在 Linux/aarch64 上链接必失败（cannot find -lHighFive）。
+    target_link_libraries(${PROJECT_CORE_TARGET} PRIVATE ${ONEQ_HIGHFIVE_TARGET})
 endif()
 
 oneq_apply_target_configuration(

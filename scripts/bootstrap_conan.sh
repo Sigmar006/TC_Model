@@ -60,6 +60,8 @@ fi
 # VS2015 (msvc 190) 在 Conan 支持表里只接受 cppstd=14（MSVC 无 C++11 档位，/std:c++14 覆盖 11+14）；
 # flight_dynamic 模块默认 OFF 且 Windows 不拉 JSBSim，14 不触发其 C++17 第三方依赖。
 CPPSTD=17
+# 非 Windows 平台标记：为 1 时走 Linux/国产化分支（自动探测 profile + 可选依赖开关）。
+PLATFORM_LINUX=0
 
 # --- preset → 参数映射 -------------------------------------------------------
 # 每个 preset 派生：binaryDir、build_type（单配置才有）、enable_testing、generator。
@@ -115,9 +117,27 @@ case "${PRESET}" in
         GENERATOR="Visual Studio 18 2026"
         CPPSTD=17
         ;;
+    # 国产化平台（银河麒麟 V10 国防版 / 统信 UOS + 飞腾、鲲鹏 aarch64）。
+    # 与 windows-base 不同，这里**不写死** os/arch/compiler：Conan 2 在目标机上按
+    # profiles/default 自动探测（Linux/armv8/gcc），写死反而会在交叉编译或不同
+    # 麒麟小版本上出错。需要交叉编译时用 ONEQ_CONAN_ARCH=armv8 覆盖。
+    linux-aarch64-debug)
+        BINARY_DIR="${SOURCE_DIR}/build/linux-aarch64-debug"
+        BUILD_TYPE="Debug"
+        ENABLE_TESTING="True"
+        GENERATOR=""
+        PLATFORM_LINUX=1
+        ;;
+    linux-aarch64-release)
+        BINARY_DIR="${SOURCE_DIR}/build/linux-aarch64-release"
+        BUILD_TYPE="Release"
+        ENABLE_TESTING="True"
+        GENERATOR=""
+        PLATFORM_LINUX=1
+        ;;
     *)
         echo "错误: 不支持的 preset '${PRESET}'" >&2
-        echo "支持: llvm-ninja-debug | llvm-ninja-release | VisualStudio.14.0-amd64 | VisualStudio.15.0-amd64" >&2
+        echo "支持: llvm-ninja-debug | llvm-ninja-release | linux-aarch64-debug | linux-aarch64-release | VisualStudio.14.0-amd64 | VisualStudio.15.0-amd64" >&2
         exit 2
         ;;
 esac
@@ -164,6 +184,28 @@ if [[ -n "${GENERATOR}" ]]; then
             )
             ;;
     esac
+fi
+
+# 国产化/离线平台：显式声明可选组件开关，与 CMake 的 ONEQ_ENABLE_FLIGHT_DYNAMIC /
+# ONEQ_ENABLE_HDF5 一一对应（两处必须同步，否则会出现「CMake 要 HighFive，Conan 没装」
+# 或反之的配置期失败）。
+#
+# 默认把 HDF5 关掉：HighFive→HDF5 在 aarch64 没有 ConanCenter 预编译包，要连
+# libaec/szip 一起源码构建，是离线环境里最容易失败的一环；需要 SAR HDF5 输出时
+# 用 ONEQ_ENABLE_HDF5=True 打开。
+if [[ "${PLATFORM_LINUX}" == "1" ]]; then
+    CONAN_COMMON_ARGS+=(
+        -o "&:enable_flight_dynamic=${ONEQ_ENABLE_FLIGHT_DYNAMIC:-False}"
+        -o "&:enable_hdf5=${ONEQ_ENABLE_HDF5:-False}"
+    )
+    if [[ -n "${ONEQ_CONAN_ARCH:-}" ]]; then
+        CONAN_COMMON_ARGS+=(-s "arch=${ONEQ_CONAN_ARCH}")
+    fi
+    # 完全离线（国防版常见）：--build=missing 仍会先尝试访问 remote，加 --no-remote
+    # 强制只从本地缓存/源码构建，避免每次安装都卡在网络超时上。
+    if [[ "${ONEQ_CONAN_OFFLINE:-0}" == "1" ]]; then
+        CONAN_COMMON_ARGS+=(--no-remote)
+    fi
 fi
 
 # --- 执行（按配置列表循环）---------------------------------------------------

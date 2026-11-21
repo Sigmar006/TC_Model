@@ -1,24 +1,18 @@
-﻿/**
+/**
  * @file fs_compat.h
  * @brief std::filesystem 跨编译器别名（app_fs），示例装配层共用。
  *
- * std::filesystem 为 C++17；VS2015（msvc 190）下同头文件提供 TR2 的
- * std::experimental::filesystem，别名统一调用面。
+ * 实际分支判定收敛到 include/oneq/FsCompat.h：按 __has_include 探测头文件是否存在，
+ * 而不是按 __cplusplus 猜。GCC 7.3（银河麒麟 V10 基线）在 -std=c++17 下
+ * __cplusplus 已经是 201703L，但 libstdc++ 并没有 <filesystem>，此前这里会走进
+ * 第一个 else 分支直接 fatal error。
  */
 
 #ifndef EXAMPLES_APP_FS_COMPAT_H_
 #define EXAMPLES_APP_FS_COMPAT_H_
 
-#if defined(_MSC_VER) && _MSC_VER < 1910
-#include <filesystem>
-namespace app_fs = std::experimental::filesystem;
-#elif (defined(_MSVC_LANG) && _MSVC_LANG < 201703L) || \
-    (!defined(_MSVC_LANG) && __cplusplus < 201703L)
-#include <experimental/filesystem>
-namespace app_fs = std::experimental::filesystem;
-#else
-#include <filesystem>
-namespace app_fs = std::filesystem;
-#endif
+#include <oneq/FsCompat.h>
+
+namespace app_fs = oneq_fs;
 
 #endif  // EXAMPLES_APP_FS_COMPAT_H_

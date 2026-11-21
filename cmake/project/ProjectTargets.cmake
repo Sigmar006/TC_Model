@@ -103,6 +103,11 @@ function(oneq_add_component target)
     if(TARGET Eigen3::Eigen)
         target_link_libraries("${target}" PRIVATE Eigen3::Eigen)
     endif()
+    # 组件内用到 std::mutex（glibc < 2.34 时 pthread_* 不在 libc 中），编译期带 -pthread
+    # 定义 _REENTRANT，链接期由公共库的 ONEQ_LINK_DEPENDENCIES 提供 libpthread。
+    if(TARGET Threads::Threads)
+        target_link_libraries("${target}" PRIVATE Threads::Threads)
+    endif()
     # 四类 include 路径：src（模块互引）、生成头目录、公共 include、FlatBuffers 生成头。
     target_include_directories("${target}" PRIVATE
         "${CMAKE_SOURCE_DIR}/src"

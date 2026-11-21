@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file eos_batch_validation.cpp
  * @brief 光电传感器（EOS）批量场景验证。
  *
@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
+#include <oneq/FsCompat.h>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -638,7 +638,7 @@ int main(int argc, char** argv) {
   }
 
   std::error_code ec;
-  std::filesystem::create_directories(output_dir, ec);
+  oneq_fs::create_directories(output_dir, ec);
   if (ec) {
     std::fprintf(stderr, "FATAL: 无法创建输出目录 %s: %s\n", output_dir.c_str(), ec.message().c_str());
     return 1;

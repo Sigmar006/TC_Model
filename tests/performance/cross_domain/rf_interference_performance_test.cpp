@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <chrono>
@@ -97,8 +97,23 @@ std::size_t ReadAllocatedHeapBytes() {
   malloc_zone_statistics(malloc_default_zone(), &statistics);
   return statistics.size_in_use;
 #elif defined(__linux__)
+  // mallinfo2() 是 glibc 2.33 才引入的接口：银河麒麟 V10 国防版自带 glibc 2.28，
+  // 直接调用会编译失败（'mallinfo2' was not declared in this scope）。按 glibc 版本分流：
+  // 旧版本退回 struct mallinfo（字段为 int）。int 字段在堆统计溢出时可能为负，先钳到 0
+  // 再转 size_t，否则负数转无符号会变成天文数字，让"堆增长 ≤ 4MiB"的断言假红。
+#if defined(__GLIBC__) && defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2, 33)
   const struct mallinfo2 statistics = mallinfo2();
   return static_cast<std::size_t>(statistics.uordblks);
+#elif defined(__GLIBC__)
+  const struct mallinfo statistics = mallinfo();
+  return statistics.uordblks > 0
+             ? static_cast<std::size_t>(statistics.uordblks)
+             : 0U;
+#else
+  // 非 glibc 的 libc（如 musl）没有 mallinfo 系列接口：返回 0，堆增长断言退化为
+  // 恒成立，不误报。RSS 侧仍由 ReadResidentBytes() 通过 /proc/self/statm 覆盖。
+  return 0U;
+#endif
 #elif defined(_WIN32)
   PROCESS_MEMORY_COUNTERS counters{};
   if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)) != 0) {

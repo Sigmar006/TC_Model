@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file AcceptanceFileLog.cpp
  * @brief 九通道验收文件 sink（功能/性能验收、内部接口及雷达外部接口）。
  */
@@ -29,6 +29,9 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#else
+// 非 Windows：ToAbsolutePath 需要 getcwd，时间戳需要可重入的 localtime_r。
+#include <unistd.h>
 #endif
 
 #ifndef ONEQ_SATELLITE_TARGET_LOG_PATH
@@ -281,7 +284,19 @@ std::string ToAbsolutePath(const std::string& path) {
   return path;
 }
 #else
-std::string ToAbsolutePath(const std::string& path) { return path; }
+// 非 Windows：此前直接 return path，于是 `log/xxx.log` 这种相对路径就以进程 cwd 为基准。
+// 一旦工作目录不可写（服务方式启动、只读容器、`/` 下运行），六个验收文件会静默消失。
+// 这里用 getcwd 拼成绝对路径，使日志落点只取决于 ONEQ_LOG_DIR 宏，而与 cwd 无关。
+std::string ToAbsolutePath(const std::string& path) {
+  if (path.empty() || path[0] == '/') {
+    return path;
+  }
+  char cwd[4096] = {0};
+  if (::getcwd(cwd, sizeof(cwd)) != nullptr) {
+    return std::string(cwd) + "/" + path;
+  }
+  return path;
+}
 #endif
 
 /**
@@ -320,7 +335,11 @@ const std::string& ProcessStartStamp() {
 #if defined(_MSC_VER)
     localtime_s(&local_tm, &now);
 #else
-    local_tm = *std::localtime(&now);
+    // std::localtime 返回指向静态缓冲区的指针，不可重入且可能返回 nullptr；
+    // 多个模块线程在进程启动时并发取时间戳会互相踩踏，故用 localtime_r。
+    if (localtime_r(&now, &local_tm) == nullptr) {
+      std::memset(&local_tm, 0, sizeof(local_tm));
+    }
 #endif
     std::sprintf(buffer, "%04d%02d%02d_%02d%02d%02d",
                   local_tm.tm_year + 1900, local_tm.tm_mon + 1, local_tm.tm_mday,

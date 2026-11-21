@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file scene_data_test.cpp
  * @brief 场景描述加载器（examples/scenes/scene_data.*）单元测试。
  *
@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <filesystem>
+#include <oneq/FsCompat.h>
 #include <fstream>
 #include <string>
 
@@ -31,19 +31,19 @@ class ScopedSceneFile {
   explicit ScopedSceneFile(const std::string& content) {
     static std::atomic<std::uint64_t> counter{0U};
     const auto stamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    path_ = std::filesystem::temp_directory_path() /
+    path_ = oneq_fs::temp_directory_path() /
             ("scene_data_test_" + std::to_string(stamp) + "_" +
              std::to_string(counter.fetch_add(1U)) + ".json");
     std::ofstream out(path_);
     out << content;
   }
 
-  ~ScopedSceneFile() { std::filesystem::remove(path_); }
+  ~ScopedSceneFile() { oneq_fs::remove(path_); }
 
-  const std::filesystem::path& path() const { return path_; }
+  const oneq_fs::path& path() const { return path_; }
 
  private:
-  std::filesystem::path path_;
+  oneq_fs::path path_;
 };
 
 /// 加载临时文件内容，返回场景与错误串（断言加载成功）。

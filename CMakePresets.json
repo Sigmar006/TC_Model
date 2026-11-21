@@ -1,8 +1,8 @@
 {
-    "version": 8,
+    "version": 3,
     "cmakeMinimumRequired": {
         "major": 3,
-        "minor": 25,
+        "minor": 21,
         "patch": 0
     },
     "configurePresets": [
@@ -38,6 +38,22 @@
             }
         },
         {
+            "name": "linux-base",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            },
+            "generator": "Ninja",
+            "cacheVariables": {
+                "PACKAGE_MANAGER": "conan",
+                "ONEQ_ENABLE_HDF5": "OFF",
+                "ONEQ_STRICT_FP": "ON"
+            }
+        },
+        {
             "name": "llvm-ninja-debug",
             "inherits": "macos-base",
             "displayName": "macOS LLVM Ninja Debug",
@@ -61,6 +77,34 @@
                 "ENABLE_TESTING": "ON",
                 "ENABLE_INSTALL": "ON",
                 "BUILD_SHARED_LIBS": "OFF"
+            }
+        },
+        {
+            "name": "linux-aarch64-debug",
+            "inherits": "linux-base",
+            "displayName": "国产化 aarch64 Debug（银河麒麟 V10 / 飞腾·鲲鹏）",
+            "description": "静态库 + 测试 + 示例；先执行 scripts/bootstrap_conan.sh linux-aarch64-debug 生成 toolchain",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/${presetName}/build/Debug/generators/conan_toolchain.cmake",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_SHARED_LIBS": "OFF",
+                "ENABLE_TESTING": "ON",
+                "ENABLE_EXAMPLES": "ON",
+                "ENABLE_INSTALL": "ON"
+            }
+        },
+        {
+            "name": "linux-aarch64-release",
+            "inherits": "linux-base",
+            "displayName": "国产化 aarch64 Release（银河麒麟 V10 / 飞腾·鲲鹏）",
+            "description": "静态库 + 测试，关闭 HDF5/HighFive 与 flight_dynamic 依赖；严格浮点使结果与 x86-64 基线一致",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/${presetName}/build/Release/generators/conan_toolchain.cmake",
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_SHARED_LIBS": "OFF",
+                "ENABLE_TESTING": "ON",
+                "ENABLE_EXAMPLES": "OFF",
+                "ENABLE_INSTALL": "ON"
             }
         },
         {
@@ -277,6 +321,16 @@
             "inherits": "windows-build-base",
             "configurePreset": "acceptance-v141",
             "configuration": "Release"
+        },
+        {
+            "name": "linux-aarch64-debug",
+            "displayName": "国产化 aarch64 Debug（银河麒麟 V10 / 飞腾·鲲鹏）",
+            "configurePreset": "linux-aarch64-debug"
+        },
+        {
+            "name": "linux-aarch64-release",
+            "displayName": "国产化 aarch64 Release（银河麒麟 V10 / 飞腾·鲲鹏）",
+            "configurePreset": "linux-aarch64-release"
         }
     ],
     "testPresets": [
@@ -311,6 +365,16 @@
             "inherits": "test-base",
             "configurePreset": "VisualStudio.15.0-amd64",
             "configuration": "Release"
+        },
+        {
+            "name": "linux-aarch64-debug",
+            "inherits": "test-base",
+            "configurePreset": "linux-aarch64-debug"
+        },
+        {
+            "name": "linux-aarch64-release",
+            "inherits": "test-base",
+            "configurePreset": "linux-aarch64-release"
         }
     ]
 }

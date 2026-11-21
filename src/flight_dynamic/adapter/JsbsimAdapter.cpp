@@ -1,8 +1,16 @@
-﻿#include "flight_dynamic/adapter/JsbsimAdapter.h"
+#include "flight_dynamic/adapter/JsbsimAdapter.h"
 
-#include <filesystem>
+#include <cstdlib>
+#include <string>
+
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "1q/coordinate/position_transform.h"
+#include "common/logging/LogDirectory.h"
 #include "common/logging/ProjectLog.h"
 #include "FGFDMExec.h"
 #include "flight_dynamic/adapter/PropertyNames.h"
@@ -128,15 +136,47 @@ void SettleInitialGroundState(JSBSim::FGFDMExec& fdm_exec, double dt_sec) {
 
 void DisableXmlOutput(JSBSim::FGFDMExec& fdm_exec) { fdm_exec.DisableOutput(); }
 
-void PrepareXmlOutputPath(JSBSim::FGFDMExec& fdm_exec) {
-  try {
-    const std::filesystem::path output_dir =
-        std::filesystem::temp_directory_path() / "1q_jsbsim_output";
-    std::filesystem::create_directories(output_dir);
-    fdm_exec.SetOutputPath(SGPath(output_dir.string()));
-  } catch (const std::exception&) {
-    // A writable output path is only a side-effect guard; model loading can proceed without it.
+// 取可写的临时目录（不依赖 std::filesystem：GCC 7.3 的 libstdc++ 没有该头，
+// 而麒麟 V10 自带的就是 7.3）。
+std::string TempJsbsimOutputDirectory() {
+#if defined(_WIN32)
+  const char* const tmp = std::getenv("TEMP");
+  std::string base = (tmp != nullptr && *tmp != '\0') ? std::string(tmp)
+                                                      : std::string("C:/Windows/Temp");
+#else
+  const char* const tmp = std::getenv("TMPDIR");
+  std::string base =
+      (tmp != nullptr && *tmp != '\0') ? std::string(tmp) : std::string("/tmp");
+#endif
+  while (!base.empty() && (base[base.size() - 1] == '/' || base[base.size() - 1] == '\\')) {
+    base.erase(base.size() - 1);
   }
+  if (base.empty()) {
+    base = ".";
+  }
+  return base + "/1q_jsbsim_output";
+}
+
+bool PathExists(const std::string& path) {
+  if (path.empty()) {
+    return false;
+  }
+#if defined(_WIN32)
+  return _access(path.c_str(), 0) == 0;
+#else
+  return ::access(path.c_str(), F_OK) == 0;
+#endif
+}
+
+void PrepareXmlOutputPath(JSBSim::FGFDMExec& fdm_exec) {
+  // 输出目录只是写 XML 的副作用保障：建目录失败不影响飞机数据加载，故整段不抛
+  // 异常（本工程禁止 C++ 异常），也不用 std::filesystem。
+  // EnsureParentDirectory 接收"文件路径"，逐段创建其父目录，这里借一个占位文件名
+  // 把目标目录本身建出来。
+  const std::string output_dir = TempJsbsimOutputDirectory();
+  const std::string sentinel = output_dir + "/.keep";
+  oneq::logging::EnsureParentDirectory(sentinel.c_str());
+  fdm_exec.SetOutputPath(SGPath(output_dir));
 }
 
 void RotateXmlOutputBeforeRepeatedRunIC(JSBSim::FGFDMExec& fdm_exec) {
@@ -218,7 +258,7 @@ JsbsimAdapter::JsbsimAdapter(const config::FlightDynamicConfig& config) {
   // VehicleStateMapper will skip its altitude override when the config
   // altitude is 0, preserving this XML value.
   std::string reset_path = fdm_exec_->GetFullAircraftPath().utf8Str() + "/reset00.xml";
-  if (std::filesystem::exists(reset_path)) {
+  if (PathExists(reset_path)) {
     fdm_exec_->GetIC()->Load(SGPath(reset_path), false);  // useAircraftPath=false, path is absolute
     init_diag_.reset_xml_loaded = true;
 

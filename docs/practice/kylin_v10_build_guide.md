@@ -1,4 +1,4 @@
-﻿# 银河麒麟 V10（飞腾 / 鲲鹏 aarch64）编译说明
+# 银河麒麟 V10（飞腾 / 鲲鹏 aarch64）编译说明
 
 > 适用对象：在**银河麒麟 V10 国防版 / 桌面版 SP1~SP3**（aarch64，飞腾 S2500/FT-2000+、鲲鹏 920）
 > 上从源码构建 `1q` 静态库与测试的开发者。
@@ -9,7 +9,39 @@
 
 ---
 
-## 0. 一句话命令（CMake ≥ 3.21，联网或已预热 Conan 缓存）
+## 0. 一键脚本（推荐）
+
+```bash
+cd <1q 根目录>
+bash scripts/build_kylin.sh --release --tests          # 体检 → 依赖 → 配置 → 编译 → 报告
+bash scripts/build_kylin.sh --selfcheck                # 只体检，不编译
+```
+
+脚本做的事：
+
+| 阶段 | 行为 |
+|---|---|
+| 体检 | 打印 aarch64 / GCC / CMake / glibc / Conan / Ninja / flatc；缺 CMake 只在**构建阶段**报错，`--selfcheck` 照样出报告 |
+| 能力探针 | 实测 `<filesystem>` 是否可用、`mallinfo2` 是否存在、`long double` 尾数位（aarch64=113 / x86-64=64）、`-ffp-contract=off` 是否支持 |
+| 选路线 | CMake ≥ 3.21 且有可读的 preset → `--preset`；否则自动改走显式 `-D`（CMake 3.16 可用） |
+| 依赖 | `conan install` 带齐 `enable_testing` / `enable_hdf5` / `enable_flight_dynamic`，`--offline` 时加 `--no-remote` |
+| 编译 | `cmake --build --parallel $(nproc)`，全量输出落 `<构建目录>/oneq_kylin_build.log` |
+| 失败诊断 | 按已知错误模式翻译成「改什么」，而不是丢一屏 ninja 报错（覆盖 HighFive 裸名、`-z stack-size`、`<filesystem>`、`mallinfo2`、pthread、LTO、flatc、离线 remote、glibc 版本、presets version 等） |
+
+常用开关：
+
+```bash
+bash scripts/build_kylin.sh --offline                  # 完全离线（国防版常态）
+bash scripts/build_kylin.sh --debug --ctest            # 调试构建 + 跑 ctest
+bash scripts/build_kylin.sh --install --install-dir /opt/1q
+bash scripts/build_kylin.sh --hdf5                     # 打开 HighFive/HDF5（aarch64 需源码构建 HDF5 全家桶）
+bash scripts/build_kylin.sh --flight-dynamic           # 打开 JSBSim 模块
+bash scripts/build_kylin.sh --dry-run                  # 只打印将执行的命令
+```
+
+> `--dry-run` 不需要本机装 Conan/CMake 也能看命令组成，适合先对一遍参数再上机。
+
+## 0.1 手工四步（CMake ≥ 3.21，联网或已预热 Conan 缓存）
 
 ```bash
 cd <1q 根目录>
@@ -27,6 +59,12 @@ export ONEQ_CONAN_OFFLINE=1     # 让 conan 只读本地缓存，不尝试访问
 
 麒麟 V10 出厂的 CMake 版本随 SP 不同，可能低至 **3.16**（无 `--preset`），遇此情况请直接走
 **§4 路线 B**，其余步骤完全等价。
+
+> **preset 读不出来时先看 `CMakeUserPresets.json`**：Conan 2 生成的该文件用 presets `version: 4`，
+> 而 CMake 3.21/3.22 只支持到 version 3，报错形如
+> `CMake Error: Could not read presets from <目录>: Unrecognized "version" field`——
+> **报错只给目录、不给文件名**，极易误判成工程的 `CMakePresets.json` 坏了。
+> 处理：`rm CMakeUserPresets.json` 后重跑，或用 `--route manual` 走显式 `-D`（脚本已自动规避）。
 
 ---
 
@@ -312,7 +350,7 @@ Threads**（`1qConfig.cmake` 会 `find_dependency` 它们）；离线交付时�
 
 | 报错（原文关键片段） | 原因 | 处理 |
 |---|---|---|
-| `CMake Error: Could not read presets ... Unrecognized "version" field` | 旧版 `CMakePresets.json`（version 8 需 CMake ≥3.28） | 仓库已改为 `version 3`；若现场仍是旧文件，走路线 B 或升级 CMake |
+| `CMake Error: Could not read presets ... Unrecognized "version" field` | ① 旧版 `CMakePresets.json`（version 8 需 CMake ≥3.28）；② Conan 生成的 `CMakeUserPresets.json` 是 version 4，而 CMake 3.21/3.22 只支持 3 | ① 仓库已改为 `version 3`；② `rm CMakeUserPresets.json` 或 `--route manual`。**报错只给目录、不给文件名**，先查 user presets |
 | `CMake Error: Unknown argument --preset` | CMake 3.16~3.18 无 preset 支持 | 走 **§4 路线 B** |
 | `CMAKE_TOOLCHAIN_FILE ... does not exist` / `请先运行 scripts/bootstrap_conan.sh` | 没生成过 toolchain | 先跑 `bootstrap_conan.sh <preset>`；路线 B 则先手工 `conan install` |
 | `错误: 不支持的 preset 'xxx'` | bootstrap 脚本不认识该 preset | 用 `linux-aarch64-debug` / `linux-aarch64-release`；或 `git pull` 拿最新脚本 |
@@ -382,5 +420,6 @@ Threads**（`1qConfig.cmake` 会 `find_dependency` 它们）；离线交付时�
 | `cmake/project/dependencies/ConanPackages.cmake` | `find_package` 的实际调用点 |
 | `CMakePresets.json` | `linux-base` / `linux-aarch64-debug` / `linux-aarch64-release` |
 | `scripts/bootstrap_conan.sh` | preset → conan install 参数映射（含离线/架构/业务开关） |
+| `scripts/build_kylin.sh` | **一键构建**：体检 + 能力探针 + 选路线 + 依赖 + 编译 + 失败诊断 |
 | `scripts/1q.sh` | `bootstrap` / `configure` / `build` / `test` / `install` 封装 |
 | `docs/practice/kylin_v10_aarch64_build_compat.md` | 兼容性问题清单、修改说明与容器实测记录 |
